@@ -10,12 +10,14 @@ from typing import Any, Iterable
 from urllib.parse import quote
 
 from .config import FlightSearch
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+
+_anti_bot_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+if _anti_bot_dir not in sys.path:
+    sys.path.insert(0, _anti_bot_dir)
 from shared.anti_bot import (
     random_user_agent, random_viewport, human_delay,
     inject_canvas_noise, warm_up_session, stealth_browser_args,
-    dismiss_cookies, check_waf,
+    dismiss_cookies, check_waf, random_headers,
 )
 from .engine import FlightOffer
 
@@ -127,29 +129,33 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
     deadline = time.monotonic() + int(os.getenv("GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS", "900"))
     grouped: dict[str, list[FlightOffer]] = {item.key: [] for item in searches}
     async with async_playwright() as playwright:
+        ua = random_user_agent()
+        vp = random_viewport()
+        hdrs = random_headers()
         browser = await playwright.chromium.launch(
             headless=True,
-            args=[
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-blink-features=AutomationControlled",
-            ],
+            args=stealth_browser_args(),
         )
         context = await browser.new_context(
             locale="en-GB",
             timezone_id="Europe/London",
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800},
+            user_agent=ua,
+            viewport=vp,
+            extra_http_headers={
+                "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
+                "Referer": "https://www.google.com/",
+                "Sec-CH-UA": hdrs.get("Sec-CH-UA", ""),
+                "Sec-CH-UA-Mobile": hdrs.get("Sec-CH-UA-Mobile", "?0"),
+                "Sec-CH-UA-Platform": hdrs.get("Sec-CH-UA-Platform", '"Windows"'),
+            },
         )
         await context.add_cookies([
             {"name": "SOCS", "value": "CAISHAgBEhJnd3NfMjAyNDA4MjAtMF9SQzIaAmVuIAEaBgiA_L20Bg", "domain": ".google.com", "path": "/"},
             {"name": "CONSENT", "value": "PENDING+999", "domain": ".google.com", "path": "/"},
         ])
         page = await context.new_page()
-        await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        await inject_canvas_noise(page)
         try:
-            # Warm up session on Google
             await warm_up_session(page, "https://www.google.com/travel/flights")
             await human_delay(2.0, 4.0)
             for search, day in specs:
@@ -166,7 +172,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                 except Exception:
                     continue
                 if await check_waf(page):
-                        continue
+                    continue
                 cards = None
                 for selector in CARD_SELECTORS:
                     try:
