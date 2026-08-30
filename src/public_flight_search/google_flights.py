@@ -19,6 +19,9 @@ CARD_SELECTORS = (
     "ul.RKOxfe li",
     "li.pIav2d",
     "div.pIav2d",
+    "div.yR1fYc",
+    "div.mz0pAd",
+    "div.Og10v",
 )
 
 KNOWN_AIRLINES = (
@@ -119,14 +122,25 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+            args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-blink-features=AutomationControlled",
+            ],
         )
-        context = await browser.new_context(locale="en-GB", timezone_id="Europe/London")
+        context = await browser.new_context(
+            locale="en-GB",
+            timezone_id="Europe/London",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800},
+        )
         await context.add_cookies([
             {"name": "SOCS", "value": "CAISHAgBEhJnd3NfMjAyNDA4MjAtMF9SQzIaAmVuIAEaBgiA_L20Bg", "domain": ".google.com", "path": "/"},
             {"name": "CONSENT", "value": "PENDING+999", "domain": ".google.com", "path": "/"},
         ])
         page = await context.new_page()
+        await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         try:
             for search, day in specs:
                 if time.monotonic() >= deadline:
