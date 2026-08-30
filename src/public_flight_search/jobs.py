@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 import json
 import os
 
+from .amadeus import AmadeusClient
 from .config import load_flight_config
-from .google_flights import search_google_flights
+from .google_flights import build_google_flights_url, search_google_flights
 from .holidays import load_holiday_config, render_holiday_report
 from .mailer import send_html
 from .report import render_flight_report
@@ -16,15 +17,51 @@ from .report import render_flight_report
 
 def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     config = load_flight_config(os.environ.get("FLIGHT_SEARCH_CONFIG_JSON", ""))
-    offers = asyncio.run(search_google_flights(config.searches))
+
+    amadeus = AmadeusClient()
+    amadeus_offers: dict[str, list[dict]] = {}
+
+    if amadeus.is_configured:
+        for search in config.searches:
+            for day in search.dates:
+                offers = amadeus.search_flights(
+                    origin=search.origins[0] if search.origins else "",
+                    destination=search.destinations[0] if search.destinations else "",
+                    departure_date=day,
+                    adults=search.travellers,
+                    cabin=search.cabin_class,
+                )
+                amadeus_offers.setdefault(search.key, []).extend(offers)
+
+    browser_offers = asyncio.run(search_google_flights(config.searches))
+
+    google_links: dict[str, dict[str, str]] = {}
+    for search in config.searches:
+        for day in search.dates:
+            google_links[day] = {
+                "url": build_google_flights_url(
+                    origins=search.origins,
+                    destinations=search.destinations,
+                    date=day,
+                    travellers=search.travellers,
+                    cabin_class=search.cabin_class,
+                ),
+                "label": f"Search {day}",
+            }
+
     html = render_flight_report(
-        config, offers, generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds")
+        config,
+        browser_offers,
+        amadeus_offers=amadeus_offers,
+        google_links=google_links,
+        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
     if not dry_run:
         send_html(os.environ.get("FLIGHT_EMAIL_SUBJECT", "Flight deal digest"), html)
     result = {
         "search_count": len(config.searches),
-        "offer_count": sum(len(value) for value in offers.values()),
+        "amadeus_offer_count": sum(len(v) for v in amadeus_offers.values()),
+        "browser_offer_count": sum(len(v) for v in browser_offers.values()),
         "email_sent": not dry_run,
     }
     print(json.dumps(result, sort_keys=True))
@@ -40,7 +77,7 @@ def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
         send_html(os.environ.get("HOLIDAY_EMAIL_SUBJECT", "Holiday package watch"), html)
     result = {
         "destination_count": len(config.destinations),
-        "provider_entry_count": len(config.destinations) * 8,
+        "provider_entry_count": len(config.destinations) * 6,
         "email_sent": not dry_run,
     }
     print(json.dumps(result, sort_keys=True))

@@ -5,7 +5,7 @@ description = "Generic runtime-configured flight and holiday reporting jobs"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-dependencies = []
+dependencies = ["curl_cffi>=0.7,<1"]
 
 [project.optional-dependencies]
 browser = ["playwright>=1.48,<2"]

@@ -1,4 +1,4 @@
-"""Runtime-configured holiday search plan with truthful provider entry links."""
+"""Runtime-configured holiday search plan with parametric provider search URLs."""
 
 from __future__ import annotations
 
@@ -6,20 +6,9 @@ from dataclasses import dataclass
 from html import escape
 import json
 from typing import Any
+from urllib.parse import quote_plus, urlencode
 
 from .config import ConfigError, _airports, _dates, _text, _window
-
-
-PROVIDERS = (
-    ("loveholidays", "https://www.loveholidays.com/holidays/"),
-    ("On the Beach", "https://www.onthebeach.co.uk/holidays"),
-    ("Jet2holidays", "https://www.jet2holidays.com/"),
-    ("TUI", "https://www.tui.co.uk/holidays/"),
-    ("easyJet holidays", "https://www.easyjet.com/en/holidays"),
-    ("British Airways Holidays", "https://www.britishairways.com/content/holidays"),
-    ("Expedia", "https://www.expedia.co.uk/"),
-    ("TravelSupermarket", "https://www.travelsupermarket.com/en-gb/holidays/"),
-)
 
 
 @dataclass(frozen=True)
@@ -39,6 +28,176 @@ class HolidayConfig:
     outbound_dates: tuple[str, ...]
     return_dates: tuple[str, ...]
     destinations: tuple[HolidayDestination, ...]
+
+
+def build_loveholidays_url(
+    *,
+    destination: str,
+    airports: tuple[str, ...],
+    departure_date: str,
+    return_date: str,
+    adults: int,
+    rooms: int,
+) -> str:
+    params = {
+        "destination": destination,
+        "departureAirports": ",".join(airports),
+        "departureDate": departure_date,
+        "returnDate": return_date,
+        "adults": str(adults),
+        "rooms": str(rooms),
+    }
+    return "https://www.loveholidays.com/search/?" + urlencode(params)
+
+
+def build_on_the_beach_url(
+    *,
+    destination: str,
+    airports: tuple[str, ...],
+    departure_date: str,
+    return_date: str,
+    adults: int,
+) -> str:
+    params = {
+        "destination": destination,
+        "departureAirport": airports[0] if airports else "",
+        "departureDate": departure_date,
+        "returnDate": return_date,
+        "adults": str(adults),
+    }
+    return "https://www.onthebeach.co.uk/holidays/search/?" + urlencode(params)
+
+
+def build_jet2_url(
+    *,
+    destination: str,
+    airports: tuple[str, ...],
+    departure_date: str,
+    return_date: str,
+    adults: int,
+    rooms: int,
+) -> str:
+    params = {
+        "destination": destination,
+        "departureAirport": airports[0] if airports else "",
+        "departureDate": departure_date,
+        "returnDate": return_date,
+        "adults": str(adults),
+        "rooms": str(rooms),
+    }
+    return "https://www.jet2holidays.com/search/?" + urlencode(params)
+
+
+def build_tui_url(
+    *,
+    destination: str,
+    airports: tuple[str, ...],
+    departure_date: str,
+    return_date: str,
+    adults: int,
+) -> str:
+    params = {
+        "destination": destination,
+        "departureAirport": airports[0] if airports else "",
+        "departureDate": departure_date,
+        "returnDate": return_date,
+        "adults": str(adults),
+    }
+    return "https://www.tui.co.uk/holidays/search/?" + urlencode(params)
+
+
+def build_easyjet_url(
+    *,
+    destination: str,
+    airports: tuple[str, ...],
+    departure_date: str,
+    return_date: str,
+    adults: int,
+) -> str:
+    params = {
+        "destination": destination,
+        "departureAirport": airports[0] if airports else "",
+        "departureDate": departure_date,
+        "returnDate": return_date,
+        "adults": str(adults),
+    }
+    return "https://www.easyjet.com/en/holidays/search/?" + urlencode(params)
+
+
+def build_ba_holidays_url(
+    *,
+    destination: str,
+    airports: tuple[str, ...],
+    departure_date: str,
+    return_date: str,
+    adults: int,
+) -> str:
+    params = {
+        "destination": destination,
+        "departureAirport": airports[0] if airports else "",
+        "departureDate": departure_date,
+        "returnDate": return_date,
+        "adults": str(adults),
+    }
+    return "https://www.britishairways.com/holidays/search/?" + urlencode(params)
+
+
+def build_provider_urls(
+    *,
+    destination_key: str,
+    destination_label: str,
+    airports: tuple[str, ...],
+    departure_date: str,
+    return_date: str,
+    adults: int,
+    rooms: int,
+) -> dict[str, str]:
+    return {
+        "loveholidays": build_loveholidays_url(
+            destination=destination_key,
+            airports=airports,
+            departure_date=departure_date,
+            return_date=return_date,
+            adults=adults,
+            rooms=rooms,
+        ),
+        "on_the_beach": build_on_the_beach_url(
+            destination=destination_key,
+            airports=airports,
+            departure_date=departure_date,
+            return_date=return_date,
+            adults=adults,
+        ),
+        "jet2": build_jet2_url(
+            destination=destination_key,
+            airports=airports,
+            departure_date=departure_date,
+            return_date=return_date,
+            adults=adults,
+            rooms=rooms,
+        ),
+        "tui": build_tui_url(
+            destination=destination_key,
+            airports=airports,
+            departure_date=departure_date,
+            return_date=return_date,
+            adults=adults,
+        ),
+        "easyjet": build_easyjet_url(
+            destination=destination_key,
+            airports=airports,
+            departure_date=departure_date,
+            return_date=return_date,
+            adults=adults,
+        ),
+        "ba_holidays": build_ba_holidays_url(
+            destination=destination_key,
+            airports=airports,
+            departure_date=departure_date,
+            return_date=return_date,
+            adults=adults,
+        ),
+    }
 
 
 def load_holiday_config(payload: str) -> HolidayConfig:
@@ -86,13 +245,35 @@ def load_holiday_config(payload: str) -> HolidayConfig:
 
 
 def render_holiday_report(config: HolidayConfig, *, generated_at: str) -> str:
-    destinations = "".join(
-        f"<section><h2>{escape(item.label)}</h2><p>Airports: {', '.join(item.airports)}</p>"
-        + "<div>" + "".join(
-            f'<a href="{url}">{escape(name)}</a>' for name, url in PROVIDERS
-        ) + "</div></section>"
-        for item in config.destinations
-    )
+    destinations = ""
+    for dest in config.destinations:
+        outbound = config.outbound_dates[0] if config.outbound_dates else ""
+        ret = config.return_dates[0] if config.return_dates else ""
+        urls = build_provider_urls(
+            destination_key=dest.key,
+            destination_label=dest.label,
+            airports=dest.airports,
+            departure_date=outbound,
+            return_date=ret,
+            adults=config.travellers,
+            rooms=len(config.rooms),
+        )
+        links = "".join(
+            f'<a href="{url}">{escape(name)}</a>'
+            for name, url in [
+                ("LoveHolidays", urls["loveholidays"]),
+                ("On the Beach", urls["on_the_beach"]),
+                ("Jet2holidays", urls["jet2"]),
+                ("TUI", urls["tui"]),
+                ("easyJet holidays", urls["easyjet"]),
+                ("British Airways Holidays", urls["ba_holidays"]),
+            ]
+        )
+        destinations += (
+            f"<section><h2>{escape(dest.label)}</h2>"
+            f"<p>Airports: {', '.join(dest.airports)}</p>"
+            f"<div>{links}</div></section>"
+        )
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>
     body{{background:#07131e;color:#edf6ff;font-family:Arial;margin:0}}main{{max-width:860px;margin:auto;padding:28px}}section{{background:#102538;border:1px solid #25465e;border-radius:14px;padding:18px;margin:14px 0}}a{{display:inline-block;background:#7dd3fc;color:#062033;text-decoration:none;padding:9px 12px;margin:5px;border-radius:8px;font-weight:700}}.warn{{color:#fde68a}}</style></head><body><main>
     <h1>{escape(config.report_title)}</h1><p>Generated {escape(generated_at)}</p>
