@@ -15,11 +15,25 @@ from .config import FlightSearch
 _anti_bot_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 if _anti_bot_dir not in sys.path:
     sys.path.insert(0, _anti_bot_dir)
-from shared.anti_bot import (
-    random_user_agent, random_viewport, human_delay,
-    inject_canvas_noise, warm_up_session, stealth_browser_args,
-    dismiss_cookies, check_waf,
-)
+try:
+    from shared.anti_bot import (
+        random_user_agent, random_viewport, human_delay,
+        inject_canvas_noise, warm_up_session, stealth_browser_args,
+        dismiss_cookies, check_waf,
+    )
+except ImportError:
+    import random as _random
+    _UA = ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"]
+    _VP = [{"width": 1280, "height": 800}]
+    random_user_agent = lambda **kw: _random.choice(_UA)
+    random_viewport = lambda **kw: _random.choice(_VP)
+    async def human_delay(a=1.0, b=3.0, **kw):
+        import asyncio; await asyncio.sleep(_random.uniform(a, b))
+    async def inject_canvas_noise(page): pass
+    async def warm_up_session(page, url): pass
+    def stealth_browser_args(extra=None): return ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-blink-features=AutomationControlled"]
+    async def dismiss_cookies(page): pass
+    async def check_waf(page): return False
 from .engine import FlightOffer
 
 
