@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,33 @@ except ImportError:
     _session = _FallbackSession()
     _HAS_CURL_CFFI = False
 
-IMPERSONATE = "chrome124"
+IMPERSONATE = "chrome"
+
+
+def _merged_headers(url: str, extra: dict[str, str] | None = None) -> dict[str, str]:
+    """Build realistic headers with Referer, Sec-CH-*, and Accept-Language."""
+    parsed = urlparse(url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    base = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br, zstd",
+        "Referer": origin + "/",
+        "Sec-CH-UA": '"Chromium";v="136", "Google Chrome";v="136", "Not-A.Brand";v="99"',
+        "Sec-CH-UA-Mobile": "?0",
+        "Sec-CH-UA-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
+        "Cache-Control": "max-age=0",
+        "DNT": "1",
+    }
+    if extra:
+        base.update(extra)
+    return base
 
 
 def stealth_get(
@@ -69,9 +96,10 @@ def stealth_get(
         kwargs_to_pass = dict(kwargs)
         if _HAS_CURL_CFFI and "impersonate" not in kwargs_to_pass:
             kwargs_to_pass["impersonate"] = IMPERSONATE
+        merged = _merged_headers(url, headers)
         return _session.get(
             url,
-            headers=headers or {},
+            headers=merged,
             timeout=timeout,
             **kwargs_to_pass,
         )
@@ -92,9 +120,10 @@ def stealth_post(
         kwargs_to_pass = dict(kwargs)
         if _HAS_CURL_CFFI and "impersonate" not in kwargs_to_pass:
             kwargs_to_pass["impersonate"] = IMPERSONATE
+        merged = _merged_headers(url, headers)
         return _session.post(
             url,
-            headers=headers or {},
+            headers=merged,
             timeout=timeout,
             **kwargs_to_pass,
         )

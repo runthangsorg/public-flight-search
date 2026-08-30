@@ -10,6 +10,13 @@ from typing import Any, Iterable
 from urllib.parse import quote
 
 from .config import FlightSearch
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+from shared.anti_bot import (
+    random_user_agent, random_viewport, human_delay,
+    inject_canvas_noise, warm_up_session, stealth_browser_args,
+    dismiss_cookies, check_waf,
+)
 from .engine import FlightOffer
 
 
@@ -142,6 +149,9 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
         page = await context.new_page()
         await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         try:
+            # Warm up session on Google
+            await warm_up_session(page, "https://www.google.com/travel/flights")
+            await human_delay(2.0, 4.0)
             for search, day in specs:
                 if time.monotonic() >= deadline:
                     break
@@ -152,8 +162,11 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                 )
                 try:
                     await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                    await human_delay(3.0, 6.0, think=True)
                 except Exception:
                     continue
+                if await check_waf(page):
+                        continue
                 cards = None
                 for selector in CARD_SELECTORS:
                     try:
