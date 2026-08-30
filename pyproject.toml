@@ -1,0 +1,11 @@
+[project]
+name = "public-flight-search"
+version = "0.1.0"
+description = "Provider-neutral validation and filtering for public flight offers"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+public-flight-search = "public_flight_search.cli:main"

@@ -1,0 +1,23 @@
+[
+  {
+    "origin": "AAA",
+    "destination": "BBB",
+    "departure": "2030-01-02T09:00:00Z",
+    "price": 180,
+    "currency": "GBP",
+    "stops": 0,
+    "duration_minutes": 240,
+    "provider": "synthetic-example",
+    "booking_url": "https://example.com/flight"
+  },
+  {
+    "origin": "AAA",
+    "destination": "BBB",
+    "departure": "2030-01-02T10:00:00Z",
+    "price": 220,
+    "currency": "GBP",
+    "stops": 1,
+    "duration_minutes": 300,
+    "provider": "synthetic-example"
+  }
+]
