@@ -39,8 +39,12 @@ except ImportError:
         {"width": 1280, "height": 800}, {"width": 1600, "height": 900},
     ]
     _WAF_SIGNALS = [
-        "unusual traffic", "not a robot", "captcha", "verify you are human",
-        "access denied", "blocked", "please verify", "automated queries",
+        "unusual traffic from your computer", "not a robot",
+        "our systems have detected unusual traffic",
+        "please complete the security check",
+        "access to this page has been denied",
+        "automated queries are disabled",
+        "http/2 429", "rate limit exceeded",
     ]
     _COOKIE_SELECTORS = [
         'button:has-text("Accept all")', 'button:has-text("Reject all")',
@@ -285,26 +289,36 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     continue
                 form_filled = False
                 try:
+                    trip_btn = page.locator('button:has-text("Round trip"), button:has-text("One way")').first
+                    if await trip_btn.count():
+                        current = await trip_btn.inner_text()
+                        if "one way" not in current.lower():
+                            await trip_btn.click()
+                            await human_delay(0.3, 0.6)
+                            one_way = page.locator('[role="option"]:has-text("One way")').first
+                            if await one_way.count():
+                                await one_way.click()
+                                await human_delay(0.5, 1.0)
                     from_field = page.locator('input[placeholder*="Where from"]').first
                     if await from_field.count() and await from_field.is_visible():
                         await from_field.click()
                         await human_delay(0.3, 0.8)
-                        await from_field.fill(search.origins[0])
-                        await human_delay(0.5, 1.0)
+                        await from_field.press_sequentially(search.origins[0], delay=80)
+                        await human_delay(1.0, 2.0)
                         suggestion = page.locator('[role="option"]').first
                         if await suggestion.count():
                             await suggestion.click()
-                            await human_delay(0.3, 0.6)
+                            await human_delay(0.5, 1.0)
                         to_field = page.locator('input[placeholder*="Where to"]').first
                         if await to_field.count() and await to_field.is_visible():
                             await to_field.click()
                             await human_delay(0.3, 0.8)
-                            await to_field.fill(search.destinations[0])
-                            await human_delay(0.5, 1.0)
+                            await to_field.press_sequentially(search.destinations[0], delay=80)
+                            await human_delay(1.0, 2.0)
                             suggestion2 = page.locator('[role="option"]').first
                             if await suggestion2.count():
                                 await suggestion2.click()
-                                await human_delay(0.3, 0.6)
+                                await human_delay(0.5, 1.0)
                             search_btn = page.locator('button[aria-label*="Search"], button:has-text("Search")').first
                             if await search_btn.count():
                                 await search_btn.click()
