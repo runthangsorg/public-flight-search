@@ -44,12 +44,21 @@ jobs:
           REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
           FLIGHT_EMAIL_SUBJECT: ${{ secrets.FLIGHT_EMAIL_SUBJECT }}
           DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+          SCREENSHOTS_DIR: /tmp/flight-verify
         shell: bash
         run: |
           set -euo pipefail
           test -n "${FLIGHT_SEARCH_CONFIG_JSON}"
+          mkdir -p /tmp/flight-verify
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_DRY_RUN}" == "true" ]]; then
             python -m public_flight_search flight-digest --dry-run
           else
             python -m public_flight_search flight-digest
           fi
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flight-search-screenshots
+          path: /tmp/flight-verify/
+          retention-days: 7

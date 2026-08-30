@@ -22,18 +22,103 @@ try:
         dismiss_cookies, check_waf,
     )
 except ImportError:
+    import asyncio
     import random as _random
-    _UA = ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"]
-    _VP = [{"width": 1280, "height": 800}]
-    random_user_agent = lambda **kw: _random.choice(_UA)
-    random_viewport = lambda **kw: _random.choice(_VP)
-    async def human_delay(a=1.0, b=3.0, **kw):
-        import asyncio; await asyncio.sleep(_random.uniform(a, b))
-    async def inject_canvas_noise(page): pass
-    async def warm_up_session(page, url): pass
-    def stealth_browser_args(extra=None): return ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-blink-features=AutomationControlled"]
-    async def dismiss_cookies(page): pass
-    async def check_waf(page): return False
+
+    _USER_AGENTS = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+    ]
+    _VIEWPORTS = [
+        {"width": 1920, "height": 1080}, {"width": 1366, "height": 768},
+        {"width": 1536, "height": 864}, {"width": 1440, "height": 900},
+        {"width": 1280, "height": 800}, {"width": 1600, "height": 900},
+    ]
+    _WAF_SIGNALS = [
+        "unusual traffic", "not a robot", "captcha", "verify you are human",
+        "access denied", "blocked", "please verify", "automated queries",
+    ]
+    _COOKIE_SELECTORS = [
+        'button:has-text("Accept all")', 'button:has-text("Reject all")',
+        'button:has-text("I agree")', 'button:has-text("Got it")',
+        '[aria-label="Accept all"]', '[aria-label="Reject all"]',
+    ]
+
+    def random_user_agent(**kw):
+        return _random.choice(_USER_AGENTS)
+
+    def random_viewport(**kw):
+        return _random.choice(_VIEWPORTS)
+
+    def stealth_browser_args(extra=None):
+        args = [
+            "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars", "--disable-extensions",
+            "--disable-background-networking", "--disable-default-apps",
+            "--disable-sync", "--metrics-recording-only", "--no-first-run",
+        ]
+        if extra:
+            args.extend(extra)
+        return args
+
+    async def human_delay(min_s=1.0, max_s=3.5, think=False):
+        delay = _random.gauss((min_s + max_s) / 2, (max_s - min_s) / 4)
+        delay = max(min_s, min(max_s, delay))
+        if think:
+            delay += _random.uniform(0.5, 2.0)
+        await asyncio.sleep(delay)
+
+    async def inject_canvas_noise(page):
+        try:
+            await page.add_init_script("""
+                const _origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+                HTMLCanvasElement.prototype.toDataURL = function() {
+                    const ctx = this.getContext('2d');
+                    if (ctx) {
+                        const imgData = ctx.getImageData(0, 0, this.width, this.height);
+                        for (let i = 0; i < imgData.data.length; i += 4) {
+                            imgData.data[i] ^= 1;
+                        }
+                        ctx.putImageData(imgData, 0, 0);
+                    }
+                    return _origToDataURL.apply(this, arguments);
+                };
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            """)
+        except Exception:
+            pass
+
+    async def warm_up_session(page, url):
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=15_000)
+            await human_delay(1.0, 3.0)
+            await page.mouse.move(_random.randint(100, 500), _random.randint(100, 400))
+            await human_delay(0.3, 0.8)
+        except Exception:
+            pass
+
+    async def dismiss_cookies(page):
+        for sel in _COOKIE_SELECTORS:
+            try:
+                btn = page.locator(sel).first
+                if await btn.count() and await btn.is_visible():
+                    await btn.click()
+                    await human_delay(0.5, 1.0)
+                    return
+            except Exception:
+                continue
+
+    async def check_waf(page):
+        try:
+            html = (await page.content()).lower()
+            return any(signal in html for signal in _WAF_SIGNALS)
+        except Exception:
+            return False
 from .engine import FlightOffer
 
 
@@ -140,9 +225,10 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
     specs = [(search, day) for search in searches for day in search.dates]
     maximum = int(os.getenv("GOOGLE_FLIGHTS_MAX_SEARCHES", "20"))
     specs = specs[: max(1, min(maximum, 40))]
-    timeout_ms = int(os.getenv("GOOGLE_FLIGHTS_RESULT_TIMEOUT_MS", "10000"))
+    timeout_ms = int(os.getenv("GOOGLE_FLIGHTS_RESULT_TIMEOUT_MS", "15000"))
     deadline = time.monotonic() + int(os.getenv("GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS", "900"))
     grouped: dict[str, list[FlightOffer]] = {item.key: [] for item in searches}
+    screenshots_dir = os.getenv("SCREENSHOTS_DIR", "/tmp/flight-verify")
     async with async_playwright() as playwright:
         ua = random_user_agent()
         vp = random_viewport()
@@ -168,7 +254,8 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
         try:
             await warm_up_session(page, "https://www.google.com/travel/flights")
             await human_delay(2.0, 4.0)
-            for search, day in specs:
+            await dismiss_cookies(page)
+            for idx, (search, day) in enumerate(specs):
                 if time.monotonic() >= deadline:
                     break
                 url = build_google_flights_url(
@@ -178,10 +265,19 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                 )
                 try:
                     await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-                    await human_delay(3.0, 6.0, think=True)
+                    await human_delay(4.0, 7.0, think=True)
                 except Exception:
                     continue
+                await dismiss_cookies(page)
                 if await check_waf(page):
+                    try:
+                        os.makedirs(screenshots_dir, exist_ok=True)
+                        await page.screenshot(
+                            path=os.path.join(screenshots_dir, f"waf_{search.key}_{day}.png"),
+                            full_page=False,
+                        )
+                    except Exception:
+                        pass
                     continue
                 cards = None
                 for selector in CARD_SELECTORS:
@@ -194,6 +290,14 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     except Exception:
                         continue
                 if cards is None:
+                    try:
+                        os.makedirs(screenshots_dir, exist_ok=True)
+                        await page.screenshot(
+                            path=os.path.join(screenshots_dir, f"no_cards_{search.key}_{day}.png"),
+                            full_page=False,
+                        )
+                    except Exception:
+                        pass
                     continue
                 seen: set[tuple[Any, ...]] = set()
                 for index in range(min(await cards.count(), 15)):
@@ -218,6 +322,14 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     if key not in seen:
                         seen.add(key)
                         grouped[search.key].append(offer)
+                try:
+                    os.makedirs(screenshots_dir, exist_ok=True)
+                    await page.screenshot(
+                        path=os.path.join(screenshots_dir, f"results_{search.key}_{day}.png"),
+                        full_page=False,
+                    )
+                except Exception:
+                    pass
         finally:
             await browser.close()
     return {
