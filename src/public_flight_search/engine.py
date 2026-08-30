@@ -54,6 +54,11 @@ class FlightOffer:
     duration_minutes: int
     provider: str
     booking_url: str = ""
+    airline: str = "Unknown airline"
+    arrival: str = ""
+    price_per_traveller: Optional[float] = None
+    observed_at: str = ""
+    review_status: str = "unverified_provider_result"
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "FlightOffer":
@@ -91,6 +96,17 @@ class FlightOffer:
             duration_minutes=duration,
             provider=provider,
             booking_url=_https_url(raw.get("booking_url")),
+            airline=_clean_text(raw.get("airline") or "Unknown airline", limit=80),
+            arrival=_clean_text(raw.get("arrival"), limit=40),
+            price_per_traveller=(
+                None
+                if raw.get("price_per_traveller") is None
+                else float(raw.get("price_per_traveller"))
+            ),
+            observed_at=_clean_text(raw.get("observed_at"), limit=48),
+            review_status=_clean_text(
+                raw.get("review_status") or "unverified_provider_result", limit=48
+            ),
         )
 
     def to_public_dict(self) -> dict[str, Any]:
@@ -104,7 +120,11 @@ class FlightOffer:
             "duration_minutes": self.duration_minutes,
             "provider": self.provider,
             "booking_url": self.booking_url,
-            "review_status": "unverified_provider_result",
+            "airline": self.airline,
+            "arrival": self.arrival,
+            "price_per_traveller": self.price_per_traveller,
+            "observed_at": self.observed_at,
+            "review_status": self.review_status,
         }
 
 

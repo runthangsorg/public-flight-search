@@ -1,11 +1,14 @@
 [project]
 name = "public-flight-search"
-version = "0.1.0"
-description = "Provider-neutral validation and filtering for public flight offers"
+version = "0.2.0"
+description = "Generic runtime-configured flight and holiday reporting jobs"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = []
+
+[project.optional-dependencies]
+browser = ["playwright>=1.48,<2"]
 
 [project.scripts]
 public-flight-search = "public_flight_search.cli:main"

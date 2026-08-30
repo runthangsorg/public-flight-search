@@ -1,0 +1,53 @@
+name: public-holiday-planner
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build the plan without sending email"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-holiday-planner
+  cancel-in-progress: true
+
+jobs:
+  planner:
+    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_HOLIDAY_PLANNER == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out public engine
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Install engine
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Build and optionally deliver
+        env:
+          HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.HOLIDAY_SEARCH_CONFIG_JSON }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
+          HOLIDAY_EMAIL_SUBJECT: ${{ secrets.HOLIDAY_EMAIL_SUBJECT }}
+          DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HOLIDAY_SEARCH_CONFIG_JSON}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_DRY_RUN}" == "true" ]]; then
+            python -m public_flight_search holiday-planner --dry-run
+          else
+            python -m public_flight_search holiday-planner
+          fi

@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from typing import Optional, Sequence
 
 from .engine import SearchCriteria, search_offers
 from .io import load_json_source
+from .jobs import run_flight_digest, run_holiday_planner
 
 
 def _codes(value: str) -> frozenset[str]:
@@ -28,7 +30,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    args = build_parser().parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] in {"flight-digest", "holiday-planner"}:
+        command = arguments.pop(0)
+        dry_run = "--dry-run" in arguments
+        if set(arguments) - {"--dry-run"}:
+            raise SystemExit("only --dry-run is accepted for production jobs")
+        if command == "flight-digest":
+            run_flight_digest(dry_run=dry_run)
+        else:
+            run_holiday_planner(dry_run=dry_run)
+        return 0
+    args = build_parser().parse_args(arguments)
     if not 1 <= args.max_results <= 100:
         raise SystemExit("--max-results must be between 1 and 100")
     criteria = SearchCriteria(
