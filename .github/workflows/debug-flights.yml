@@ -10,9 +10,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: |
-          pip install -e .
-          playwright install --with-deps chromium
+      - run: python -m pip install --disable-pip-version-check -e '.[browser]'
+      - run: python -m playwright install --with-deps chromium
       - run: python debug_selectors.py
       - uses: actions/upload-artifact@v4
         if: always()

@@ -1,9 +1,10 @@
 """Temporary debug: capture Google Flights page structure for selector tuning."""
 import asyncio, os, sys, json
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 
-from shared.anti_bot import (
+_anti_bot_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "shared"))
+if _anti_bot_dir not in sys.path:
+    sys.path.insert(0, _anti_bot_dir)
+from anti_bot import (
     random_user_agent, random_viewport, human_delay,
     inject_canvas_noise, warm_up_session, stealth_browser_args,
     check_waf,
