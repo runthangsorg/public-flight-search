@@ -259,7 +259,7 @@ def render_holiday_report(config: HolidayConfig, *, generated_at: str) -> str:
             rooms=len(config.rooms),
         )
         links = "".join(
-            f'<a href="{url}">{escape(name)}</a>'
+            f'<a href="{escape(url, quote=True)}" style="display: inline-block; margin: 5px 8px 5px 0; padding: 10px 16px; background-color: #38bdf8; color: #08111f; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 13px;">{escape(name)}</a> '
             for name, url in [
                 ("LoveHolidays", urls["loveholidays"]),
                 ("On the Beach", urls["on_the_beach"]),
@@ -270,14 +270,15 @@ def render_holiday_report(config: HolidayConfig, *, generated_at: str) -> str:
             ]
         )
         destinations += (
-            f"<section><h2>{escape(dest.label)}</h2>"
-            f"<p>Airports: {', '.join(dest.airports)}</p>"
-            f"<div>{links}</div></section>"
+            f"<section style='background-color: #102538; border: 1px solid #25465e; border-radius: 14px; padding: 18px 20px; margin: 16px 0;'>"
+            f"<h2 style='font-size: 20px; color: #f8fafc; margin: 0 0 6px 0;'>{escape(dest.label)}</h2>"
+            f"<p style='color: #94a3b8; font-size: 13px; margin: 0 0 14px 0;'>Airports: {', '.join(dest.airports)}</p>"
+            f"<div style='margin-top: 10px;'>{links}</div></section>"
         )
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>
-    body{{background:#07131e;color:#edf6ff;font-family:Arial;margin:0}}main{{max-width:860px;margin:auto;padding:28px}}section{{background:#102538;border:1px solid #25465e;border-radius:14px;padding:18px;margin:14px 0}}a{{display:inline-block;background:#7dd3fc;color:#062033;text-decoration:none;padding:9px 12px;margin:5px;border-radius:8px;font-weight:700}}.warn{{color:#fde68a}}</style></head><body><main>
-    <h1>{escape(config.report_title)}</h1><p>Generated {escape(generated_at)}</p>
-    <p><strong>{config.travellers} travellers</strong> · rooms {escape(' + '.join(map(str, config.rooms)))} · depart {', '.join(config.outbound_dates)} · return {', '.join(config.return_dates)} · preferred flight time {escape(config.departure_window[0])}–{escape(config.departure_window[1])}</p>
-    <h2>Official search entry points</h2>{destinations}
-    <p class="warn">No live package price was collected in this planning run. Open each official provider, apply the exact party and room occupancy, and verify the whole-party checkout total, baggage and protection before booking.</p>
+    body{{background:#07131e;color:#edf6ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0}}main{{max-width:860px;margin:auto;padding:28px 18px 48px}}section{{background:#102538;border:1px solid #25465e;border-radius:14px;padding:18px;margin:14px 0}}a{{display:inline-block;background:#38bdf8;color:#08111f;text-decoration:none;padding:10px 16px;margin:5px 8px 5px 0;border-radius:8px;font-weight:700;font-size:13px}}.warn{{color:#fde68a;font-size:13px;line-height:1.5;background:#392d14;padding:12px;border-radius:8px}}</style></head><body style="background-color: #07131e; color: #edf6ff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0;"><main style="max-width:860px;margin:auto;padding:28px 18px 48px;">
+    <h1 style="font-size:28px;margin:0 0 8px;color:#f8fafc;">{escape(config.report_title)}</h1><p style="color:#94a3b8;font-size:14px;margin:0 0 20px 0;">Generated {escape(generated_at)}</p>
+    <p style="color:#cbd5e1;font-size:14px;line-height:1.5;margin:0 0 24px 0;"><strong style="color:#f8fafc;">{config.travellers} travellers</strong> · rooms {escape(' + '.join(map(str, config.rooms)))} · depart {', '.join(config.outbound_dates)} · return {', '.join(config.return_dates)} · preferred flight time {escape(config.departure_window[0])}–{escape(config.departure_window[1])}</p>
+    <h2 style="font-size:22px;color:#f8fafc;margin:28px 0 14px 0;">Official search entry points</h2>{destinations}
+    <p class="warn" style="color:#fde68a;font-size:13px;line-height:1.5;background-color:#392d14;padding:14px;border-radius:8px;margin-top:28px;">No live package price was collected in this planning run. Open each official provider, apply the exact party and room occupancy, and verify the whole-party checkout total, baggage and protection before booking.</p>
     </main></body></html>"""
