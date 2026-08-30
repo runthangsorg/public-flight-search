@@ -264,10 +264,14 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     cabin_class=search.cabin_class,
                 )
                 try:
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                    await page.goto(url, wait_until="networkidle", timeout=45_000)
                     await human_delay(4.0, 7.0, think=True)
                 except Exception:
-                    continue
+                    try:
+                        await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                        await human_delay(5.0, 8.0, think=True)
+                    except Exception:
+                        continue
                 await dismiss_cookies(page)
                 if await check_waf(page):
                     try:
@@ -279,6 +283,35 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     except Exception:
                         pass
                     continue
+                form_filled = False
+                try:
+                    from_field = page.locator('input[placeholder*="Where from"]').first
+                    if await from_field.count() and await from_field.is_visible():
+                        await from_field.click()
+                        await human_delay(0.3, 0.8)
+                        await from_field.fill(search.origins[0])
+                        await human_delay(0.5, 1.0)
+                        suggestion = page.locator('[role="option"]').first
+                        if await suggestion.count():
+                            await suggestion.click()
+                            await human_delay(0.3, 0.6)
+                        to_field = page.locator('input[placeholder*="Where to"]').first
+                        if await to_field.count() and await to_field.is_visible():
+                            await to_field.click()
+                            await human_delay(0.3, 0.8)
+                            await to_field.fill(search.destinations[0])
+                            await human_delay(0.5, 1.0)
+                            suggestion2 = page.locator('[role="option"]').first
+                            if await suggestion2.count():
+                                await suggestion2.click()
+                                await human_delay(0.3, 0.6)
+                            search_btn = page.locator('button[aria-label*="Search"], button:has-text("Search")').first
+                            if await search_btn.count():
+                                await search_btn.click()
+                                await human_delay(5.0, 8.0, think=True)
+                                form_filled = True
+                except Exception:
+                    pass
                 cards = None
                 for selector in CARD_SELECTORS:
                     try:
