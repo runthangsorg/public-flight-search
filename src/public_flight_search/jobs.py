@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 import json
 import os
 
-from .amadeus import AmadeusClient
 from .config import load_flight_config
 from .google_flights import build_google_flights_url, search_google_flights
 from .holidays import load_holiday_config, render_holiday_report
@@ -17,21 +16,6 @@ from .report import render_flight_report
 
 def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     config = load_flight_config(os.environ.get("FLIGHT_SEARCH_CONFIG_JSON", ""))
-
-    amadeus = AmadeusClient()
-    amadeus_offers: dict[str, list[dict]] = {}
-
-    if amadeus.is_configured:
-        for search in config.searches:
-            for day in search.dates:
-                offers = amadeus.search_flights(
-                    origin=search.origins[0] if search.origins else "",
-                    destination=search.destinations[0] if search.destinations else "",
-                    departure_date=day,
-                    adults=search.travellers,
-                    cabin=search.cabin_class,
-                )
-                amadeus_offers.setdefault(search.key, []).extend(offers)
 
     browser_offers = asyncio.run(search_google_flights(config.searches))
 
@@ -52,7 +36,6 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     html = render_flight_report(
         config,
         browser_offers,
-        amadeus_offers=amadeus_offers,
         google_links=google_links,
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
@@ -60,8 +43,7 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
         send_html(os.environ.get("FLIGHT_EMAIL_SUBJECT", "Flight deal digest"), html)
     result = {
         "search_count": len(config.searches),
-        "amadeus_offer_count": sum(len(v) for v in amadeus_offers.values()),
-        "browser_offer_count": sum(len(v) for v in browser_offers.values()),
+        "offer_count": sum(len(v) for v in browser_offers.values()),
         "email_sent": not dry_run,
     }
     print(json.dumps(result, sort_keys=True))

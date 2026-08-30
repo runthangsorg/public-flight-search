@@ -14,30 +14,6 @@ def _money(value: float) -> str:
     return f"£{value:,.0f}"
 
 
-def _render_amadeus_card(offer: dict[str, Any]) -> str:
-    per_person = offer.get("price_per_traveller", offer["price"])
-    stops_text = "Non-stop" if offer["stops"] == 0 else f"{offer['stops']} stop(s)"
-    stop_info = ""
-    if offer.get("stop_airports"):
-        stop_info = f" via {', '.join(offer['stop_airports'])}"
-    baggage = ""
-    if offer.get("baggage_included"):
-        baggage = f'<div class="baggage" style="color: #9eb0c7; font-size: 13px; margin: 6px 0;">🧳 Baggage: {escape(offer["baggage_weight"])}</div>'
-    return f"""
-      <article class="card amadeus" style="background-color: #101d30; border: 1px solid #14432a; border-radius: 14px; padding: 18px; margin-bottom: 14px;">
-        <div class="source-badge" style="display: inline-block; background-color: #14432a; color: #6ee7b7; border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 700; margin-bottom: 8px;">API Quote</div>
-        <div class="route" style="font-weight: 700; font-size: 18px; color: #f8fafc;">{escape(offer["origin"])} → {escape(offer["destination"])}</div>
-        <div class="price" style="font-size: 28px; color: #6ee7b7; font-weight: 800; margin: 12px 0 4px;">{_money(offer["price"])} total</div>
-        <div class="muted" style="color: #9eb0c7; font-size: 14px;">{_money(per_person)} per traveller · {escape(offer.get("airline", "Unknown"))}</div>
-        <dl style="display: grid; grid-template-columns: 72px 1fr; gap: 6px; margin: 14px 0; color: #cbd5e1; font-size: 13px;"><dt style="color: #8ca0b9;">Departs</dt><dd style="margin: 0;">{escape(offer.get("departure_time", ""))}</dd>
-            <dt style="color: #8ca0b9;">Arrives</dt><dd style="margin: 0;">{escape(offer.get("arrival_time", ""))}</dd>
-            <dt style="color: #8ca0b9;">Journey</dt><dd style="margin: 0;">{offer["duration_minutes"] // 60}h {offer["duration_minutes"] % 60:02d}m · {stops_text}{stop_info}</dd></dl>
-        {baggage}
-        <div class="evidence" style="background-color: #14432a; color: #6ee7b7; border-radius: 8px; padding: 8px; font-size: 12px; margin: 10px 0;">Amadeus API result — recheck at checkout</div>
-        <a class="button" href="{escape(offer.get("booking_url", ""), quote=True)}" style="display: inline-block; margin-top: 8px; background-color: #38bdf8; color: #062033; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 700; font-size: 13px;">Book on Google Flights</a>
-      </article>"""
-
-
 def _render_google_card(offer: FlightOffer) -> str:
     per_person = offer.price_per_traveller or offer.price
     return f"""
@@ -57,17 +33,12 @@ def render_flight_report(
     config: FlightConfig,
     offers: Mapping[str, Sequence[FlightOffer]],
     *,
-    amadeus_offers: Mapping[str, Sequence[dict[str, Any]]] | None = None,
     google_links: dict[str, dict[str, str]] | None = None,
     generated_at: str,
 ) -> str:
     sections: list[str] = []
     for search in config.searches:
         cards: list[str] = []
-
-        amadeus = list(amadeus_offers.get(search.key, [])) if amadeus_offers else []
-        for offer in amadeus:
-            cards.append(_render_amadeus_card(offer))
 
         for offer in offers.get(search.key, ()):
             cards.append(_render_google_card(offer))
@@ -99,8 +70,6 @@ def render_flight_report(
       dl{{display:grid;grid-template-columns:72px 1fr;gap:7px;margin:16px 0}}dt{{color:#8ca0b9}}dd{{margin:0}}.evidence{{background:#392d14;color:#fde68a;border-radius:8px;padding:8px;font-size:12px}}
       .button{{display:inline-block;margin-top:14px;background:#38bdf8;color:#062033;text-decoration:none;padding:10px 14px;border-radius:9px;font-weight:700}}.secondary{{margin-right:8px;background:#38bdf8}}
       .source-badge{{display:inline-block;background:#1e3a5f;color:#7dd3fc;border-radius:6px;padding:3px 8px;font-size:11px;font-weight:700;margin-bottom:8px}}
-      .amadeus .source-badge{{background:#14432a;color:#6ee7b7}}
-      .baggage{{color:#9eb0c7;font-size:13px;margin:6px 0}}
       footer{{margin-top:36px;color:#8496ad;font-size:12px;line-height:1.5;border-top:1px solid #1e293b;padding-top:16px}}
-    </style></head><body style="margin:0;background:#08111f;color:#e5edf7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"><main style="max-width:920px;margin:auto;padding:28px 18px 48px;"><h1 style="font-size:28px;margin:0 0 8px;color:#f8fafc;">{escape(config.report_title)}</h1><p class="sub" style="color:#9eb0c7;margin:0 0 24px 0;font-size:14px;">Generated {escape(display_time)} · live API quotes where configured, results-page cards otherwise</p>
-    {''.join(sections)}<footer style="margin-top:36px;color:#8496ad;font-size:12px;line-height:1.5;border-top:1px solid #1e293b;padding-top:16px;">Prices and availability can change. An API quote or results-page card is not checkout verification. Confirm baggage, fare rules, connection protection and the final whole-party total before paying.</footer></main></body></html>"""
+    </style></head><body style="margin:0;background:#08111f;color:#e5edf7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;"><main style="max-width:920px;margin:auto;padding:28px 18px 48px;"><h1 style="font-size:28px;margin:0 0 8px;color:#f8fafc;">{escape(config.report_title)}</h1><p class="sub" style="color:#9eb0c7;margin:0 0 24px 0;font-size:14px;">Generated {escape(display_time)} · live results-page cards where available</p>
+    {''.join(sections)}<footer style="margin-top:36px;color:#8496ad;font-size:12px;line-height:1.5;border-top:1px solid #1e293b;padding-top:16px;">Prices and availability can change. A results-page card is not checkout verification. Confirm baggage, fare rules, connection protection and the final whole-party total before paying.</footer></main></body></html>"""
