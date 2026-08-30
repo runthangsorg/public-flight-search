@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import os
 import re
+import sys
 import time
 from typing import Any, Iterable
 from urllib.parse import quote
@@ -17,7 +18,7 @@ if _anti_bot_dir not in sys.path:
 from shared.anti_bot import (
     random_user_agent, random_viewport, human_delay,
     inject_canvas_noise, warm_up_session, stealth_browser_args,
-    dismiss_cookies, check_waf, random_headers,
+    dismiss_cookies, check_waf,
 )
 from .engine import FlightOffer
 
@@ -131,7 +132,6 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
     async with async_playwright() as playwright:
         ua = random_user_agent()
         vp = random_viewport()
-        hdrs = random_headers()
         browser = await playwright.chromium.launch(
             headless=True,
             args=stealth_browser_args(),
@@ -143,10 +143,6 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
             viewport=vp,
             extra_http_headers={
                 "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
-                "Referer": "https://www.google.com/",
-                "Sec-CH-UA": hdrs.get("Sec-CH-UA", ""),
-                "Sec-CH-UA-Mobile": hdrs.get("Sec-CH-UA-Mobile", "?0"),
-                "Sec-CH-UA-Platform": hdrs.get("Sec-CH-UA-Platform", '"Windows"'),
             },
         )
         await context.add_cookies([
