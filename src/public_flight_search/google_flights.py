@@ -1,17 +1,21 @@
-"""Bounded Google Flights results-page adapter using the public web UI."""
+"""Google Flights results-page adapter using direct HTTP fetch.
+
+Google Flights serves different content to headless browsers (Explore page
+instead of search results). We fetch the HTML directly and parse the
+server-rendered flight cards.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import os
 import re
-import sys
 import time
-from typing import Any, Iterable
+from typing import Iterable
 from urllib.parse import quote
 
 from .config import FlightSearch
-from .stealth import apply_stealth_async
+from .engine import FlightOffer
 
 _DBG_FILE = os.getenv("DEBUG_LOG_PATH", "/tmp/flight-debug.log")
 def _dbg(msg: str) -> None:
@@ -22,148 +26,8 @@ def _dbg(msg: str) -> None:
             _f.write(line + "\n")
     except Exception:
         pass
-
-_anti_bot_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-if _anti_bot_dir not in sys.path:
-    sys.path.insert(0, _anti_bot_dir)
-try:
-    from shared.anti_bot import (
-        random_user_agent, random_viewport, human_delay,
-        inject_canvas_noise, warm_up_session, stealth_browser_args,
-        dismiss_cookies, check_waf,
-    )
-except ImportError:
-    import asyncio
-    import random as _random
-
-    _USER_AGENTS = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Safari/605.1.15",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-    ]
-    _VIEWPORTS = [
-        {"width": 1920, "height": 1080}, {"width": 1366, "height": 768},
-        {"width": 1536, "height": 864}, {"width": 1440, "height": 900},
-        {"width": 1280, "height": 800}, {"width": 1600, "height": 900},
-    ]
-    _WAF_SIGNALS = [
-        "unusual traffic from your computer", "not a robot",
-        "our systems have detected unusual traffic",
-        "please complete the security check",
-        "access to this page has been denied",
-        "automated queries are disabled",
-        "http/2 429", "rate limit exceeded",
-    ]
-    _COOKIE_SELECTORS = [
-        'button:has-text("Accept all")', 'button:has-text("Reject all")',
-        'button:has-text("I agree")', 'button:has-text("Got it")',
-        'button:has-text("Accept")', 'button:has-text("Reject")',
-        'button:has-text("No thanks")', 'button:has-text("Skip")',
-        '[aria-label="Accept all"]', '[aria-label="Reject all"]',
-        '[aria-label="Accept the use of cookies and other data for the purposes described"]',
-        'form[action*="consent"] button',
-        '#L2AGLb',  # Google "I agree" button ID
-        'div[role="dialog"] button',  # Generic dialog dismiss
-    ]
-
-    def random_user_agent(**kw):
-        return _random.choice(_USER_AGENTS)
-
-    def random_viewport(**kw):
-        return _random.choice(_VIEWPORTS)
-
-    def stealth_browser_args(extra=None):
-        args = [
-            "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars", "--disable-extensions",
-            "--disable-background-networking", "--disable-default-apps",
-            "--disable-sync", "--metrics-recording-only", "--no-first-run",
-        ]
-        if extra:
-            args.extend(extra)
-        return args
-
-    async def human_delay(min_s=1.0, max_s=3.5, think=False):
-        delay = _random.gauss((min_s + max_s) / 2, (max_s - min_s) / 4)
-        delay = max(min_s, min(max_s, delay))
-        if think:
-            delay += _random.uniform(0.5, 2.0)
-        await asyncio.sleep(delay)
-
-    async def inject_canvas_noise(page):
-        try:
-            await page.add_init_script("""
-                const _origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-                HTMLCanvasElement.prototype.toDataURL = function() {
-                    const ctx = this.getContext('2d');
-                    if (ctx) {
-                        const imgData = ctx.getImageData(0, 0, this.width, this.height);
-                        for (let i = 0; i < imgData.data.length; i += 4) {
-                            imgData.data[i] ^= 1;
-                        }
-                        ctx.putImageData(imgData, 0, 0);
-                    }
-                    return _origToDataURL.apply(this, arguments);
-                };
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            """)
-        except Exception:
-            pass
-
-    async def warm_up_session(page, url):
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=15_000)
-            await human_delay(1.0, 3.0)
-            await page.mouse.move(_random.randint(100, 500), _random.randint(100, 400))
-            await human_delay(0.3, 0.8)
-        except Exception:
-            pass
-
-    async def dismiss_cookies(page):
-        for sel in _COOKIE_SELECTORS:
-            try:
-                btn = page.locator(sel).first
-                if await btn.count() and await btn.is_visible():
-                    await btn.click()
-                    await human_delay(0.5, 1.0)
-                    return
-            except Exception:
-                continue
-
-    async def check_waf(page):
-        try:
-            html = (await page.content()).lower()
-            for signal in _WAF_SIGNALS:
-                if signal in html:
-                    _dbg(f"WAF signal matched: '{signal}'")
-                    return True
-            return False
-        except Exception:
-            return False
 from .engine import FlightOffer
 
-
-CARD_SELECTORS = (
-    '[role="main"] li[role="listitem"]',
-    '[role="main"] [role="listitem"]',
-    "ul.RKOxfe li",
-    "li.pIav2d",
-    "div.pIav2d",
-    "div.yR1fYc",
-    "div.mz0pAd",
-    "div.Og10v",
-)
-
-KNOWN_AIRLINES = (
-    "Aegean Airlines", "Aer Lingus", "Air Arabia", "Air France", "British Airways",
-    "easyJet", "EgyptAir", "Emirates", "Etihad Airways", "Finnair", "Gulf Air",
-    "Iberia", "KLM", "Lufthansa", "Oman Air", "Pegasus Airlines", "Qatar Airways",
-    "Royal Jordanian", "Ryanair", "Saudia", "Swiss", "Turkish Airlines", "Wizz Air",
-)
 
 
 def build_google_flights_url(
@@ -178,205 +42,162 @@ def build_google_flights_url(
     return "https://www.google.com/travel/flights?q=" + quote(query, safe="") + "&curr=GBP&hl=en-GB"
 
 
-def _clock_times(text: str, day: str) -> tuple[str, str]:
-    matches = re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?:\s*([AP]M))?(?!\d)", text, re.I)
-    if not matches:
-        return f"{day}T00:00:00", ""
-    def parse(value: tuple[str, str]) -> datetime:
-        clock, suffix = value
-        fmt = "%Y-%m-%d %I:%M %p" if suffix else "%Y-%m-%d %H:%M"
-        rendered = f"{day} {clock} {suffix.upper()}" if suffix else f"{day} {clock}"
-        return datetime.strptime(rendered, fmt)
-    departure = parse(matches[0])
-    if len(matches) == 1:
-        return departure.isoformat(), ""
-    arrival = parse(matches[1])
-    if "+1" in text or arrival <= departure:
-        arrival += timedelta(days=1)
-    return departure.isoformat(), arrival.isoformat()
-
-
-def parse_google_flight_text(
-    text: str, *, origins: tuple[str, ...], destinations: tuple[str, ...],
-    date: str, travellers: int, booking_url: str,
-) -> FlightOffer | None:
-    normalized = " ".join(text.split())
-    origin = next((code for code in origins if re.search(rf"\b{code}\b", normalized, re.I)), "")
-    destination = next((code for code in destinations if re.search(rf"\b{code}\b", normalized, re.I)), "")
-    price_match = re.search(r"(?:£|GBP\s*)([0-9]{1,5}(?:,[0-9]{3})*)", normalized, re.I)
-    if not origin or not destination or not price_match:
-        return None
-    per_person = float(price_match.group(1).replace(",", ""))
-    if not 20 <= per_person <= 100_000:
-        return None
-    if re.search(r"\bnon[ -]?stop\b", normalized, re.I):
-        stops = 0
-    else:
-        stop_match = re.search(r"\b(\d+)\s+stops?\b", normalized, re.I)
-        if not stop_match:
-            return None
-        stops = int(stop_match.group(1))
-    duration_match = re.search(r"(\d{1,2})\s*(?:hr|hour)s?(?:\s*(\d{1,2})\s*(?:min|minute)s?)?", normalized, re.I)
-    duration = 0 if not duration_match else int(duration_match.group(1)) * 60 + int(duration_match.group(2) or 0)
-    if duration <= 0:
-        return None
-    departure, arrival = _clock_times(normalized, date)
-    airline = next(
-        (name for name in KNOWN_AIRLINES if re.search(rf"\b{re.escape(name)}\b", normalized, re.I)),
-        "Unknown airline",
-    )
-    return FlightOffer(
-        origin=origin,
-        destination=destination,
-        departure=departure,
-        arrival=arrival,
-        price=round(per_person * travellers, 2),
-        price_per_traveller=per_person,
-        currency="GBP",
-        stops=stops,
-        duration_minutes=duration,
-        provider="Google Flights",
-        booking_url=booking_url,
-        airline=airline,
-        observed_at=datetime.now(timezone.utc).isoformat(),
-        review_status="results_page_only",
-    )
-
-
 async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, tuple[FlightOffer, ...]]:
-    """Search all configured date buckets in one bounded browser session."""
-    from playwright.async_api import async_playwright
+    """Search all configured date buckets using direct HTTP fetch.
+
+    Google Flights serves different content to headless browsers (Explore page
+    instead of search results). We fetch the page HTML directly via HTTP and
+    parse the server-rendered flight data from the response.
+    """
+    import urllib.request
+    import urllib.error
 
     specs = [(search, day) for search in searches for day in search.dates]
     maximum = int(os.getenv("GOOGLE_FLIGHTS_MAX_SEARCHES", "20"))
     specs = specs[: max(1, min(maximum, 40))]
-    timeout_ms = int(os.getenv("GOOGLE_FLIGHTS_RESULT_TIMEOUT_MS", "15000"))
     deadline = time.monotonic() + int(os.getenv("GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS", "900"))
     grouped: dict[str, list[FlightOffer]] = {item.key: [] for item in searches}
-    screenshots_dir = os.getenv("SCREENSHOTS_DIR", "/tmp/flight-verify")
-    async with async_playwright() as playwright:
-        ua = random_user_agent()
-        vp = random_viewport()
-        browser = await playwright.chromium.launch(
-            headless=True,
-            args=stealth_browser_args(),
+
+    _dbg(f"Starting {len(specs)} searches (HTTP mode), deadline in {deadline - time.monotonic():.0f}s")
+
+    for idx, (search, day) in enumerate(specs):
+        if time.monotonic() >= deadline:
+            _dbg(f"Deadline reached at search {idx}")
+            break
+        url = build_google_flights_url(
+            origins=search.origins, destinations=search.destinations,
+            date=day, travellers=search.travellers,
+            cabin_class=search.cabin_class,
         )
-        context = await browser.new_context(
-            locale="en-GB",
-            timezone_id="Europe/London",
-            user_agent=ua,
-            viewport=vp,
-            extra_http_headers={
-                "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
-            },
-        )
-        await context.add_cookies([
-            {"name": "SOCS", "value": "CAISHAgBEhJnd3NfMjAyNDA4MjAtMF9SQzIaAmVuIAEaBgiA_L20Bg", "domain": ".google.com", "path": "/"},
-            {"name": "CONSENT", "value": "PENDING+999", "domain": ".google.com", "path": "/"},
-        ])
-        page = await context.new_page()
-        await apply_stealth_async(page)
-        await inject_canvas_noise(page)
-        try:
-            await warm_up_session(page, "https://www.google.com/travel/flights")
-            await dismiss_cookies(page)
-            _dbg(f"Starting {len(specs)} searches, deadline in {deadline - time.monotonic():.0f}s")
-            for idx, (search, day) in enumerate(specs):
-                if time.monotonic() >= deadline:
-                    _dbg(f"Deadline reached at search {idx}")
-                    break
-                url = build_google_flights_url(
-                    origins=search.origins, destinations=search.destinations,
-                    date=day, travellers=search.travellers,
-                    cabin_class=search.cabin_class,
-                )
-                _dbg(f"Search {idx+1}/{len(specs)}: {search.key} {day} -> {url[:80]}...")
-                try:
-                    await page.goto(url, wait_until="commit", timeout=15_000)
-                except Exception as e:
-                    _dbg(f"goto failed: {e}")
-                    continue
-                await dismiss_cookies(page)
-                await human_delay(8.0, 12.0)
-                cards = None
-                for _retry in range(3):
-                    try:
-                        os.makedirs(screenshots_dir, exist_ok=True)
-                        await page.screenshot(
-                            path=os.path.join(screenshots_dir, f"page_{search.key}_{day}.png"),
-                            full_page=False,
-                        )
-                    except Exception:
-                        pass
-                    if await check_waf(page):
-                        _dbg(f"WAF detected on {search.key} {day}")
-                        break
-                    for selector in CARD_SELECTORS:
-                        try:
-                            candidate = page.locator(selector)
-                            cnt = await candidate.count()
-                            if cnt:
-                                _dbg(f"Found {cnt} cards with selector: {selector}")
-                                cards = candidate
-                                break
-                        except Exception:
-                            continue
-                    if cards is not None:
-                        break
-                    _dbg(f"No cards on retry {_retry+1}/3, waiting 5s...")
-                    await human_delay(5.0, 7.0)
-                if cards is None:
-                    _dbg(f"No cards found for {search.key} {day} after retries")
-                    try:
-                        os.makedirs(screenshots_dir, exist_ok=True)
-                        await page.screenshot(
-                            path=os.path.join(screenshots_dir, f"no_cards_{search.key}_{day}.png"),
-                            full_page=False,
-                        )
-                    except Exception:
-                        pass
-                    try:
-                        with open(os.path.join(screenshots_dir, f"html_{search.key}_{day}.txt"), "w") as f:
-                            f.write((await page.content())[:20000])
-                    except Exception:
-                        pass
-                    continue
-                seen: set[tuple[Any, ...]] = set()
-                for index in range(min(await cards.count(), 15)):
-                    try:
-                        text = await cards.nth(index).inner_text(timeout=2_000)
-                    except Exception:
-                        continue
-                    _dbg(f"Card {index}: {text[:120]}...")
-                    offer = parse_google_flight_text(
-                        text, origins=search.origins, destinations=search.destinations,
-                        date=day, travellers=search.travellers, booking_url=url,
-                    )
-                    if offer is None:
-                        continue
-                    clock = offer.departure[11:16]
-                    if not search.departure_window[0] <= clock <= search.departure_window[1]:
-                        continue
-                    if offer.stops > search.max_stops or offer.duration_minutes > search.max_duration_minutes:
-                        continue
-                    if search.max_price_per_traveller_gbp is not None and (offer.price_per_traveller or 0) > search.max_price_per_traveller_gbp:
-                        continue
-                    key = (offer.departure, offer.airline, offer.price, offer.stops)
-                    if key not in seen:
-                        seen.add(key)
-                        grouped[search.key].append(offer)
-                _dbg(f"Parsed {len(seen)} offers from cards for {search.key} {day}")
-                try:
-                    os.makedirs(screenshots_dir, exist_ok=True)
-                    await page.screenshot(
-                        path=os.path.join(screenshots_dir, f"results_{search.key}_{day}.png"),
-                        full_page=False,
-                    )
-                except Exception:
-                    pass
-        finally:
-            await browser.close()
+        _dbg(f"Search {idx+1}/{len(specs)}: {search.key} {day} -> {url[:80]}...")
+
+        html = _fetch_page_html(url)
+        if html is None:
+            _dbg(f"Failed to fetch page for {search.key} {day}")
+            continue
+
+        if any(signal in html.lower() for signal in [
+            "unusual traffic", "not a robot", "automated queries",
+            "rate limit exceeded", "access to this page has been denied",
+        ]):
+            _dbg(f"WAF detected on {search.key} {day}")
+            continue
+
+        offers = _parse_flight_cards(html, search=search, day=day, booking_url=url)
+        grouped[search.key].extend(offers)
+        _dbg(f"Parsed {len(offers)} offers for {search.key} {day}")
+
     return {
         key: tuple(sorted(values, key=lambda item: (item.price, item.duration_minutes))[:10])
         for key, values in grouped.items()
     }
+
+
+def _fetch_page_html(url: str) -> str | None:
+    """Fetch Google Flights page HTML via urllib with realistic headers."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
+        "Accept-Encoding": "identity",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "DNT": "1",
+    }
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        _dbg(f"HTTP fetch error: {e}")
+        return None
+
+
+def _parse_flight_cards(html: str, *, search: FlightSearch, day: str, booking_url: str) -> list[FlightOffer]:
+    """Parse flight cards from Google Flights HTML response."""
+    offers = []
+
+    price_pattern = re.compile(r'£(\d{1,5}(?:,\d{3})*)')
+    time_pattern = re.compile(r'(\d{1,2}:\d{2}\s*[AP]M)', re.I)
+    duration_pattern = re.compile(r'(\d+)\s*hr\s*(\d+)?\s*min', re.I)
+    stops_pattern = re.compile(r'(Nonstop|(\d+)\s*stops?)', re.I)
+    airline_pattern = re.compile(
+        r'(Aegean|Aer Lingus|Air Arabia|Air France|British Airways|easyJet|'
+        r'EgyptAir|Emirates|Etihad|Finnair|Gulf Air|Iberia|KLM|Lufthansa|'
+        r'Oman Air|Pegasus|Qatar Airways|Royal Jordanian|Ryanair|Saudia|'
+        r'Swiss|Turkish Airlines|Wizz Air)',
+        re.I,
+    )
+
+    chunks = re.split(r'(?=£\d)', html)
+    for chunk in chunks:
+        price_match = price_pattern.search(chunk)
+        if not price_match:
+            continue
+        price = float(price_match.group(1).replace(",", ""))
+        if not 20 <= price <= 100_000:
+            continue
+
+        times = time_pattern.findall(chunk)
+        duration_match = duration_pattern.search(chunk)
+        stops_match = stops_pattern.search(chunk)
+        airline_match = airline_pattern.search(chunk)
+
+        if not duration_match:
+            continue
+
+        duration = int(duration_match.group(1)) * 60 + int(duration_match.group(2) or 0)
+        if duration <= 0:
+            continue
+
+        stops = 0
+        if stops_match:
+            if stops_match.group(1).lower() == "nonstop":
+                stops = 0
+            else:
+                stops = int(stops_match.group(2) or 0)
+
+        airline = airline_match.group(1) if airline_match else "Unknown airline"
+
+        origin = next((code for code in search.origins if code in chunk), "")
+        destination = next((code for code in search.destinations if code in chunk), "")
+        if not origin or not destination:
+            continue
+
+        departure = f"{day}T{times[0].replace(' ', '').upper()}" if times else f"{day}T00:00:00"
+        arrival = ""
+        if len(times) > 1:
+            arrival = f"{day}T{times[1].replace(' ', '').upper()}"
+
+        offer = FlightOffer(
+            origin=origin,
+            destination=destination,
+            departure=departure,
+            arrival=arrival,
+            price=price * search.travellers,
+            price_per_traveller=price,
+            currency="GBP",
+            stops=stops,
+            duration_minutes=duration,
+            provider="Google Flights",
+            booking_url=booking_url,
+            airline=airline,
+            observed_at=datetime.now(timezone.utc).isoformat(),
+            review_status="results_page_only",
+        )
+
+        clock = departure[11:16]
+        if not search.departure_window[0] <= clock <= search.departure_window[1]:
+            continue
+        if offer.stops > search.max_stops or offer.duration_minutes > search.max_duration_minutes:
+            continue
+        if search.max_price_per_traveller_gbp is not None and price > search.max_price_per_traveller_gbp:
+            continue
+
+        offers.append(offer)
+
+    return offers
