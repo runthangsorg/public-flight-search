@@ -7,8 +7,9 @@ from public_flight_search.stealth import stealth_get, stealth_post
 
 
 class StealthGetTests(unittest.TestCase):
+    @patch("public_flight_search.stealth._HAS_CURL_CFFI", True)
     @patch("public_flight_search.stealth._session")
-    def test_uses_impersonate_chrome124(self, mock_session):
+    def test_uses_impersonate_chrome(self, mock_session):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_session.get.return_value = mock_response
@@ -53,8 +54,9 @@ class StealthGetTests(unittest.TestCase):
 
 
 class StealthPostTests(unittest.TestCase):
+    @patch("public_flight_search.stealth._HAS_CURL_CFFI", True)
     @patch("public_flight_search.stealth._session")
-    def test_uses_impersonate_chrome124(self, mock_session):
+    def test_uses_impersonate_chrome(self, mock_session):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_session.post.return_value = mock_response
