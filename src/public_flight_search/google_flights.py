@@ -283,21 +283,25 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                 )
                 print(f"[DEBUG] Search {idx+1}/{len(specs)}: {search.key} {day} -> {url[:80]}...")
                 try:
-                    await page.goto(url, wait_until="networkidle", timeout=45_000)
-                    await human_delay(4.0, 7.0, think=True)
+                    await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                    await human_delay(5.0, 8.0, think=True)
                 except Exception as e:
-                    print(f"[DEBUG] networkidle failed: {e}")
-                    try:
-                        await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-                        await human_delay(5.0, 8.0, think=True)
-                    except Exception as e2:
-                        print(f"[DEBUG] domcontentloaded also failed: {e2}")
-                        continue
+                    print(f"[DEBUG] goto failed: {e}")
+                    sys.stdout.flush()
+                    continue
                 await dismiss_cookies(page)
-                # Double-dismiss: Google consent overlays can reappear
+                # Triple cookie dismiss
                 for _ in range(3):
                     await dismiss_cookies(page)
                     await human_delay(0.3, 0.5)
+                # Also try clicking through any overlay via JS
+                try:
+                    await page.evaluate("""() => {
+                        const overlays = document.querySelectorAll('[role="dialog"], .overlay, [aria-modal="true"]');
+                        overlays.forEach(el => el.remove());
+                    }""")
+                except Exception:
+                    pass
                 try:
                     os.makedirs(screenshots_dir, exist_ok=True)
                     await page.screenshot(
@@ -313,6 +317,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     pass
                 if await check_waf(page):
                     print(f"[DEBUG] WAF detected on {search.key} {day}")
+                    sys.stdout.flush()
                     try:
                         os.makedirs(screenshots_dir, exist_ok=True)
                         await page.screenshot(
@@ -327,33 +332,42 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     from_field = page.locator('input[placeholder*="Where from"]').first
                     from_count = await from_field.count()
                     print(f"[DEBUG] from_field count={from_count}")
+                    sys.stdout.flush()
                     if from_count and await from_field.is_visible():
-                        await from_field.click()
+                        await from_field.click(force=True)
                         await human_delay(0.3, 0.8)
                         await from_field.press_sequentially(search.origins[0], delay=80)
                         await human_delay(1.0, 2.0)
                         suggestion = page.locator('[role="option"]').first
                         if await suggestion.count():
-                            await suggestion.click()
+                            await suggestion.click(force=True)
                             await human_delay(0.5, 1.0)
                         to_field = page.locator('input[placeholder*="Where to"]').first
                         if await to_field.count() and await to_field.is_visible():
-                            await to_field.click()
+                            await to_field.click(force=True)
                             await human_delay(0.3, 0.8)
                             await to_field.press_sequentially(search.destinations[0], delay=80)
                             await human_delay(1.0, 2.0)
                             suggestion2 = page.locator('[role="option"]').first
                             if await suggestion2.count():
-                                await suggestion2.click()
+                                await suggestion2.click(force=True)
                                 await human_delay(0.5, 1.0)
                             search_btn = page.locator('button[aria-label*="Search"], button:has-text("Search")').first
                             if await search_btn.count():
-                                await search_btn.click()
+                                await search_btn.click(force=True)
                                 await human_delay(5.0, 8.0, think=True)
                                 form_filled = True
                 except Exception as e:
                     print(f"[DEBUG] Form interaction error: {e}")
                 print(f"[DEBUG] form_filled={form_filled}")
+                sys.stdout.flush()
+                # Dump page snippet for diagnosis
+                try:
+                    html = await page.content()
+                    with open(os.path.join(screenshots_dir, f"html_{search.key}_{day}.txt"), "w") as f:
+                        f.write(html[:10000])
+                except Exception:
+                    pass
                 cards = None
                 for selector in CARD_SELECTORS:
                     try:
