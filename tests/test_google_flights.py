@@ -2,11 +2,28 @@ import unittest
 
 from public_flight_search.google_flights import (
     build_google_flights_url,
+    check_waf,
     parse_google_flight_text,
 )
 
 
 class GoogleFlightsTests(unittest.TestCase):
+    def test_normal_flights_document_with_captcha_script_is_not_waf(self):
+        class Page:
+            async def content(self):
+                return '<script src="/recaptcha/api.js"></script><div role="main">Flights</div>'
+
+        import asyncio
+        self.assertFalse(asyncio.run(check_waf(Page())))
+
+    def test_explicit_google_challenge_is_waf(self):
+        class Page:
+            async def content(self):
+                return "Our systems have detected unusual traffic from your computer"
+
+        import asyncio
+        self.assertTrue(asyncio.run(check_waf(Page())))
+
     def test_builds_https_booking_entry_url(self):
         url = build_google_flights_url(
             origins=("AAA",),
