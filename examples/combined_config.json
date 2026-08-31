@@ -3,263 +3,248 @@
   "searches": [
     {
       "key": "sept_lhr_mct",
-      "label": "LHR → Muscat (Sep 15-18)",
-      "origins": ["LHR"],
-      "destinations": ["MCT"],
-      "dates": ["2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"],
+      "label": "LHR \u2192 Muscat (Sep 15-18)",
+      "origins": [
+        "LHR"
+      ],
+      "destinations": [
+        "MCT"
+      ],
+      "dates": [
+        "2026-09-15",
+        "2026-09-16",
+        "2026-09-17",
+        "2026-09-18"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": [
+        "06:00",
+        "21:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 720,
       "max_price_per_traveller_gbp": 500
     },
     {
       "key": "sept_lgw_mct",
-      "label": "LGW → Muscat (Sep 15-18)",
-      "origins": ["LGW"],
-      "destinations": ["MCT"],
-      "dates": ["2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"],
+      "label": "LGW \u2192 Muscat (Sep 15-18)",
+      "origins": [
+        "LGW"
+      ],
+      "destinations": [
+        "MCT"
+      ],
+      "dates": [
+        "2026-09-15",
+        "2026-09-16",
+        "2026-09-17",
+        "2026-09-18"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": [
+        "06:00",
+        "21:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 720,
       "max_price_per_traveller_gbp": 500
     },
     {
       "key": "sept_lhr_dxb",
-      "label": "LHR → Dubai (Sep 15-18)",
-      "origins": ["LHR"],
-      "destinations": ["DXB"],
-      "dates": ["2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"],
+      "label": "LHR \u2192 Dubai (Sep 15-18)",
+      "origins": [
+        "LHR"
+      ],
+      "destinations": [
+        "DXB"
+      ],
+      "dates": [
+        "2026-09-15",
+        "2026-09-16",
+        "2026-09-17",
+        "2026-09-18"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": [
+        "06:00",
+        "21:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 720,
       "max_price_per_traveller_gbp": 450
     },
     {
       "key": "sept_lgw_dxb",
-      "label": "LGW → Dubai (Sep 15-18)",
-      "origins": ["LGW"],
-      "destinations": ["DXB"],
-      "dates": ["2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"],
+      "label": "LGW \u2192 Dubai (Sep 15-18)",
+      "origins": [
+        "LGW"
+      ],
+      "destinations": [
+        "DXB"
+      ],
+      "dates": [
+        "2026-09-15",
+        "2026-09-16",
+        "2026-09-17",
+        "2026-09-18"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": [
+        "06:00",
+        "21:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 720,
       "max_price_per_traveller_gbp": 450
     },
     {
       "key": "sept_lhr_auh",
-      "label": "LHR → Abu Dhabi (Sep 15-18)",
-      "origins": ["LHR"],
-      "destinations": ["AUH"],
-      "dates": ["2026-09-15", "2026-09-16", "2026-09-17", "2026-09-18"],
+      "label": "LHR \u2192 Abu Dhabi (Sep 15-18)",
+      "origins": [
+        "LHR"
+      ],
+      "destinations": [
+        "AUH"
+      ],
+      "dates": [
+        "2026-09-15",
+        "2026-09-16",
+        "2026-09-17",
+        "2026-09-18"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": [
+        "06:00",
+        "21:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 720,
       "max_price_per_traveller_gbp": 450
     },
     {
       "key": "sept_mct_dxb",
-      "label": "Muscat → Dubai (Sep 20-25)",
-      "origins": ["MCT"],
-      "destinations": ["DXB"],
-      "dates": ["2026-09-20", "2026-09-22", "2026-09-24"],
+      "label": "Muscat \u2192 Dubai (Sep 20-25)",
+      "origins": [
+        "MCT"
+      ],
+      "destinations": [
+        "DXB"
+      ],
+      "dates": [
+        "2026-09-20",
+        "2026-09-22",
+        "2026-09-24"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["08:00", "20:00"],
+      "departure_window": [
+        "08:00",
+        "20:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 180,
       "max_price_per_traveller_gbp": 200
     },
     {
       "key": "sept_mct_auh",
-      "label": "Muscat → Abu Dhabi (Sep 20-25)",
-      "origins": ["MCT"],
-      "destinations": ["AUH"],
-      "dates": ["2026-09-20", "2026-09-22", "2026-09-24"],
+      "label": "Muscat \u2192 Abu Dhabi (Sep 20-25)",
+      "origins": [
+        "MCT"
+      ],
+      "destinations": [
+        "AUH"
+      ],
+      "dates": [
+        "2026-09-20",
+        "2026-09-22",
+        "2026-09-24"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["08:00", "20:00"],
+      "departure_window": [
+        "08:00",
+        "20:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 180,
       "max_price_per_traveller_gbp": 200
     },
     {
       "key": "sept_dxb_lhr",
-      "label": "Dubai → LHR (Sep 26-28)",
-      "origins": ["DXB"],
-      "destinations": ["LHR"],
-      "dates": ["2026-09-26", "2026-09-27", "2026-09-28"],
+      "label": "Dubai \u2192 LHR (Sep 26-28)",
+      "origins": [
+        "DXB"
+      ],
+      "destinations": [
+        "LHR"
+      ],
+      "dates": [
+        "2026-09-26",
+        "2026-09-27",
+        "2026-09-28"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": [
+        "06:00",
+        "21:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 720,
       "max_price_per_traveller_gbp": 500
     },
     {
       "key": "sept_auh_lhr",
-      "label": "Abu Dhabi → LHR (Sep 26-28)",
-      "origins": ["AUH"],
-      "destinations": ["LHR"],
-      "dates": ["2026-09-26", "2026-09-27", "2026-09-28"],
+      "label": "Abu Dhabi \u2192 LHR (Sep 26-28)",
+      "origins": [
+        "AUH"
+      ],
+      "destinations": [
+        "LHR"
+      ],
+      "dates": [
+        "2026-09-26",
+        "2026-09-27",
+        "2026-09-28"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": [
+        "06:00",
+        "21:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 720,
       "max_price_per_traveller_gbp": 500
     },
     {
       "key": "sept_dxb_lgw",
-      "label": "Dubai → LGW (Sep 26-28)",
-      "origins": ["DXB"],
-      "destinations": ["LGW"],
-      "dates": ["2026-09-26", "2026-09-27", "2026-09-28"],
+      "label": "Dubai \u2192 LGW (Sep 26-28)",
+      "origins": [
+        "DXB"
+      ],
+      "destinations": [
+        "LGW"
+      ],
+      "dates": [
+        "2026-09-26",
+        "2026-09-27",
+        "2026-09-28"
+      ],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": [
+        "06:00",
+        "21:00"
+      ],
       "max_stops": 1,
       "max_duration_minutes": 720,
       "max_price_per_traveller_gbp": 500
-    },
-    {
-      "key": "sept_mct_lhr",
-      "label": "Muscat → LHR (Sep 26-28)",
-      "origins": ["MCT"],
-      "destinations": ["LHR"],
-      "dates": ["2026-09-26", "2026-09-27", "2026-09-28"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 900,
-      "max_price_per_traveller_gbp": 500
-    },
-    {
-      "key": "dec_lhr_ist",
-      "label": "LHR → Istanbul (Dec 20-24)",
-      "origins": ["LHR"],
-      "destinations": ["IST"],
-      "dates": ["2026-12-20", "2026-12-22", "2026-12-24"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 420,
-      "max_price_per_traveller_gbp": 350
-    },
-    {
-      "key": "dec_lgw_ist",
-      "label": "LGW → Istanbul (Dec 20-24)",
-      "origins": ["LGW"],
-      "destinations": ["IST"],
-      "dates": ["2026-12-20", "2026-12-22", "2026-12-24"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 420,
-      "max_price_per_traveller_gbp": 350
-    },
-    {
-      "key": "dec_ist_lhr",
-      "label": "Istanbul → LHR (Dec 28-31)",
-      "origins": ["IST"],
-      "destinations": ["LHR"],
-      "dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 420,
-      "max_price_per_traveller_gbp": 350
-    },
-    {
-      "key": "dec_lhr_ayt",
-      "label": "LHR → Antalya (Dec 20-24)",
-      "origins": ["LHR"],
-      "destinations": ["AYT"],
-      "dates": ["2026-12-20", "2026-12-22", "2026-12-24"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 480,
-      "max_price_per_traveller_gbp": 350
-    },
-    {
-      "key": "dec_ayt_lhr",
-      "label": "Antalya → LHR (Dec 28-31)",
-      "origins": ["AYT"],
-      "destinations": ["LHR"],
-      "dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 360,
-      "max_price_per_traveller_gbp": 350
-    },
-    {
-      "key": "dec_lhr_mla",
-      "label": "LHR → Malta (Dec 20-24)",
-      "origins": ["LHR"],
-      "destinations": ["MLA"],
-      "dates": ["2026-12-20", "2026-12-22", "2026-12-24"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 300,
-      "max_price_per_traveller_gbp": 300
-    },
-    {
-      "key": "dec_mla_lhr",
-      "label": "Malta → LHR (Dec 28-31)",
-      "origins": ["MLA"],
-      "destinations": ["LHR"],
-      "dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 300,
-      "max_price_per_traveller_gbp": 300
-    },
-    {
-      "key": "dec_lhr_cai",
-      "label": "LHR → Cairo (Dec 20-24)",
-      "origins": ["LHR"],
-      "destinations": ["CAI"],
-      "dates": ["2026-12-20", "2026-12-22", "2026-12-24"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "23:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 540,
-      "max_price_per_traveller_gbp": 450
-    },
-    {
-      "key": "dec_cai_lhr",
-      "label": "Cairo → LHR (Dec 28-31)",
-      "origins": ["CAI"],
-      "destinations": ["LHR"],
-      "dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
-      "travellers": 1,
-      "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "23:00"],
-      "max_stops": 1,
-      "max_duration_minutes": 540,
-      "max_price_per_traveller_gbp": 450
     }
   ]
 }
