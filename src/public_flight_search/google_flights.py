@@ -288,6 +288,14 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                         print(f"[DEBUG] domcontentloaded also failed: {e2}")
                         continue
                 await dismiss_cookies(page)
+                try:
+                    os.makedirs(screenshots_dir, exist_ok=True)
+                    await page.screenshot(
+                        path=os.path.join(screenshots_dir, f"page_{search.key}_{day}.png"),
+                        full_page=False,
+                    )
+                except Exception:
+                    pass
                 page_text = ""
                 try:
                     page_text = (await page.content())[:2000].lower()
@@ -307,7 +315,9 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                 form_filled = False
                 try:
                     from_field = page.locator('input[placeholder*="Where from"]').first
-                    if await from_field.count() and await from_field.is_visible():
+                    from_count = await from_field.count()
+                    print(f"[DEBUG] from_field count={from_count}")
+                    if from_count and await from_field.is_visible():
                         await from_field.click()
                         await human_delay(0.3, 0.8)
                         await from_field.press_sequentially(search.origins[0], delay=80)
