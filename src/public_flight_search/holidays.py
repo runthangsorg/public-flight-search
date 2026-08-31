@@ -252,7 +252,7 @@ def render_holiday_report(config: HolidayConfig, *, generated_at: str) -> str:
         urls = build_provider_urls(
             destination_key=dest.key,
             destination_label=dest.label,
-            airports=dest.airports,
+            airports=config.origins,
             departure_date=outbound,
             return_date=ret,
             adults=config.travellers,
