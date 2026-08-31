@@ -286,7 +286,7 @@ def render_holiday_report(config: HolidayConfig, *, generated_at: str) -> str:
         out.append(escape(dest.label))
         out.append('</td></tr>')
         out.append('<tr style="background:#0d1520;"><td colspan="2" style="padding:6px 12px; color:#94a3b8; font-size:12px;">')
-        out.append('Airports: ' + ', '.join(dest.airports) + ' · ' + str(adults) + ' travellers · ' + str(rooms) + ' room(s) · ')
+        out.append('From: ' + ', '.join(config.origins) + ' · ' + str(adults) + ' travellers · ' + str(rooms) + ' room(s) · ')
         out.append(escape(outbound) + ' → ' + escape(ret))
         out.append('</td></tr>')
         out.append('<tr style="background:#0d1520;"><td colspan="2" style="padding:4px 12px; color:#6ee7b7; font-size:12px; font-weight:600;">All Inclusive · Half Board · Full Board · Room Only</td></tr>')

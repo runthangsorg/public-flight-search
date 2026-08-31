@@ -27,6 +27,26 @@ class HolidayPlannerTests(unittest.TestCase):
         self.assertIn("Package Deal Search Links", html)
         self.assertIn("No live prices collected", html)
 
+    def test_origin_airports_shown_not_destination_airports(self):
+        config = load_holiday_config(
+            json.dumps(
+                {
+                    "report_title": "Test",
+                    "party": {"travellers": 2, "rooms": [2]},
+                    "departure_window": ["06:00", "21:00"],
+                    "origins": ["LHR", "LGW"],
+                    "outbound_dates": ["2026-12-20"],
+                    "return_dates": ["2026-12-28"],
+                    "destinations": [
+                        {"key": "antalya", "label": "Antalya", "airports": ["AYT"]}
+                    ],
+                }
+            )
+        )
+        html = render_holiday_report(config, generated_at="2026-08-31T10:00:00+00:00")
+        self.assertIn("From: LHR, LGW", html)
+        self.assertNotIn("Airports: AYT", html)
+
 
 if __name__ == "__main__":
     unittest.main()
