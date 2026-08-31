@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 import os
 import re
 import time
+import urllib.request
+import urllib.error
 from typing import Iterable
 from urllib.parse import quote
 
