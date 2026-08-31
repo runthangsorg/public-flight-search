@@ -279,7 +279,6 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
         await inject_canvas_noise(page)
         try:
             await warm_up_session(page, "https://www.google.com/travel/flights")
-            await human_delay(2.0, 4.0)
             await dismiss_cookies(page)
             _dbg(f"Starting {len(specs)} searches, deadline in {deadline - time.monotonic():.0f}s")
             for idx, (search, day) in enumerate(specs):
@@ -293,21 +292,13 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                 )
                 _dbg(f"Search {idx+1}/{len(specs)}: {search.key} {day} -> {url[:80]}...")
                 try:
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                    await page.goto(url, wait_until="commit", timeout=15_000)
                 except Exception as e:
                     _dbg(f"goto failed: {e}")
                     continue
                 await dismiss_cookies(page)
-                for _ in range(3):
-                    await dismiss_cookies(page)
-                    await human_delay(0.2, 0.4)
-                try:
-                    await page.evaluate("""() => {
-                        document.querySelectorAll('[role="dialog"], [aria-modal="true"], .modal-overlay, #consent-bump').forEach(el => el.remove());
-                    }""")
-                except Exception:
-                    pass
-                await human_delay(5.0, 8.0, think=True)
+                await human_delay(8.0, 12.0)
+                cards = None
                 for _retry in range(3):
                     try:
                         os.makedirs(screenshots_dir, exist_ok=True)
@@ -320,7 +311,6 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     if await check_waf(page):
                         _dbg(f"WAF detected on {search.key} {day}")
                         break
-                    cards = None
                     for selector in CARD_SELECTORS:
                         try:
                             candidate = page.locator(selector)
