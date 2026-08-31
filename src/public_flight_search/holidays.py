@@ -33,7 +33,7 @@ class HolidayConfig:
 def build_loveholidays_url(
     *,
     destination: str,
-    airports: tuple[str, ...],
+    origin_airports: tuple[str, ...],
     departure_date: str,
     return_date: str,
     adults: int,
@@ -41,7 +41,7 @@ def build_loveholidays_url(
 ) -> str:
     params = {
         "destination": destination,
-        "departureAirports": ",".join(airports),
+        "departureAirports": ",".join(origin_airports),
         "departureDate": departure_date,
         "returnDate": return_date,
         "adults": str(adults),
@@ -53,14 +53,14 @@ def build_loveholidays_url(
 def build_on_the_beach_url(
     *,
     destination: str,
-    airports: tuple[str, ...],
+    origin_airports: tuple[str, ...],
     departure_date: str,
     return_date: str,
     adults: int,
 ) -> str:
     params = {
         "destination": destination,
-        "departureAirport": airports[0] if airports else "",
+        "departureAirport": origin_airports[0] if origin_airports else "",
         "departureDate": departure_date,
         "returnDate": return_date,
         "adults": str(adults),
@@ -71,7 +71,7 @@ def build_on_the_beach_url(
 def build_jet2_url(
     *,
     destination: str,
-    airports: tuple[str, ...],
+    origin_airports: tuple[str, ...],
     departure_date: str,
     return_date: str,
     adults: int,
@@ -79,7 +79,7 @@ def build_jet2_url(
 ) -> str:
     params = {
         "destination": destination,
-        "departureAirport": airports[0] if airports else "",
+        "departureAirport": origin_airports[0] if origin_airports else "",
         "departureDate": departure_date,
         "returnDate": return_date,
         "adults": str(adults),
@@ -91,14 +91,14 @@ def build_jet2_url(
 def build_tui_url(
     *,
     destination: str,
-    airports: tuple[str, ...],
+    origin_airports: tuple[str, ...],
     departure_date: str,
     return_date: str,
     adults: int,
 ) -> str:
     params = {
         "destination": destination,
-        "departureAirport": airports[0] if airports else "",
+        "departureAirport": origin_airports[0] if origin_airports else "",
         "departureDate": departure_date,
         "returnDate": return_date,
         "adults": str(adults),
@@ -109,14 +109,14 @@ def build_tui_url(
 def build_easyjet_url(
     *,
     destination: str,
-    airports: tuple[str, ...],
+    origin_airports: tuple[str, ...],
     departure_date: str,
     return_date: str,
     adults: int,
 ) -> str:
     params = {
         "destination": destination,
-        "departureAirport": airports[0] if airports else "",
+        "departureAirport": origin_airports[0] if origin_airports else "",
         "departureDate": departure_date,
         "returnDate": return_date,
         "adults": str(adults),
@@ -127,14 +127,14 @@ def build_easyjet_url(
 def build_ba_holidays_url(
     *,
     destination: str,
-    airports: tuple[str, ...],
+    origin_airports: tuple[str, ...],
     departure_date: str,
     return_date: str,
     adults: int,
 ) -> str:
     params = {
         "destination": destination,
-        "departureAirport": airports[0] if airports else "",
+        "departureAirport": origin_airports[0] if origin_airports else "",
         "departureDate": departure_date,
         "returnDate": return_date,
         "adults": str(adults),
@@ -146,7 +146,7 @@ def build_provider_urls(
     *,
     destination_key: str,
     destination_label: str,
-    airports: tuple[str, ...],
+    origin_airports: tuple[str, ...],
     departure_date: str,
     return_date: str,
     adults: int,
@@ -155,7 +155,7 @@ def build_provider_urls(
     return {
         "loveholidays": build_loveholidays_url(
             destination=destination_key,
-            airports=airports,
+            origin_airports=origin_airports,
             departure_date=departure_date,
             return_date=return_date,
             adults=adults,
@@ -163,14 +163,14 @@ def build_provider_urls(
         ),
         "on_the_beach": build_on_the_beach_url(
             destination=destination_key,
-            airports=airports,
+            origin_airports=origin_airports,
             departure_date=departure_date,
             return_date=return_date,
             adults=adults,
         ),
         "jet2": build_jet2_url(
             destination=destination_key,
-            airports=airports,
+            origin_airports=origin_airports,
             departure_date=departure_date,
             return_date=return_date,
             adults=adults,
@@ -178,21 +178,21 @@ def build_provider_urls(
         ),
         "tui": build_tui_url(
             destination=destination_key,
-            airports=airports,
+            origin_airports=origin_airports,
             departure_date=departure_date,
             return_date=return_date,
             adults=adults,
         ),
         "easyjet": build_easyjet_url(
             destination=destination_key,
-            airports=airports,
+            origin_airports=origin_airports,
             departure_date=departure_date,
             return_date=return_date,
             adults=adults,
         ),
         "ba_holidays": build_ba_holidays_url(
             destination=destination_key,
-            airports=airports,
+            origin_airports=origin_airports,
             departure_date=departure_date,
             return_date=return_date,
             adults=adults,
@@ -261,7 +261,7 @@ def render_holiday_report(config: HolidayConfig, *, generated_at: str) -> str:
     out.append(' destinations · package search links</p>')
     out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-bottom:20px;">')
     out.append('<tr><td style="padding:10px 12px; background:#0d1520; color:#9eb0c7; font-size:13px;">')
-    out.append('<strong style="color:#f8fafc;">' + str(config.travellers) + '</strong> travellers · <strong style="color:#f8fafc;">' + str(len(config.rooms)) + '</strong> room(s) · depart <strong style="color:#f8fafc;">' + escape(config.outbound_dates[0]) + '</strong> · return <strong style="color:#f8fafc;">' + escape(config.return_dates[-1]) + '</strong>')
+    out.append('<strong style="color:#f8fafc;">' + str(config.travellers) + '</strong> travellers · <strong style="color:#f8fafc;">' + str(len(config.rooms)) + '</strong> room(s) · depart <strong style="color:#f8fafc;">' + escape(config.outbound_dates[0]) + '</strong> · return <strong style="color:#f8fafc;">' + escape(config.return_dates[0]) + '</strong>')
     out.append('</td></tr></table>')
     out.append('<h2 style="margin:0 0 12px 0; color:#f8fafc; font-size:18px; font-weight:700;">Package Deal Search Links</h2>')
     
@@ -274,7 +274,7 @@ def render_holiday_report(config: HolidayConfig, *, generated_at: str) -> str:
         urls = build_provider_urls(
             destination_key=dest.key,
             destination_label=dest.label,
-            airports=dest.airports,
+            origin_airports=config.origins,
             departure_date=outbound,
             return_date=ret,
             adults=adults,
