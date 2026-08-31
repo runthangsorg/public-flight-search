@@ -34,9 +34,10 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check -e '.[browser]'
           python -m playwright install --with-deps chromium
-      - name: Search and optionally deliver
+      - name: Search flights and optionally deliver
         env:
           FLIGHT_SEARCH_CONFIG_JSON: ${{ secrets.FLIGHT_SEARCH_CONFIG_JSON }}
+          HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.HOLIDAY_SEARCH_CONFIG_JSON }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -59,6 +60,16 @@ jobs:
           else
             python -m public_flight_search flight-digest
           fi
+      - name: Generate holiday package links
+        env:
+          HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.HOLIDAY_SEARCH_CONFIG_JSON }}
+        shell: bash
+        run: |
+          if [[ -n "${HOLIDAY_SEARCH_CONFIG_JSON:-}" ]]; then
+            python -m public_flight_search holiday-planner --dry-run
+          else
+            echo "No HOLIDAY_SEARCH_CONFIG_JSON secret set, skipping holiday packages"
+          fi
       - name: Dump debug log
         run: |
           echo "=== FLIGHT DEBUG LOG ==="
@@ -70,6 +81,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: flight-digest-report
-          path: /tmp/flight-verify/*.html
+          path: |
+            /tmp/flight-verify/*.txt
+            /tmp/flight-debug.log
           retention-days: 7
         if: always()

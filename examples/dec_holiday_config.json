@@ -1,0 +1,28 @@
+{
+  "report_title": "December Holiday Packages: Turkey, Malta, Egypt",
+  "party": {
+    "travellers": 2,
+    "rooms": [2]
+  },
+  "departure_window": ["06:00", "21:00"],
+  "origins": ["LHR", "LGW", "LTN", "STN"],
+  "outbound_dates": ["2026-12-20", "2026-12-22", "2026-12-24"],
+  "return_dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
+  "destinations": [
+    {
+      "key": "antalya",
+      "label": "Antalya, Turkey (All Inclusive / Half Board)",
+      "airports": ["AYT"]
+    },
+    {
+      "key": "malta",
+      "label": "Malta (Half Board / Full Board)",
+      "airports": ["MLA"]
+    },
+    {
+      "key": "cairo",
+      "label": "Cairo, Egypt (Half Board / Full Board)",
+      "airports": ["CAI"]
+    }
+  ]
+}

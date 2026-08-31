@@ -258,27 +258,87 @@ def render_holiday_report(config: HolidayConfig, *, generated_at: str) -> str:
             adults=config.travellers,
             rooms=len(config.rooms),
         )
-        links = "".join(
-            f'<a href="{escape(url, quote=True)}" style="display: inline-block; margin: 5px 8px 5px 0; padding: 10px 16px; background-color: #38bdf8; color: #08111f; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 13px;">{escape(name)}</a> '
-            for name, url in [
-                ("LoveHolidays", urls["loveholidays"]),
-                ("On the Beach", urls["on_the_beach"]),
-                ("Jet2holidays", urls["jet2"]),
-                ("TUI", urls["tui"]),
-                ("easyJet holidays", urls["easyjet"]),
-                ("British Airways Holidays", urls["ba_holidays"]),
-            ]
-        )
+
+        provider_cards = []
+        for name, url in [
+            ("LoveHolidays", urls["loveholidays"]),
+            ("On the Beach", urls["on_the_beach"]),
+            ("Jet2holidays", urls["jet2"]),
+            ("TUI", urls["tui"]),
+            ("easyJet holidays", urls["easyjet"]),
+            ("British Airways Holidays", urls["ba_holidays"]),
+        ]:
+            provider_cards.append(
+                f'<a href="{escape(url, quote=True)}" style="display: inline-block; margin: 6px 8px 6px 0; padding: 12px 20px; background: linear-gradient(135deg, #38bdf8, #0ea5e9); color: #08111f; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px; transition: transform 0.2s;">{escape(name)} ↗</a>'
+            )
+
+        dates_html = f"{escape(outbound)} → {escape(ret)}"
+
         destinations += (
-            f"<section style='background-color: #102538; border: 1px solid #25465e; border-radius: 14px; padding: 18px 20px; margin: 16px 0;'>"
-            f"<h2 style='font-size: 20px; color: #f8fafc; margin: 0 0 6px 0;'>{escape(dest.label)}</h2>"
-            f"<p style='color: #94a3b8; font-size: 13px; margin: 0 0 14px 0;'>Airports: {', '.join(dest.airports)}</p>"
-            f"<div style='margin-top: 10px;'>{links}</div></section>"
+            f"<section style='background: linear-gradient(135deg, #101d30 0%, #1a2a42 100%); border: 1px solid #263953; border-radius: 16px; padding: 24px; margin: 20px 0;'>"
+            f"<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;'>"
+            f"<h2 style='font-size: 22px; color: #f8fafc; margin: 0;'>{escape(dest.label)}</h2>"
+            f"<span style='background: #1e3a5f; color: #7dd3fc; border-radius: 8px; padding: 4px 12px; font-size: 12px; font-weight: 600;'>{escape(dates_html)}</span>"
+            f"</div>"
+            f"<p style='color: #94a3b8; font-size: 13px; margin: 0 0 6px 0;'>Airports: {', '.join(dest.airports)} · {config.travellers} travellers · rooms {escape(' + '.join(map(str, config.rooms)))}</p>"
+            f"<p style='color: #6ee7b7; font-size: 14px; margin: 0 0 16px 0; font-weight: 600;'>Search for: All Inclusive · Half Board · Full Board · Room Only</p>"
+            f"<div style='margin-top: 12px;'>{''.join(provider_cards)}</div>"
+            f"<p style='color: #94a3b8; font-size: 12px; margin: 16px 0 0 0; line-height: 1.4;'>Click any provider to search live package prices. Apply exact party size, room occupancy, and board basis at checkout. Verify the whole-party total including transfers and protection.</p>"
+            f"</section>"
         )
-    return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>
-    body{{background:#07131e;color:#edf6ff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0}}main{{max-width:860px;margin:auto;padding:28px 18px 48px}}section{{background:#102538;border:1px solid #25465e;border-radius:14px;padding:18px;margin:14px 0}}a{{display:inline-block;background:#38bdf8;color:#08111f;text-decoration:none;padding:10px 16px;margin:5px 8px 5px 0;border-radius:8px;font-weight:700;font-size:13px}}.warn{{color:#fde68a;font-size:13px;line-height:1.5;background:#392d14;padding:12px;border-radius:8px}}</style></head><body style="background-color: #07131e; color: #edf6ff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0;"><main style="max-width:860px;margin:auto;padding:28px 18px 48px;">
-    <h1 style="font-size:28px;margin:0 0 8px;color:#f8fafc;">{escape(config.report_title)}</h1><p style="color:#94a3b8;font-size:14px;margin:0 0 20px 0;">Generated {escape(generated_at)}</p>
-    <p style="color:#cbd5e1;font-size:14px;line-height:1.5;margin:0 0 24px 0;"><strong style="color:#f8fafc;">{config.travellers} travellers</strong> · rooms {escape(' + '.join(map(str, config.rooms)))} · depart {', '.join(config.outbound_dates)} · return {', '.join(config.return_dates)} · preferred flight time {escape(config.departure_window[0])}–{escape(config.departure_window[1])}</p>
-    <h2 style="font-size:22px;color:#f8fafc;margin:28px 0 14px 0;">Official search entry points</h2>{destinations}
-    <p class="warn" style="color:#fde68a;font-size:13px;line-height:1.5;background-color:#392d14;padding:14px;border-radius:8px;margin-top:28px;">No live package price was collected in this planning run. Open each official provider, apply the exact party and room occupancy, and verify the whole-party checkout total, baggage and protection before booking.</p>
-    </main></body></html>"""
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{escape(config.report_title)}</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ margin: 0; background: #08111f; color: #e5edf7; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; }}
+    main {{ max-width: 960px; margin: auto; padding: 32px 20px 48px; }}
+    h1 {{ font-size: 32px; margin: 0 0 8px; color: #f8fafc; font-weight: 800; }}
+    h2 {{ margin-top: 28px; color: #f8fafc; font-weight: 700; }}
+    .sub {{ color: #9eb0c7; }}
+    section {{ background: linear-gradient(135deg, #101d30 0%, #1a2a42 100%); border: 1px solid #263953; border-radius: 16px; padding: 24px; margin: 20px 0; }}
+    a {{ display: inline-block; margin: 6px 8px 6px 0; padding: 12px 20px; background: linear-gradient(135deg, #38bdf8, #0ea5e9); color: #08111f; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 14px; transition: transform 0.2s; }}
+    a:hover {{ transform: translateY(-2px); }}
+    .warn {{ color: #fde68a; font-size: 13px; line-height: 1.5; background: #392d14; padding: 14px; border-radius: 8px; }}
+    footer {{ margin-top: 40px; color: #8496ad; font-size: 12px; line-height: 1.5; border-top: 1px solid #1e293b; padding-top: 16px; }}
+    @media (max-width: 640px) {{ section {{ padding: 16px; }} a {{ margin: 4px; padding: 10px 14px; font-size: 13px; }} }}
+  </style>
+</head>
+<body>
+  <main style="max-width: 960px; margin: auto; padding: 32px 20px 48px;">
+    <h1 style="font-size: 32px; margin: 0 0 8px; color: #f8fafc; font-weight: 800;">{escape(config.report_title)}</h1>
+    <p class="sub" style="color: #9eb0c7; margin: 0 0 24px 0; font-size: 14px;">
+      🕐 Generated {escape(generated_at)} · {len(config.destinations)} destinations · package search links
+    </p>
+    <div style="background: #0d1520; border-radius: 12px; padding: 16px; margin: 0 0 24px 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px;">
+      <div style="text-align: center;">
+        <div style="color: #6ee7b7; font-size: 24px; font-weight: 800;">{config.travellers}</div>
+        <div style="color: #8ca0b9; font-size: 12px;">Travellers</div>
+      </div>
+      <div style="text-align: center;">
+        <div style="color: #6ee7b7; font-size: 24px; font-weight: 800;">{escape(' + '.join(map(str, config.rooms)))}</div>
+        <div style="color: #8ca0b9; font-size: 12px;">Rooms</div>
+      </div>
+      <div style="text-align: center;">
+        <div style="color: #6ee7b7; font-size: 24px; font-weight: 800;">{escape(config.outbound_dates[0])}</div>
+        <div style="color: #8ca0b9; font-size: 12px;">Depart</div>
+      </div>
+      <div style="text-align: center;">
+        <div style="color: #6ee7b7; font-size: 24px; font-weight: 800;">{escape(config.return_dates[-1])}</div>
+        <div style="color: #8ca0b9; font-size: 12px;">Return</div>
+      </div>
+    </div>
+    <h2 style="font-size: 22px; color: #f8fafc; margin: 28px 0 14px 0;">Package Deal Search Links</h2>
+    {destinations}
+    <div class="warn" style="color: #fde68a; font-size: 13px; line-height: 1.5; background-color: #392d14; padding: 16px; border-radius: 10px; margin-top: 28px;">
+      <strong style="color: #fbbf24;">⚠️ No live prices collected</strong> — these are official search entry points. Open each provider, apply the exact party and room occupancy, and verify the whole-party checkout total, baggage, transfers and protection before booking. Filter for <strong>All Inclusive</strong>, <strong>Half Board</strong>, or <strong>Full Board</strong> as needed.
+    </div>
+    <footer style="margin-top: 40px; color: #8496ad; font-size: 12px; line-height: 1.5; border-top: 1px solid #1e293b; padding-top: 16px;">
+      Package prices can change instantly. Always verify at checkout.
+    </footer>
+  </main>
+</body>
+</html>"""

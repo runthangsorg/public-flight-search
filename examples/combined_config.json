@@ -193,7 +193,7 @@
       "cabin_class": "ECONOMY",
       "departure_window": ["06:00", "21:00"],
       "max_stops": 1,
-      "max_duration_minutes": 360,
+      "max_duration_minutes": 480,
       "max_price_per_traveller_gbp": 350
     },
     {
