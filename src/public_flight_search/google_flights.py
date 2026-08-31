@@ -85,6 +85,15 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
             _dbg(f"WAF detected on {search.key} {day}")
             continue
 
+        dump_dir = os.getenv("SCREENSHOTS_DIR", "/tmp/flight-verify")
+        try:
+            os.makedirs(dump_dir, exist_ok=True)
+            with open(os.path.join(dump_dir, f"html_{search.key}_{day}.txt"), "w") as f:
+                f.write(html[:50000])
+            _dbg(f"Saved HTML ({len(html)} bytes) for {search.key} {day}")
+        except Exception:
+            pass
+
         offers = _parse_flight_cards(html, search=search, day=day, booking_url=url)
         grouped[search.key].extend(offers)
         _dbg(f"Parsed {len(offers)} offers for {search.key} {day}")
