@@ -243,10 +243,10 @@
       "dates": ["2026-12-20", "2026-12-22", "2026-12-24"],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": ["06:00", "23:00"],
       "max_stops": 1,
-      "max_duration_minutes": 420,
-      "max_price_per_traveller_gbp": 400
+      "max_duration_minutes": 540,
+      "max_price_per_traveller_gbp": 450
     },
     {
       "key": "dec_cai_lhr",
@@ -256,10 +256,10 @@
       "dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
       "travellers": 1,
       "cabin_class": "ECONOMY",
-      "departure_window": ["06:00", "21:00"],
+      "departure_window": ["06:00", "23:00"],
       "max_stops": 1,
-      "max_duration_minutes": 420,
-      "max_price_per_traveller_gbp": 400
+      "max_duration_minutes": 540,
+      "max_price_per_traveller_gbp": 450
     }
   ]
 }
