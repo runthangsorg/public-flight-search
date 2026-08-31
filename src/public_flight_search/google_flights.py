@@ -36,11 +36,9 @@ def build_google_flights_url(
     *, origins: tuple[str, ...], destinations: tuple[str, ...], date: str,
     travellers: int, cabin_class: str,
 ) -> str:
-    cabin = "business" if cabin_class == "BUSINESS" else "economy"
-    query = (
-        f"one way flights from {' or '.join(origins)} to "
-        f"{' or '.join(destinations)} on {date} {travellers} adults {cabin} cabin"
-    )
+    origin = origins[0]
+    dest = destinations[0]
+    query = f"flights from {origin} to {dest} on {date} one way"
     return "https://www.google.com/travel/flights?q=" + quote(query, safe="") + "&curr=GBP&hl=en-GB"
 
 
@@ -129,60 +127,37 @@ def _fetch_page_html(url: str) -> str | None:
 
 
 def _parse_flight_cards(html: str, *, search: FlightSearch, day: str, booking_url: str) -> list[FlightOffer]:
-    """Parse flight cards from Google Flights HTML response."""
+    """Parse flight cards from Google Flights HTML via aria-label attributes."""
     offers = []
 
-    price_pattern = re.compile(r'£(\d{1,5}(?:,\d{3})*)')
-    time_pattern = re.compile(r'(\d{1,2}:\d{2}\s*[AP]M)', re.I)
-    duration_pattern = re.compile(r'(\d+)\s*hr\s*(\d+)?\s*min', re.I)
-    stops_pattern = re.compile(r'(Nonstop|(\d+)\s*stops?)', re.I)
-    airline_pattern = re.compile(
-        r'(Aegean|Aer Lingus|Air Arabia|Air France|British Airways|easyJet|'
-        r'EgyptAir|Emirates|Etihad|Finnair|Gulf Air|Iberia|KLM|Lufthansa|'
-        r'Oman Air|Pegasus|Qatar Airways|Royal Jordanian|Ryanair|Saudia|'
-        r'Swiss|Turkish Airlines|Wizz Air)',
+    aria_pattern = re.compile(
+        r'aria-label="From (\d+) British pounds\.\s*'
+        r'(Non-stop|(\d+) stop) flight with ([^."]+)\.\s*'
+        r'Leaves [^"]+?at (\d{1,2}:\d{2})[^"]+?'
+        r'arrives at [^"]+?at (\d{1,2}:\d{2})[^"]+?'
+        r'Total duration (\d+) hrs? (\d+)? mins?',
         re.I,
     )
 
-    chunks = re.split(r'(?=£\d)', html)
-    for chunk in chunks:
-        price_match = price_pattern.search(chunk)
-        if not price_match:
-            continue
-        price = float(price_match.group(1).replace(",", ""))
+    for m in aria_pattern.finditer(html):
+        price = float(m.group(1))
+        stops_str = m.group(2)
+        stops = 0 if "Non-stop" in stops_str else int(m.group(3) or 0)
+        airline = m.group(4).strip()
+        dep_time = m.group(5)
+        arr_time = m.group(6)
+        dur_hrs = int(m.group(7))
+        dur_mins = int(m.group(8) or 0)
+        duration = dur_hrs * 60 + dur_mins
+
         if not 20 <= price <= 100_000:
             continue
 
-        times = time_pattern.findall(chunk)
-        duration_match = duration_pattern.search(chunk)
-        stops_match = stops_pattern.search(chunk)
-        airline_match = airline_pattern.search(chunk)
+        origin = next((code for code in search.origins if code in html[max(0,m.start()-2000):m.end()]), search.origins[0])
+        destination = next((code for code in search.destinations if code in html[max(0,m.start()-2000):m.end()]), search.destinations[0])
 
-        if not duration_match:
-            continue
-
-        duration = int(duration_match.group(1)) * 60 + int(duration_match.group(2) or 0)
-        if duration <= 0:
-            continue
-
-        stops = 0
-        if stops_match:
-            if stops_match.group(1).lower() == "nonstop":
-                stops = 0
-            else:
-                stops = int(stops_match.group(2) or 0)
-
-        airline = airline_match.group(1) if airline_match else "Unknown airline"
-
-        origin = next((code for code in search.origins if code in chunk), "")
-        destination = next((code for code in search.destinations if code in chunk), "")
-        if not origin or not destination:
-            continue
-
-        departure = f"{day}T{times[0].replace(' ', '').upper()}" if times else f"{day}T00:00:00"
-        arrival = ""
-        if len(times) > 1:
-            arrival = f"{day}T{times[1].replace(' ', '').upper()}"
+        departure = f"{day}T{dep_time}:00"
+        arrival = f"{day}T{arr_time}:00"
 
         offer = FlightOffer(
             origin=origin,
