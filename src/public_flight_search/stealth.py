@@ -1,12 +1,29 @@
-"""Stealth HTTP client using curl_cffi to bypass Cloudflare/DataDome TLS fingerprint blocks."""
+"""Stealth HTTP client using curl_cffi to bypass Cloudflare/DataDome TLS fingerprint blocks.
+
+Also provides playwright-stealth integration for browser automation.
+"""
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# playwright-stealth integration (optional)
+# ---------------------------------------------------------------------------
+
+async def apply_stealth_async(page: Any) -> None:
+    """Apply playwright-stealth patches to a Playwright page if available."""
+    try:
+        from playwright_stealth import Stealth
+        await Stealth().apply_stealth_async(page)
+    except ImportError:
+        pass
+    except Exception as exc:
+        logger.debug("playwright-stealth apply failed: %s", exc)
 
 try:
     from curl_cffi.requests import Session as _CurlSession

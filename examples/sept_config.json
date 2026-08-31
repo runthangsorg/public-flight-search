@@ -1,0 +1,49 @@
+{
+  "report_title": "London ↔ Muscat & UAE Flight Intelligence",
+  "trips": [
+    {
+      "key": "MUSCAT_OPEN_JAW",
+      "label": "Muscat + UAE Open Jaw",
+      "outbound_origins": ["LHR", "LGW", "LTN", "STN"],
+      "outbound_destinations": ["MCT"],
+      "return_origins": ["DXB", "AUH", "SHJ"],
+      "return_destinations": ["LHR", "LGW", "LTN", "STN"],
+      "outbound_date_from": "2026-09-15",
+      "outbound_date_to": "2026-09-16",
+      "return_date_from": "2026-09-26",
+      "return_date_to": "2026-09-28",
+      "preferred_outbound_date": "2026-09-16",
+      "preferred_return_date": "2026-09-27",
+      "surface_segments": [["MCT", "DXB"]],
+      "hotel_anchors": [],
+      "passenger_party": {"base_adult_count": 2, "additional_ages": []},
+      "preferred_departure_window": ["08:00", "22:00"],
+      "hard_departure_window": true,
+      "checked_bag_count": 5,
+      "checked_bag_target_kg": 20,
+      "include_package_search": false
+    },
+    {
+      "key": "UAE_ONLY",
+      "label": "Dubai / UAE Only",
+      "outbound_origins": ["LHR", "LGW", "LTN", "STN"],
+      "outbound_destinations": ["DXB", "AUH", "SHJ"],
+      "return_origins": ["DXB", "AUH", "SHJ"],
+      "return_destinations": ["LHR", "LGW", "LTN", "STN"],
+      "outbound_date_from": "2026-09-15",
+      "outbound_date_to": "2026-09-16",
+      "return_date_from": "2026-09-26",
+      "return_date_to": "2026-09-28",
+      "preferred_outbound_date": "2026-09-16",
+      "preferred_return_date": "2026-09-27",
+      "surface_segments": [],
+      "hotel_anchors": [],
+      "passenger_party": {"base_adult_count": 2, "additional_ages": []},
+      "preferred_departure_window": ["08:00", "22:00"],
+      "hard_departure_window": true,
+      "checked_bag_count": 5,
+      "checked_bag_target_kg": 20,
+      "include_package_search": false
+    }
+  ]
+}

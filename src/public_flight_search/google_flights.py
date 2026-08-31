@@ -11,6 +11,7 @@ from typing import Any, Iterable
 from urllib.parse import quote
 
 from .config import FlightSearch
+from .stealth import apply_stealth_async
 
 _anti_bot_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 if _anti_bot_dir not in sys.path:
@@ -45,6 +46,8 @@ except ImportError:
         "access to this page has been denied",
         "automated queries are disabled",
         "http/2 429", "rate limit exceeded",
+        "challenge-platform", "cf-browser-verification",
+        "datadome", "captcha",
     ]
     _COOKIE_SELECTORS = [
         'button:has-text("Accept all")', 'button:has-text("Reject all")',
@@ -254,6 +257,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
             {"name": "CONSENT", "value": "PENDING+999", "domain": ".google.com", "path": "/"},
         ])
         page = await context.new_page()
+        await apply_stealth_async(page)
         await inject_canvas_noise(page)
         try:
             await warm_up_session(page, "https://www.google.com/travel/flights")
