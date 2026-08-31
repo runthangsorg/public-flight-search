@@ -263,25 +263,36 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
             await warm_up_session(page, "https://www.google.com/travel/flights")
             await human_delay(2.0, 4.0)
             await dismiss_cookies(page)
+            print(f"[DEBUG] Starting {len(specs)} searches, deadline in {deadline - time.monotonic():.0f}s")
             for idx, (search, day) in enumerate(specs):
                 if time.monotonic() >= deadline:
+                    print(f"[DEBUG] Deadline reached at search {idx}")
                     break
                 url = build_google_flights_url(
                     origins=search.origins, destinations=search.destinations,
                     date=day, travellers=search.travellers,
                     cabin_class=search.cabin_class,
                 )
+                print(f"[DEBUG] Search {idx+1}/{len(specs)}: {search.key} {day} -> {url[:80]}...")
                 try:
                     await page.goto(url, wait_until="networkidle", timeout=45_000)
                     await human_delay(4.0, 7.0, think=True)
-                except Exception:
+                except Exception as e:
+                    print(f"[DEBUG] networkidle failed: {e}")
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
                         await human_delay(5.0, 8.0, think=True)
-                    except Exception:
+                    except Exception as e2:
+                        print(f"[DEBUG] domcontentloaded also failed: {e2}")
                         continue
                 await dismiss_cookies(page)
+                page_text = ""
+                try:
+                    page_text = (await page.content())[:2000].lower()
+                except Exception:
+                    pass
                 if await check_waf(page):
+                    print(f"[DEBUG] WAF detected on {search.key} {day}")
                     try:
                         os.makedirs(screenshots_dir, exist_ok=True)
                         await page.screenshot(
@@ -328,8 +339,9 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                                 await search_btn.click()
                                 await human_delay(5.0, 8.0, think=True)
                                 form_filled = True
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[DEBUG] Form interaction error: {e}")
+                print(f"[DEBUG] form_filled={form_filled}")
                 cards = None
                 for selector in CARD_SELECTORS:
                     try:
@@ -341,6 +353,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     except Exception:
                         continue
                 if cards is None:
+                    print(f"[DEBUG] No cards found for {search.key} {day}")
                     try:
                         os.makedirs(screenshots_dir, exist_ok=True)
                         await page.screenshot(
@@ -373,6 +386,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     if key not in seen:
                         seen.add(key)
                         grouped[search.key].append(offer)
+                print(f"[DEBUG] Parsed {len(seen)} offers from cards for {search.key} {day}")
                 try:
                     os.makedirs(screenshots_dir, exist_ok=True)
                     await page.screenshot(
