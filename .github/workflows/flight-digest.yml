@@ -54,3 +54,10 @@ jobs:
           else
             python -m public_flight_search flight-digest
           fi
+      - name: Dump debug log
+        run: |
+          echo "=== FLIGHT DEBUG LOG ==="
+          cat /tmp/flight-debug.log 2>/dev/null || echo "(no debug log found)"
+          echo "=== SCREENSHOTS ==="
+          ls -la /tmp/flight-verify/ 2>/dev/null || echo "(no screenshots)"
+        if: always()

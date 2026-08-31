@@ -13,6 +13,16 @@ from urllib.parse import quote
 from .config import FlightSearch
 from .stealth import apply_stealth_async
 
+_DBG_FILE = os.getenv("DEBUG_LOG_PATH", "/tmp/flight-debug.log")
+def _dbg(msg: str) -> None:
+    line = f"[DEBUG {time.strftime('%H:%M:%S')}] {msg}"
+    print(line, flush=True)
+    try:
+        with open(_DBG_FILE, "a") as _f:
+            _f.write(line + "\n")
+    except Exception:
+        pass
+
 _anti_bot_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 if _anti_bot_dir not in sys.path:
     sys.path.insert(0, _anti_bot_dir)
@@ -129,7 +139,7 @@ except ImportError:
             html = (await page.content()).lower()
             for signal in _WAF_SIGNALS:
                 if signal in html:
-                    print(f"[DEBUG] WAF signal matched: '{signal}'")
+                    _dbg(f"WAF signal matched: '{signal}'")
                     return True
             return False
         except Exception:
@@ -271,22 +281,22 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
             await warm_up_session(page, "https://www.google.com/travel/flights")
             await human_delay(2.0, 4.0)
             await dismiss_cookies(page)
-            print(f"[DEBUG] Starting {len(specs)} searches, deadline in {deadline - time.monotonic():.0f}s")
+            _dbg(f"Starting {len(specs)} searches, deadline in {deadline - time.monotonic():.0f}s")
             for idx, (search, day) in enumerate(specs):
                 if time.monotonic() >= deadline:
-                    print(f"[DEBUG] Deadline reached at search {idx}")
+                    _dbg(f"Deadline reached at search {idx}")
                     break
                 url = build_google_flights_url(
                     origins=search.origins, destinations=search.destinations,
                     date=day, travellers=search.travellers,
                     cabin_class=search.cabin_class,
                 )
-                print(f"[DEBUG] Search {idx+1}/{len(specs)}: {search.key} {day} -> {url[:80]}...")
+                _dbg(f"Search {idx+1}/{len(specs)}: {search.key} {day} -> {url[:80]}...")
                 try:
                     await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
                     await human_delay(5.0, 8.0, think=True)
                 except Exception as e:
-                    print(f"[DEBUG] goto failed: {e}")
+                    _dbg(f"goto failed: {e}")
                     sys.stdout.flush()
                     continue
                 await dismiss_cookies(page)
@@ -316,7 +326,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                 except Exception:
                     pass
                 if await check_waf(page):
-                    print(f"[DEBUG] WAF detected on {search.key} {day}")
+                    _dbg(f"WAF detected on {search.key} {day}")
                     sys.stdout.flush()
                     try:
                         os.makedirs(screenshots_dir, exist_ok=True)
@@ -331,7 +341,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                 try:
                     from_field = page.locator('input[placeholder*="Where from"]').first
                     from_count = await from_field.count()
-                    print(f"[DEBUG] from_field count={from_count}")
+                    _dbg(f"from_field count={from_count}")
                     sys.stdout.flush()
                     if from_count and await from_field.is_visible():
                         await from_field.click(force=True)
@@ -358,8 +368,8 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                                 await human_delay(5.0, 8.0, think=True)
                                 form_filled = True
                 except Exception as e:
-                    print(f"[DEBUG] Form interaction error: {e}")
-                print(f"[DEBUG] form_filled={form_filled}")
+                    _dbg(f"Form interaction error: {e}")
+                _dbg(f"form_filled={form_filled}")
                 sys.stdout.flush()
                 # Dump page snippet for diagnosis
                 try:
@@ -379,7 +389,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     except Exception:
                         continue
                 if cards is None:
-                    print(f"[DEBUG] No cards found for {search.key} {day}")
+                    _dbg(f"No cards found for {search.key} {day}")
                     try:
                         os.makedirs(screenshots_dir, exist_ok=True)
                         await page.screenshot(
@@ -412,7 +422,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     if key not in seen:
                         seen.add(key)
                         grouped[search.key].append(offer)
-                print(f"[DEBUG] Parsed {len(seen)} offers from cards for {search.key} {day}")
+                _dbg(f"Parsed {len(seen)} offers from cards for {search.key} {day}")
                 try:
                     os.makedirs(screenshots_dir, exist_ok=True)
                     await page.screenshot(
