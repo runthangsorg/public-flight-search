@@ -46,8 +46,6 @@ except ImportError:
         "access to this page has been denied",
         "automated queries are disabled",
         "http/2 429", "rate limit exceeded",
-        "challenge-platform", "cf-browser-verification",
-        "datadome", "captcha",
     ]
     _COOKIE_SELECTORS = [
         'button:has-text("Accept all")', 'button:has-text("Reject all")',
@@ -123,7 +121,11 @@ except ImportError:
     async def check_waf(page):
         try:
             html = (await page.content()).lower()
-            return any(signal in html for signal in _WAF_SIGNALS)
+            for signal in _WAF_SIGNALS:
+                if signal in html:
+                    print(f"[DEBUG] WAF signal matched: '{signal}'")
+                    return True
+            return False
         except Exception:
             return False
 from .engine import FlightOffer
