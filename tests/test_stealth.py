@@ -18,7 +18,7 @@ class StealthGetTests(unittest.TestCase):
         mock_session.get.assert_called_once()
         call_kwargs = mock_session.get.call_args
         self.assertEqual(call_kwargs[0][0], "https://example.test/data")
-        self.assertEqual(call_kwargs[1].get("impersonate", call_kwargs[1].get("impersonate", "chrome124")), "chrome124")
+        self.assertEqual(call_kwargs[1].get("impersonate"), "chrome")
         self.assertEqual(result.status_code, 200)
 
     @patch("public_flight_search.stealth._session")
@@ -66,7 +66,7 @@ class StealthPostTests(unittest.TestCase):
 
         mock_session.post.assert_called_once()
         call_kwargs = mock_session.post.call_args[1]
-        self.assertEqual(call_kwargs.get("impersonate", "chrome124"), "chrome124")
+        self.assertEqual(call_kwargs.get("impersonate"), "chrome")
         self.assertEqual(result.status_code, 200)
 
     @patch("public_flight_search.stealth._session")

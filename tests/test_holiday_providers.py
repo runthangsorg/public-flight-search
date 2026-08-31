@@ -1,6 +1,7 @@
 """Tests for parametric holiday provider search URLs."""
 
 import unittest
+import json
 from urllib.parse import urlparse, parse_qs
 
 from public_flight_search.holidays import (
@@ -166,10 +167,11 @@ class SemanticDeepLinkTests(unittest.TestCase):
 
     def test_antalya_ayt_not_used_as_departure(self):
         """AYT is a destination airport, must never appear as departureAirport."""
+        origins = ("LHR", "LGW", "LTN", "STN")
         urls = build_provider_urls(
             destination_key="antalya",
             destination_label="Antalya",
-            origin_airports=("LHR", "LGW", "LTN", "STN"),
+            origin_airports=origins,
             departure_date="2026-12-20",
             return_date="2026-12-28",
             adults=2,
@@ -180,9 +182,12 @@ class SemanticDeepLinkTests(unittest.TestCase):
             dep_key = "departureAirports" if "departureAirports" in params else "departureAirport"
             self.assertIn(dep_key, params, f"{provider}: missing departureAirport param")
             dep_value = params[dep_key][0]
-            self.assertNotEqual(dep_value, "AYT", f"{provider}: AYT must NOT be departure airport")
-            self.assertIn(dep_value, ["LHR", "LGW", "LTN", "STN"],
-                          f"{provider}: departure must be UK origin, got {dep_value}")
+            # loveholidays comma-joins multiple airports; others use single
+            dep_airports = dep_value.split(",") if "," in dep_value else [dep_value]
+            self.assertNotIn("AYT", dep_airports, f"{provider}: AYT must NOT be departure airport")
+            for airport in dep_airports:
+                self.assertIn(airport, origins,
+                              f"{provider}: departure must be UK origin, got {airport}")
 
     def test_malta_mla_not_used_as_departure(self):
         """MLA is a destination airport, must never appear as departureAirport."""
