@@ -306,16 +306,6 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                     continue
                 form_filled = False
                 try:
-                    trip_btn = page.locator('button:has-text("Round trip"), button:has-text("One way")').first
-                    if await trip_btn.count():
-                        current = await trip_btn.inner_text()
-                        if "one way" not in current.lower():
-                            await trip_btn.click()
-                            await human_delay(0.3, 0.6)
-                            one_way = page.locator('[role="option"]:has-text("One way")').first
-                            if await one_way.count():
-                                await one_way.click()
-                                await human_delay(0.5, 1.0)
                     from_field = page.locator('input[placeholder*="Where from"]').first
                     if await from_field.count() and await from_field.is_visible():
                         await from_field.click()
