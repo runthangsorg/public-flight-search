@@ -294,108 +294,60 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                 _dbg(f"Search {idx+1}/{len(specs)}: {search.key} {day} -> {url[:80]}...")
                 try:
                     await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
-                    await human_delay(5.0, 8.0, think=True)
                 except Exception as e:
                     _dbg(f"goto failed: {e}")
-                    sys.stdout.flush()
                     continue
                 await dismiss_cookies(page)
-                # Triple cookie dismiss
                 for _ in range(3):
                     await dismiss_cookies(page)
-                    await human_delay(0.3, 0.5)
-                # Also try clicking through any overlay via JS
+                    await human_delay(0.2, 0.4)
                 try:
                     await page.evaluate("""() => {
-                        const overlays = document.querySelectorAll('[role="dialog"], .overlay, [aria-modal="true"]');
-                        overlays.forEach(el => el.remove());
+                        document.querySelectorAll('[role="dialog"], [aria-modal="true"], .modal-overlay, #consent-bump').forEach(el => el.remove());
                     }""")
                 except Exception:
                     pass
-                try:
-                    os.makedirs(screenshots_dir, exist_ok=True)
-                    await page.screenshot(
-                        path=os.path.join(screenshots_dir, f"page_{search.key}_{day}.png"),
-                        full_page=False,
-                    )
-                except Exception:
-                    pass
-                page_text = ""
-                try:
-                    page_text = (await page.content())[:2000].lower()
-                except Exception:
-                    pass
-                if await check_waf(page):
-                    _dbg(f"WAF detected on {search.key} {day}")
-                    sys.stdout.flush()
+                await human_delay(5.0, 8.0, think=True)
+                for _retry in range(3):
                     try:
                         os.makedirs(screenshots_dir, exist_ok=True)
                         await page.screenshot(
-                            path=os.path.join(screenshots_dir, f"waf_{search.key}_{day}.png"),
+                            path=os.path.join(screenshots_dir, f"page_{search.key}_{day}.png"),
                             full_page=False,
                         )
                     except Exception:
                         pass
-                    continue
-                form_filled = False
-                try:
-                    from_field = page.locator('input[placeholder*="Where from"]').first
-                    from_count = await from_field.count()
-                    _dbg(f"from_field count={from_count}")
-                    sys.stdout.flush()
-                    if from_count and await from_field.is_visible():
-                        await from_field.click(force=True)
-                        await human_delay(0.3, 0.8)
-                        await from_field.press_sequentially(search.origins[0], delay=80)
-                        await human_delay(1.0, 2.0)
-                        suggestion = page.locator('[role="option"]').first
-                        if await suggestion.count():
-                            await suggestion.click(force=True)
-                            await human_delay(0.5, 1.0)
-                        to_field = page.locator('input[placeholder*="Where to"]').first
-                        if await to_field.count() and await to_field.is_visible():
-                            await to_field.click(force=True)
-                            await human_delay(0.3, 0.8)
-                            await to_field.press_sequentially(search.destinations[0], delay=80)
-                            await human_delay(1.0, 2.0)
-                            suggestion2 = page.locator('[role="option"]').first
-                            if await suggestion2.count():
-                                await suggestion2.click(force=True)
-                                await human_delay(0.5, 1.0)
-                            search_btn = page.locator('button[aria-label*="Search"], button:has-text("Search")').first
-                            if await search_btn.count():
-                                await search_btn.click(force=True)
-                                await human_delay(5.0, 8.0, think=True)
-                                form_filled = True
-                except Exception as e:
-                    _dbg(f"Form interaction error: {e}")
-                _dbg(f"form_filled={form_filled}")
-                sys.stdout.flush()
-                # Dump page snippet for diagnosis
-                try:
-                    html = await page.content()
-                    with open(os.path.join(screenshots_dir, f"html_{search.key}_{day}.txt"), "w") as f:
-                        f.write(html[:10000])
-                except Exception:
-                    pass
-                cards = None
-                for selector in CARD_SELECTORS:
-                    try:
-                        await page.wait_for_selector(selector, timeout=timeout_ms)
-                        candidate = page.locator(selector)
-                        if await candidate.count():
-                            cards = candidate
-                            break
-                    except Exception:
-                        continue
+                    if await check_waf(page):
+                        _dbg(f"WAF detected on {search.key} {day}")
+                        break
+                    cards = None
+                    for selector in CARD_SELECTORS:
+                        try:
+                            candidate = page.locator(selector)
+                            cnt = await candidate.count()
+                            if cnt:
+                                _dbg(f"Found {cnt} cards with selector: {selector}")
+                                cards = candidate
+                                break
+                        except Exception:
+                            continue
+                    if cards is not None:
+                        break
+                    _dbg(f"No cards on retry {_retry+1}/3, waiting 5s...")
+                    await human_delay(5.0, 7.0)
                 if cards is None:
-                    _dbg(f"No cards found for {search.key} {day}")
+                    _dbg(f"No cards found for {search.key} {day} after retries")
                     try:
                         os.makedirs(screenshots_dir, exist_ok=True)
                         await page.screenshot(
                             path=os.path.join(screenshots_dir, f"no_cards_{search.key}_{day}.png"),
                             full_page=False,
                         )
+                    except Exception:
+                        pass
+                    try:
+                        with open(os.path.join(screenshots_dir, f"html_{search.key}_{day}.txt"), "w") as f:
+                            f.write((await page.content())[:20000])
                     except Exception:
                         pass
                     continue
@@ -405,6 +357,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                         text = await cards.nth(index).inner_text(timeout=2_000)
                     except Exception:
                         continue
+                    _dbg(f"Card {index}: {text[:120]}...")
                     offer = parse_google_flight_text(
                         text, origins=search.origins, destinations=search.destinations,
                         date=day, travellers=search.travellers, booking_url=url,
