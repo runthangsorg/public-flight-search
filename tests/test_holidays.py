@@ -23,9 +23,9 @@ class HolidayPlannerTests(unittest.TestCase):
         )
         html = render_holiday_report(config, generated_at="2030-08-01T10:00:00+00:00")
         self.assertIn("3 travellers", html)
-        self.assertIn("2 + 1", html)
-        self.assertIn("Official search entry points", html)
-        self.assertIn("No live package price was collected", html)
+        self.assertIn("2 room(s)", html)
+        self.assertIn("Package Deal Search Links", html)
+        self.assertIn("No live prices collected", html)
 
 
 if __name__ == "__main__":

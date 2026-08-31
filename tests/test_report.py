@@ -41,7 +41,7 @@ class ReportTests(unittest.TestCase):
         )
         self.assertIn("Digest &lt;private&gt;", html)
         self.assertIn("A &lt; B", html)
-        self.assertIn("Results-page evidence — recheck at checkout", html)
+        self.assertIn("⚠ Disclaimer:", html)
         self.assertNotIn("checkout verified", html.lower())
         self.assertTrue(all(url.startswith("https://") for url in re.findall(r'href="([^"]+)"', html)))
 
