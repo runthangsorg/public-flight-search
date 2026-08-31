@@ -44,6 +44,7 @@ jobs:
           REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
           FLIGHT_EMAIL_SUBJECT: ${{ secrets.FLIGHT_EMAIL_SUBJECT }}
           DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+          PYTHONUNBUFFERED: "1"
         shell: bash
         run: |
           set -euo pipefail
