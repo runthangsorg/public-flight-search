@@ -50,7 +50,13 @@ except ImportError:
     _COOKIE_SELECTORS = [
         'button:has-text("Accept all")', 'button:has-text("Reject all")',
         'button:has-text("I agree")', 'button:has-text("Got it")',
+        'button:has-text("Accept")', 'button:has-text("Reject")',
+        'button:has-text("No thanks")', 'button:has-text("Skip")',
         '[aria-label="Accept all"]', '[aria-label="Reject all"]',
+        '[aria-label="Accept the use of cookies and other data for the purposes described"]',
+        'form[action*="consent"] button',
+        '#L2AGLb',  # Google "I agree" button ID
+        'div[role="dialog"] button',  # Generic dialog dismiss
     ]
 
     def random_user_agent(**kw):
@@ -288,6 +294,10 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
                         print(f"[DEBUG] domcontentloaded also failed: {e2}")
                         continue
                 await dismiss_cookies(page)
+                # Double-dismiss: Google consent overlays can reappear
+                for _ in range(3):
+                    await dismiss_cookies(page)
+                    await human_delay(0.3, 0.5)
                 try:
                     os.makedirs(screenshots_dir, exist_ok=True)
                     await page.screenshot(
