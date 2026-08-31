@@ -63,10 +63,21 @@ jobs:
       - name: Generate holiday package links
         env:
           HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.HOLIDAY_SEARCH_CONFIG_JSON }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
+          HOLIDAY_EMAIL_SUBJECT: ${{ secrets.HOLIDAY_EMAIL_SUBJECT }}
+          DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
         shell: bash
         run: |
           if [[ -n "${HOLIDAY_SEARCH_CONFIG_JSON:-}" ]]; then
-            python -m public_flight_search holiday-planner --dry-run
+            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_DRY_RUN}" == "true" ]]; then
+              python -m public_flight_search holiday-planner --dry-run
+            else
+              python -m public_flight_search holiday-planner
+            fi
           else
             echo "No HOLIDAY_SEARCH_CONFIG_JSON secret set, skipping holiday packages"
           fi
