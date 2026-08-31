@@ -117,10 +117,24 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
             _dbg(f"Waiting {delay}s before next request...")
             time.sleep(delay)
 
-    return {
-        key: tuple(sorted(values, key=lambda item: (item.price, item.duration_minutes))[:10])
-        for key, values in grouped.items()
-    }
+    deduped: dict[str, list[FlightOffer]] = {}
+    for key, values in grouped.items():
+        seen: set[tuple] = set()
+        unique: list[FlightOffer] = []
+        for offer in values:
+            fingerprint = (
+                offer.origin, offer.destination,
+                offer.departure[11:16], offer.airline,
+                offer.stops, offer.duration_minutes,
+            )
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+            unique.append(offer)
+        unique.sort(key=lambda item: (item.price, item.duration_minutes))
+        deduped[key] = unique[:10]
+
+    return {key: tuple(vals) for key, vals in deduped.items()}
 
 
 def _fetch_page_html(url: str) -> str | None:

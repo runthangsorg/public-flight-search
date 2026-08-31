@@ -16,46 +16,43 @@ def _money(value: float) -> str:
 
 def _render_flight_card(offer: FlightOffer, idx: int) -> str:
     per_person = offer.price_per_traveller or offer.price
-    stops_badge = "🟢 Nonstop" if offer.stops == 0 else f"🔴 {offer.stops} stop(s)"
-    nonstop_class = "nonstop" if offer.stops == 0 else ""
+    stops_badge = "🟢 Nonstop" if offer.stops == 0 else f"🟡 {offer.stops} stop" if offer.stops == 1 else f"🔴 {offer.stops} stops"
+    date_str = offer.departure[:10]
+    dep_short = offer.departure[11:16]
+    arr_short = offer.arrival[11:16]
 
     return f"""
-      <article class="card {nonstop_class}" style="background: linear-gradient(135deg, #101d30 0%, #1a2a42 100%); border: 1px solid #263953; border-radius: 16px; padding: 20px; margin-bottom: 16px; transition: transform 0.2s;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <span class="source-badge" style="display: inline-block; background: linear-gradient(135deg, #1e3a5f, #2d4a6f); color: #7dd3fc; border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 700;">#{idx+1}</span>
+      <article style="background: #101d30; border: 1px solid {'#4ade80' if offer.stops == 0 else '#263953'}; border-radius: 14px; padding: 18px; margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <span style="background: #1e3a5f; color: #7dd3fc; border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 700;">{escape(date_str)}</span>
           <span style="color: {'#4ade80' if offer.stops == 0 else '#fbbf24'}; font-size: 12px; font-weight: 600;">{stops_badge}</span>
         </div>
-        <div class="route" style="font-weight: 700; font-size: 20px; color: #f8fafc; margin-bottom: 8px;">
-          <span style="color: #38bdf8;">{escape(offer.origin)}</span>
-          <span style="color: #6ee7b7; margin: 0 8px;">→</span>
-          <span style="color: #38bdf8;">{escape(offer.destination)}</span>
+        <div style="font-weight: 700; font-size: 17px; color: #f8fafc; margin-bottom: 6px;">
+          {escape(offer.origin)} → {escape(offer.destination)}
         </div>
-        <div class="price" style="font-size: 32px; color: #6ee7b7; font-weight: 800; margin: 16px 0 4px;">
+        <div style="font-size: 26px; color: #6ee7b7; font-weight: 800; margin: 8px 0 2px;">
           {_money(offer.price)}
-          <span style="font-size: 14px; color: #9eb0c7; font-weight: 400; margin-left: 8px;">total</span>
+          <span style="font-size: 12px; color: #9eb0c7; font-weight: 400; margin-left: 4px;">per person</span>
         </div>
-        <div class="muted" style="color: #9eb0c7; font-size: 14px; margin-bottom: 12px;">
-          {_money(per_person)} per traveller · {escape(offer.airline)}
+        <div style="color: #9eb0c7; font-size: 13px; margin-bottom: 8px;">
+          {escape(offer.airline)}
         </div>
-        <div style="background: #0d1520; border-radius: 10px; padding: 12px; margin: 12px 0;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <div style="background: #0d1520; border-radius: 8px; padding: 10px; margin: 8px 0;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="text-align: center; flex: 1;">
-              <div style="color: #6ee7b7; font-size: 18px; font-weight: 700;">{offer.departure[11:16]}</div>
-              <div style="color: #8ca0b9; font-size: 12px;">Depart</div>
-            </div>
-            <div style="text-align: center; flex: 1; padding-top: 4px;">
-              <div style="color: #9eb0c7; font-size: 14px;">✈️ {offer.duration_minutes // 60}h {offer.duration_minutes % 60:02d}m</div>
+              <div style="color: #6ee7b7; font-size: 15px; font-weight: 700;">{dep_short}</div>
+              <div style="color: #8ca0b9; font-size: 11px;">Depart</div>
             </div>
             <div style="text-align: center; flex: 1;">
-              <div style="color: #6ee7b7; font-size: 18px; font-weight: 700;">{offer.arrival[11:16]}</div>
-              <div style="color: #8ca0b9; font-size: 12px;">Arrive</div>
+              <div style="color: #9eb0c7; font-size: 12px;">✈ {offer.duration_minutes // 60}h {offer.duration_minutes % 60:02d}m</div>
+            </div>
+            <div style="text-align: center; flex: 1;">
+              <div style="color: #6ee7b7; font-size: 15px; font-weight: 700;">{arr_short}</div>
+              <div style="color: #8ca0b9; font-size: 11px;">Arrive</div>
             </div>
           </div>
         </div>
-        <div class="evidence" style="background: linear-gradient(135deg, #392d14, #4a3a1a); color: #fde68a; border-radius: 8px; padding: 8px; font-size: 12px; margin: 10px 0;">
-          📋 {escape(offer.review_status)}
-        </div>
-        <a class="button" href="{escape(offer.booking_url, quote=True)}" style="display: inline-block; margin-top: 8px; background: linear-gradient(135deg, #38bdf8, #0ea5e9); color: #062033; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 700; font-size: 13px; transition: background 0.2s;">
+        <a href="{escape(offer.booking_url, quote=True)}" style="display: inline-block; margin-top: 6px; background: #38bdf8; color: #062033; text-decoration: none; padding: 7px 12px; border-radius: 7px; font-weight: 700; font-size: 12px;">
           Open Google Flights ↗
         </a>
       </article>"""
