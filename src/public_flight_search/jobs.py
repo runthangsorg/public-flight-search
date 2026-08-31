@@ -21,17 +21,20 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
 
     google_links: dict[str, dict[str, str]] = {}
     for search in config.searches:
-        for day in search.dates:
-            google_links[day] = {
-                "url": build_google_flights_url(
-                    origins=search.origins,
-                    destinations=search.destinations,
-                    date=day,
-                    travellers=search.travellers,
-                    cabin_class=search.cabin_class,
-                ),
-                "label": f"Search {day}",
-            }
+        for origin in search.origins:
+            for dest in search.destinations:
+                for day in search.dates:
+                    key = f"{origin}_{dest}_{day}"
+                    google_links[key] = {
+                        "url": build_google_flights_url(
+                            origin=origin,
+                            destination=dest,
+                            date=day,
+                            travellers=search.travellers,
+                            cabin_class=search.cabin_class,
+                        ),
+                        "label": f"{origin}→{dest} {day}",
+                    }
 
     html = render_flight_report(
         config,

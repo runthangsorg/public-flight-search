@@ -22,7 +22,7 @@ jobs:
   digest:
     if: github.event_name == 'workflow_dispatch' || vars.ENABLE_FLIGHT_DIGEST == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     steps:
       - name: Check out public engine
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -45,6 +45,11 @@ jobs:
           FLIGHT_EMAIL_SUBJECT: ${{ secrets.FLIGHT_EMAIL_SUBJECT }}
           DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
           PYTHONUNBUFFERED: "1"
+          GOOGLE_FLIGHTS_MAX_SEARCHES: "60"
+          GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS: "1800"
+          GOOGLE_FLIGHTS_DELAY_SECONDS: "8"
+          DEBUG_LOG_PATH: "/tmp/flight-debug.log"
+          SCREENSHOTS_DIR: "/tmp/flight-verify"
         shell: bash
         run: |
           set -euo pipefail
@@ -60,4 +65,11 @@ jobs:
           cat /tmp/flight-debug.log 2>/dev/null || echo "(no debug log found)"
           echo "=== SCREENSHOTS ==="
           ls -la /tmp/flight-verify/ 2>/dev/null || echo "(no screenshots)"
+        if: always()
+      - name: Upload report artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flight-digest-report
+          path: /tmp/flight-verify/*.html
+          retention-days: 7
         if: always()

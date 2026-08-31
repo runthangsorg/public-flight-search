@@ -28,73 +28,94 @@ def _dbg(msg: str) -> None:
             _f.write(line + "\n")
     except Exception:
         pass
-from .engine import FlightOffer
-
 
 
 def build_google_flights_url(
-    *, origins: tuple[str, ...], destinations: tuple[str, ...], date: str,
+    *, origin: str, destination: str, date: str,
     travellers: int, cabin_class: str,
 ) -> str:
-    origin = origins[0]
-    dest = destinations[0]
-    query = f"flights from {origin} to {dest} on {date} one way"
+    """Build a Google Flights URL for a single origin-destination pair."""
+    query = f"flights from {origin} to {destination} on {date} one way"
     return "https://www.google.com/travel/flights?q=" + quote(query, safe="") + "&curr=GBP&hl=en-GB"
 
 
-async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, tuple[FlightOffer, ...]]:
-    """Search all configured date buckets using direct HTTP fetch.
+def _build_search_pairs(search: FlightSearch) -> list[tuple[str, str, str]]:
+    """Build all (origin, destination, date) triples for a search."""
+    pairs = []
+    for day in search.dates:
+        for origin in search.origins:
+            for dest in search.destinations:
+                pairs.append((origin, dest, day))
+    return pairs
 
-    Google Flights serves different content to headless browsers (Explore page
-    instead of search results). We fetch the page HTML directly via HTTP and
-    parse the server-rendered flight data from the response.
+
+async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, tuple[FlightOffer, ...]]:
+    """Search all configured airport pairs using direct HTTP fetch.
+
+    Iterates through all origin×destination×date combinations with delays
+    to avoid rate limiting. Parses server-rendered aria-label flight cards.
     """
     import urllib.request
     import urllib.error
 
-    specs = [(search, day) for search in searches for day in search.dates]
-    maximum = int(os.getenv("GOOGLE_FLIGHTS_MAX_SEARCHES", "20"))
-    specs = specs[: max(1, min(maximum, 40))]
+    specs = []
+    for search in searches:
+        for origin in search.origins:
+            for dest in search.destinations:
+                for day in search.dates:
+                    specs.append((search, origin, dest, day))
+
+    maximum = int(os.getenv("GOOGLE_FLIGHTS_MAX_SEARCHES", "50"))
+    specs = specs[: max(1, min(maximum, 60))]
     deadline = time.monotonic() + int(os.getenv("GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS", "900"))
     grouped: dict[str, list[FlightOffer]] = {item.key: [] for item in searches}
 
     _dbg(f"Starting {len(specs)} searches (HTTP mode), deadline in {deadline - time.monotonic():.0f}s")
 
-    for idx, (search, day) in enumerate(specs):
+    for idx, (search, origin, dest, day) in enumerate(specs):
         if time.monotonic() >= deadline:
             _dbg(f"Deadline reached at search {idx}")
             break
+
         url = build_google_flights_url(
-            origins=search.origins, destinations=search.destinations,
+            origin=origin, destination=dest,
             date=day, travellers=search.travellers,
             cabin_class=search.cabin_class,
         )
-        _dbg(f"Search {idx+1}/{len(specs)}: {search.key} {day} -> {url[:80]}...")
+        _dbg(f"Search {idx+1}/{len(specs)}: {origin}→{dest} {day} -> {url[:80]}...")
 
         html = _fetch_page_html(url)
         if html is None:
-            _dbg(f"Failed to fetch page for {search.key} {day}")
+            _dbg(f"Failed to fetch page for {origin}→{dest} {day}")
             continue
 
         if any(signal in html.lower() for signal in [
             "unusual traffic", "not a robot", "automated queries",
             "rate limit exceeded", "access to this page has been denied",
         ]):
-            _dbg(f"WAF detected on {search.key} {day}")
+            _dbg(f"WAF detected on {origin}→{dest} {day}")
             continue
 
         dump_dir = os.getenv("SCREENSHOTS_DIR", "/tmp/flight-verify")
         try:
             os.makedirs(dump_dir, exist_ok=True)
-            with open(os.path.join(dump_dir, f"html_{search.key}_{day}.txt"), "w") as f:
-                f.write(html[:50000])
-            _dbg(f"Saved HTML ({len(html)} bytes) for {search.key} {day}")
+            with open(os.path.join(dump_dir, f"html_{search.key}_{origin}_{dest}_{day}.txt"), "w") as f:
+                f.write(html[:80000])
+            _dbg(f"Saved HTML ({len(html)} bytes) for {origin}→{dest} {day}")
         except Exception:
             pass
 
-        offers = _parse_flight_cards(html, search=search, day=day, booking_url=url)
+        offers = _parse_flight_cards(
+            html, search=search, origin=origin, destination=dest,
+            day=day, booking_url=url,
+        )
         grouped[search.key].extend(offers)
-        _dbg(f"Parsed {len(offers)} offers for {search.key} {day}")
+        _dbg(f"Parsed {len(offers)} offers for {origin}→{dest} {day}")
+
+        if idx < len(specs) - 1:
+            delay = float(os.getenv("GOOGLE_FLIGHTS_DELAY_SECONDS", "12"))
+            _dbg(f"Waiting {delay}s before next request...")
+            time.sleep(delay)
 
     return {
         key: tuple(sorted(values, key=lambda item: (item.price, item.duration_minutes))[:10])
@@ -126,7 +147,10 @@ def _fetch_page_html(url: str) -> str | None:
         return None
 
 
-def _parse_flight_cards(html: str, *, search: FlightSearch, day: str, booking_url: str) -> list[FlightOffer]:
+def _parse_flight_cards(
+    html: str, *, search: FlightSearch, origin: str, destination: str,
+    day: str, booking_url: str,
+) -> list[FlightOffer]:
     """Parse flight cards from Google Flights HTML via aria-label attributes."""
     offers = []
 
@@ -152,9 +176,6 @@ def _parse_flight_cards(html: str, *, search: FlightSearch, day: str, booking_ur
 
         if not 20 <= price <= 100_000:
             continue
-
-        origin = next((code for code in search.origins if code in html[max(0,m.start()-2000):m.end()]), search.origins[0])
-        destination = next((code for code in search.destinations if code in html[max(0,m.start()-2000):m.end()]), search.destinations[0])
 
         departure = f"{day}T{dep_time}:00"
         arrival = f"{day}T{arr_time}:00"
