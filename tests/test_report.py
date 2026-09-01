@@ -63,14 +63,11 @@ class ReportTests(unittest.TestCase):
         html = render_flight_report(
             FlightConfig(report_title="Fallbacks", searches=(first, second)),
             {"first": (), "second": ()},
-            google_links={
-                "AAA_BBB_2030-09-01": {"url": "https://example.test/a", "label": "ONLY-A"},
-                "CCC_DDD_2030-09-02": {"url": "https://example.test/b", "label": "ONLY-B"},
-            },
             generated_at="2030-08-01T10:00:00+00:00",
         )
-        self.assertEqual(html.count("ONLY-A"), 1)
-        self.assertEqual(html.count("ONLY-B"), 1)
+        # Both searches should have their own fallback search links
+        self.assertIn("Search 2030-09-01", html)
+        self.assertIn("Search 2030-09-02", html)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 import json
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence, List
 
 
 _AIRPORT = re.compile(r"^[A-Z]{3}$")
@@ -111,6 +111,14 @@ def _parse_search(raw: Mapping[str, Any]) -> FlightSearch:
         max_duration_minutes=duration,
         max_price_per_traveller_gbp=maximum,
     )
+
+
+def build_search_plan(trips: Sequence) -> List[FlightSearch]:
+    """Build search requests from trip definitions."""
+    plan = []
+    for trip in trips:
+        plan.extend(trip.build_search_plan())
+    return plan
 
 
 def load_flight_config(payload: str) -> FlightConfig:
