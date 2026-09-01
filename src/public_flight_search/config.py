@@ -11,6 +11,7 @@ from typing import Any, Mapping, Sequence, List
 
 _AIRPORT = re.compile(r"^[A-Z]{3}$")
 _CLOCK = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+_AI_TITLE_RE = re.compile(r"\b(ai|engineering|brief|news)\b", re.IGNORECASE)
 
 
 class ConfigError(ValueError):
@@ -22,6 +23,15 @@ def _text(value: Any, name: str, limit: int = 120) -> str:
     if not result or len(result) > limit:
         raise ConfigError(f"{name} must contain 1-{limit} printable characters")
     return result
+
+
+def _validate_report_title(title: str) -> str:
+    """Reject report titles containing AI-engineering or news content markers."""
+    if _AI_TITLE_RE.search(title):
+        raise ConfigError(
+            "report_title must not contain AI-engineering or news content markers"
+        )
+    return title
 
 
 def _airports(value: Any, name: str) -> tuple[str, ...]:
@@ -144,6 +154,8 @@ def load_flight_config(payload: str) -> FlightConfig:
     if len(keys) != len(set(keys)):
         raise ConfigError("search keys must be unique")
     return FlightConfig(
-        report_title=_text(raw.get("report_title", "Flight deal digest"), "report_title"),
+        report_title=_validate_report_title(
+            _text(raw.get("report_title", "Flight deal digest"), "report_title")
+        ),
         searches=searches,
     )

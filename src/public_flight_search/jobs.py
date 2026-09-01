@@ -19,7 +19,6 @@ from .trip_config import (
     TripBucket,
 )
 from .pairing import pair_outbound_return, combine_legs
-from .report import render_flight_report
 from .pareto import rank_bucket_sections
 
 
@@ -99,21 +98,20 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
             sections = rank_bucket_sections(trip_offers)
             final_offers[bucket] = sections["overall"]
 
-    # Build Google Flights links for fallback
-    config = load_flight_config(os.environ.get("FLIGHT_SEARCH_CONFIG_JSON", ""))
+    # Build Google Flights links from the actual search plan
     google_links: dict[str, dict[str, str]] = {}
-    for search in config.searches:
-        for origin in search.origins:
-            for dest in search.destinations:
-                for day in search.dates:
+    for request in search_plan:
+        for origin in request.origins:
+            for dest in request.destinations:
+                for day in request.dates:
                     key = f"{origin}_{dest}_{day}"
                     google_links[key] = {
                         "url": build_google_flights_url(
                             origin=origin,
                             destination=dest,
                             date=day,
-                            travellers=search.travellers,
-                            cabin_class=search.cabin_class,
+                            travellers=request.travellers,
+                            cabin_class=request.cabin_class,
                         ),
                         "label": f"{origin}→{dest} {day}",
                     }

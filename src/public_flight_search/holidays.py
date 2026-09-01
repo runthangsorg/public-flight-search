@@ -8,7 +8,7 @@ from html import escape
 import json
 from urllib.parse import urlencode
 
-from .config import ConfigError, _airports, _dates, _text, _window
+from .config import ConfigError, _airports, _dates, _text, _validate_report_title, _window
 
 
 @dataclass(frozen=True)
@@ -284,7 +284,9 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     if len(valid_pairs) > 24:
         raise ConfigError("holiday configuration exceeds 24 valid date combinations")
     return HolidayConfig(
-        report_title=_text(raw.get("report_title", "Holiday package watch"), "report_title"),
+        report_title=_validate_report_title(
+            _text(raw.get("report_title", "Holiday package watch"), "report_title")
+        ),
         travellers=travellers,
         rooms=rooms,
         departure_window=_window(raw.get("departure_window")),

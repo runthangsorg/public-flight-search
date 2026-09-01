@@ -3,6 +3,7 @@ from pathlib import Path
 import unittest
 
 from public_flight_search.holidays import load_holiday_config, render_holiday_report
+from public_flight_search.config import ConfigError
 
 
 class HolidayPlannerTests(unittest.TestCase):
@@ -66,6 +67,48 @@ class HolidayPlannerTests(unittest.TestCase):
         self.assertEqual(config.rooms, (2, 2, 1))
         self.assertEqual(config.departure_window, ("08:00", "18:00"))
         self.assertEqual({item.key for item in config.destinations}, {"antalya", "malta", "cairo"})
+
+    def test_rejects_ai_content_in_holiday_report_title(self):
+        for title in [
+            "AI Engineering Brief",
+            "ai news digest",
+            "The Engineering Brief",
+            "News Roundup",
+        ]:
+            with self.assertRaises(ConfigError):
+                load_holiday_config(
+                    json.dumps(
+                        {
+                            "report_title": title,
+                            "party": {"travellers": 2, "rooms": [2]},
+                            "departure_window": ["08:00", "18:00"],
+                            "origins": ["AAA"],
+                            "outbound_dates": ["2030-12-18"],
+                            "return_dates": ["2030-12-28"],
+                            "destinations": [
+                                {"key": "test", "label": "Test", "airports": ["BBB"]}
+                            ],
+                        }
+                    )
+                )
+
+    def test_accepts_valid_holiday_report_title(self):
+        config = load_holiday_config(
+            json.dumps(
+                {
+                    "report_title": "Holiday package watch",
+                    "party": {"travellers": 2, "rooms": [2]},
+                    "departure_window": ["08:00", "18:00"],
+                    "origins": ["AAA"],
+                    "outbound_dates": ["2030-12-18"],
+                    "return_dates": ["2030-12-28"],
+                    "destinations": [
+                        {"key": "test", "label": "Test", "airports": ["BBB"]}
+                    ],
+                }
+            )
+        )
+        self.assertEqual(config.report_title, "Holiday package watch")
 
 
 if __name__ == "__main__":

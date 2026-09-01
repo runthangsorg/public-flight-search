@@ -55,6 +55,51 @@ class FlightConfigTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             load_flight_config(json.dumps(bad))
 
+    def test_rejects_ai_content_in_report_title(self):
+        for title in [
+            "AI Engineering Brief",
+            "ai news digest",
+            "The Engineering Brief",
+            "News Roundup",
+            "AI Weekly",
+        ]:
+            with self.assertRaises(ConfigError):
+                load_flight_config(
+                    json.dumps(
+                        {
+                            "report_title": title,
+                            "searches": [
+                                {
+                                    "key": "ok",
+                                    "label": "OK",
+                                    "origins": ["AAA"],
+                                    "destinations": ["BBB"],
+                                    "dates": ["2030-09-01"],
+                                }
+                            ],
+                        }
+                    )
+                )
+
+    def test_accepts_valid_flight_report_title(self):
+        config = load_flight_config(
+            json.dumps(
+                {
+                    "report_title": "Flight deal digest",
+                    "searches": [
+                        {
+                            "key": "ok",
+                            "label": "OK",
+                            "origins": ["AAA"],
+                            "destinations": ["BBB"],
+                            "dates": ["2030-09-01"],
+                        }
+                    ],
+                }
+            )
+        )
+        self.assertEqual(config.report_title, "Flight deal digest")
+
 
 if __name__ == "__main__":
     unittest.main()
