@@ -16,7 +16,6 @@ def _money(value: float) -> str:
 
 def _render_flight_card(offer: FlightOffer) -> str:
     """Render a single flight offer as an email-safe table row."""
-    per_person = offer.price_per_traveller or offer.price
     stops_text = "Nonstop" if offer.stops == 0 else f"{offer.stops} stop" if offer.stops == 1 else f"{offer.stops} stops"
     stops_color = "#16a34a" if offer.stops == 0 else "#f59e0b"
     date_str = offer.departure[:10]
@@ -71,7 +70,15 @@ def render_flight_report(
         if not search_offers:
             links_html = ""
             if google_links:
-                for info in google_links.values():
+                expected_keys = {
+                    f"{origin}_{destination}_{day}"
+                    for origin in search.origins
+                    for destination in search.destinations
+                    for day in search.dates
+                }
+                for key, info in google_links.items():
+                    if key not in expected_keys:
+                        continue
                     links_html += (
                         f'<a href="{escape(info["url"], quote=True)}" style="background:#38bdf8; color:#062033; text-decoration:none; padding:6px 10px; border-radius:4px; font-weight:700; font-size:12px; margin:2px; display:inline-block;">{escape(info["label"])}</a> '
                     )
@@ -102,7 +109,7 @@ def render_flight_report(
         summary_html = (
             f'<tr style="background:#0d1520;">'
             f'<td colspan="7" style="padding:12px 10px; color:#9eb0c7; font-size:12px;">'
-            f'<strong style="color:#f8fafc;">{len(search_offers)} offers</strong> · Cheapest: <strong style="color:#6ee7b7;">{_money(min(prices))}</strong> · Nonstop: <strong style="color:#6ee7b7;">{nonstop}</strong> · Airlines: <strong style="color:#6ee7b7;">{len(airlines)}</strong>'
+            f'<strong style="color:#f8fafc;">{len(search_offers)} offers</strong> · Lowest displayed fare: <strong style="color:#6ee7b7;">{_money(min(prices))}</strong> · Nonstop: <strong style="color:#6ee7b7;">{nonstop}</strong> · Airlines: <strong style="color:#6ee7b7;">{len(airlines)}</strong>'
             f'</td></tr>'
         )
         
@@ -111,7 +118,7 @@ def render_flight_report(
             '<th style="padding:8px 10px; text-align:left; color:#8ca0b9; font-size:11px; font-weight:600; border-bottom:1px solid #263953;">Date</th>'
             '<th style="padding:8px 10px; text-align:left; color:#8ca0b9; font-size:11px; font-weight:600; border-bottom:1px solid #263953;">Stops</th>'
             '<th style="padding:8px 10px; text-align:left; color:#8ca0b9; font-size:11px; font-weight:600; border-bottom:1px solid #263953;">Route</th>'
-            '<th style="padding:8px 10px; text-align:left; color:#8ca0b9; font-size:11px; font-weight:600; border-bottom:1px solid #263953;">Price</th>'
+            '<th style="padding:8px 10px; text-align:left; color:#8ca0b9; font-size:11px; font-weight:600; border-bottom:1px solid #263953;">Displayed fare</th>'
             '<th style="padding:8px 10px; text-align:left; color:#8ca0b9; font-size:11px; font-weight:600; border-bottom:1px solid #263953;">Airline</th>'
             '<th style="padding:8px 10px; text-align:left; color:#8ca0b9; font-size:11px; font-weight:600; border-bottom:1px solid #263953;">Depart → Arrive · Duration</th>'
             '<th style="padding:8px 10px; text-align:left; color:#8ca0b9; font-size:11px; font-weight:600; border-bottom:1px solid #263953;">Action</th>'

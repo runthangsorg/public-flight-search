@@ -1,10 +1,10 @@
 {
   "report_title": "December Holiday Packages: Turkey, Malta, Egypt",
   "party": {
-    "travellers": 2,
-    "rooms": [2]
+    "travellers": 5,
+    "rooms": [2, 2, 1]
   },
-  "departure_window": ["06:00", "21:00"],
+  "departure_window": ["08:00", "18:00"],
   "origins": ["LHR", "LGW", "LTN", "STN"],
   "outbound_dates": ["2026-12-20", "2026-12-22", "2026-12-24"],
   "return_dates": ["2026-12-28", "2026-12-30", "2026-12-31"],

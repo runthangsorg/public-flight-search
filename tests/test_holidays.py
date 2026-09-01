@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import unittest
 
 from public_flight_search.holidays import load_holiday_config, render_holiday_report
@@ -23,9 +24,18 @@ class HolidayPlannerTests(unittest.TestCase):
         )
         html = render_holiday_report(config, generated_at="2030-08-01T10:00:00+00:00")
         self.assertIn("3 travellers", html)
-        self.assertIn("2 room(s)", html)
+        self.assertIn(">2</strong> room(s)", html)
+        self.assertIn("Room occupancy:", html)
+        self.assertIn("2 + 1", html)
+        self.assertIn("08:00–18:00", html)
         self.assertIn("Package Deal Search Links", html)
         self.assertIn("No live prices collected", html)
+        self.assertIn("2030-12-18", html)
+        self.assertIn("2030-12-20", html)
+        self.assertIn("2031-01-01", html)
+        self.assertIn("2031-01-03", html)
+        # New format: Top Picks (3 of 4 valid pairs × 6 providers) + Full Matrix (4 valid pairs × 6 providers) = 42
+        self.assertEqual(html.count('href="'), 42)
 
     def test_origin_airports_shown_not_destination_airports(self):
         config = load_holiday_config(
@@ -46,6 +56,16 @@ class HolidayPlannerTests(unittest.TestCase):
         html = render_holiday_report(config, generated_at="2026-08-31T10:00:00+00:00")
         self.assertIn("From: LHR, LGW", html)
         self.assertNotIn("Airports: AYT", html)
+
+    def test_public_december_example_matches_family_requirements(self):
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(config.travellers, 5)
+        self.assertEqual(config.rooms, (2, 2, 1))
+        self.assertEqual(config.departure_window, ("08:00", "18:00"))
+        self.assertEqual({item.key for item in config.destinations}, {"antalya", "malta", "cairo"})
 
 
 if __name__ == "__main__":

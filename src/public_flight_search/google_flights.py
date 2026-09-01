@@ -7,27 +7,58 @@ server-rendered flight cards.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os
 import re
 import time
 import urllib.request
-import urllib.error
 from typing import Iterable
 from urllib.parse import quote
 
 from .config import FlightSearch
 from .engine import FlightOffer
 
-_DBG_FILE = os.getenv("DEBUG_LOG_PATH", "/tmp/flight-debug.log")
 def _dbg(msg: str) -> None:
+    if os.getenv("FLIGHT_DEBUG", "").lower() not in {"1", "true", "yes"}:
+        return
     line = f"[DEBUG {time.strftime('%H:%M:%S')}] {msg}"
     print(line, flush=True)
-    try:
-        with open(_DBG_FILE, "a") as _f:
-            _f.write(line + "\n")
-    except Exception:
-        pass
+    path = os.getenv("DEBUG_LOG_PATH", "")
+    if path:
+        try:
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        except OSError:
+            return
+
+
+def _is_waf_response(html: str) -> bool:
+    """Recognise explicit challenge pages without matching dormant CAPTCHA JS."""
+    lowered = html.lower()
+    return any(
+        signal in lowered
+        for signal in (
+            "unusual traffic",
+            "our systems have detected",
+            "automated queries",
+            "rate limit exceeded",
+            "access to this page has been denied",
+        )
+    )
+
+
+def _capture_html_if_enabled(
+    html: str, *, search_key: str, origin: str, destination: str, day: str
+) -> None:
+    """Capture bounded diagnostics only after an explicit local opt-in."""
+    if os.getenv("FLIGHT_CAPTURE_HTML", "").lower() not in {"1", "true", "yes"}:
+        return
+    directory = os.getenv("SCREENSHOTS_DIR", "/tmp/flight-verify")
+    safe_key = re.sub(r"[^A-Za-z0-9_.-]", "_", search_key)[:48]
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, f"html_{safe_key}_{origin}_{destination}_{day}.txt")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(html[:80_000])
 
 
 def build_google_flights_url(
@@ -35,7 +66,11 @@ def build_google_flights_url(
     travellers: int, cabin_class: str,
 ) -> str:
     """Build a Google Flights URL for a single origin-destination pair."""
-    query = f"flights from {origin} to {destination} on {date} one way"
+    cabin = cabin_class.lower().replace("_", " ")
+    query = (
+        f"flights from {origin} to {destination} on {date} one way "
+        f"for {travellers} travellers in {cabin}"
+    )
     return "https://www.google.com/travel/flights?q=" + quote(query, safe="") + "&curr=GBP&hl=en-GB"
 
 
@@ -55,9 +90,7 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
     Iterates through all origin×destination×date combinations with delays
     to avoid rate limiting. Parses server-rendered aria-label flight cards.
     """
-    import urllib.request
-    import urllib.error
-
+    searches = tuple(searches)
     specs = []
     for search in searches:
         for origin in search.origins:
@@ -89,21 +122,20 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
             _dbg(f"Failed to fetch page for {origin}→{dest} {day}")
             continue
 
-        if any(signal in html.lower() for signal in [
-            "unusual traffic", "not a robot", "automated queries",
-            "rate limit exceeded", "access to this page has been denied",
-        ]):
+        if _is_waf_response(html):
             _dbg(f"WAF detected on {origin}→{dest} {day}")
             continue
 
-        dump_dir = os.getenv("SCREENSHOTS_DIR", "/tmp/flight-verify")
         try:
-            os.makedirs(dump_dir, exist_ok=True)
-            with open(os.path.join(dump_dir, f"html_{search.key}_{origin}_{dest}_{day}.txt"), "w") as f:
-                f.write(html[:80000])
-            _dbg(f"Saved HTML ({len(html)} bytes) for {origin}→{dest} {day}")
-        except Exception:
-            pass
+            _capture_html_if_enabled(
+                html,
+                search_key=search.key,
+                origin=origin,
+                destination=dest,
+                day=day,
+            )
+        except OSError as exc:
+            _dbg(f"Local HTML capture failed: {exc}")
 
         offers = _parse_flight_cards(
             html, search=search, origin=origin, destination=dest,
@@ -124,14 +156,18 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
         for offer in values:
             fingerprint = (
                 offer.origin, offer.destination,
-                offer.departure[11:16], offer.airline,
+                offer.departure, offer.airline,
                 offer.stops, offer.duration_minutes,
             )
             if fingerprint in seen:
                 continue
             seen.add(fingerprint)
             unique.append(offer)
-        unique.sort(key=lambda item: (item.price, item.duration_minutes))
+        unique.sort(
+            key=lambda item: (
+                item.departure[:10], item.price, item.duration_minutes
+            )
+        )
         deduped[key] = unique[:10]
 
     return {key: tuple(vals) for key, vals in deduped.items()}
@@ -169,16 +205,16 @@ def _parse_flight_cards(
     offers = []
 
     aria_pattern = re.compile(
-        r'aria-label="From (\d+) British pounds\.\s*'
-        r'(Non-stop|(\d+) stop) flight with ([^."]+)\.\s*'
+        r'aria-label="From ([\d,]+) British pounds\.\s*'
+        r'(Non-stop|(\d+) stops?) flight with ([^."]+)\.\s*'
         r'Leaves [^"]+?at (\d{1,2}:\d{2})[^"]+?'
         r'arrives at [^"]+?at (\d{1,2}:\d{2})[^"]+?'
-        r'Total duration (\d+) hrs? (\d+)? mins?',
+        r'Total duration (\d+) hrs?(?:\s+(\d+) mins?)?',
         re.I,
     )
 
     for m in aria_pattern.finditer(html):
-        price = float(m.group(1))
+        price = float(m.group(1).replace(",", ""))
         stops_str = m.group(2)
         stops = 0 if "Non-stop" in stops_str else int(m.group(3) or 0)
         airline = m.group(4).strip()
@@ -191,16 +227,22 @@ def _parse_flight_cards(
         if not 20 <= price <= 100_000:
             continue
 
-        departure = f"{day}T{dep_time}:00"
-        arrival = f"{day}T{arr_time}:00"
+        departure_dt = datetime.fromisoformat(f"{day}T{dep_time}:00")
+        arrival_dt = datetime.fromisoformat(f"{day}T{arr_time}:00")
+        if arrival_dt <= departure_dt:
+            arrival_dt += timedelta(days=1)
+        departure = departure_dt.isoformat()
+        arrival = arrival_dt.isoformat()
 
         offer = FlightOffer(
             origin=origin,
             destination=destination,
             departure=departure,
             arrival=arrival,
-            price=price * search.travellers,
-            price_per_traveller=price,
+            # Google can vary the displayed-fare basis. Preserve the observed
+            # amount instead of inventing a multiplied whole-party total.
+            price=price,
+            price_per_traveller=price if search.travellers == 1 else None,
             currency="GBP",
             stops=stops,
             duration_minutes=duration,
@@ -216,7 +258,11 @@ def _parse_flight_cards(
             continue
         if offer.stops > search.max_stops or offer.duration_minutes > search.max_duration_minutes:
             continue
-        if search.max_price_per_traveller_gbp is not None and price > search.max_price_per_traveller_gbp:
+        if (
+            search.travellers == 1
+            and search.max_price_per_traveller_gbp is not None
+            and price > search.max_price_per_traveller_gbp
+        ):
             continue
 
         offers.append(offer)

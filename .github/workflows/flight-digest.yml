@@ -30,14 +30,15 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
-      - name: Install bounded browser runtime
-        run: |
-          python -m pip install --disable-pip-version-check -e '.[browser]'
-          python -m playwright install --with-deps chromium
+      - name: Install bounded engine
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Run safety tests before using secrets
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -v
       - name: Search flights and optionally deliver
         env:
           FLIGHT_SEARCH_CONFIG_JSON: ${{ secrets.FLIGHT_SEARCH_CONFIG_JSON }}
-          HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.HOLIDAY_SEARCH_CONFIG_JSON }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -49,8 +50,6 @@ jobs:
           GOOGLE_FLIGHTS_MAX_SEARCHES: "60"
           GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS: "1800"
           GOOGLE_FLIGHTS_DELAY_SECONDS: "8"
-          DEBUG_LOG_PATH: "/tmp/flight-debug.log"
-          SCREENSHOTS_DIR: "/tmp/flight-verify"
         shell: bash
         run: |
           set -euo pipefail
@@ -60,40 +59,3 @@ jobs:
           else
             python -m public_flight_search flight-digest
           fi
-      - name: Generate holiday package links
-        env:
-          HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.HOLIDAY_SEARCH_CONFIG_JSON }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
-          HOLIDAY_EMAIL_SUBJECT: ${{ secrets.HOLIDAY_EMAIL_SUBJECT }}
-          DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
-        shell: bash
-        run: |
-          if [[ -n "${HOLIDAY_SEARCH_CONFIG_JSON:-}" ]]; then
-            if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_DRY_RUN}" == "true" ]]; then
-              python -m public_flight_search holiday-planner --dry-run
-            else
-              python -m public_flight_search holiday-planner
-            fi
-          else
-            echo "No HOLIDAY_SEARCH_CONFIG_JSON secret set, skipping holiday packages"
-          fi
-      - name: Dump debug log
-        run: |
-          echo "=== FLIGHT DEBUG LOG ==="
-          cat /tmp/flight-debug.log 2>/dev/null || echo "(no debug log found)"
-          echo "=== SCREENSHOTS ==="
-          ls -la /tmp/flight-verify/ 2>/dev/null || echo "(no screenshots)"
-        if: always()
-      - name: Upload report artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: flight-digest-report
-          path: |
-            /tmp/flight-verify/*.txt
-            /tmp/flight-debug.log
-          retention-days: 7
-        if: always()

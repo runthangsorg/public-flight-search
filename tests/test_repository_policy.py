@@ -16,6 +16,11 @@ class RepositoryPolicyTests(unittest.TestCase):
         self.assertIn("concurrency:", workflows)
         self.assertIn("actions/checkout@11d5960a326750d5838078e36cf38b85af677262", workflows)
         self.assertIn("actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065", workflows)
+        self.assertNotIn("upload-artifact", workflows)
+        self.assertNotIn("Dump debug log", workflows)
+        self.assertNotIn("cat /tmp/flight-debug.log", workflows)
+        self.assertNotIn("playwright install", workflows)
+        self.assertNotIn(".[browser]", workflows)
         self.assertNotIn("contents: write", workflows)
         self.assertNotIn("pull_request_target", workflows)
 
@@ -26,6 +31,17 @@ class RepositoryPolicyTests(unittest.TestCase):
             self.assertNotIn("pull_request:", production)
             self.assertNotIn("push:", production)
             self.assertIn("default: true", production)
+
+        flight = (ROOT / ".github/workflows/flight-digest.yml").read_text(encoding="utf-8")
+        holiday = (ROOT / ".github/workflows/holiday-planner.yml").read_text(encoding="utf-8")
+        self.assertNotIn("HOLIDAY_SEARCH_CONFIG_JSON", flight)
+        self.assertLess(flight.index("Run safety tests"), flight.index("FLIGHT_SEARCH_CONFIG_JSON"))
+        self.assertLess(holiday.index("Run safety tests"), holiday.index("HOLIDAY_SEARCH_CONFIG_JSON"))
+
+    def test_readme_does_not_claim_browser_runtime_or_history_provenance(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("browser-backed", readme)
+        self.assertNotIn("Fresh public history", readme)
 
     def test_public_tree_contains_no_personalized_defaults(self):
         production = [ROOT / "README.md"]

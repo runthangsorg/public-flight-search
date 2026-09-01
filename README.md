@@ -20,9 +20,11 @@ manual run is enabled.
 ## Evidence semantics
 
 Google Flights cards are labelled `results_page_only`. They are useful fare
-observations, not checkout verification. Every report states that price,
-availability, baggage, connection protection and the whole-party total must be
-rechecked before purchase. If provider markup, consent or bot controls prevent
+observations, not checkout verification. The displayed-fare basis can vary, so
+the engine preserves the observed amount and never invents a multiplied
+whole-party total. Every report states that price, availability, baggage,
+connection protection and the final total must be rechecked before purchase.
+If provider markup, consent or bot controls prevent
 parsing, the report shows official search-entry links and never invents a
 price.
 
@@ -41,11 +43,10 @@ PYTHONPATH=src python -m public_flight_search \
   --source examples/offers.json --max-results 2
 ```
 
-For a browser-backed dry run:
+For a runtime-configured local dry run:
 
 ```bash
-python -m pip install -e '.[browser]'
-python -m playwright install chromium
+python -m pip install -e .
 FLIGHT_SEARCH_CONFIG_JSON='{...}' \
   python -m public_flight_search flight-digest --dry-run
 ```
@@ -82,12 +83,11 @@ email has been inspected.
 
 ## Security model
 
-- Fresh public history; no source history copied from a private repository.
 - Read-only workflow permissions and SHA-pinned third-party actions.
 - Secrets are scoped only to delivery steps. Production workflows have no pull
   request trigger, and fork pull requests run only the secret-free CI workflow.
-- No self-modifying commits, caches, uploaded artifacts or browser profiles.
-- Bounded search count, browser deadline, workflow timeout and concurrency.
+- No self-modifying commits, caches, uploaded artifacts or captured provider HTML.
+- Bounded search count, network deadline, workflow timeout and concurrency.
 - Synthetic policy tests reject hard-coded email addresses and postcode-like
   identifiers in production files.
 
