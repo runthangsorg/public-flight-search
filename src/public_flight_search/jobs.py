@@ -27,36 +27,45 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     """Run September UAE flight digest with multi-city pairing."""
     config = load_flight_config(os.environ.get("FLIGHT_SEARCH_CONFIG_JSON", ""))
 
-    # Get raw one-way offers from Google Flights
-    raw_offers = asyncio.run(search_google_flights(config.searches))
-
     # Build search plan from trip definitions
     search_plan = build_search_plan(DEFAULT_TRIP_DEFINITIONS)
+
+    # Search the same provider-neutral plan that is later paired and grouped.
+    # The runtime config remains the report/fallback boundary; FlightSearch is
+    # deliberately not given a synthetic ``bucket`` attribute.
+    raw_offers = asyncio.run(search_google_flights(search_plan))
+
+    request_metadata = {}
+    for trip in DEFAULT_TRIP_DEFINITIONS:
+        for request in trip.build_search_plan():
+            request_metadata[request.key] = (trip.bucket, request.key)
 
     # Organize raw offers by trip bucket, direction, cabin
     offers_by_bucket = {}
     for request in search_plan:
-        bucket = request.bucket
-        direction = request.direction
+        bucket, _ = request_metadata[request.key]
+        direction = "OUTBOUND" if "_OUTBOUND_" in request.key else "RETURN"
         cabin = request.cabin_class
         offers_by_bucket.setdefault(bucket, {}).setdefault(direction, {})[cabin] = []
 
     # Map raw offers to the search plan
     for request in search_plan:
-        bucket = request.bucket
-        direction = request.direction
+        bucket, _ = request_metadata[request.key]
+        direction = "OUTBOUND" if "_OUTBOUND_" in request.key else "RETURN"
         cabin = request.cabin_class
 
-        # Filter raw offers for this bucket/direction/cabin
+        # Search results are already grouped by this request key.  The HTTP
+        # adapter returns FlightOffer dataclasses, while pairing consumes
+        # mappings; normalize at this boundary and derive direction from the
+        # request rather than requiring a non-existent offer field.
         for offer in raw_offers.get(request.key, ()):
-            # Check if offer matches this direction
-            if direction == "OUTBOUND" and offer.get("direction") != "OUTBOUND":
-                continue
-            if direction == "RETURN" and offer.get("direction") != "RETURN":
-                continue
+            normalized = (
+                offer.to_public_dict()
+                if hasattr(offer, "to_public_dict")
+                else dict(offer)
+            )
 
             # Normalize offer for pairing
-            normalized = dict(offer)
             normalized["bucket"] = bucket
             normalized["direction"] = direction
             normalized["cabin_class"] = cabin
@@ -113,7 +122,6 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     html = render_flight_report(
         config,
         final_offers,
-        google_links=google_links,
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         trip_definitions=DEFAULT_TRIP_DEFINITIONS,
     )
