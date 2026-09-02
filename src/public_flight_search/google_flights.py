@@ -7,13 +7,16 @@ server-rendered flight cards.
 
 from __future__ import annotations
 
+from base64 import b64encode
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
+import json
 import os
 import re
 import time
 import urllib.request
-from typing import Iterable
-from urllib.parse import quote
+from typing import Any, Iterable
+from urllib.parse import urlencode
 
 from .config import FlightSearch
 from .engine import FlightOffer
@@ -65,13 +68,24 @@ def build_google_flights_url(
     *, origin: str, destination: str, date: str,
     travellers: int, cabin_class: str,
 ) -> str:
-    """Build a Google Flights URL for a single origin-destination pair."""
-    cabin = cabin_class.lower().replace("_", " ")
-    query = (
-        f"flights from {origin} to {destination} on {date} one way "
-        f"for {travellers} travellers in {cabin}"
-    )
-    return "https://www.google.com/travel/flights?q=" + quote(query, safe="") + "&curr=GBP&hl=en-GB"
+    """Build Google's current structured one-way search URL."""
+    seats = {"ECONOMY": 1, "PREMIUM_ECONOMY": 2, "BUSINESS": 3, "FIRST": 4}
+    seat = seats.get(cabin_class.upper())
+    if seat is None or not 1 <= travellers <= 9:
+        raise ValueError("unsupported travellers or cabin class")
+    def varint(value: int) -> bytes:
+        out = bytearray()
+        while value > 0x7F:
+            out.append((value & 0x7F) | 0x80)
+            value >>= 7
+        out.append(value)
+        return bytes(out)
+    def field(number: int, value: str | bytes) -> bytes:
+        raw = value.encode() if isinstance(value, str) else value
+        return varint((number << 3) | 2) + varint(len(raw)) + raw
+    leg = field(2, date) + field(13, field(2, origin.upper())) + field(14, field(2, destination.upper()))
+    info = field(3, leg) + field(8, bytes([1]) * travellers) + varint((9 << 3) | 0) + varint(seat) + varint((19 << 3) | 0) + varint(2)
+    return "https://www.google.com/travel/flights/search?" + urlencode({"tfs": b64encode(info).decode(), "curr": "GBP", "hl": "en-GB"})
 
 
 def _build_search_pairs(search: FlightSearch) -> list[tuple[str, str, str]]:
@@ -193,15 +207,81 @@ def _fetch_page_html(url: str) -> str | None:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read().decode("utf-8", errors="replace")
     except Exception as e:
-        _dbg(f"HTTP fetch error: {e}")
+        _dbg(f"HTTP fetch error: {type(e).__name__}")
         return None
+
+
+class _StructuredScriptParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.capture = False
+        self.parts: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.casefold() == "script":
+            self.capture = "ds:1" in (dict(attrs).get("class") or "").split()
+
+    def handle_endtag(self, tag):
+        if tag.casefold() == "script":
+            self.capture = False
+
+    def handle_data(self, data):
+        if self.capture:
+            self.parts.append(data)
+
+
+def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: str) -> list[FlightOffer]:
+    parser = _StructuredScriptParser()
+    parser.feed(html[:8_000_000])
+    script = "".join(parser.parts)
+    if "data:" not in script or "errorHasStatus: true" in script:
+        return []
+    try:
+        payload, _ = json.JSONDecoder().raw_decode(script.split("data:", 1)[1].lstrip())
+        rows = payload[3][0]
+    except (json.JSONDecodeError, IndexError, TypeError):
+        return []
+    offers = []
+    for row in rows[:50] if isinstance(rows, list) else []:
+        try:
+            flight = row[0]
+            price = float(row[1][0][1])
+            segments = flight[2]
+            departure = datetime(int(flight[4][0]), int(flight[4][1]), int(flight[4][2]), int(flight[5][0]), int(flight[5][1])).isoformat()
+            arrival = datetime(int(flight[7][0]), int(flight[7][1]), int(flight[7][2]), int(flight[8][0]), int(flight[8][1])).isoformat()
+            duration = int(flight[9])
+            if not 20 <= price <= 1_000_000 or duration <= 0 or not segments:
+                continue
+            airline = ", ".join(str(value) for value in (flight[1] if isinstance(flight[1], list) else []) if value)[:80] or "Unknown airline"
+            offer = FlightOffer(
+                origin=str(flight[3]).upper(), destination=str(flight[6]).upper(),
+                departure=departure, arrival=arrival, price=round(price, 2),
+                price_per_traveller=round(price / search.travellers, 2), currency="GBP",
+                stops=len(segments) - 1, duration_minutes=duration,
+                provider="Google Flights", booking_url=booking_url, airline=airline,
+                observed_at=datetime.now(timezone.utc).isoformat(), review_status="results_page_structured",
+            )
+            clock = offer.departure[11:16]
+            if not search.departure_window[0] <= clock <= search.departure_window[1]:
+                continue
+            if offer.stops > search.max_stops or offer.duration_minutes > search.max_duration_minutes:
+                continue
+            if search.max_price_per_traveller_gbp is not None and offer.price_per_traveller > search.max_price_per_traveller_gbp:
+                continue
+            offers.append(offer)
+        except (IndexError, TypeError, ValueError, ZeroDivisionError):
+            continue
+    return offers
 
 
 def _parse_flight_cards(
     html: str, *, search: FlightSearch, origin: str, destination: str,
     day: str, booking_url: str,
 ) -> list[FlightOffer]:
-    """Parse flight cards from Google Flights HTML via aria-label attributes."""
+    """Parse current structured data, retaining aria-label compatibility."""
+    structured = _parse_structured_results(html, search=search, booking_url=booking_url)
+    if structured:
+        return structured
     offers = []
 
     aria_pattern = re.compile(

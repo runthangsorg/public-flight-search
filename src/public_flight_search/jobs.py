@@ -22,6 +22,10 @@ from .pairing import pair_outbound_return, combine_legs
 from .pareto import rank_bucket_sections
 
 
+class FlightCollectionError(RuntimeError):
+    """Prevent an empty fare collection from becoming a misleading email."""
+
+
 def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     """Run September UAE flight digest with multi-city pairing."""
     config = load_flight_config(os.environ.get("FLIGHT_SEARCH_CONFIG_JSON", ""))
@@ -97,6 +101,15 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
         if trip_offers:
             sections = rank_bucket_sections(trip_offers)
             final_offers[bucket] = sections["overall"]
+
+    if not any(final_offers.values()):
+        print(json.dumps({
+            "email_sent": False,
+            "itinerary_count": 0,
+            "search_count": len(config.searches),
+            "status": "collection_failed",
+        }, sort_keys=True))
+        raise FlightCollectionError("no live paired fare evidence was collected; email suppressed")
 
     # Build Google Flights links from the actual search plan
     google_links: dict[str, dict[str, str]] = {}

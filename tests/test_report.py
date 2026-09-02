@@ -47,7 +47,7 @@ class ReportTests(unittest.TestCase):
         self.assertNotIn("checkout verified", html.lower())
         self.assertTrue(all(url.startswith("https://") for url in re.findall(r'href="([^"]+)"', html)))
 
-    def test_fallback_links_are_scoped_to_each_search(self):
+    def test_empty_searches_do_not_render_repeated_garbage_blocks(self):
         first = FlightSearch(
             key="first", label="First", origins=("AAA",), destinations=("BBB",),
             dates=("2030-09-01",), travellers=1, cabin_class="ECONOMY",
@@ -65,9 +65,9 @@ class ReportTests(unittest.TestCase):
             {"first": (), "second": ()},
             generated_at="2030-08-01T10:00:00+00:00",
         )
-        # Both searches should have their own fallback search links
-        self.assertIn("Search 2030-09-01", html)
-        self.assertIn("Search 2030-09-02", html)
+        self.assertNotIn("No live fare cards", html)
+        self.assertNotIn("Search 2030-09-01", html)
+        self.assertNotIn("Search 2030-09-02", html)
 
 
 if __name__ == "__main__":

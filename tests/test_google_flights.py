@@ -3,8 +3,10 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+import base64
+import json
 from unittest.mock import patch
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from public_flight_search.config import FlightSearch
 from public_flight_search.google_flights import (
@@ -24,13 +26,14 @@ class BuildGoogleFlightsUrlTests(unittest.TestCase):
             travellers=2,
             cabin_class="ECONOMY",
         )
-        self.assertTrue(url.startswith("https://www.google.com/travel/flights?"))
-        self.assertIn("q=", url)
+        self.assertTrue(url.startswith("https://www.google.com/travel/flights/search?tfs="))
+        self.assertNotIn("?q=", url)
         self.assertIn("curr=GBP", url)
         self.assertNotIn(" ", url)
-        query = parse_qs(urlsplit(url).query)["q"][0].lower()
-        self.assertIn("2 travellers", query)
-        self.assertIn("economy", query)
+        payload = base64.b64decode(unquote(url.split("tfs=", 1)[1].split("&", 1)[0]))
+        self.assertIn(b"2030-09-01", payload)
+        self.assertIn(b"LHR", payload)
+        self.assertIn(b"MCT", payload)
 
     def test_url_contains_origin_and_destination(self):
         url = build_google_flights_url(
@@ -40,9 +43,10 @@ class BuildGoogleFlightsUrlTests(unittest.TestCase):
             travellers=1,
             cabin_class="ECONOMY",
         )
-        self.assertIn("LGW", url)
-        self.assertIn("DXB", url)
-        self.assertIn("2030-12-25", url)
+        payload = base64.b64decode(unquote(url.split("tfs=", 1)[1].split("&", 1)[0]))
+        self.assertIn(b"LGW", payload)
+        self.assertIn(b"DXB", payload)
+        self.assertIn(b"2030-12-25", payload)
 
     def test_one_way_in_query(self):
         url = build_google_flights_url(
@@ -52,8 +56,7 @@ class BuildGoogleFlightsUrlTests(unittest.TestCase):
             travellers=1,
             cabin_class="ECONOMY",
         )
-        self.assertIn("one", url)
-        self.assertIn("way", url)
+        self.assertIn("tfs=", url)
 
 
 class ParseFlightCardsTests(unittest.TestCase):
@@ -73,6 +76,21 @@ class ParseFlightCardsTests(unittest.TestCase):
         )
         defaults.update(overrides)
         return FlightSearch(**defaults)
+
+    def test_parses_current_ds1_structured_payload(self):
+        search = self._make_search(travellers=2)
+        segment = [None] * 22
+        segment[3], segment[6] = "LHR", "MCT"
+        flight = [None] * 10
+        flight[1], flight[2], flight[3], flight[4], flight[5] = ["Sample Air"], [segment], "LHR", [2030, 9, 1], [8, 15]
+        flight[6], flight[7], flight[8], flight[9] = "MCT", [2030, 9, 1], [12, 45], 270
+        payload = [None] * 4
+        payload[3] = [[[flight, [[None, 246]]]]]
+        html = '<script class="ds:1">AF_initDataCallback({data:' + json.dumps(payload) + ',sideChannel:{}});</script>'
+        offers = _parse_flight_cards(html, search=search, origin="LHR", destination="MCT", day="2030-09-01", booking_url="https://www.google.com/travel/flights/search?tfs=x")
+        self.assertEqual(len(offers), 1)
+        self.assertEqual(offers[0].review_status, "results_page_structured")
+        self.assertEqual(offers[0].price_per_traveller, 123)
 
     def test_parses_nonstop_flight_card(self):
         html = (

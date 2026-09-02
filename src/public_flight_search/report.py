@@ -149,30 +149,13 @@ def render_flight_report(
     total_offers = sum(len(v) for v in offers.values())
 
     sections_html = []
+    empty_labels = []
 
     for search in config.searches:
         search_offers = list(offers.get(search.key, ()))
 
         if not search_offers:
-            # Fallback links
-            links_html = ""
-            for day in search.dates:
-                url = build_google_flights_url(
-                    origin=search.origins[0],
-                    destination=search.destinations[0],
-                    date=day,
-                    travellers=search.travellers,
-                    cabin_class=search.cabin_class,
-                )
-                links_html += (
-                    f'<a href="{escape(url, quote=True)}" style="background:#38bdf8; color:#062033; text-decoration:none; padding:6px 10px; border-radius:4px; font-weight:700; font-size:12px; margin:2px; display:inline-block;">Search {escape(day)}</a> '
-                )
-
-            sections_html.append(
-                f'<tr style="background:#101d30;"><td colspan="7" style="padding:20px; text-align:center; color:#94a3b8;">'
-                f'<strong>No live fare cards.</strong><br>Provider markup or availability may have blocked this scan.'
-                f'<div style="margin-top:10px;">{links_html}</div></td></tr>'
-            )
+            empty_labels.append(search.label)
             continue
 
         # Check if these are multi-city itineraries (dicts with cost_ledger)
@@ -257,6 +240,14 @@ def render_flight_report(
                 f'{header_html}'
                 f'{rows_html}'
             )
+
+    if empty_labels and total_offers:
+        noun = "search" if len(empty_labels) == 1 else "searches"
+        sections_html.append(
+            '<tr style="background:#251f14;"><td colspan="7" style="padding:14px;color:#fde68a;">'
+            f'<strong>{len(empty_labels)} {noun} returned no verified fare cards.</strong> '
+            f'Coverage gap: {escape(", ".join(empty_labels))}. No price was invented.</td></tr>'
+        )
 
     return (
         '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">'
