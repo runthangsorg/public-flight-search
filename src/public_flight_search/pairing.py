@@ -67,7 +67,7 @@ def generate_offer_fingerprint(
     ff_raw = (fare_family or "STANDARD").strip().upper()
     if "VALUE" in ff_raw:
         ff_norm = "VALUE"
-    elif "LITE" in ff_raw or "SAVER" in fam_clean:
+    elif "LITE" in ff_raw or "SAVER" in ff_raw:
         ff_norm = "SAVER_LITE"
     elif "BASIC" in ff_raw:
         ff_norm = "BASIC"
@@ -331,9 +331,9 @@ def combine_legs(
         traveller_count=party.total_travellers,
         checked_bag_count=1,
         checked_bag_target_kg=20,
-        london_ground_out=watford_to_airport(outbound.get("origin", "LHR")).cost_gbp if watford_to_airport(outbound.get("origin", "LHR")) else 0,
-        london_ground_in=watford_to_airport(return_leg.get("destination", "LHR")).cost_gbp if watford_to_airport(return_leg.get("destination", "LHR")) else 0,
-        uae_ground=get_ground_assumptions().get("GROSVENOR_DXB", {}).get("cost_gbp", 0) if hasattr(get_ground_assumptions(), "get") else 24.0,
+        london_ground_out=watford_to_airport(outbound.get("origin", "LHR")).cost_gbp if watford_to_airport(outbound.get("origin", "LHR")) else 0.0,
+        london_ground_in=watford_to_airport(return_leg.get("destination", "LHR")).cost_gbp if watford_to_airport(return_leg.get("destination", "LHR")) else 0.0,
+        uae_ground=get_ground_assumptions()["GROSVENOR_DXB"].cost_gbp if "GROSVENOR_DXB" in get_ground_assumptions() else 24.0,
         oman_uae_transfer=22.0,
         muscat_taxi=10.0,
     )

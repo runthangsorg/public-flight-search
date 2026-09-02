@@ -36,6 +36,49 @@ class FlightJobTests(unittest.TestCase):
             with self.assertRaises(FlightCollectionError):
                 run_flight_digest(dry_run=False)
 
+    def test_paired_flight_digest_generates_itineraries(self):
+        root = Path(__file__).parents[1]
+        payload = (root / "examples" / "sept_config.json").read_text(
+            encoding="utf-8"
+        )
+        from public_flight_search.engine import FlightOffer
+        from public_flight_search.config import build_search_plan
+        from public_flight_search.trip_config import DEFAULT_TRIP_DEFINITIONS
+
+        plan = build_search_plan(DEFAULT_TRIP_DEFINITIONS)
+        outbound_key = [p.key for p in plan if "_OUTBOUND_" in p.key][0]
+        return_key = [p.key for p in plan if "_RETURN_" in p.key][0]
+
+        async def paired_scan(_searches):
+            return {
+                outbound_key: [
+                    FlightOffer(
+                        origin="LHR", destination="MCT", departure="2026-09-15T09:00:00",
+                        arrival="2026-09-15T19:00:00", price=350, currency="GBP",
+                        stops=0, duration_minutes=420, provider="Google Flights",
+                        airline="Oman Air", booking_url="https://google.com/test1",
+                        price_per_traveller=350, review_status="results_page_only"
+                    )
+                ],
+                return_key: [
+                    FlightOffer(
+                        origin="MCT", destination="LHR", departure="2026-09-22T10:00:00",
+                        arrival="2026-09-22T18:00:00", price=320, currency="GBP",
+                        stops=0, duration_minutes=420, provider="Google Flights",
+                        airline="Oman Air", booking_url="https://google.com/test2",
+                        price_per_traveller=320, review_status="results_page_only"
+                    )
+                ]
+            }
+
+        with patch.dict(os.environ, {"FLIGHT_SEARCH_CONFIG_JSON": payload}), patch(
+            "public_flight_search.jobs.search_google_flights", paired_scan
+        ):
+            result = run_flight_digest(dry_run=True)
+            self.assertEqual(result["itinerary_count"], 1)
+            self.assertEqual(result["search_count"], 6)
+            self.assertFalse(result["email_sent"])
+
 
 if __name__ == "__main__":
     unittest.main()
