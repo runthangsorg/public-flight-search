@@ -1,5 +1,5 @@
 {
-  "report_title": "December Holiday Packages: Turkey, Malta, Egypt",
+  "report_title": "December Holiday Packages: Under-5k Luxury Watch",
   "party": {
     "travellers": 5,
     "rooms": [2, 2, 1]
@@ -11,18 +11,58 @@
   "destinations": [
     {
       "key": "antalya",
-      "label": "Antalya, Turkey (All Inclusive / Half Board)",
+      "label": "Antalya Riviera, Turkey (Lara Barut Collection / All Inclusive)",
       "airports": ["AYT"]
     },
     {
       "key": "malta",
-      "label": "Malta (Half Board / Full Board)",
+      "label": "Valletta, Malta (The Phoenicia Malta / Half Board)",
       "airports": ["MLA"]
     },
     {
+      "key": "taghazout",
+      "label": "Taghazout Bay, Morocco (Fairmont Taghazout / Half Board)",
+      "airports": ["AGA"]
+    },
+    {
+      "key": "hurghada",
+      "label": "Hurghada & Red Sea, Egypt (Steigenberger Pure Lifestyle / All Inclusive)",
+      "airports": ["HRG"]
+    },
+    {
       "key": "cairo",
-      "label": "Cairo, Egypt (Half Board / Full Board)",
+      "label": "Cairo & Pyramids, Egypt (Marriott Mena House / Pyramids View)",
       "airports": ["CAI"]
+    },
+    {
+      "key": "muscat",
+      "label": "Muscat Coastal Desert, Oman (Shangri-La Barr Al Jissah / Luxury Coastal)",
+      "airports": ["MCT"]
+    },
+    {
+      "key": "doha",
+      "label": "Doha & West Bay, Qatar (Sharq Village & Spa, Ritz-Carlton / Luxury Bay)",
+      "airports": ["DOH"]
+    },
+    {
+      "key": "tenerife",
+      "label": "Tenerife, Canary Islands (The Ritz-Carlton Abama / Half Board)",
+      "airports": ["TFS"]
+    },
+    {
+      "key": "madeira",
+      "label": "Funchal, Madeira, Portugal (Savoy Palace / Luxury Atlantic)",
+      "airports": ["FNC"]
+    },
+    {
+      "key": "lanzarote",
+      "label": "Playa Blanca, Lanzarote, Canary Islands (Princesa Yaiza / Half Board)",
+      "airports": ["ACE"]
+    },
+    {
+      "key": "cape_verde",
+      "label": "Sal Island, Cape Verde (Hilton Cabo Verde Sal Resort / Bed & Breakfast)",
+      "airports": ["SID"]
     }
   ]
 }

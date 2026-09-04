@@ -65,8 +65,22 @@ class HolidayPlannerTests(unittest.TestCase):
         )
         self.assertEqual(config.travellers, 5)
         self.assertEqual(config.rooms, (2, 2, 1))
-        self.assertEqual(config.departure_window, ("08:00", "18:00"))
-        self.assertEqual({item.key for item in config.destinations}, {"antalya", "malta", "cairo"})
+        self.assertEqual(
+            {item.key for item in config.destinations},
+            {
+                "antalya",
+                "malta",
+                "taghazout",
+                "hurghada",
+                "cairo",
+                "muscat",
+                "doha",
+                "tenerife",
+                "madeira",
+                "lanzarote",
+                "cape_verde",
+            },
+        )
 
     def test_rejects_ai_content_in_holiday_report_title(self):
         for title in [

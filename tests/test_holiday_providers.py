@@ -358,6 +358,27 @@ class SemanticDeepLinkTests(unittest.TestCase):
         for provider, url in urls.items():
             self._assert_url_is_structural(url, provider)
 
+    def test_all_destinations_generate_structural_urls(self):
+        """Verify all 11 destinations produce valid structural HTTPS URLs across all providers."""
+        destinations = [
+            "antalya", "malta", "taghazout", "hurghada", "cairo",
+            "muscat", "doha", "tenerife", "madeira", "lanzarote", "cape_verde"
+        ]
+        origins = ("LHR", "LGW", "LTN", "STN")
+        for dest in destinations:
+            urls = build_provider_urls(
+                destination_key=dest,
+                destination_label=dest.title(),
+                origin_airports=origins,
+                departure_date="2026-12-22",
+                return_date="2026-12-29",
+                adults=5,
+                rooms=3,
+            )
+            for provider, url in urls.items():
+                self._assert_url_is_structural(url, f"{provider} for {dest}")
+
+
 
 class HolidayReportDateConsistencyTests(unittest.TestCase):
     """Test that the holiday report uses consistent dates."""

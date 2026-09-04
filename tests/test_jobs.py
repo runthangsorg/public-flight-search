@@ -14,9 +14,9 @@ class HolidayJobTests(unittest.TestCase):
         )
         with patch.dict(os.environ, {"HOLIDAY_SEARCH_CONFIG_JSON": payload}):
             result = run_holiday_planner(dry_run=True)
-        self.assertEqual(result["destination_count"], 3)
+        self.assertEqual(result["destination_count"], 11)
         self.assertEqual(result["date_combination_count"], 9)
-        self.assertEqual(result["provider_entry_count"], 162)
+        self.assertEqual(result["provider_entry_count"], 594)
         self.assertFalse(result["email_sent"])
 
 

@@ -44,8 +44,22 @@ def build_loveholidays_url(
     ret = datetime.strptime(return_date, "%Y-%m-%d")
     nights = (ret - dep).days
     room_str = ",".join(["2"] * (rooms - 1) + [str(adults - 2 * (rooms - 1))]) if rooms > 1 else str(adults)
+    dest_map = {
+        "malta": "malta",
+        "antalya": "turkey/antalya",
+        "cairo": "egypt/cairo",
+        "taghazout": "morocco/agadir",
+        "hurghada": "egypt/hurghada",
+        "muscat": "oman",
+        "doha": "qatar",
+        "tenerife": "canary-islands/tenerife",
+        "madeira": "portugal/madeira",
+        "lanzarote": "canary-islands/lanzarote",
+        "cape_verde": "cape-verde",
+    }
+    dest = dest_map.get(destination.lower(), destination)
     params = {
-        "destination": destination,
+        "destination": dest,
         "departureAirports": ",".join(origin_airports),
         "departureDate": departure_date,
         "nights": str(nights),
@@ -66,8 +80,20 @@ def build_on_the_beach_url(
     dep = datetime.strptime(departure_date, "%Y-%m-%d")
     ret = datetime.strptime(return_date, "%Y-%m-%d")
     nights = (ret - dep).days
-    dest_map = {"malta": "Malta", "antalya": "Turkey/Antalya", "cairo": "Egypt/Cairo"}
-    dest_path = dest_map.get(destination, destination)
+    dest_map = {
+        "malta": "Malta",
+        "antalya": "Turkey/Antalya",
+        "cairo": "Egypt/Cairo",
+        "taghazout": "Morocco/Agadir",
+        "hurghada": "Egypt/Hurghada",
+        "muscat": "Oman",
+        "doha": "Qatar",
+        "tenerife": "Canary-Islands/Tenerife",
+        "madeira": "Portugal/Madeira",
+        "lanzarote": "Canary-Islands/Lanzarote",
+        "cape_verde": "Cape-Verde",
+    }
+    dest_path = dest_map.get(destination.lower(), destination)
     params = {
         "departure_date": departure_date,
         "duration": str(nights),
@@ -90,8 +116,20 @@ def build_jet2_url(
     dep = datetime.strptime(departure_date, "%Y-%m-%d")
     ret = datetime.strptime(return_date, "%Y-%m-%d")
     nights = (ret - dep).days
-    dest_map = {"malta": "Malta", "antalya": "Turkey/Antalya", "cairo": "Egypt/Cairo"}
-    dest = dest_map.get(destination, destination)
+    dest_map = {
+        "malta": "Malta",
+        "antalya": "Turkey/Antalya",
+        "cairo": "Egypt/Cairo",
+        "taghazout": "Morocco/Agadir",
+        "hurghada": "Egypt/Hurghada",
+        "muscat": "Oman",
+        "doha": "Qatar",
+        "tenerife": "Canary-Islands/Tenerife",
+        "madeira": "Portugal/Madeira",
+        "lanzarote": "Canary-Islands/Lanzarote",
+        "cape_verde": "Cape-Verde",
+    }
+    dest = dest_map.get(destination.lower(), destination)
     params = {
         "airports": ",".join(origin_airports),
         "destinations": dest,
@@ -115,8 +153,20 @@ def build_tui_url(
     dep = datetime.strptime(departure_date, "%Y-%m-%d")
     ret = datetime.strptime(return_date, "%Y-%m-%d")
     nights = (ret - dep).days
-    dest_map = {"malta": "MALTA", "antalya": "ANTALYA", "cairo": "CAIRO"}
-    dest = dest_map.get(destination.upper(), destination.upper())
+    dest_map = {
+        "malta": "MALTA",
+        "antalya": "ANTALYA",
+        "cairo": "CAIRO",
+        "taghazout": "AGADIR",
+        "hurghada": "HURGHADA",
+        "muscat": "MUSCAT",
+        "doha": "DOHA",
+        "tenerife": "TENERIFE",
+        "madeira": "MADEIRA",
+        "lanzarote": "LANZAROTE",
+        "cape_verde": "CAPE_VERDE",
+    }
+    dest = dest_map.get(destination.lower(), destination.upper())
     gateway = origin_airports[0] if origin_airports else "LHR"
     params = {
         "searchType": "search",
@@ -145,8 +195,20 @@ def build_easyjet_url(
     dep = datetime.strptime(departure_date, "%Y-%m-%d")
     ret = datetime.strptime(return_date, "%Y-%m-%d")
     nights = (ret - dep).days
-    dest_map = {"malta": "malta", "antalya": "turkey/antalya", "cairo": "egypt/cairo"}
-    dest = dest_map.get(destination, destination)
+    dest_map = {
+        "malta": "malta",
+        "antalya": "turkey/antalya",
+        "cairo": "egypt/cairo",
+        "taghazout": "morocco/agadir",
+        "hurghada": "egypt/hurghada",
+        "muscat": "oman",
+        "doha": "qatar",
+        "tenerife": "spain/canary-islands/tenerife",
+        "madeira": "portugal/madeira",
+        "lanzarote": "spain/canary-islands/lanzarote",
+        "cape_verde": "cape-verde",
+    }
+    dest = dest_map.get(destination.lower(), destination)
     params = {
         "flightDate": departure_date,
         "duration": str(nights),
@@ -169,8 +231,20 @@ def build_ba_holidays_url(
     dep = datetime.strptime(departure_date, "%Y-%m-%d")
     ret = datetime.strptime(return_date, "%Y-%m-%d")
     nights = (ret - dep).days
-    dest_map = {"malta": "malta", "antalya": "turkey/antalya", "cairo": "egypt/cairo"}
-    dest = dest_map.get(destination, destination)
+    dest_map = {
+        "malta": "malta",
+        "antalya": "turkey/antalya",
+        "cairo": "egypt/cairo",
+        "taghazout": "morocco/agadir",
+        "hurghada": "egypt/hurghada",
+        "muscat": "oman/muscat",
+        "doha": "qatar/doha",
+        "tenerife": "spain/canary-islands/tenerife",
+        "madeira": "portugal/madeira",
+        "lanzarote": "spain/canary-islands/lanzarote",
+        "cape_verde": "cape-verde",
+    }
+    dest = dest_map.get(destination.lower(), destination)
     params = {
         "departureDate": departure_date,
         "duration": str(nights),
