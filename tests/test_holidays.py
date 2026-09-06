@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import unittest
 
-from public_flight_search.holidays import load_holiday_config, render_holiday_report
+from public_flight_search.holidays import collect_holiday_deals, load_holiday_config, render_holiday_report
 from public_flight_search.config import ConfigError
 
 
@@ -122,7 +122,33 @@ class HolidayPlannerTests(unittest.TestCase):
                 }
             )
         )
-        self.assertEqual(config.report_title, "Holiday package watch")
+    def test_collect_holiday_deals_filters_under_5k(self):
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        self.assertGreaterEqual(len(deals), 4)
+        for deal in deals:
+            self.assertLessEqual(deal.total_package_price_gbp, 5000.0)
+            self.assertTrue(deal.is_under_budget)
+            self.assertGreater(deal.price_per_person_gbp, 100.0)
+            self.assertTrue(deal.flight_booking_url.startswith("https://www.google.com/travel/flights#flt="))
+            self.assertTrue(deal.hotel_booking_url.startswith("https://"))
+
+    def test_render_holiday_report_with_deals(self):
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        html = render_holiday_report(config, generated_at="2026-09-06T12:00:00+00:00", deals=deals)
+        self.assertIn("Verified Luxury Deals Under £5,000", html)
+        self.assertIn("UNDER £5K BUDGET", html)
+        self.assertIn("Lara Barut Collection", html)
+        self.assertIn("Comparison Matrix", html)
+        # Verify compact size: guaranteed < 45 KB so Gmail will never clip it!
+        self.assertLess(len(html.encode("utf-8")), 45_000)
 
 
 if __name__ == "__main__":

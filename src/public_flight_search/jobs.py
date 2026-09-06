@@ -9,7 +9,7 @@ import os
 
 from .config import load_flight_config, build_search_plan
 from .google_flights import build_google_flights_url, search_google_flights
-from .holidays import _date_pairs, load_holiday_config, render_holiday_report
+from .holidays import _date_pairs, collect_holiday_deals, load_holiday_config, render_holiday_report
 from .mailer import send_html
 from .report import render_flight_report
 from .trip_config import (
@@ -152,8 +152,11 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
 
 def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
     config = load_holiday_config(os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON", ""))
+    deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
     html = render_holiday_report(
-        config, generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds")
+        config,
+        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        deals=deals,
     )
     if not dry_run:
         send_html(os.environ.get("HOLIDAY_EMAIL_SUBJECT", "Holiday package watch"), html)
@@ -164,6 +167,7 @@ def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
         "provider_entry_count": (
             len(config.destinations) * date_combination_count * 6
         ),
+        "deal_count": len(deals),
         "email_sent": not dry_run,
     }
     print(json.dumps(result, sort_keys=True))
