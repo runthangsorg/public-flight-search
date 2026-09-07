@@ -35,8 +35,8 @@ class HolidayPlannerTests(unittest.TestCase):
         self.assertIn("2030-12-20", html)
         self.assertIn("2031-01-01", html)
         self.assertIn("2031-01-03", html)
-        # New format: Top Picks (3 of 4 valid pairs × 6 providers) + Full Matrix (4 valid pairs × 6 providers) = 42
-        self.assertEqual(html.count('href="'), 42)
+        # Top Picks (3 of 4 valid pairs × 6 providers) + one hub row (6 providers) = 24
+        self.assertEqual(html.count('href="'), 24)
 
     def test_origin_airports_shown_not_destination_airports(self):
         config = load_holiday_config(
@@ -146,9 +146,59 @@ class HolidayPlannerTests(unittest.TestCase):
         self.assertIn("Verified Luxury Deals Under £5,000", html)
         self.assertIn("UNDER £5K BUDGET", html)
         self.assertIn("Lara Barut Collection", html)
-        self.assertIn("Comparison Matrix", html)
+        self.assertIn("Biggest Discounted Deals", html)
+        self.assertIn("Top Luxury Within", html)
+        self.assertIn("Best Winter Facilities", html)
         # Verify compact size: guaranteed < 45 KB so Gmail will never clip it!
         self.assertLess(len(html.encode("utf-8")), 45_000)
+
+    def test_bucket_deals_assigns_three_ranked_buckets(self):
+        from public_flight_search.holidays import bucket_deals
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        buckets = bucket_deals(deals)
+        self.assertEqual(set(buckets), {"discounts", "luxury", "winter"})
+        # Discounts: cheapest whole-party total first.
+        totals = [d.total_package_price_gbp for d in buckets["discounts"]]
+        self.assertEqual(totals, sorted(totals))
+        self.assertEqual(len(buckets["discounts"]), len(deals))
+        # Luxury: 5-star only.
+        self.assertTrue(all(d.star_rating >= 5 for d in buckets["luxury"]))
+        self.assertGreaterEqual(len(buckets["luxury"]), 4)
+        # Winter: warmest ambient air first; cold heated-pool traps sink.
+        ambients = [d.dec_ambient_c[0] for d in buckets["winter"]]
+        self.assertEqual(ambients, sorted(ambients, reverse=True))
+        self.assertGreaterEqual(buckets["winter"][0].dec_ambient_c[0], 20)
+        # Every bucket entry clears the budget on both measures.
+        for bucket in buckets.values():
+            for deal in bucket:
+                self.assertLessEqual(deal.total_package_price_gbp, 5000.0)
+                self.assertLessEqual(deal.true_d2d_gbp, 5000.0)
+
+    def test_cairo_trio_within_one_hour_transfer_radius(self):
+        from public_flight_search.holidays import bucket_deals
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        cairo = [d for d in deals if d.destination_key == "cairo"]
+        self.assertEqual(len(cairo), 3)
+        names = {d.resort_name for d in cairo}
+        self.assertEqual(
+            names,
+            {"Kempinski Nile Hotel Cairo", "Marriott Mena House", "JW Marriott Hotel Cairo"},
+        )
+        for deal in cairo:
+            # No Nile-front requirement: anywhere within ~1hr of CAI/sights.
+            self.assertLessEqual(deal.transfer_gbp, 45.0)
+            self.assertIn("CAI", " ".join(deal.highlights))
+        html = render_holiday_report(config, generated_at="2026-09-06T12:00:00+00:00", deals=deals)
+        for snippet in ("JW Marriott Hotel Cairo", "≈1 hr from CAI", "city stay, no sea swimming"):
+            self.assertIn(snippet, html)
 
 
 if __name__ == "__main__":

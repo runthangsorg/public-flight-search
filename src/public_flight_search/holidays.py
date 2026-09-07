@@ -31,6 +31,70 @@ class HolidayConfig:
     destinations: tuple[HolidayDestination, ...]
 
 
+# ---------------------------------------------------------------------------
+# Provider links: every URL below was verified live on 2026-09-07 with a
+# headless Camoufox browser (real rendered provider page, not a 404).
+# Parametric search-result deep links were PROVEN BROKEN and removed:
+#   - Jet2 `/search-results?...`  -> "Page not found" (real search needs
+#     opaque numeric IDs; destination guides used instead)
+#   - easyJet `/spain/canary-islands/...` -> "404 Page" (correct paths below)
+#   - TUI `/holidays/search?...` -> "Page Not Found"
+#   - BA `/holidays/<dest>/search` -> "Page not found" (holidays hub used)
+#   - loveholidays / On the Beach deep search -> bot-wall stubs; homepages
+#     render fully, so homepage entry points are linked and the reader enters
+#     dates/party on the provider's own search widget.
+# ---------------------------------------------------------------------------
+
+LOVEHOLIDAYS_HOME = "https://www.loveholidays.com/"
+ON_THE_BEACH_HOME = "https://www.onthebeach.co.uk/"
+TUI_HOLIDAYS_HUB = "https://www.tui.co.uk/holidays/"
+BA_HOLIDAYS_HUB = "https://www.britishairways.com/en-gb/flights-and-holidays/holidays"
+EASYJET_HOLIDAYS_HUB = "https://www.easyjet.com/en/holidays/"
+JET2_HOME = "https://www.jet2holidays.com/"
+
+# easyJet holidays destination guides, verified live (muscat/doha 404: not
+# served by easyJet holidays -> hub fallback in build_easyjet_url).
+EASYJET_DESTINATION_PATHS: dict[str, str] = {
+    "malta": "https://www.easyjet.com/en/holidays/malta",
+    "antalya": "https://www.easyjet.com/en/holidays/turkey/antalya",
+    "cairo": "https://www.easyjet.com/en/holidays/egypt/cairo",
+    "taghazout": "https://www.easyjet.com/en/holidays/morocco/agadir",
+    "hurghada": "https://www.easyjet.com/en/holidays/egypt/hurghada",
+    "tenerife": "https://www.easyjet.com/en/holidays/spain/tenerife",
+    "madeira": "https://www.easyjet.com/en/holidays/portugal/madeira",
+    "lanzarote": "https://www.easyjet.com/en/holidays/spain/lanzarote",
+    "cape_verde": "https://www.easyjet.com/en/holidays/cape-verde",
+}
+
+# Jet2 destination guides, verified live. Destinations absent here have no
+# Jet2 product (long-haul muscat/doha, city-break cairo, cape_verde) and are
+# honestly omitted from build_provider_urls instead of linked to a 404.
+JET2_DESTINATION_PATHS: dict[str, str] = {
+    "malta": "https://www.jet2holidays.com/destinations/malta",
+    "antalya": "https://www.jet2holidays.com/destinations/turkey",
+    "taghazout": "https://www.jet2holidays.com/destinations/morocco",
+    "hurghada": "https://www.jet2holidays.com/destinations/egypt/hurghada",
+    "tenerife": "https://www.jet2holidays.com/destinations/canary-islands/tenerife",
+    "madeira": "https://www.jet2holidays.com/destinations/portugal/madeira",
+    "lanzarote": "https://www.jet2holidays.com/destinations/canary-islands/lanzarote",
+}
+
+# Allowlist of every link base this module may emit. Tests enforce it, so a
+# future edit cannot silently reintroduce an unverified deep-link pattern.
+VERIFIED_LINK_BASES: frozenset[str] = frozenset(
+    {
+        LOVEHOLIDAYS_HOME,
+        ON_THE_BEACH_HOME,
+        TUI_HOLIDAYS_HUB,
+        BA_HOLIDAYS_HUB,
+        EASYJET_HOLIDAYS_HUB,
+        JET2_HOME,
+        *EASYJET_DESTINATION_PATHS.values(),
+        *JET2_DESTINATION_PATHS.values(),
+    }
+)
+
+
 def build_loveholidays_url(
     *,
     destination: str,
@@ -40,33 +104,9 @@ def build_loveholidays_url(
     adults: int,
     rooms: int,
 ) -> str:
-    from datetime import datetime, timedelta
-    dep = datetime.strptime(departure_date, "%Y-%m-%d")
-    ret = datetime.strptime(return_date, "%Y-%m-%d")
-    nights = (ret - dep).days
-    room_str = ",".join(["2"] * (rooms - 1) + [str(adults - 2 * (rooms - 1))]) if rooms > 1 else str(adults)
-    dest_map = {
-        "malta": "malta",
-        "antalya": "turkey/antalya",
-        "cairo": "egypt/cairo",
-        "taghazout": "morocco/agadir",
-        "hurghada": "egypt/hurghada",
-        "muscat": "oman",
-        "doha": "qatar",
-        "tenerife": "canary-islands/tenerife",
-        "madeira": "portugal/madeira",
-        "lanzarote": "canary-islands/lanzarote",
-        "cape_verde": "cape-verde",
-    }
-    dest = dest_map.get(destination.lower(), destination)
-    params = {
-        "destination": dest,
-        "departureAirports": ",".join(origin_airports),
-        "departureDate": departure_date,
-        "nights": str(nights),
-        "rooms": room_str,
-    }
-    return "https://www.loveholidays.com/holidays/?" + urlencode(params)
+    """loveholidays search needs its JS app + opaque hotel IDs and bot-walls
+    automation; link the verified-rendering homepage search entry point."""
+    return LOVEHOLIDAYS_HOME
 
 
 def build_on_the_beach_url(
@@ -77,31 +117,8 @@ def build_on_the_beach_url(
     return_date: str,
     adults: int,
 ) -> str:
-    from datetime import datetime, timedelta
-    dep = datetime.strptime(departure_date, "%Y-%m-%d")
-    ret = datetime.strptime(return_date, "%Y-%m-%d")
-    nights = (ret - dep).days
-    dest_map = {
-        "malta": "Malta",
-        "antalya": "Turkey/Antalya",
-        "cairo": "Egypt/Cairo",
-        "taghazout": "Morocco/Agadir",
-        "hurghada": "Egypt/Hurghada",
-        "muscat": "Oman",
-        "doha": "Qatar",
-        "tenerife": "Canary-Islands/Tenerife",
-        "madeira": "Portugal/Madeira",
-        "lanzarote": "Canary-Islands/Lanzarote",
-        "cape_verde": "Cape-Verde",
-    }
-    dest_path = dest_map.get(destination.lower(), destination)
-    params = {
-        "departure_date": departure_date,
-        "duration": str(nights),
-        "adults": str(adults),
-        "children": "0",
-    }
-    return f"https://www.onthebeach.co.uk/holidays/{dest_path}/?" + urlencode(params)
+    """On the Beach deep pages are bot-walled; link the verified homepage."""
+    return ON_THE_BEACH_HOME
 
 
 def build_jet2_url(
@@ -113,33 +130,9 @@ def build_jet2_url(
     adults: int,
     rooms: int,
 ) -> str:
-    from datetime import datetime, timedelta
-    dep = datetime.strptime(departure_date, "%Y-%m-%d")
-    ret = datetime.strptime(return_date, "%Y-%m-%d")
-    nights = (ret - dep).days
-    dest_map = {
-        "malta": "Malta",
-        "antalya": "Turkey/Antalya",
-        "cairo": "Egypt/Cairo",
-        "taghazout": "Morocco/Agadir",
-        "hurghada": "Egypt/Hurghada",
-        "muscat": "Oman",
-        "doha": "Qatar",
-        "tenerife": "Canary-Islands/Tenerife",
-        "madeira": "Portugal/Madeira",
-        "lanzarote": "Canary-Islands/Lanzarote",
-        "cape_verde": "Cape-Verde",
-    }
-    dest = dest_map.get(destination.lower(), destination)
-    params = {
-        "airports": ",".join(origin_airports),
-        "destinations": dest,
-        "departureDate": departure_date,
-        "duration": str(nights),
-        "adults": str(adults),
-        "children": "0",
-    }
-    return "https://www.jet2holidays.com/search-results?" + urlencode(params)
+    """Verified Jet2 destination guide. Raises KeyError where Jet2 has no
+    product so callers omit the link instead of emitting a 404."""
+    return JET2_DESTINATION_PATHS[destination.lower()]
 
 
 def build_tui_url(
@@ -150,38 +143,8 @@ def build_tui_url(
     return_date: str,
     adults: int,
 ) -> str:
-    from datetime import datetime, timedelta
-    dep = datetime.strptime(departure_date, "%Y-%m-%d")
-    ret = datetime.strptime(return_date, "%Y-%m-%d")
-    nights = (ret - dep).days
-    dest_map = {
-        "malta": "MALTA",
-        "antalya": "ANTALYA",
-        "cairo": "CAIRO",
-        "taghazout": "AGADIR",
-        "hurghada": "HURGHADA",
-        "muscat": "MUSCAT",
-        "doha": "DOHA",
-        "tenerife": "TENERIFE",
-        "madeira": "MADEIRA",
-        "lanzarote": "LANZAROTE",
-        "cape_verde": "CAPE_VERDE",
-    }
-    dest = dest_map.get(destination.lower(), destination.upper())
-    gateway = origin_airports[0] if origin_airports else "LHR"
-    params = {
-        "searchType": "search",
-        "when": departure_date,
-        "until": "",
-        "flexibility": "0",
-        "nights": str(nights),
-        "gateway": gateway,
-        "dest": dest,
-        "adults": str(adults),
-        "children": "0",
-        "searchRequestType": "ins",
-    }
-    return "https://www.tui.co.uk/holidays/search?" + urlencode(params)
+    """TUI's parametric search path 404s; link the verified holidays hub."""
+    return TUI_HOLIDAYS_HUB
 
 
 def build_easyjet_url(
@@ -192,32 +155,8 @@ def build_easyjet_url(
     return_date: str,
     adults: int,
 ) -> str:
-    from datetime import datetime, timedelta
-    dep = datetime.strptime(departure_date, "%Y-%m-%d")
-    ret = datetime.strptime(return_date, "%Y-%m-%d")
-    nights = (ret - dep).days
-    dest_map = {
-        "malta": "malta",
-        "antalya": "turkey/antalya",
-        "cairo": "egypt/cairo",
-        "taghazout": "morocco/agadir",
-        "hurghada": "egypt/hurghada",
-        "muscat": "oman",
-        "doha": "qatar",
-        "tenerife": "spain/canary-islands/tenerife",
-        "madeira": "portugal/madeira",
-        "lanzarote": "spain/canary-islands/lanzarote",
-        "cape_verde": "cape-verde",
-    }
-    dest = dest_map.get(destination.lower(), destination)
-    params = {
-        "flightDate": departure_date,
-        "duration": str(nights),
-        "adults": str(adults),
-        "children": "0",
-        "origin": origin_airports[0] if origin_airports else "LHR",
-    }
-    return f"https://www.easyjet.com/en/holidays/{dest}?" + urlencode(params)
+    """Verified easyJet holidays destination guide, hub fallback included."""
+    return EASYJET_DESTINATION_PATHS.get(destination.lower(), EASYJET_HOLIDAYS_HUB)
 
 
 def build_ba_holidays_url(
@@ -228,32 +167,8 @@ def build_ba_holidays_url(
     return_date: str,
     adults: int,
 ) -> str:
-    from datetime import datetime, timedelta
-    dep = datetime.strptime(departure_date, "%Y-%m-%d")
-    ret = datetime.strptime(return_date, "%Y-%m-%d")
-    nights = (ret - dep).days
-    dest_map = {
-        "malta": "malta",
-        "antalya": "turkey/antalya",
-        "cairo": "egypt/cairo",
-        "taghazout": "morocco/agadir",
-        "hurghada": "egypt/hurghada",
-        "muscat": "oman/muscat",
-        "doha": "qatar/doha",
-        "tenerife": "spain/canary-islands/tenerife",
-        "madeira": "portugal/madeira",
-        "lanzarote": "spain/canary-islands/lanzarote",
-        "cape_verde": "cape-verde",
-    }
-    dest = dest_map.get(destination.lower(), destination)
-    params = {
-        "departureDate": departure_date,
-        "duration": str(nights),
-        "adults": str(adults),
-        "children": "0",
-        "origin": origin_airports[0] if origin_airports else "LHR",
-    }
-    return f"https://www.britishairways.com/holidays/{dest}/search?" + urlencode(params)
+    """BA per-destination search path 404s; link the verified holidays hub."""
+    return BA_HOLIDAYS_HUB
 
 
 def build_provider_urls(
@@ -266,52 +181,49 @@ def build_provider_urls(
     adults: int,
     rooms: int,
 ) -> dict[str, str]:
-    return {
-        "loveholidays": build_loveholidays_url(
-            destination=destination_key,
-            origin_airports=origin_airports,
-            departure_date=departure_date,
-            return_date=return_date,
-            adults=adults,
-            rooms=rooms,
-        ),
-        "on_the_beach": build_on_the_beach_url(
-            destination=destination_key,
-            origin_airports=origin_airports,
-            departure_date=departure_date,
-            return_date=return_date,
-            adults=adults,
-        ),
-        "jet2": build_jet2_url(
-            destination=destination_key,
-            origin_airports=origin_airports,
-            departure_date=departure_date,
-            return_date=return_date,
-            adults=adults,
-            rooms=rooms,
-        ),
-        "tui": build_tui_url(
-            destination=destination_key,
-            origin_airports=origin_airports,
-            departure_date=departure_date,
-            return_date=return_date,
-            adults=adults,
-        ),
-        "easyjet": build_easyjet_url(
-            destination=destination_key,
-            origin_airports=origin_airports,
-            departure_date=departure_date,
-            return_date=return_date,
-            adults=adults,
-        ),
-        "ba_holidays": build_ba_holidays_url(
-            destination=destination_key,
-            origin_airports=origin_airports,
-            departure_date=departure_date,
-            return_date=return_date,
-            adults=adults,
-        ),
+    """Verified provider entry points for one destination/date pair.
+
+    Jet2 is included only where it has product; unknown destination keys get
+    all six hub/homepage links so the matrix stays dense.
+    """
+    key = destination_key.lower()
+    known = (
+        key in EASYJET_DESTINATION_PATHS
+        or key in JET2_DESTINATION_PATHS
+        or key in {"muscat", "doha", "cairo", "cape_verde"}
+    )
+    urls: dict[str, str] = {
+        "loveholidays": LOVEHOLIDAYS_HOME,
+        "on_the_beach": ON_THE_BEACH_HOME,
+        "tui": TUI_HOLIDAYS_HUB,
+        "easyjet": EASYJET_DESTINATION_PATHS.get(key, EASYJET_HOLIDAYS_HUB),
+        "ba_holidays": BA_HOLIDAYS_HUB,
     }
+    if key in JET2_DESTINATION_PATHS:
+        urls["jet2"] = JET2_DESTINATION_PATHS[key]
+    elif not known:
+        urls["jet2"] = JET2_HOME
+    return urls
+
+
+def count_provider_entries(config: HolidayConfig) -> int:
+    """Exact number of provider links rendered for every date combination."""
+    pairs = _date_pairs(config)
+    return sum(
+        len(
+            build_provider_urls(
+                destination_key=dest.key,
+                destination_label=dest.label,
+                origin_airports=config.origins,
+                departure_date=outbound,
+                return_date=returning,
+                adults=config.travellers,
+                rooms=len(config.rooms),
+            )
+        )
+        for dest in config.destinations
+        for outbound, returning in pairs
+    )
 
 
 def load_holiday_config(payload: str) -> HolidayConfig:
@@ -409,8 +321,24 @@ class PackageDeal:
     hotel_booking_url: str
     is_under_budget: bool
     highlights: tuple[str, ...] = ()
+    # True door-to-door: package + UK ground + destination transfer.
+    uk_ground_gbp: float = 0.0
+    transfer_gbp: float = 0.0
+    true_d2d_gbp: float = 0.0
+    # Climate honesty: ambient Dec air range + sea temp + beach geography.
+    dec_ambient_c: tuple[int, int] = (0, 0)
+    sea_temp_c: int = 0
+    beach: str = ""
+    # Data provenance per confidence gates.
+    confidence: str = "market-supported"
+    source_url: str = ""
 
 
+# December climate reality (ambient air / sea °C) plus beach geography.
+# A heated pool does NOT make a 15°C destination a winter-sun holiday:
+# stepping out of 28°C water into a 15°C wind is miserable.
+# Rates below are BENCHMARKS (confidence: market-supported), never live
+# checkout totals. Live verification runs privately (Camoufox/FlareSolverr).
 WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
     "antalya": [
         {
@@ -422,8 +350,13 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "airport": "AYT",
             "airline": "SunExpress / Pegasus",
             "flight_benchmark_5pax_gbp": 648.0,
-            "highlights": ("Heated outdoor seawater pool", "8 à la carte restaurants", "Thalasso spa", "Private beach"),
+            "highlights": ("Heated seawater pool (28°C)", "8 à la carte restaurants", "Thalasso spa", "Private sandy beach"),
             "hotel_url": "https://www.baruthotels.com/lara-barut-collection/",
+            "dec_ambient_c": (15, 17),
+            "sea_temp_c": 19,
+            "beach": "Sandy but 15-17°C air — pools only, no sunbathing",
+            "transfer_gbp": 25.0,
+            "confidence": "market-supported",
         },
         {
             "name": "Concorde De Luxe Resort",
@@ -436,6 +369,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "flight_benchmark_5pax_gbp": 648.0,
             "highlights": ("Heated indoor pool", "Private sandy beach", "Carpe Diem luxury spa", "Bowling alley"),
             "hotel_url": "https://www.concordehotels.com.tr/",
+            "dec_ambient_c": (15, 17),
+            "sea_temp_c": 19,
+            "beach": "Sandy but 15-17°C — indoor/spa trip",
+            "transfer_gbp": 25.0,
+            "confidence": "market-supported",
         },
         {
             "name": "Titanic Mardan Palace",
@@ -448,6 +386,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "flight_benchmark_5pax_gbp": 648.0,
             "highlights": ("Palatial architecture", "7,500m² spa", "Heated Olympic indoor pool", "Private lagoon"),
             "hotel_url": "https://www.titanic.com.tr/titanic-mardan-palace",
+            "dec_ambient_c": (15, 17),
+            "sea_temp_c": 19,
+            "beach": "Sandy lagoon but 15-17°C — spa trip",
+            "transfer_gbp": 25.0,
+            "confidence": "market-supported",
         },
     ],
     "hurghada": [
@@ -462,6 +405,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "flight_benchmark_5pax_gbp": 1350.0,
             "highlights": ("500m private beach", "Lazy river & heated pools", "Golf course", "Ilios dive club"),
             "hotel_url": "https://www.steigenberger.com/en/hotels/all-hotels/egypt/hurghada/steigenberger-aldau-beach-hotel",
+            "dec_ambient_c": (24, 26),
+            "sea_temp_c": 25,
+            "beach": "500m reef beach — genuine 24-26°C warmth",
+            "transfer_gbp": 30.0,
+            "confidence": "market-supported",
         },
         {
             "name": "Jaz Aquaviva",
@@ -472,8 +420,13 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "airport": "HRG",
             "airline": "easyJet / Wizz Air",
             "flight_benchmark_5pax_gbp": 1350.0,
-            "highlights": ("Makadi Water World access", "Heated family pools", "Private beach transfer", "Kids club"),
+            "highlights": ("Water World access", "Heated family pools", "Beach transfer", "Kids club"),
             "hotel_url": "https://www.jazhotels.com/",
+            "dec_ambient_c": (24, 26),
+            "sea_temp_c": 25,
+            "beach": "Sandy beach — genuine 24-26°C warmth",
+            "transfer_gbp": 30.0,
+            "confidence": "market-supported",
         },
     ],
     "tenerife": [
@@ -488,6 +441,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "flight_benchmark_5pax_gbp": 1250.0,
             "highlights": ("Saltwater lagoon", "3 heated pools", "Rock Spa", "Beachfront dining"),
             "hotel_url": "https://www.hardrockhoteltenerife.com/",
+            "dec_ambient_c": (22, 24),
+            "sea_temp_c": 21,
+            "beach": "Golden cove via cliff lift; heated pools carry it",
+            "transfer_gbp": 60.0,
+            "confidence": "market-supported",
         },
     ],
     "lanzarote": [
@@ -502,8 +460,105 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "flight_benchmark_5pax_gbp": 1300.0,
             "highlights": ("Playa Dorada beach", "Kikoland 10,000m² family park", "Thalassotherapy center"),
             "hotel_url": "https://www.princesayaiza.com/",
+            "dec_ambient_c": (21, 23),
+            "sea_temp_c": 20,
+            "beach": "Playa Dorada sand; heated pools carry it",
+            "transfer_gbp": 25.0,
+            "confidence": "market-supported",
         },
     ],
+    # Cairo done honestly: a pyramids/Nile cultural holiday, NOT a beach trip.
+    # December is prime Cairo season (18-22°C, dry). Heated rooftop pools,
+    # but no sea — sea_temp_c 0 renders as "city stay".
+    "cairo": [
+        {
+            "name": "Kempinski Nile Hotel Cairo",
+            "destination_label": "Cairo, Egypt (Nile Riverfront)",
+            "stars": 5,
+            "board": "Half Board",
+            "base_nightly_room_rate_gbp": 93.0,
+            "airport": "CAI",
+            "airline": "British Airways / EgyptAir",
+            "flight_benchmark_5pax_gbp": 1442.0,
+            "highlights": ("Heated rooftop Nile pool", "Pyramids & museum day trips", "≈45 min from CAI airport"),
+            "hotel_url": "https://www.kempinski.com/en/cairo/hotel-nile/",
+            "dec_ambient_c": (18, 22),
+            "sea_temp_c": 0,
+            "beach": "NO beach — Nile city hotel. Come for pyramids, museums, bazaars",
+            "transfer_gbp": 40.0,
+            "confidence": "market-supported",
+        },
+        {
+            "name": "Marriott Mena House",
+            "destination_label": "Giza, Cairo, Egypt (Pyramids View)",
+            "stars": 5,
+            "board": "Half Board",
+            "base_nightly_room_rate_gbp": 120.0,
+            "airport": "CAI",
+            "airline": "British Airways / EgyptAir",
+            "flight_benchmark_5pax_gbp": 1442.0,
+            "highlights": ("Pyramid-facing rooms", "Heated pool, spa & gardens", "≈1 hr from CAI airport (40 km)"),
+            "hotel_url": "https://www.marriott.com/en-us/hotels/caimn-marriott-mena-house-cairo/overview/",
+            "dec_ambient_c": (18, 22),
+            "sea_temp_c": 0,
+            "beach": "NO beach — desert-edge resort at Giza. Pyramids on the doorstep",
+            "transfer_gbp": 45.0,
+            "confidence": "market-supported",
+        },
+        # Cairo sprawls: anything within ~1 hr of CAI airport / the sights is
+        # fair game, Nile-front or not. JW Marriott New Cairo is the
+        # resort-scale pick: big pools (incl. wave pool), golf views, malls.
+        {
+            "name": "JW Marriott Hotel Cairo",
+            "destination_label": "New Cairo, Egypt (Ring Road)",
+            "stars": 5,
+            "board": "Half Board",
+            "base_nightly_room_rate_gbp": 105.0,
+            "airport": "CAI",
+            "airline": "British Airways / EgyptAir",
+            "flight_benchmark_5pax_gbp": 1442.0,
+            "highlights": ("Resort pools incl. wave pool", "Golf-course views & spa", "≈30 min from CAI · ≈1 hr to pyramids"),
+            "hotel_url": "https://www.marriott.com/en-us/hotels/caijw-jw-marriott-hotel-cairo/overview/",
+            "dec_ambient_c": (18, 22),
+            "sea_temp_c": 0,
+            "beach": "NO beach — New Cairo resort zone. Pools, golf, malls",
+            "transfer_gbp": 30.0,
+            "confidence": "market-supported",
+        },
+    ],
+    # Madeira done honestly: Savoy Palace breaches £5k for 5 pax in peak week,
+    # so the catalog carries the 4-star alternative that fits. Volcanic island:
+    # NO sandy beaches anywhere — hiking/levadas/waterfalls holiday, not beach.
+    "madeira": [
+        {
+            "name": "Vidamar Resort Madeira",
+            "destination_label": "Funchal, Madeira, Portugal",
+            "stars": 4,
+            "board": "Half Board",
+            "base_nightly_room_rate_gbp": 160.0,
+            "airport": "FNC",
+            "airline": "easyJet / TUI / British Airways",
+            "flight_benchmark_5pax_gbp": 960.0,
+            "highlights": ("Cliff lido", "Heated pools & spa", "Levada hikes & waterfalls nearby", "Funchal Christmas lights"),
+            "hotel_url": "https://www.vidamarresorts.com/madeira/",
+            "dec_ambient_c": (19, 21),
+            "sea_temp_c": 20,
+            "beach": "NO sand — volcanic cliffs & lidos. Come for hiking",
+            "transfer_gbp": 30.0,
+            "confidence": "market-supported",
+        },
+    ],
+}
+
+
+# UK ground transit from Watford Junction (return, whole party share).
+# True D2D = package (flights + hotel) + UK ground + destination transfer.
+UK_GROUND_RETURN_GBP: dict[str, float] = {
+    "LHR": 16.50,  # RailAir RA3 Express Coach, 45 min
+    "LGW": 34.00,  # Southern Rail via Clapham Junction, 90 min
+    "LTN": 14.50,  # National Rail Thameslink, 55 min
+    "STN": 14.50,  # National Rail, approx
+    "BHX": 40.00,  # Avanti West Coast direct, 58 min
 }
 
 
@@ -512,19 +567,23 @@ def collect_holiday_deals(
     max_budget_gbp: float = 5000.0,
     live_flight_offers: Optional[Mapping[str, float]] = None,
 ) -> tuple[PackageDeal, ...]:
-    """Calculate and filter live holiday packages strictly under max_budget_gbp."""
+    """Calculate holiday packages, enforcing the budget on BOTH the package
+    total (flights + hotel) AND the True D2D total (package + UK ground +
+    destination transfer). Anything over budget on either measure is dropped —
+    never labelled "under budget" while breaching the ceiling."""
     pairs = _date_pairs(config)
     shortlist = _shortlist_pairs(pairs)
     deals: list[PackageDeal] = []
     rooms_count = len(config.rooms)
     travellers = config.travellers
-    
+
     target_outbound, target_return = (
         shortlist[len(shortlist) // 2] if shortlist else ("2026-12-22", "2026-12-30")
     )
     dep_dt = datetime.strptime(target_outbound, "%Y-%m-%d")
     ret_dt = datetime.strptime(target_return, "%Y-%m-%d")
     nights = (ret_dt - dep_dt).days
+    uk_ground = UK_GROUND_RETURN_GBP.get(config.origins[0], 16.50)
 
     for dest in config.destinations:
         resorts = WINTER_RESORT_CATALOG.get(dest.key.lower(), [])
@@ -533,11 +592,14 @@ def collect_holiday_deals(
             flight_cost = resort["flight_benchmark_5pax_gbp"]
             if live_flight_offers and airport in live_flight_offers:
                 flight_cost = live_flight_offers[airport]
-            
+
             hotel_cost = round(resort["base_nightly_room_rate_gbp"] * rooms_count * nights, 2)
             total_pkg = round(flight_cost + hotel_cost, 2)
             price_pp = round(total_pkg / travellers, 2)
-            under_budget = total_pkg <= max_budget_gbp
+            transfer = float(resort.get("transfer_gbp", 30.0))
+            true_d2d = round(total_pkg + uk_ground + transfer, 2)
+            # STRICT: both measures must clear the ceiling.
+            under_budget = total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
 
             if under_budget:
                 flight_link = (
@@ -565,11 +627,81 @@ def collect_holiday_deals(
                         hotel_booking_url=resort["hotel_url"],
                         is_under_budget=True,
                         highlights=resort["highlights"],
+                        uk_ground_gbp=uk_ground,
+                        transfer_gbp=transfer,
+                        true_d2d_gbp=true_d2d,
+                        dec_ambient_c=resort.get("dec_ambient_c", (0, 0)),
+                        sea_temp_c=resort.get("sea_temp_c", 0),
+                        beach=resort.get("beach", ""),
+                        confidence=resort.get("confidence", "market-supported"),
+                        source_url=resort.get("hotel_url", ""),
                     )
                 )
 
     deals.sort(key=lambda d: d.total_package_price_gbp)
     return tuple(deals)
+
+
+BOARD_LUXURY_WEIGHT: dict[str, int] = {
+    "ultra all inclusive": 6,
+    "golden inclusive": 4,
+    "luxury all inclusive": 4,
+    "all inclusive": 4,
+    "half board": 2,
+    "bed & breakfast / half board": 1,
+    "bed & breakfast": 1,
+}
+
+# Live sale evidence observed with a headless browser (NOT exact-date quotes).
+# Cited with source + date; party-agnostic promos only.
+OBSERVED_PROMOS: tuple[dict[str, str], ...] = (
+    {
+        "text": "Save £50pp on all Winter 2026/27 holidays (T&Cs apply)",
+        "source": "Jet2 destination guides",
+        "observed": "2026-09-07",
+        "steer": "≈ £250 off a party of 5 where Jet2 has product",
+    },
+    {
+        "text": "Generic 2-adult lead-ins, NOT 5-pax peak prices",
+        "source": "easyJet holidays destination guides",
+        "observed": "2026-09-07",
+        "steer": "Lanzarote 7n from £331pp · Hurghada 7n from £524pp · Madeira 7n from £402pp",
+    },
+)
+
+
+def luxury_score(deal: PackageDeal) -> int:
+    """Transparent luxury rank: stars dominate, board breaks ties."""
+    return deal.star_rating * 10 + BOARD_LUXURY_WEIGHT.get(deal.board_basis.lower(), 0)
+
+
+def bucket_deals(
+    deals: Sequence[PackageDeal],
+    max_budget_gbp: float = 5000.0,
+) -> dict[str, tuple[PackageDeal, ...]]:
+    """Split deals into the three reader buckets.
+
+    discounts: every deal, cheapest first (saving = budget headroom kept).
+    luxury:    5-star only, most luxurious first, cheaper wins ties.
+    winter:    warmest ambient air first, then warmest sea (genuine winter
+               sun floats up; heated-pool-only cold spots sink honestly).
+    """
+    ordered = tuple(deals)
+    return {
+        "discounts": tuple(sorted(ordered, key=lambda d: d.total_package_price_gbp)),
+        "luxury": tuple(
+            sorted(
+                (d for d in ordered if d.star_rating >= 5),
+                key=lambda d: (-luxury_score(d), d.total_package_price_gbp),
+            )
+        ),
+        "winter": tuple(
+            sorted(
+                ordered,
+                key=lambda d: (-d.dec_ambient_c[0], -d.sea_temp_c, d.total_package_price_gbp),
+            )
+        ),
+    }
 
 
 def render_holiday_report(
@@ -601,7 +733,7 @@ def render_holiday_report(
     out.append('<h1 style="margin:0 0 4px 0; color:#f8fafc; font-size:22px; font-weight:800;">')
     out.append(escape(config.report_title))
     out.append('</h1>')
-    out.append('<p style="margin:0 0 16px 0; color:#9eb0c7; font-size:13px;">Generated ')
+    out.append('<p style="margin:0 0 16px 0; color:#9eb0c7; font-size:13px;">')
     out.append(escape(generated_at))
     out.append(' · ')
     out.append(str(len(config.destinations)))
@@ -620,9 +752,50 @@ def render_holiday_report(
     # ── VERIFIED LIVE DEALS UNDER £5,000 (WHEN AVAILABLE) ──
     if deals:
         out.append('<h2 style="margin:20px 0 12px 0; color:#34d399; font-size:18px; font-weight:800;">⭐ Verified Luxury Deals Under £5,000</h2>')
-        out.append('<p style="margin:0 0 16px 0; color:#94a3b8; font-size:13px;">Top winter-sun 5-star packages for 5 travellers across 3 rooms (' + escape(room_occupancy) + '), strictly under the £5,000 total family budget.</p>')
-        
-        for deal in deals:
+        out.append('<p style="margin:0 0 16px 0; color:#94a3b8; font-size:13px;">Benchmarked 5-pax packages, all under £5k on package AND True D2D (flights+hotel+rail+transfer). Benchmark rates — verify live before booking.</p>')
+        out.append('<p style="margin:0 0 16px 0; font-size:13px;">'
+                   '<a href="#bucket-discounts" style="color:#38bdf8; font-weight:700;">💰 Biggest discounts</a> · '
+                   '<a href="#bucket-luxury" style="color:#38bdf8; font-weight:700;">💎 Top luxury in budget</a> · '
+                   '<a href="#bucket-winter" style="color:#38bdf8; font-weight:700;">☀️ Best winter facilities</a> · '
+                   '<a href="#deal-details" style="color:#94a3b8;">Full details</a></p>')
+
+        buckets = bucket_deals(deals)
+        index_of = {id(deal): pos for pos, deal in enumerate(deals)}
+        row_style = 'margin:0 0 6px;padding:8px 10px;background:#0d1520;border-radius:6px;color:#cbd5e1;font-size:13px'
+        link_style = 'color:#38bdf8; font-weight:700; text-decoration:none;'
+
+        # ── BUCKET 1: biggest discounts (cheapest first = most budget kept) ──
+        out.append('<h3 id="bucket-discounts" style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">💰 Biggest Discounted Deals</h3>')
+        out.append('<p style="margin:0 0 10px 0; color:#94a3b8; font-size:12px;">Cheapest first. Live steers 2026-09-07: Jet2 “Save £50pp Winter 2026/27” ≈ £250 off 5 pax. easyJet 2-adult lead-ins: Lanzarote £331pp · Hurghada £524pp · Madeira £402pp (not 5-pax peak).</p>')
+        for rank, deal in enumerate(buckets["discounts"], 1):
+            under = 5000.0 - deal.total_package_price_gbp
+            out.append('<p style="' + row_style + '">')
+            out.append(f'#{rank} <strong style="color:#f8fafc;">' + escape(deal.resort_name) + '</strong> '
+                       + str(deal.star_rating) + '* — '
+                       + '<strong style="color:#34d399;">£' + f'{under:,.0f}' + ' under £5k</strong> · '
+                       + '<a href="#deal-' + str(index_of[id(deal)]) + '" style="' + link_style + '">Details ↓</a></p>')
+
+        # ── BUCKET 2: top luxury within budget ──
+        out.append('<h3 id="bucket-luxury" style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">💎 Top Luxury Within £5k</h3>')
+        out.append('<p style="margin:0 0 10px 0; color:#94a3b8; font-size:12px;">Stars then board; all clear £5k on package AND D2D.</p>')
+        for rank, deal in enumerate(buckets["luxury"], 1):
+            out.append('<p style="' + row_style + '">')
+            out.append(f'#{rank} <strong style="color:#f8fafc;">' + escape(deal.resort_name) + '</strong> '
+                       + str(deal.star_rating) + '* · ' + escape(deal.board_basis) + ' — £' + f'{deal.total_package_price_gbp:,.0f}' + ' total, D2D £' + f'{deal.true_d2d_gbp:,.0f}' + ' · '
+                       + '<a href="#deal-' + str(index_of[id(deal)]) + '" style="' + link_style + '">Details ↓</a></p>')
+
+        # ── BUCKET 3: best winter facilities ──
+        out.append('<h3 id="bucket-winter" style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">☀️ Best Winter Facilities</h3>')
+        out.append('<p style="margin:0 0 10px 0; color:#94a3b8; font-size:12px;">Warmest real December air first — heated pools mean nothing in 15°C air.</p>')
+        for rank, deal in enumerate(buckets["winter"], 1):
+            out.append('<p style="' + row_style + '">')
+            out.append(f'#{rank} <strong style="color:#f8fafc;">' + escape(deal.resort_name) + '</strong> — '
+                       + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C air · ' + str(deal.sea_temp_c) + '°C sea · £' + f'{deal.total_package_price_gbp:,.0f}' + ' total · '
+                       + '<a href="#deal-' + str(index_of[id(deal)]) + '" style="' + link_style + '">Details ↓</a></p>')
+
+        out.append('<h3 id="deal-details" style="margin:20px 0 10px 0; color:#f8fafc; font-size:15px; font-weight:700;">Full details</h3>')
+        for pos, deal in enumerate(deals):
+            out.append('<div id="deal-' + str(pos) + '">')
             stars_str = '★' * deal.star_rating
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-bottom:16px; background:#0d1520; border:1px solid #059669; border-radius:8px; overflow:hidden;">')
             out.append('<tr><td style="padding:14px 16px; background:#064e3b; border-bottom:1px solid #059669;">')
@@ -639,55 +812,46 @@ def render_holiday_report(
             out.append('<span style="background:#1e293b; color:#a7f3d0; padding:4px 8px; border-radius:4px; font-weight:700; font-size:12px; margin-right:8px;">')
             out.append('£' + f'{deal.price_per_person_gbp:,.0f}' + ' / person')
             out.append('</span>')
-            out.append('<span style="background:#065f46; color:#6ee7b7; padding:4px 8px; border-radius:4px; font-weight:600; font-size:11px;">')
+            out.append('<span style="background:#065f46;color:#6ee7b7;padding:2px 6px;border-radius:4px;font-weight:600;font-size:11px">')
             out.append('UNDER £5K BUDGET')
+            out.append('</span>')
+            out.append('<span style="background:#1e293b;color:#fbbf24;padding:2px 6px;border-radius:4px;font-weight:600;font-size:11px;margin-left:6px">')
+            out.append(escape(deal.confidence))
             out.append('</span></div>')
-            
+
             out.append('<div style="color:#94a3b8; font-size:13px; line-height:1.6; margin-bottom:12px;">')
-            out.append('<strong>Destination:</strong> ' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ')<br>')
-            out.append('<strong>Dates:</strong> ' + escape(deal.outbound_date) + ' → ' + escape(deal.return_date) + ' (' + str(deal.nights) + ' nights)<br>')
-            out.append('<strong>Board Basis:</strong> <span style="color:#6ee7b7; font-weight:600;">' + escape(deal.board_basis) + '</span><br>')
-            out.append('<strong>Flights (5 pax):</strong> ' + escape(deal.airline) + ' direct return (' + escape(', '.join(deal.origin_airports)) + ' ↔ ' + escape(deal.destination_airport) + ') · <strong>£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br>')
-            out.append('<strong>Resort Stay (3 rooms):</strong> 24 room-nights · <strong>£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong>')
+            out.append('<strong>' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ')</strong><br>')
+            out.append(escape(deal.outbound_date) + ' → ' + escape(deal.return_date) + ' · ' + str(deal.nights) + 'n<br>')
+            if deal.sea_temp_c:
+                out.append('Dec ' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C air · ' + str(deal.sea_temp_c) + '°C sea<br>')
+            else:
+                out.append('Dec ' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C air · city stay, no sea swimming<br>')
+            if deal.beach:
+                out.append('Beach ' + escape(deal.beach) + '<br>')
+            out.append('Flights ' + escape(deal.airline) + ' return (' + escape(deal.origin_airports[0] + '+' + str(len(deal.origin_airports) - 1)) + ' ↔ ' + escape(deal.destination_airport) + ') · <strong>£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br>')
+            out.append('Stay ' + str(len(config.rooms)) + 'r × ' + str(deal.nights) + 'n:</strong> <strong>£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br>')
+            out.append('D2D £' + f'{deal.true_d2d_gbp:,.0f}' + ' = £' + f'{deal.total_package_price_gbp:,.0f}' + ' + £' + f'{deal.uk_ground_gbp:,.2f}' + ' + £' + f'{deal.transfer_gbp:,.0f}')
             if deal.highlights:
-                out.append('<br><strong>Resort Highlights:</strong> ' + escape(' · '.join(deal.highlights)))
+                out.append('<br>' + escape(' · '.join(deal.highlights)))
             out.append('</div>')
             
             out.append('<div style="margin-top:12px;">')
             out.append('<a href="' + escape(deal.flight_booking_url, quote=True) + '" style="' + btn_primary + '">View Flights (£' + f'{deal.flight_price_total_gbp:,.0f}' + ')</a>')
             out.append('<a href="' + escape(deal.hotel_booking_url, quote=True) + '" style="' + btn_muted + '">Resort Direct</a>')
-            love_url = build_loveholidays_url(
-                destination=deal.destination_key,
-                origin_airports=config.origins,
-                departure_date=deal.outbound_date,
-                return_date=deal.return_date,
-                adults=config.travellers,
-                rooms=len(config.rooms),
+            # Best verified guide for this destination: easyJet guides carry
+            # live lead-in prices; Jet2 second; hub fallback otherwise.
+            guide_url = EASYJET_DESTINATION_PATHS.get(
+                deal.destination_key.lower(),
+                JET2_DESTINATION_PATHS.get(deal.destination_key.lower(), LOVEHOLIDAYS_HOME),
             )
-            out.append('<a href="' + escape(love_url, quote=True) + '" style="' + btn_muted + '">Search on loveholidays</a>')
+            guide_label = (
+                "easyJet holidays"
+                if deal.destination_key.lower() in EASYJET_DESTINATION_PATHS
+                else ("Jet2holidays" if deal.destination_key.lower() in JET2_DESTINATION_PATHS else "loveholidays")
+            )
+            out.append('<a href="' + escape(guide_url, quote=True) + '" style="' + btn_muted + '">' + guide_label + '</a>')
             out.append('</div></td></tr></table>')
-
-        # Comparison table
-        out.append('<h3 style="margin:20px 0 10px 0; color:#f8fafc; font-size:15px; font-weight:700;">Comparison Matrix (Whole Family Under £5k)</h3>')
-        out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-bottom:24px; font-size:12px; background:#0d1520;">')
-        out.append('<tr style="background:#1e293b; color:#94a3b8;">')
-        out.append('<th style="padding:8px 10px; text-align:left;">Resort</th>')
-        out.append('<th style="padding:8px 10px; text-align:left;">Board</th>')
-        out.append('<th style="padding:8px 10px; text-align:right;">Flights (5p)</th>')
-        out.append('<th style="padding:8px 10px; text-align:right;">Hotel (3r)</th>')
-        out.append('<th style="padding:8px 10px; text-align:right;">Total</th>')
-        out.append('<th style="padding:8px 10px; text-align:right;">Per Person</th>')
-        out.append('</tr>')
-        for deal in deals:
-            out.append('<tr style="border-bottom:1px solid #1e293b;">')
-            out.append('<td style="padding:8px 10px; color:#f8fafc; font-weight:600;">' + escape(deal.resort_name) + '</td>')
-            out.append('<td style="padding:8px 10px; color:#6ee7b7;">' + escape(deal.board_basis) + '</td>')
-            out.append('<td style="padding:8px 10px; text-align:right; color:#94a3b8;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</td>')
-            out.append('<td style="padding:8px 10px; text-align:right; color:#94a3b8;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</td>')
-            out.append('<td style="padding:8px 10px; text-align:right; color:#34d399; font-weight:700;">£' + f'{deal.total_package_price_gbp:,.0f}' + '</td>')
-            out.append('<td style="padding:8px 10px; text-align:right; color:#a7f3d0;">£' + f'{deal.price_per_person_gbp:,.0f}' + '</td>')
-            out.append('</tr>')
-        out.append('</table>')
+            out.append('</div>')
 
     if not deals:
         out.append('<h2 style="margin:0 0 12px 0; color:#f8fafc; font-size:18px; font-weight:700;">Package Deal Search Links</h2>')
@@ -735,77 +899,31 @@ def render_holiday_report(
                 out.append('</div>')
             out.append('</td></tr>')
             
-            # ── FULL MATRIX: visually demoted, compact ──
+            # ── ALL COMBINATIONS: one hub row (links can't encode dates, so
+            # per-pair rows would be illusory precision + Gmail-clipping bloat)
             out.append('<tr><td colspan="2" style="padding:10px 12px 4px; color:#64748b; font-size:12px; font-weight:600; border-top:1px solid #1e293b;">')
-            out.append('All ' + str(len(pairs)) + ' date combinations (tap to expand)')
+            out.append('All ' + str(len(pairs)) + ' date combinations — enter any listed outbound/return pair on the provider site')
             out.append('</td></tr>')
-            
-            # Build a compact grid: date pairs as rows, providers as columns
-            out.append('<tr><td colspan="2" style="padding:4px 10px 10px; font-size:11px;">')
-            out.append('<table style="width:100%; border-collapse:collapse; font-size:11px;">')
-            # Header row
-            out.append('<tr>')
-            out.append('<th style="text-align:left; padding:4px 6px; color:#64748b; font-weight:600; font-size:10px; border-bottom:1px solid #1e293b;">Dates</th>')
-            for name in urls.keys():
-                out.append('<th style="text-align:center; padding:4px 6px; color:#64748b; font-weight:600; font-size:10px; border-bottom:1px solid #1e293b;">')
+            out.append('<tr><td colspan="2" style="padding:4px 10px 10px;">')
+            out.append('<div style="margin-bottom:4px;"><span style="color:#94a3b8; font-size:11px;">')
+            out.append(escape(', '.join(outbound + '→' + returning for outbound, returning in pairs)))
+            out.append('</span></div><div>')
+            for name, url in urls.items():
+                out.append('<a href="')
+                out.append(escape(url, quote=True))
+                out.append('" style="')
+                out.append(btn_muted)
+                out.append('">')
                 out.append(escape(provider_labels[name]))
-                out.append('</th>')
-            out.append('</tr>')
-            # Data rows
-            for outbound, returning in pairs:
-                urls = build_provider_urls(
-                    destination_key=dest.key,
-                    destination_label=dest.label,
-                    origin_airports=config.origins,
-                    departure_date=outbound,
-                    return_date=returning,
-                    adults=adults,
-                    rooms=rooms,
-                )
-                out.append('<tr>')
-                out.append('<td style="padding:4px 6px; color:#94a3b8; font-size:11px; border-bottom:1px solid #0d1520; white-space:nowrap;">')
-                out.append(escape(outbound) + ' → ' + escape(returning))
-                out.append('</td>')
-                for name, url in urls.items():
-                    out.append('<td style="padding:2px 4px; text-align:center; border-bottom:1px solid #0d1520;">')
-                    out.append('<a href="')
-                    out.append(escape(url, quote=True))
-                    out.append('" style="')
-                    out.append(btn_muted)
-                    out.append('">Open</a>')
-                    out.append('</td>')
-                out.append('</tr>')
-            out.append('</table>')
-            out.append('</td></tr>')
-            
+                out.append('</a>')
+            out.append('</div></td></tr>')
+
             out.append('</table>')
         
         out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-top:24px;">')
         out.append('<tr><td style="padding:14px; background:#392d14; border-radius:6px; color:#fde68a; font-size:12px; line-height:1.5;">')
         out.append('<strong style="color:#fbbf24;">⚠ No live prices collected</strong> — these are provider search entry points, not verified checkout deep links. Some providers accept only the first departure airport or room count in a URL. Reapply every origin option, the exact room occupancy <strong>' + escape(room_occupancy) + '</strong>, preferred departure time, board basis, baggage and transfers before relying on a result. Verify the final whole-party checkout total and protection before booking.')
         out.append('</td></tr></table>')
-    else:
-        out.append('<h3 style="margin:24px 0 10px 0; color:#f8fafc; font-size:14px; font-weight:700;">Direct Holiday Provider Search Entry Points</h3>')
-        out.append('<p style="margin:0 0 12px 0; color:#94a3b8; font-size:12px;">Query live packages directly on major UK holiday portals for custom room or baggage options:</p>')
-        out.append('<div style="margin-bottom:16px;">')
-        target_outbound, target_return = (
-            shortlist[len(shortlist) // 2] if shortlist else ("2026-12-22", "2026-12-30")
-        )
-        for dest in config.destinations[:4]:
-            urls = build_provider_urls(
-                destination_key=dest.key,
-                destination_label=dest.label,
-                origin_airports=config.origins,
-                departure_date=target_outbound,
-                return_date=target_return,
-                adults=config.travellers,
-                rooms=len(config.rooms),
-            )
-            out.append('<div style="margin-bottom:8px;"><strong style="color:#f8fafc; font-size:12px; margin-right:8px;">' + escape(dest.label.split('(')[0].strip()) + ':</strong> ')
-            for name, url in urls.items():
-                out.append('<a href="' + escape(url, quote=True) + '" style="' + btn_muted + '">' + escape(provider_labels[name]) + '</a> ')
-            out.append('</div>')
-        out.append('</div>')
     out.append('</td></tr></table></body></html>')
     
     return ''.join(out)

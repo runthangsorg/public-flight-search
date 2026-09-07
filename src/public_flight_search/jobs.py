@@ -9,7 +9,7 @@ import os
 
 from .config import load_flight_config, build_search_plan
 from .google_flights import build_google_flights_url, search_google_flights
-from .holidays import _date_pairs, collect_holiday_deals, load_holiday_config, render_holiday_report
+from .holidays import _date_pairs, collect_holiday_deals, count_provider_entries, load_holiday_config, render_holiday_report
 from .mailer import send_html
 from .report import render_flight_report
 from .trip_config import (
@@ -164,9 +164,8 @@ def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
     result = {
         "destination_count": len(config.destinations),
         "date_combination_count": date_combination_count,
-        "provider_entry_count": (
-            len(config.destinations) * date_combination_count * 6
-        ),
+        # Exact rendered-link count: Jet2 is omitted where it has no product.
+        "provider_entry_count": count_provider_entries(config),
         "deal_count": len(deals),
         "email_sent": not dry_run,
     }

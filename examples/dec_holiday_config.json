@@ -2,67 +2,109 @@
   "report_title": "December Holiday Packages: Under-5k Luxury Watch",
   "party": {
     "travellers": 5,
-    "rooms": [2, 2, 1]
+    "rooms": [
+      2,
+      2,
+      1
+    ]
   },
-  "departure_window": ["08:00", "18:00"],
-  "origins": ["LHR", "LGW", "LTN", "STN"],
-  "outbound_dates": ["2026-12-20", "2026-12-22", "2026-12-24"],
-  "return_dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
+  "departure_window": [
+    "08:00",
+    "18:00"
+  ],
+  "origins": [
+    "LHR",
+    "LGW",
+    "LTN",
+    "STN"
+  ],
+  "outbound_dates": [
+    "2026-12-20",
+    "2026-12-22",
+    "2026-12-24"
+  ],
+  "return_dates": [
+    "2026-12-28",
+    "2026-12-30",
+    "2026-12-31"
+  ],
   "destinations": [
     {
       "key": "antalya",
-      "label": "Antalya Riviera, Turkey (Lara Barut Collection / All Inclusive)",
-      "airports": ["AYT"]
+      "label": "Antalya Riviera, Turkey (Ultra All Inclusive resorts)",
+      "airports": [
+        "AYT"
+      ]
     },
     {
       "key": "malta",
-      "label": "Valletta, Malta (The Phoenicia Malta / Half Board)",
-      "airports": ["MLA"]
+      "label": "Valletta, Malta (heritage city break \u2014 15\u00b0C, no beach weather)",
+      "airports": [
+        "MLA"
+      ]
     },
     {
       "key": "taghazout",
-      "label": "Taghazout Bay, Morocco (Fairmont Taghazout / Half Board)",
-      "airports": ["AGA"]
+      "label": "Taghazout Bay, Morocco (surf coast, 23\u00b0C winter sun)",
+      "airports": [
+        "AGA"
+      ]
     },
     {
       "key": "hurghada",
-      "label": "Hurghada & Red Sea, Egypt (Steigenberger Pure Lifestyle / All Inclusive)",
-      "airports": ["HRG"]
+      "label": "Hurghada & Red Sea, Egypt (25\u00b0C warmth, all inclusive)",
+      "airports": [
+        "HRG"
+      ]
     },
     {
       "key": "cairo",
-      "label": "Cairo & Pyramids, Egypt (Marriott Mena House / Pyramids View)",
-      "airports": ["CAI"]
+      "label": "Cairo & Giza, Egypt (pyramids & Nile \u2014 cultural, no beach)",
+      "airports": [
+        "CAI"
+      ]
     },
     {
       "key": "muscat",
-      "label": "Muscat Coastal Desert, Oman (Shangri-La Barr Al Jissah / Luxury Coastal)",
-      "airports": ["MCT"]
+      "label": "Muscat, Oman (26\u00b0C+ tropical coast)",
+      "airports": [
+        "MCT"
+      ]
     },
     {
       "key": "doha",
-      "label": "Doha & West Bay, Qatar (Sharq Village & Spa, Ritz-Carlton / Luxury Bay)",
-      "airports": ["DOH"]
+      "label": "Doha, Qatar (private-beach resorts, 24\u00b0C)",
+      "airports": [
+        "DOH"
+      ]
     },
     {
       "key": "tenerife",
-      "label": "Tenerife, Canary Islands (The Ritz-Carlton Abama / Half Board)",
-      "airports": ["TFS"]
+      "label": "Tenerife, Canary Islands (22\u201324\u00b0C eternal spring)",
+      "airports": [
+        "TFS"
+      ]
     },
     {
       "key": "madeira",
-      "label": "Funchal, Madeira, Portugal (Savoy Palace / Luxury Atlantic)",
-      "airports": ["FNC"]
+      "label": "Funchal, Madeira (levada hiking \u2014 volcanic island, no sand)",
+      "airports": [
+        "FNC"
+      ]
     },
     {
       "key": "lanzarote",
-      "label": "Playa Blanca, Lanzarote, Canary Islands (Princesa Yaiza / Half Board)",
-      "airports": ["ACE"]
+      "label": "Playa Blanca, Lanzarote (21\u201323\u00b0C, family beach resort)",
+      "airports": [
+        "ACE"
+      ]
     },
     {
       "key": "cape_verde",
-      "label": "Sal Island, Cape Verde (Hilton Cabo Verde Sal Resort / Bed & Breakfast)",
-      "airports": ["SID"]
+      "label": "Sal Island, Cape Verde (26\u00b0C+ tropical beach)",
+      "airports": [
+        "SID"
+      ]
     }
   ]
 }
