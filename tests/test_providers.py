@@ -87,6 +87,9 @@ class AirlineDirectTests(unittest.TestCase):
         )
         self.assertIn("etihad.com", url)
         self.assertEqual(name, "Etihad Airways")
+        # Verified landing pages only — never speculative prefilled queries.
+        self.assertNotIn("?origin=", url)
+        self.assertNotIn("departureDate=", url)
 
     def test_emirates(self):
         url, name = _build_airline_direct_url(
@@ -94,12 +97,16 @@ class AirlineDirectTests(unittest.TestCase):
         )
         self.assertIn("emirates.com", url)
         self.assertEqual(name, "Emirates")
+        self.assertNotIn("?origin=", url)
 
     def test_unknown_carrier_fallback(self):
         url, name = _build_airline_direct_url(
             "UnknownAirline", orig="LHR", dest="MCT", dep_date="2026-09-16",
         )
         self.assertIn("google.com", url)
+        # Fallback is the structured tfs encoder, never legacy ?q= or #flt=.
+        self.assertIn("tfs=", url)
+        self.assertNotIn("#flt=", url)
 
 
 class BuildAllProviderURLsTests(unittest.TestCase):
@@ -109,6 +116,9 @@ class BuildAllProviderURLsTests(unittest.TestCase):
             ret_orig="DXB", ret_dest="LHR", ret_date="2026-09-27",
         )
         self.assertIn("google", urls.google)
+        self.assertIn("tfs=", urls.google)
+        self.assertNotIn("#flt=", urls.google)
+        self.assertNotIn("?q=", urls.google)
         self.assertIn("kayak", urls.kayak)
         self.assertIn("skyscanner", urls.skyscanner)
         self.assertIn("trip.com", urls.trip_com)

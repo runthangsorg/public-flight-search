@@ -274,6 +274,13 @@ def build_google_flights_url(
     travellers: int,
     cabin_class: str,
 ) -> str:
-    from urllib.parse import quote
-    query = f"flights from {origin} to {destination} on {date} one way"
-    return "https://www.google.com/travel/flights?q=" + quote(query, safe="") + "&curr=GBP&hl=en-GB"
+    """One-way Google Flights URL — always the structured `tfs=` encoder.
+
+    The legacy `?q=` natural-language form lands on the generic homepage.
+    """
+    from .google_flights import build_google_flights_url as _structured
+
+    return _structured(
+        origin=origin, destination=destination, date=date,
+        travellers=travellers, cabin_class=cabin_class,
+    )

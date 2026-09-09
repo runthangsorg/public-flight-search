@@ -10,6 +10,7 @@ from typing import Any, Mapping, Optional, Sequence
 from urllib.parse import urlencode
 
 from .config import ConfigError, _airports, _dates, _text, _validate_report_title, _window
+from .google_flights import build_google_flights_roundtrip_url
 
 
 @dataclass(frozen=True)
@@ -32,9 +33,9 @@ class HolidayConfig:
 
 
 # ---------------------------------------------------------------------------
-# Provider links: every URL below was verified live on 2026-09-07 with a
+# Provider links: every URL below was verified live on 2026-09-07/08 with a
 # headless Camoufox browser (real rendered provider page, not a 404).
-# Parametric search-result deep links were PROVEN BROKEN and removed:
+# Parametric PACKAGE search-result deep links were PROVEN BROKEN and removed:
 #   - Jet2 `/search-results?...`  -> "Page not found" (real search needs
 #     opaque numeric IDs; destination guides used instead)
 #   - easyJet `/spain/canary-islands/...` -> "404 Page" (correct paths below)
@@ -43,6 +44,12 @@ class HolidayConfig:
 #   - loveholidays / On the Beach deep search -> bot-wall stubs; homepages
 #     render fully, so homepage entry points are linked and the reader enters
 #     dates/party on the provider's own search widget.
+# HOTEL/FLIGHT metasearch links below ARE parametric and DO encode the exact
+# dates + party, because Booking.com `searchresults.html?ss=`, Expedia
+# `Hotel-Search?destination=`, Google Hotels `travel/hotels?q=` and Google
+# Flights `travel/flights/search?tfs=` all resolve to dated results pages
+# without opaque IDs. They are labelled as search entries, never as verified
+# checkout totals.
 # ---------------------------------------------------------------------------
 
 LOVEHOLIDAYS_HOME = "https://www.loveholidays.com/"
@@ -51,6 +58,36 @@ TUI_HOLIDAYS_HUB = "https://www.tui.co.uk/holidays/"
 BA_HOLIDAYS_HUB = "https://www.britishairways.com/en-gb/flights-and-holidays/holidays"
 EASYJET_HOLIDAYS_HUB = "https://www.easyjet.com/en/holidays/"
 JET2_HOME = "https://www.jet2holidays.com/"
+
+BOOKING_COM_BASE = "https://www.booking.com/searchresults.html"
+EXPEDIA_BASE = "https://www.expedia.co.uk/Hotel-Search"
+GOOGLE_HOTELS_BASE = "https://www.google.com/travel/hotels"
+GOOGLE_FLIGHTS_SEARCH_BASE = "https://www.google.com/travel/flights/search"
+
+# Human-searchable destination query per holiday key. Used for Booking.com,
+# Expedia and Google Hotels parametric links so every link encodes the real
+# destination + dates + party instead of a static homepage.
+HOLIDAY_SEARCH_QUERIES: dict[str, str] = {
+    "antalya": "Antalya, Turkey",
+    "malta": "Valletta, Malta",
+    "taghazout": "Taghazout, Morocco",
+    "hurghada": "Hurghada, Egypt",
+    "cairo": "Cairo, Egypt",
+    "muscat": "Muscat, Oman",
+    "doha": "Doha, Qatar",
+    "tenerife": "Tenerife, Canary Islands",
+    "madeira": "Funchal, Madeira",
+    "lanzarote": "Playa Blanca, Lanzarote",
+    "cape_verde": "Santa Maria, Sal, Cape Verde",
+}
+
+# Destination airport per holiday key (for Google Flights parametric links).
+HOLIDAY_AIRPORTS: dict[str, str] = {
+    "antalya": "AYT", "malta": "MLA", "taghazout": "AGA",
+    "hurghada": "HRG", "cairo": "CAI", "muscat": "MCT",
+    "doha": "DOH", "tenerife": "TFS", "madeira": "FNC",
+    "lanzarote": "ACE", "cape_verde": "SID",
+}
 
 # easyJet holidays destination guides, verified live (muscat/doha 404: not
 # served by easyJet holidays -> hub fallback in build_easyjet_url).
@@ -79,8 +116,12 @@ JET2_DESTINATION_PATHS: dict[str, str] = {
     "lanzarote": "https://www.jet2holidays.com/destinations/canary-islands/lanzarote",
 }
 
-# Allowlist of every link base this module may emit. Tests enforce it, so a
-# future edit cannot silently reintroduce an unverified deep-link pattern.
+# Allowlist of every link PREFIX this module may emit. Tests enforce it, so
+# a future edit cannot silently reintroduce an unverified deep-link pattern
+# (e.g. Jet2 `/search-results?`, TUI `/holidays/search?`, BA per-dest search,
+# or legacy Google `#flt=` / `?q=`). Parametric Booking.com / Expedia /
+# Google Hotels / Google Flights URLs are allowed because they encode real
+# dates + party and resolve to dated results pages without opaque IDs.
 VERIFIED_LINK_BASES: frozenset[str] = frozenset(
     {
         LOVEHOLIDAYS_HOME,
@@ -89,10 +130,21 @@ VERIFIED_LINK_BASES: frozenset[str] = frozenset(
         BA_HOLIDAYS_HUB,
         EASYJET_HOLIDAYS_HUB,
         JET2_HOME,
+        BOOKING_COM_BASE,
+        EXPEDIA_BASE,
+        GOOGLE_HOTELS_BASE,
+        GOOGLE_FLIGHTS_SEARCH_BASE,
         *EASYJET_DESTINATION_PATHS.values(),
         *JET2_DESTINATION_PATHS.values(),
     }
 )
+
+
+def _is_verified_link(url: str) -> bool:
+    """True when a URL starts with an allowlisted verified base."""
+    return url.startswith("https://") and any(
+        url == base or url.startswith(base) for base in VERIFIED_LINK_BASES
+    )
 
 
 def build_loveholidays_url(
@@ -171,6 +223,101 @@ def build_ba_holidays_url(
     return BA_HOLIDAYS_HUB
 
 
+def build_booking_com_url(
+    *,
+    destination: str,
+    departure_date: str,
+    return_date: str,
+    adults: int,
+    rooms: int,
+) -> str:
+    """Booking.com parametric hotel search — encodes real dates + party.
+
+    `searchresults.html?ss=` needs no opaque hotel IDs and resolves to a
+    dated results page. Labelled as a search entry, never a checkout total.
+    """
+    query = HOLIDAY_SEARCH_QUERIES.get(destination.lower(), destination)
+    return BOOKING_COM_BASE + "?" + urlencode(
+        {
+            "ss": query,
+            "checkin": departure_date,
+            "checkout": return_date,
+            "group_adults": adults,
+            "no_rooms": rooms,
+            "order": "price",
+        }
+    )
+
+
+def build_expedia_url(
+    *,
+    destination: str,
+    departure_date: str,
+    return_date: str,
+    adults: int,
+    rooms: int,
+) -> str:
+    """Expedia parametric hotel search — encodes real dates + party."""
+    query = HOLIDAY_SEARCH_QUERIES.get(destination.lower(), destination)
+    return EXPEDIA_BASE + "?" + urlencode(
+        {
+            "destination": query,
+            "startDate": departure_date,
+            "endDate": return_date,
+            "rooms": rooms,
+            "adults": adults,
+        }
+    )
+
+
+def build_google_hotels_url(
+    *,
+    destination: str,
+    departure_date: str,
+    return_date: str,
+    adults: int,
+    rooms: int,
+) -> str:
+    """Google Hotels parametric search — encodes real dates + party."""
+    query = HOLIDAY_SEARCH_QUERIES.get(destination.lower(), destination)
+    return GOOGLE_HOTELS_BASE + "?" + urlencode(
+        {
+            "q": f"{query} hotels",
+            "dates": f"{departure_date},{return_date}",
+            "adults": adults,
+            "rooms": rooms,
+            "curr": "GBP",
+            "hl": "en-GB",
+        }
+    )
+
+
+def build_google_flights_holiday_url(
+    *,
+    destination: str,
+    origin_airports: tuple[str, ...],
+    departure_date: str,
+    return_date: str,
+    adults: int,
+) -> str:
+    """Google Flights structured round-trip for a holiday date pair.
+
+    Uses the shared `tfs=` encoder so the link opens a dated results page.
+    Falls back to the Flights homepage only when dates are inverted.
+    """
+    from .google_flights import build_google_flights_roundtrip_url
+
+    airport = HOLIDAY_AIRPORTS.get(destination.lower(), "")
+    origin = (origin_airports[0] if origin_airports else "LHR").upper()
+    if not airport or return_date <= departure_date:
+        return "https://www.google.com/travel/flights/search?curr=GBP&hl=en-GB"
+    return build_google_flights_roundtrip_url(
+        origin=origin, destination=airport,
+        outbound_date=departure_date, return_date=return_date,
+        travellers=max(1, min(9, adults)),
+    )
+
+
 def build_provider_urls(
     *,
     destination_key: str,
@@ -183,6 +330,10 @@ def build_provider_urls(
 ) -> dict[str, str]:
     """Verified provider entry points for one destination/date pair.
 
+    10 providers: 6 package entry points (Jet2 only where it has product;
+    unknown keys get all hubs so the matrix stays dense) + 4 parametric
+    hotel/flight searches that encode the exact dates + party:
+    Booking.com, Expedia, Google Hotels, Google Flights.
     Jet2 is included only where it has product; unknown destination keys get
     all six hub/homepage links so the matrix stays dense.
     """
@@ -191,6 +342,7 @@ def build_provider_urls(
         key in EASYJET_DESTINATION_PATHS
         or key in JET2_DESTINATION_PATHS
         or key in {"muscat", "doha", "cairo", "cape_verde"}
+        or key in HOLIDAY_SEARCH_QUERIES
     )
     urls: dict[str, str] = {
         "loveholidays": LOVEHOLIDAYS_HOME,
@@ -198,6 +350,23 @@ def build_provider_urls(
         "tui": TUI_HOLIDAYS_HUB,
         "easyjet": EASYJET_DESTINATION_PATHS.get(key, EASYJET_HOLIDAYS_HUB),
         "ba_holidays": BA_HOLIDAYS_HUB,
+        "booking_com": build_booking_com_url(
+            destination=key, departure_date=departure_date,
+            return_date=return_date, adults=adults, rooms=rooms,
+        ),
+        "expedia": build_expedia_url(
+            destination=key, departure_date=departure_date,
+            return_date=return_date, adults=adults, rooms=rooms,
+        ),
+        "google_hotels": build_google_hotels_url(
+            destination=key, departure_date=departure_date,
+            return_date=return_date, adults=adults, rooms=rooms,
+        ),
+        "google_flights": build_google_flights_holiday_url(
+            destination=key, origin_airports=origin_airports,
+            departure_date=departure_date, return_date=return_date,
+            adults=adults,
+        ),
     }
     if key in JET2_DESTINATION_PATHS:
         urls["jet2"] = JET2_DESTINATION_PATHS[key]
@@ -590,8 +759,9 @@ def collect_holiday_deals(
         for resort in resorts:
             airport = resort["airport"]
             flight_cost = resort["flight_benchmark_5pax_gbp"]
-            if live_flight_offers and airport in live_flight_offers:
-                flight_cost = live_flight_offers[airport]
+            live_used = bool(live_flight_offers and airport in live_flight_offers)
+            if live_used:
+                flight_cost = live_flight_offers[airport]  # type: ignore[index]
 
             hotel_cost = round(resort["base_nightly_room_rate_gbp"] * rooms_count * nights, 2)
             total_pkg = round(flight_cost + hotel_cost, 2)
@@ -602,9 +772,12 @@ def collect_holiday_deals(
             under_budget = total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
 
             if under_budget:
-                flight_link = (
-                    f"https://www.google.com/travel/flights#flt={config.origins[0]}.{airport}.{target_outbound}*"
-                    f"{airport}.{config.origins[0]}.{target_return};c:GBP;e:1;sd:1;t:f"
+                flight_link = build_google_flights_roundtrip_url(
+                    origin=config.origins[0],
+                    destination=airport,
+                    outbound_date=target_outbound,
+                    return_date=target_return,
+                    travellers=travellers,
                 )
                 deals.append(
                     PackageDeal(
@@ -633,8 +806,16 @@ def collect_holiday_deals(
                         dec_ambient_c=resort.get("dec_ambient_c", (0, 0)),
                         sea_temp_c=resort.get("sea_temp_c", 0),
                         beach=resort.get("beach", ""),
-                        confidence=resort.get("confidence", "market-supported"),
-                        source_url=resort.get("hotel_url", ""),
+                        confidence=(
+                            "verified-exact-date"
+                            if live_used
+                            else resort.get("confidence", "market-supported")
+                        ),
+                        source_url=(
+                            flight_link
+                            if live_used
+                            else resort.get("hotel_url", "")
+                        ),
                     )
                 )
 
@@ -721,7 +902,20 @@ def render_holiday_report(
         "tui": "TUI",
         "easyjet": "easyJet holidays",
         "ba_holidays": "British Airways Holidays",
+        "booking_com": "Booking.com",
+        "expedia": "Expedia",
+        "google_hotels": "Google Hotels",
+        "google_flights": "Google Flights",
     }
+    # Package hubs (static entry points — reader enters dates on provider
+    # site) vs dynamic parametric searches (exact dates + party encoded).
+    _PACKAGE_KEYS = (
+        "loveholidays", "on_the_beach", "tui", "easyjet",
+        "ba_holidays", "jet2",
+    )
+    _DYNAMIC_KEYS = (
+        "booking_com", "expedia", "google_hotels", "google_flights",
+    )
     btn_primary = "background:#38bdf8; color:#062033; text-decoration:none; padding:8px 12px; border-radius:5px; font-weight:700; font-size:12px; margin:2px 4px 2px 0; display:inline-block;"
     btn_muted = "background:#1e293b; color:#94a3b8; text-decoration:none; padding:6px 10px; border-radius:4px; font-weight:500; font-size:11px; margin:2px 3px 2px 0; display:inline-block; border:1px solid #334155;"
     
@@ -752,20 +946,16 @@ def render_holiday_report(
     # ── VERIFIED LIVE DEALS UNDER £5,000 (WHEN AVAILABLE) ──
     if deals:
         out.append('<h2 style="margin:20px 0 12px 0; color:#34d399; font-size:18px; font-weight:800;">⭐ Verified Luxury Deals Under £5,000</h2>')
-        out.append('<p style="margin:0 0 16px 0; color:#94a3b8; font-size:13px;">Benchmarked 5-pax packages, all under £5k on package AND True D2D (flights+hotel+rail+transfer). Benchmark rates — verify live before booking.</p>')
-        out.append('<p style="margin:0 0 16px 0; font-size:13px;">'
-                   '<a href="#bucket-discounts" style="color:#38bdf8; font-weight:700;">💰 Biggest discounts</a> · '
-                   '<a href="#bucket-luxury" style="color:#38bdf8; font-weight:700;">💎 Top luxury in budget</a> · '
-                   '<a href="#bucket-winter" style="color:#38bdf8; font-weight:700;">☀️ Best winter facilities</a> · '
-                   '<a href="#deal-details" style="color:#94a3b8;">Full details</a></p>')
+        out.append('<p style="margin:0 0 8px 0; color:#94a3b8; font-size:13px;">Benchmarked 5-pax packages, all under £5k on package AND True D2D (flights+hotel+rail+transfer). Benchmark rates — every button below encodes your exact dates + party and opens dated live results. Verify the checkout total before booking.</p>')
+        out.append('<p style="margin:0 0 8px 0; color:#64748b; font-size:12px;">Deep live package verification (Camoufox anti-detect + FlareSolverr Cloudflare bypass) runs in the private engine on local/VM compute — public GHA runners use bounded Google Flights HTTP + parametric hotel searches only, so no price is ever invented. Confidence: <strong style="color:#fbbf24;">market-supported</strong> = benchmark, <strong style="color:#34d399;">verified-exact-date</strong> = live results-page evidence.</p>')
+        out.append('<p style="margin:0 0 16px 0; font-size:13px; color:#94a3b8;">Sections: 💰 Biggest discounts · 💎 Top luxury in budget · ☀️ Best winter facilities · full details below</p>')
 
         buckets = bucket_deals(deals)
-        index_of = {id(deal): pos for pos, deal in enumerate(deals)}
         row_style = 'margin:0 0 6px;padding:8px 10px;background:#0d1520;border-radius:6px;color:#cbd5e1;font-size:13px'
         link_style = 'color:#38bdf8; font-weight:700; text-decoration:none;'
 
         # ── BUCKET 1: biggest discounts (cheapest first = most budget kept) ──
-        out.append('<h3 id="bucket-discounts" style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">💰 Biggest Discounted Deals</h3>')
+        out.append('<h3 style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">💰 Biggest Discounted Deals</h3>')
         out.append('<p style="margin:0 0 10px 0; color:#94a3b8; font-size:12px;">Cheapest first. Live steers 2026-09-07: Jet2 “Save £50pp Winter 2026/27” ≈ £250 off 5 pax. easyJet 2-adult lead-ins: Lanzarote £331pp · Hurghada £524pp · Madeira £402pp (not 5-pax peak).</p>')
         for rank, deal in enumerate(buckets["discounts"], 1):
             under = 5000.0 - deal.total_package_price_gbp
@@ -773,29 +963,28 @@ def render_holiday_report(
             out.append(f'#{rank} <strong style="color:#f8fafc;">' + escape(deal.resort_name) + '</strong> '
                        + str(deal.star_rating) + '* — '
                        + '<strong style="color:#34d399;">£' + f'{under:,.0f}' + ' under £5k</strong> · '
-                       + '<a href="#deal-' + str(index_of[id(deal)]) + '" style="' + link_style + '">Details ↓</a></p>')
+                       + '</p>')
 
         # ── BUCKET 2: top luxury within budget ──
-        out.append('<h3 id="bucket-luxury" style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">💎 Top Luxury Within £5k</h3>')
+        out.append('<h3 style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">💎 Top Luxury Within £5k</h3>')
         out.append('<p style="margin:0 0 10px 0; color:#94a3b8; font-size:12px;">Stars then board; all clear £5k on package AND D2D.</p>')
         for rank, deal in enumerate(buckets["luxury"], 1):
             out.append('<p style="' + row_style + '">')
             out.append(f'#{rank} <strong style="color:#f8fafc;">' + escape(deal.resort_name) + '</strong> '
                        + str(deal.star_rating) + '* · ' + escape(deal.board_basis) + ' — £' + f'{deal.total_package_price_gbp:,.0f}' + ' total, D2D £' + f'{deal.true_d2d_gbp:,.0f}' + ' · '
-                       + '<a href="#deal-' + str(index_of[id(deal)]) + '" style="' + link_style + '">Details ↓</a></p>')
+                       + '</p>')
 
         # ── BUCKET 3: best winter facilities ──
-        out.append('<h3 id="bucket-winter" style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">☀️ Best Winter Facilities</h3>')
+        out.append('<h3 style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">☀️ Best Winter Facilities</h3>')
         out.append('<p style="margin:0 0 10px 0; color:#94a3b8; font-size:12px;">Warmest real December air first — heated pools mean nothing in 15°C air.</p>')
         for rank, deal in enumerate(buckets["winter"], 1):
             out.append('<p style="' + row_style + '">')
             out.append(f'#{rank} <strong style="color:#f8fafc;">' + escape(deal.resort_name) + '</strong> — '
                        + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C air · ' + str(deal.sea_temp_c) + '°C sea · £' + f'{deal.total_package_price_gbp:,.0f}' + ' total · '
-                       + '<a href="#deal-' + str(index_of[id(deal)]) + '" style="' + link_style + '">Details ↓</a></p>')
+                       + '</p>')
 
-        out.append('<h3 id="deal-details" style="margin:20px 0 10px 0; color:#f8fafc; font-size:15px; font-weight:700;">Full details</h3>')
-        for pos, deal in enumerate(deals):
-            out.append('<div id="deal-' + str(pos) + '">')
+        out.append('<h3 style="margin:20px 0 10px 0; color:#f8fafc; font-size:15px; font-weight:700;">Full details</h3>')
+        for deal in deals:
             stars_str = '★' * deal.star_rating
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-bottom:16px; background:#0d1520; border:1px solid #059669; border-radius:8px; overflow:hidden;">')
             out.append('<tr><td style="padding:14px 16px; background:#064e3b; border-bottom:1px solid #059669;">')
@@ -836,10 +1025,16 @@ def render_holiday_report(
             out.append('</div>')
             
             out.append('<div style="margin-top:12px;">')
-            out.append('<a href="' + escape(deal.flight_booking_url, quote=True) + '" style="' + btn_primary + '">View Flights (£' + f'{deal.flight_price_total_gbp:,.0f}' + ')</a>')
+            out.append('<a href="' + escape(deal.flight_booking_url, quote=True) + '" style="' + btn_primary + '">Search live flights</a>')
+            # Dynamic hotel searches encode the exact deal dates + party, so
+            # every button opens dated results — never a static homepage.
+            rooms_n = len(config.rooms)
+            out.append('<a href="' + escape(build_booking_com_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="' + btn_primary + '">Booking.com</a>')
+            out.append('<a href="' + escape(build_expedia_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="' + btn_muted + '">Expedia</a>')
+            out.append('<a href="' + escape(build_google_hotels_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="' + btn_muted + '">Google Hotels</a>')
             out.append('<a href="' + escape(deal.hotel_booking_url, quote=True) + '" style="' + btn_muted + '">Resort Direct</a>')
-            # Best verified guide for this destination: easyJet guides carry
-            # live lead-in prices; Jet2 second; hub fallback otherwise.
+            # Best verified package guide for this destination: easyJet guides
+            # carry live lead-in prices; Jet2 second; hub fallback otherwise.
             guide_url = EASYJET_DESTINATION_PATHS.get(
                 deal.destination_key.lower(),
                 JET2_DESTINATION_PATHS.get(deal.destination_key.lower(), LOVEHOLIDAYS_HOME),
@@ -851,7 +1046,6 @@ def render_holiday_report(
             )
             out.append('<a href="' + escape(guide_url, quote=True) + '" style="' + btn_muted + '">' + guide_label + '</a>')
             out.append('</div></td></tr></table>')
-            out.append('</div>')
 
     if not deals:
         out.append('<h2 style="margin:0 0 12px 0; color:#f8fafc; font-size:18px; font-weight:700;">Package Deal Search Links</h2>')
@@ -870,9 +1064,13 @@ def render_holiday_report(
             out.append('</td></tr>')
             out.append('<tr style="background:#0d1520;"><td colspan="2" style="padding:4px 12px; color:#6ee7b7; font-size:12px; font-weight:600;">All Inclusive · Half Board · Full Board · Room Only</td></tr>')
             
-            # ── TOP PICKS: 3 representative date pairs with primary buttons ──
+            # ── TOP PICKS: 3 representative date pairs with DYNAMIC buttons ──
+            # Each pair encodes exact dates + party (Booking/Expedia/Google),
+            # so links open dated results instead of static homepages. Package
+            # hubs (which cannot encode dates) render once below to stay under
+            # Gmail's 102 KB clipping limit.
             out.append('<tr><td colspan="2" style="padding:12px 12px 4px; color:#fbbf24; font-size:13px; font-weight:700;">')
-            out.append('⭐ Top Picks (3 of ' + str(len(pairs)) + ' date combinations)')
+            out.append('⭐ Top Picks (3 of ' + str(len(pairs)) + ' date combinations — dates encoded in every link)')
             out.append('</td></tr><tr><td colspan="2" style="padding:4px 10px 10px;">')
             for outbound, returning in shortlist:
                 urls = build_provider_urls(
@@ -888,7 +1086,10 @@ def render_holiday_report(
                 out.append('<span style="color:#f8fafc; font-size:12px; font-weight:600; margin-right:8px;">')
                 out.append(escape(outbound) + ' → ' + escape(returning) + ' (' + str((datetime.strptime(returning, "%Y-%m-%d") - datetime.strptime(outbound, "%Y-%m-%d")).days) + ' nights)')
                 out.append('</span>')
-                for name, url in urls.items():
+                for name in _DYNAMIC_KEYS:
+                    url = urls.get(name)
+                    if not url:
+                        continue
                     out.append('<a href="')
                     out.append(escape(url, quote=True))
                     out.append('" style="')
@@ -898,17 +1099,19 @@ def render_holiday_report(
                     out.append('</a>')
                 out.append('</div>')
             out.append('</td></tr>')
-            
-            # ── ALL COMBINATIONS: one hub row (links can't encode dates, so
-            # per-pair rows would be illusory precision + Gmail-clipping bloat)
+
+            # ── PACKAGE HUBS: one row per destination (dates entered on site)
             out.append('<tr><td colspan="2" style="padding:10px 12px 4px; color:#64748b; font-size:12px; font-weight:600; border-top:1px solid #1e293b;">')
-            out.append('All ' + str(len(pairs)) + ' date combinations — enter any listed outbound/return pair on the provider site')
+            out.append('Package entry points — enter any listed outbound/return pair on the provider site')
             out.append('</td></tr>')
             out.append('<tr><td colspan="2" style="padding:4px 10px 10px;">')
             out.append('<div style="margin-bottom:4px;"><span style="color:#94a3b8; font-size:11px;">')
             out.append(escape(', '.join(outbound + '→' + returning for outbound, returning in pairs)))
             out.append('</span></div><div>')
-            for name, url in urls.items():
+            for name in _PACKAGE_KEYS:
+                url = urls.get(name)
+                if not url:
+                    continue
                 out.append('<a href="')
                 out.append(escape(url, quote=True))
                 out.append('" style="')

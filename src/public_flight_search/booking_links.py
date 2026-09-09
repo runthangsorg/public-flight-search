@@ -134,13 +134,24 @@ class BookingLink:
 def build_metasearch_urls(
     out_orig: str, out_dest: str, out_date: str,
     ret_orig: str, ret_dest: str, ret_date: str,
+    travellers: int = 1,
 ) -> Dict[str, str]:
-    """Build metasearch URLs for the full round-trip."""
-    google = (
-        f"https://www.google.com/travel/flights?"
-        f"q=Flights+from+{out_orig}+to+{out_dest}+on+{out_date}"
-        f"+and+{ret_orig}+to+{ret_dest}+on+{ret_date}+1+adult+currency+GBP"
-    )
+    """Build metasearch URLs for the full round-trip.
+
+    Google uses the structured `tfs=` encoder (the legacy `?q=Flights+from`
+    format lands on the homepage). Kayak/Trip.com keep their documented
+    parametric patterns.
+    """
+    from .google_flights import build_google_flights_multicity_url
+
+    try:
+        google = build_google_flights_multicity_url(
+            out_orig=out_orig, out_dest=out_dest, out_date=out_date,
+            ret_orig=ret_orig, ret_dest=ret_dest, ret_date=ret_date,
+            travellers=travellers,
+        )
+    except ValueError:
+        google = "https://www.google.com/travel/flights/search?curr=GBP&hl=en-GB"
     kayak = (
         f"https://www.kayak.co.uk/flights/"
         f"{out_orig}-{out_dest}/{out_date}/{ret_orig}-{ret_dest}/{ret_date}"
@@ -164,6 +175,7 @@ def build_booking_links(
     ret_orig: str, ret_dest: str, ret_date: str,
     outbound_carrier: Optional[str] = None,
     inbound_carrier: Optional[str] = None,
+    travellers: int = 1,
 ) -> Dict[str, Any]:
     """Build structured, verified BookingLink objects for an itinerary.
 
@@ -175,7 +187,10 @@ def build_booking_links(
     out_carrier = outbound_carrier or "Etihad Airways"
     ret_carrier = inbound_carrier or "Etihad Airways"
 
-    metasearch = build_metasearch_urls(out_orig, out_dest, out_date, ret_orig, ret_dest, ret_date)
+    metasearch = build_metasearch_urls(
+        out_orig, out_dest, out_date, ret_orig, ret_dest, ret_date,
+        travellers=max(1, min(9, travellers)),
+    )
 
     out_landing = AIRLINE_OFFICIAL_BOOKING_PAGES.get(out_carrier, "https://www.google.com/travel/flights")
     ret_landing = AIRLINE_OFFICIAL_BOOKING_PAGES.get(ret_carrier, "https://www.google.com/travel/flights")

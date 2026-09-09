@@ -11,7 +11,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from public_flight_search.config import FlightSearch
 from public_flight_search.google_flights import (
     _is_waf_response,
+    build_google_flights_multicity_url,
     build_google_flights_url,
+    build_google_flights_roundtrip_url,
     _parse_flight_cards,
     search_google_flights,
 )
@@ -57,6 +59,80 @@ class BuildGoogleFlightsUrlTests(unittest.TestCase):
             cabin_class="ECONOMY",
         )
         self.assertIn("tfs=", url)
+
+
+class BuildRoundtripUrlTests(unittest.TestCase):
+    def _payload(self, url: str) -> bytes:
+        return base64.b64decode(unquote(url.split("tfs=", 1)[1].split("&", 1)[0]))
+
+    def test_roundtrip_encodes_both_legs(self):
+        url = build_google_flights_roundtrip_url(
+            origin="LHR",
+            destination="ACE",
+            outbound_date="2026-12-22",
+            return_date="2026-12-30",
+            travellers=5,
+        )
+        self.assertTrue(url.startswith("https://www.google.com/travel/flights/search?tfs="))
+        self.assertNotIn("#flt=", url)
+        self.assertIn("curr=GBP", url)
+        payload = self._payload(url)
+        self.assertIn(b"2026-12-22", payload)
+        self.assertIn(b"2026-12-30", payload)
+        self.assertIn(b"LHR", payload)
+        self.assertIn(b"ACE", payload)
+
+    def test_roundtrip_differs_from_one_way(self):
+        one_way = build_google_flights_url(
+            origin="LHR", destination="ACE", date="2026-12-22",
+            travellers=5, cabin_class="ECONOMY",
+        )
+        round_trip = build_google_flights_roundtrip_url(
+            origin="LHR", destination="ACE",
+            outbound_date="2026-12-22", return_date="2026-12-30",
+            travellers=5,
+        )
+        self.assertNotEqual(one_way, round_trip)
+
+    def test_rejects_return_before_outbound(self):
+        with self.assertRaises(ValueError):
+            build_google_flights_roundtrip_url(
+                origin="LHR", destination="ACE",
+                outbound_date="2026-12-30", return_date="2026-12-22",
+                travellers=5,
+            )
+
+
+class BuildMulticityUrlTests(unittest.TestCase):
+    def _payload(self, url: str) -> bytes:
+        return base64.b64decode(unquote(url.split("tfs=", 1)[1].split("&", 1)[0]))
+
+    def test_open_jaw_encodes_both_airport_pairs(self):
+        url = build_google_flights_multicity_url(
+            out_orig="LHR", out_dest="MCT", out_date="2026-09-16",
+            ret_orig="AUH", ret_dest="LHR", ret_date="2026-09-27",
+            travellers=1,
+        )
+        self.assertTrue(url.startswith(
+            "https://www.google.com/travel/flights/search?tfs="))
+        self.assertNotIn("#flt=", url)
+        self.assertNotIn("?q=", url)
+        payload = self._payload(url)
+        for token in (b"LHR", b"MCT", b"AUH", b"2026-09-16", b"2026-09-27"):
+            self.assertIn(token, payload)
+
+    def test_roundtrip_delegates_to_multicity(self):
+        via_roundtrip = build_google_flights_roundtrip_url(
+            origin="LHR", destination="DXB",
+            outbound_date="2026-09-16", return_date="2026-09-27",
+            travellers=2,
+        )
+        via_multi = build_google_flights_multicity_url(
+            out_orig="LHR", out_dest="DXB", out_date="2026-09-16",
+            ret_orig="DXB", ret_dest="LHR", ret_date="2026-09-27",
+            travellers=2,
+        )
+        self.assertEqual(via_roundtrip, via_multi)
 
 
 class ParseFlightCardsTests(unittest.TestCase):

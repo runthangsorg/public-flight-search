@@ -64,27 +64,94 @@ def _capture_html_if_enabled(
         handle.write(html[:80_000])
 
 
+def _varint(value: int) -> bytes:
+    out = bytearray()
+    while value > 0x7F:
+        out.append((value & 0x7F) | 0x80)
+        value >>= 7
+    out.append(value)
+    return bytes(out)
+
+
+def _field(number: int, value: str | bytes) -> bytes:
+    raw = value.encode() if isinstance(value, str) else value
+    return _varint((number << 3) | 2) + _varint(len(raw)) + raw
+
+
+def _leg(origin: str, destination: str, date: str) -> bytes:
+    return (
+        _field(2, date)
+        + _field(13, _field(2, origin.upper()))
+        + _field(14, _field(2, destination.upper()))
+    )
+
+
+def _seat_and_travellers(travellers: int, cabin_class: str) -> tuple[bytes, bytes]:
+    seats = {"ECONOMY": 1, "PREMIUM_ECONOMY": 2, "BUSINESS": 3, "FIRST": 4}
+    seat = seats.get(cabin_class.upper())
+    if seat is None or not 1 <= travellers <= 9:
+        raise ValueError("unsupported travellers or cabin class")
+    return _varint((9 << 3) | 0) + _varint(seat), _varint((19 << 3) | 0) + _varint(2)
+
+
 def build_google_flights_url(
     *, origin: str, destination: str, date: str,
     travellers: int, cabin_class: str,
 ) -> str:
     """Build Google's current structured one-way search URL."""
-    seats = {"ECONOMY": 1, "PREMIUM_ECONOMY": 2, "BUSINESS": 3, "FIRST": 4}
-    seat = seats.get(cabin_class.upper())
-    if seat is None or not 1 <= travellers <= 9:
-        raise ValueError("unsupported travellers or cabin class")
-    def varint(value: int) -> bytes:
-        out = bytearray()
-        while value > 0x7F:
-            out.append((value & 0x7F) | 0x80)
-            value >>= 7
-        out.append(value)
-        return bytes(out)
-    def field(number: int, value: str | bytes) -> bytes:
-        raw = value.encode() if isinstance(value, str) else value
-        return varint((number << 3) | 2) + varint(len(raw)) + raw
-    leg = field(2, date) + field(13, field(2, origin.upper())) + field(14, field(2, destination.upper()))
-    info = field(3, leg) + field(8, bytes([1]) * travellers) + varint((9 << 3) | 0) + varint(seat) + varint((19 << 3) | 0) + varint(2)
+    seat, cabin = _seat_and_travellers(travellers, cabin_class)
+    info = (
+        _field(3, _leg(origin, destination, date))
+        + _field(8, bytes([1]) * travellers)
+        + seat
+        + cabin
+    )
+    return "https://www.google.com/travel/flights/search?" + urlencode({"tfs": b64encode(info).decode(), "curr": "GBP", "hl": "en-GB"})
+
+
+def build_google_flights_roundtrip_url(
+    *, origin: str, destination: str,
+    outbound_date: str, return_date: str,
+    travellers: int, cabin_class: str = "ECONOMY",
+) -> str:
+    """Build Google's current structured RETURN search URL.
+
+    Two legs ride as repeated field-3 segments. Verified live 2026-09-07:
+    resolves to a dated results page (the legacy `#flt=` hash format lands
+    on the generic homepage and must never be emitted again).
+    """
+    if return_date <= outbound_date:
+        raise ValueError("return_date must be after outbound_date")
+    return build_google_flights_multicity_url(
+        out_orig=origin, out_dest=destination, out_date=outbound_date,
+        ret_orig=destination, ret_dest=origin, ret_date=return_date,
+        travellers=travellers, cabin_class=cabin_class,
+    )
+
+
+def build_google_flights_multicity_url(
+    *, out_orig: str, out_dest: str, out_date: str,
+    ret_orig: str, ret_dest: str, ret_date: str,
+    travellers: int, cabin_class: str = "ECONOMY",
+) -> str:
+    """Build Google's current structured multi-city/open-jaw search URL.
+
+    Both legs ride as repeated field-3 segments, so round-trips
+    (LHR-AYT + AYT-LHR) and open-jaws (LHR-MCT + AUH-LHR) share one
+    code path. The legacy `?q=Flights+from...` natural-language format
+    and the `#flt=` hash format both land on the generic homepage and
+    must never be emitted.
+    """
+    if ret_date <= out_date:
+        raise ValueError("ret_date must be after out_date")
+    seat, cabin = _seat_and_travellers(travellers, cabin_class)
+    info = (
+        _field(3, _leg(out_orig, out_dest, out_date))
+        + _field(3, _leg(ret_orig, ret_dest, ret_date))
+        + _field(8, bytes([1]) * travellers)
+        + seat
+        + cabin
+    )
     return "https://www.google.com/travel/flights/search?" + urlencode({"tfs": b64encode(info).decode(), "curr": "GBP", "hl": "en-GB"})
 
 

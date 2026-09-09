@@ -152,7 +152,23 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
 
 def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
     config = load_holiday_config(os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON", ""))
-    deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+    # Bounded live flight injection (GHA-safe HTTP only, no browser).
+    # Disabled by default; enable with HOLIDAY_LIVE_FLIGHTS=1. Full
+    # Camoufox/FlareSolverr package verification stays in the private
+    # flightdealsearch engine on local/VM compute.
+    live_offers: dict[str, float] = {}
+    live_attempted = False
+    try:
+        from .live_verify import try_live_flight_offers
+
+        live_attempted = True
+        live_offers = dict(try_live_flight_offers(config))
+    except Exception:
+        live_offers = {}
+    deals = collect_holiday_deals(
+        config, max_budget_gbp=5000.0,
+        live_flight_offers=live_offers or None,
+    )
     html = render_holiday_report(
         config,
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -167,6 +183,8 @@ def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
         # Exact rendered-link count: Jet2 is omitted where it has no product.
         "provider_entry_count": count_provider_entries(config),
         "deal_count": len(deals),
+        "live_flight_airports": len(live_offers),
+        "live_attempted": live_attempted,
         "email_sent": not dry_run,
     }
     print(json.dumps(result, sort_keys=True))

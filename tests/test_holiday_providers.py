@@ -18,6 +18,11 @@ from public_flight_search.holidays import (
     ON_THE_BEACH_HOME,
     TUI_HOLIDAYS_HUB,
     VERIFIED_LINK_BASES,
+    _is_verified_link,
+    build_booking_com_url,
+    build_expedia_url,
+    build_google_flights_holiday_url,
+    build_google_hotels_url,
     build_loveholidays_url,
     build_on_the_beach_url,
     build_jet2_url,
@@ -137,9 +142,19 @@ class BuildProviderUrlsTests(unittest.TestCase):
         )
         self.assertLessEqual(
             set(urls),
-            {"loveholidays", "on_the_beach", "jet2", "tui", "easyjet", "ba_holidays"},
+            {"loveholidays", "on_the_beach", "jet2", "tui", "easyjet",
+             "ba_holidays", "booking_com", "expedia", "google_hotels",
+             "google_flights"},
         )
         self.assertIn("jet2", urls)  # Lanzarote has Jet2 product
+        # Dynamic links encode the exact dates + party.
+        self.assertIn("2026-12-22", urls["booking_com"])
+        self.assertIn("2026-12-30", urls["expedia"])
+        self.assertIn("Lanzarote", urls["google_hotels"].replace("+", " ").replace("%2C", ","))
+        self.assertTrue(urls["google_flights"].startswith(
+            "https://www.google.com/travel/flights/search?tfs="))
+        self.assertNotIn("#flt=", urls["google_flights"])
+        self.assertNotIn("?q=", urls["google_flights"])
 
     def test_omits_jet2_where_it_has_no_product(self):
         for dest in ("cairo", "muscat", "doha", "cape_verde"):
@@ -168,8 +183,56 @@ class BuildProviderUrlsTests(unittest.TestCase):
         )
         self.assertEqual(
             set(urls),
-            {"loveholidays", "on_the_beach", "jet2", "tui", "easyjet", "ba_holidays"},
+            {"loveholidays", "on_the_beach", "jet2", "tui", "easyjet",
+             "ba_holidays", "booking_com", "expedia", "google_hotels",
+             "google_flights"},
         )
+
+
+class DynamicSearchLinkTests(unittest.TestCase):
+    """Parametric hotel/flight links must encode real dates + party."""
+
+    def test_booking_com_encodes_dates_and_party(self):
+        url = build_booking_com_url(
+            destination="lanzarote", departure_date="2026-12-22",
+            return_date="2026-12-30", adults=5, rooms=3,
+        )
+        self.assertTrue(url.startswith("https://www.booking.com/searchresults.html?"))
+        self.assertIn("checkin=2026-12-22", url)
+        self.assertIn("checkout=2026-12-30", url)
+        self.assertIn("group_adults=5", url)
+        self.assertIn("no_rooms=3", url)
+        for token in ("None", "null", "{}"):
+            self.assertNotIn(token, url)
+
+    def test_expedia_encodes_dates_and_party(self):
+        url = build_expedia_url(
+            destination="hurghada", departure_date="2026-12-22",
+            return_date="2026-12-29", adults=5, rooms=3,
+        )
+        self.assertTrue(url.startswith("https://www.expedia.co.uk/Hotel-Search?"))
+        self.assertIn("startDate=2026-12-22", url)
+        self.assertIn("endDate=2026-12-29", url)
+
+    def test_google_hotels_encodes_dates_and_party(self):
+        url = build_google_hotels_url(
+            destination="malta", departure_date="2026-12-20",
+            return_date="2026-12-28", adults=5, rooms=3,
+        )
+        self.assertTrue(url.startswith("https://www.google.com/travel/hotels?"))
+        self.assertIn("2026-12-20", url)
+        self.assertIn("2026-12-28", url)
+
+    def test_google_flights_holiday_uses_tfs_format(self):
+        url = build_google_flights_holiday_url(
+            destination="lanzarote", origin_airports=("LHR", "LGW"),
+            departure_date="2026-12-22", return_date="2026-12-30",
+            adults=5,
+        )
+        self.assertTrue(url.startswith(
+            "https://www.google.com/travel/flights/search?tfs="))
+        self.assertNotIn("#flt=", url)
+        self.assertNotIn("?q=", url)
 
 
 class VerifiedLinkTests(unittest.TestCase):
@@ -193,9 +256,20 @@ class VerifiedLinkTests(unittest.TestCase):
             for provider, url in urls.items():
                 with self.subTest(destination=dest, provider=provider):
                     self.assertTrue(url.startswith("https://"))
-                    self.assertIn(url, VERIFIED_LINK_BASES)
+                    # Prefix match: parametric Booking/Expedia/Google URLs
+                    # encode dates + party after a verified base.
+                    self.assertTrue(
+                        _is_verified_link(url),
+                        f"{provider} URL has unverified base: {url}",
+                    )
                     for token in ("None", "null", "{}", "AYT", "MLA", "CAI"):
-                        self.assertNotIn(token, url)
+                        # Airport codes must never leak into hotel-search URLs
+                        # (they belong in Google Flights tfs payloads only).
+                        if provider in ("booking_com", "expedia", "google_hotels"):
+                            self.assertNotIn(token, url)
+                    self.assertNotIn("#flt=", url)
+                    if provider == "google_flights":
+                        self.assertNotIn("?q=", url)
 
     def test_allowlist_contains_only_https_bases(self):
         for base in VERIFIED_LINK_BASES:
@@ -234,8 +308,9 @@ class HolidayReportDateConsistencyTests(unittest.TestCase):
         self.assertIn("2026-12-28", html)
         self.assertIn("2026-12-30", html)
         self.assertIn("2026-12-31", html)
-        # Top Picks (3 dates × 6 providers) + one hub row (6 providers) = 24 links
-        self.assertEqual(html.count('href="'), 24)
+        # Top Picks (3 dates × 4 dynamic date-encoded links) + one package-hub
+        # row (6 hubs) = 18 links. Hubs render once to stay under Gmail clips.
+        self.assertEqual(html.count('href="'), 18)
 
 
 if __name__ == "__main__":

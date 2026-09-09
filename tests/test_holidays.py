@@ -35,8 +35,9 @@ class HolidayPlannerTests(unittest.TestCase):
         self.assertIn("2030-12-20", html)
         self.assertIn("2031-01-01", html)
         self.assertIn("2031-01-03", html)
-        # Top Picks (3 of 4 valid pairs × 6 providers) + one hub row (6 providers) = 24
-        self.assertEqual(html.count('href="'), 24)
+        # Top Picks (3 pairs × 4 dynamic date-encoded links) + one package-hub
+        # row (6 hubs) = 18. Hubs render once to stay under Gmail clip limits.
+        self.assertEqual(html.count('href="'), 18)
 
     def test_origin_airports_shown_not_destination_airports(self):
         config = load_holiday_config(
@@ -133,7 +134,8 @@ class HolidayPlannerTests(unittest.TestCase):
             self.assertLessEqual(deal.total_package_price_gbp, 5000.0)
             self.assertTrue(deal.is_under_budget)
             self.assertGreater(deal.price_per_person_gbp, 100.0)
-            self.assertTrue(deal.flight_booking_url.startswith("https://www.google.com/travel/flights#flt="))
+            self.assertTrue(deal.flight_booking_url.startswith("https://www.google.com/travel/flights/search?tfs="))
+            self.assertNotIn("#flt=", deal.flight_booking_url)
             self.assertTrue(deal.hotel_booking_url.startswith("https://"))
 
     def test_render_holiday_report_with_deals(self):
@@ -149,8 +151,10 @@ class HolidayPlannerTests(unittest.TestCase):
         self.assertIn("Biggest Discounted Deals", html)
         self.assertIn("Top Luxury Within", html)
         self.assertIn("Best Winter Facilities", html)
-        # Verify compact size: guaranteed < 45 KB so Gmail will never clip it!
-        self.assertLess(len(html.encode("utf-8")), 45_000)
+        # Verify compact size: guaranteed < 70 KB so Gmail (102 KB clip limit)
+        # will never clip it. Budget raised from 45 KB to cover date-encoded
+        # Booking.com / Expedia / Google Hotels buttons on every deal.
+        self.assertLess(len(html.encode("utf-8")), 70_000)
 
     def test_bucket_deals_assigns_three_ranked_buckets(self):
         from public_flight_search.holidays import bucket_deals
