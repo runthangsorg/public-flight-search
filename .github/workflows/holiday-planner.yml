@@ -45,6 +45,7 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
           HOLIDAY_EMAIL_SUBJECT: ${{ secrets.HOLIDAY_EMAIL_SUBJECT }}
+          HOLIDAY_LIVE_FLIGHTS: "1"
           DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
         shell: bash
         run: |

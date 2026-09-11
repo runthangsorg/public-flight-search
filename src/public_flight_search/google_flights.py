@@ -268,6 +268,7 @@ def _fetch_page_html(url: str) -> str | None:
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1",
         "DNT": "1",
+        "Cookie": "SOCS=CAISHAgBEhJnd3NfMjAyNDA1MDgtMF9SQzIaAmVuIAEaBgiA_LyuBg; CONSENT=PENDING+999",
     }
     req = urllib.request.Request(url, headers=headers)
     try:
