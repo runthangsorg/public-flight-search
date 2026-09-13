@@ -292,6 +292,82 @@ def build_google_hotels_url(
     )
 
 
+def build_google_hotels_property_url(
+    *,
+    resort_name: str,
+    destination_key: str,
+    departure_date: str,
+    return_date: str,
+    adults: int,
+    rooms: int,
+) -> str:
+    """Google Hotels PROPERTY card — the one-link cross-vendor comparison.
+
+    Querying the property by name (not the destination) lands on the hotel's
+    own card with every vendor's dated price side by side: exactly the
+    'same deal, which vendor is cheapest' check.
+    """
+    query = HOLIDAY_SEARCH_QUERIES.get(destination_key.lower(), destination_key)
+    return GOOGLE_HOTELS_BASE + "?" + urlencode(
+        {
+            "q": f"{resort_name} {query}",
+            "dates": f"{departure_date},{return_date}",
+            "adults": adults,
+            "rooms": rooms,
+            "curr": "GBP",
+            "hl": "en-GB",
+        }
+    )
+
+
+def build_booking_com_property_url(
+    *,
+    resort_name: str,
+    destination_key: str,
+    departure_date: str,
+    return_date: str,
+    adults: int,
+    rooms: int,
+) -> str:
+    """Booking.com search keyed on the PROPERTY name + exact dates + party.
+
+    The named resort resolves as the top hit with dated availability and a
+    bookable total — a working deep link without guessing opaque hotel IDs.
+    """
+    query = HOLIDAY_SEARCH_QUERIES.get(destination_key.lower(), destination_key)
+    return BOOKING_COM_BASE + "?" + urlencode(
+        {
+            "ss": f"{resort_name} {query}",
+            "checkin": departure_date,
+            "checkout": return_date,
+            "group_adults": adults,
+            "no_rooms": rooms,
+        }
+    )
+
+
+def build_expedia_property_url(
+    *,
+    resort_name: str,
+    destination_key: str,
+    departure_date: str,
+    return_date: str,
+    adults: int,
+    rooms: int,
+) -> str:
+    """Expedia search keyed on the PROPERTY name + exact dates + party."""
+    query = HOLIDAY_SEARCH_QUERIES.get(destination_key.lower(), destination_key)
+    return EXPEDIA_BASE + "?" + urlencode(
+        {
+            "destination": f"{resort_name} {query}",
+            "startDate": departure_date,
+            "endDate": return_date,
+            "rooms": rooms,
+            "adults": adults,
+        }
+    )
+
+
 def build_google_flights_holiday_url(
     *,
     destination: str,
@@ -501,9 +577,29 @@ class PackageDeal:
     # Data provenance per confidence gates.
     confidence: str = "market-supported"
     source_url: str = ""
+    # Real discount intelligence: the SAME resort at summer peak prices
+    # (same rooms/nights/party) and property-level cross-vendor links.
+    peak_summer_total_gbp: float = 0.0
+    compare_url: str = ""   # Google Hotels property card — all vendors' prices
+    booking_deep_url: str = ""  # Booking.com property-targeted, dated
+    expedia_deep_url: str = ""  # Expedia property-targeted, dated
+
+    @property
+    def vs_peak_saving_gbp(self) -> float:
+        return round(self.peak_summer_total_gbp - self.total_package_price_gbp, 2)
+
+    @property
+    def vs_peak_pct(self) -> float:
+        """% below the same resort's summer-peak package total."""
+        if self.peak_summer_total_gbp > 0:
+            return round((1 - self.total_package_price_gbp / self.peak_summer_total_gbp) * 100)
+        return 0
 
 
 # December climate reality (ambient air / sea °C) plus beach geography.
+# Peak-summer room/flight benchmarks above each resort enable REAL discount
+# intelligence: December total vs the SAME resort in July/August (same rooms,
+# nights, party). Rates are market-supported benchmarks, never live quotes.
 # A heated pool does NOT make a 15°C destination a winter-sun holiday:
 # stepping out of 28°C water into a 15°C wind is miserable.
 # Rates below are BENCHMARKS (confidence: market-supported), never live
@@ -516,9 +612,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "Ultra All Inclusive",
             "base_nightly_room_rate_gbp": 115.0,
+            "peak_summer_nightly_room_rate_gbp": 260.0,
             "airport": "AYT",
             "airline": "SunExpress / Pegasus",
             "flight_benchmark_5pax_gbp": 648.0,
+            "peak_summer_flight_5pax_gbp": 1180.0,
             "highlights": ("Heated seawater pool (28°C)", "8 à la carte restaurants", "Thalasso spa", "Private sandy beach"),
             "hotel_url": "https://www.baruthotels.com/lara-barut-collection/",
             "dec_ambient_c": (15, 17),
@@ -533,9 +631,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "Ultra All Inclusive",
             "base_nightly_room_rate_gbp": 88.0,
+            "peak_summer_nightly_room_rate_gbp": 210.0,
             "airport": "AYT",
             "airline": "SunExpress / Pegasus",
             "flight_benchmark_5pax_gbp": 648.0,
+            "peak_summer_flight_5pax_gbp": 1180.0,
             "highlights": ("Heated indoor pool", "Private sandy beach", "Carpe Diem luxury spa", "Bowling alley"),
             "hotel_url": "https://www.concordehotels.com.tr/",
             "dec_ambient_c": (15, 17),
@@ -550,9 +650,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "Golden Inclusive",
             "base_nightly_room_rate_gbp": 145.0,
+            "peak_summer_nightly_room_rate_gbp": 330.0,
             "airport": "AYT",
             "airline": "SunExpress / Pegasus",
             "flight_benchmark_5pax_gbp": 648.0,
+            "peak_summer_flight_5pax_gbp": 1180.0,
             "highlights": ("Palatial architecture", "7,500m² spa", "Heated Olympic indoor pool", "Private lagoon"),
             "hotel_url": "https://www.titanic.com.tr/titanic-mardan-palace",
             "dec_ambient_c": (15, 17),
@@ -569,9 +671,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "Luxury All Inclusive",
             "base_nightly_room_rate_gbp": 135.0,
+            "peak_summer_nightly_room_rate_gbp": 265.0,
             "airport": "HRG",
             "airline": "easyJet / Wizz Air",
             "flight_benchmark_5pax_gbp": 1350.0,
+            "peak_summer_flight_5pax_gbp": 2150.0,
             "highlights": ("500m private beach", "Lazy river & heated pools", "Golf course", "Ilios dive club"),
             "hotel_url": "https://www.steigenberger.com/en/hotels/all-hotels/egypt/hurghada/steigenberger-aldau-beach-hotel",
             "dec_ambient_c": (24, 26),
@@ -586,9 +690,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "All Inclusive",
             "base_nightly_room_rate_gbp": 105.0,
+            "peak_summer_nightly_room_rate_gbp": 225.0,
             "airport": "HRG",
             "airline": "easyJet / Wizz Air",
             "flight_benchmark_5pax_gbp": 1350.0,
+            "peak_summer_flight_5pax_gbp": 2150.0,
             "highlights": ("Water World access", "Heated family pools", "Beach transfer", "Kids club"),
             "hotel_url": "https://www.jazhotels.com/",
             "dec_ambient_c": (24, 26),
@@ -605,9 +711,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "Half Board",
             "base_nightly_room_rate_gbp": 140.0,
+            "peak_summer_nightly_room_rate_gbp": 280.0,
             "airport": "TFS",
             "airline": "Jet2 / easyJet",
             "flight_benchmark_5pax_gbp": 1250.0,
+            "peak_summer_flight_5pax_gbp": 1980.0,
             "highlights": ("Saltwater lagoon", "3 heated pools", "Rock Spa", "Beachfront dining"),
             "hotel_url": "https://www.hardrockhoteltenerife.com/",
             "dec_ambient_c": (22, 24),
@@ -624,9 +732,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "Half Board",
             "base_nightly_room_rate_gbp": 144.0,
+            "peak_summer_nightly_room_rate_gbp": 310.0,
             "airport": "ACE",
             "airline": "Jet2 / easyJet",
             "flight_benchmark_5pax_gbp": 1300.0,
+            "peak_summer_flight_5pax_gbp": 2050.0,
             "highlights": ("Playa Dorada beach", "Kikoland 10,000m² family park", "Thalassotherapy center"),
             "hotel_url": "https://www.princesayaiza.com/",
             "dec_ambient_c": (21, 23),
@@ -646,9 +756,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "Half Board",
             "base_nightly_room_rate_gbp": 93.0,
+            "peak_summer_nightly_room_rate_gbp": 185.0,
             "airport": "CAI",
             "airline": "British Airways / EgyptAir",
             "flight_benchmark_5pax_gbp": 1442.0,
+            "peak_summer_flight_5pax_gbp": 2050.0,
             "highlights": ("Heated rooftop Nile pool", "Pyramids & museum day trips", "≈45 min from CAI airport"),
             "hotel_url": "https://www.kempinski.com/en/cairo/hotel-nile/",
             "dec_ambient_c": (18, 22),
@@ -663,9 +775,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "Half Board",
             "base_nightly_room_rate_gbp": 120.0,
+            "peak_summer_nightly_room_rate_gbp": 220.0,
             "airport": "CAI",
             "airline": "British Airways / EgyptAir",
             "flight_benchmark_5pax_gbp": 1442.0,
+            "peak_summer_flight_5pax_gbp": 2050.0,
             "highlights": ("Pyramid-facing rooms", "Heated pool, spa & gardens", "≈1 hr from CAI airport (40 km)"),
             "hotel_url": "https://www.marriott.com/en-us/hotels/caimn-marriott-mena-house-cairo/overview/",
             "dec_ambient_c": (18, 22),
@@ -683,9 +797,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 5,
             "board": "Half Board",
             "base_nightly_room_rate_gbp": 105.0,
+            "peak_summer_nightly_room_rate_gbp": 170.0,
             "airport": "CAI",
             "airline": "British Airways / EgyptAir",
             "flight_benchmark_5pax_gbp": 1442.0,
+            "peak_summer_flight_5pax_gbp": 2050.0,
             "highlights": ("Resort pools incl. wave pool", "Golf-course views & spa", "≈30 min from CAI · ≈1 hr to pyramids"),
             "hotel_url": "https://www.marriott.com/en-us/hotels/caijw-jw-marriott-hotel-cairo/overview/",
             "dec_ambient_c": (18, 22),
@@ -705,9 +821,11 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 4,
             "board": "Half Board",
             "base_nightly_room_rate_gbp": 160.0,
+            "peak_summer_nightly_room_rate_gbp": 245.0,
             "airport": "FNC",
             "airline": "easyJet / TUI / British Airways",
             "flight_benchmark_5pax_gbp": 960.0,
+            "peak_summer_flight_5pax_gbp": 1580.0,
             "highlights": ("Cliff lido", "Heated pools & spa", "Levada hikes & waterfalls nearby", "Funchal Christmas lights"),
             "hotel_url": "https://www.vidamarresorts.com/madeira/",
             "dec_ambient_c": (19, 21),
@@ -768,6 +886,10 @@ def collect_holiday_deals(
             price_pp = round(total_pkg / travellers, 2)
             transfer = float(resort.get("transfer_gbp", 30.0))
             true_d2d = round(total_pkg + uk_ground + transfer, 2)
+            # REAL discount baseline: the SAME resort, same rooms/nights/party,
+            # priced at its summer peak (Jul/Aug school-holiday highs).
+            peak_hotel = round(resort["peak_summer_nightly_room_rate_gbp"] * rooms_count * nights, 2)
+            peak_total = round(resort["peak_summer_flight_5pax_gbp"] + peak_hotel, 2)
             # STRICT: both measures must clear the ceiling.
             under_budget = total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
 
@@ -816,10 +938,35 @@ def collect_holiday_deals(
                             if live_used
                             else resort.get("hotel_url", "")
                         ),
+                        peak_summer_total_gbp=peak_total,
+                        compare_url=build_google_hotels_property_url(
+                            resort_name=resort["name"],
+                            destination_key=dest.key,
+                            departure_date=target_outbound,
+                            return_date=target_return,
+                            adults=travellers,
+                            rooms=rooms_count,
+                        ),
+                        booking_deep_url=build_booking_com_property_url(
+                            resort_name=resort["name"],
+                            destination_key=dest.key,
+                            departure_date=target_outbound,
+                            return_date=target_return,
+                            adults=travellers,
+                            rooms=rooms_count,
+                        ),
+                        expedia_deep_url=build_expedia_property_url(
+                            resort_name=resort["name"],
+                            destination_key=dest.key,
+                            departure_date=target_outbound,
+                            return_date=target_return,
+                            adults=travellers,
+                            rooms=rooms_count,
+                        ),
                     )
                 )
 
-    deals.sort(key=lambda d: d.total_package_price_gbp)
+    deals.sort(key=lambda d: (-d.vs_peak_pct, d.total_package_price_gbp))
     return tuple(deals)
 
 
@@ -862,14 +1009,16 @@ def bucket_deals(
 ) -> dict[str, tuple[PackageDeal, ...]]:
     """Split deals into the three reader buckets.
 
-    discounts: every deal, cheapest first (saving = budget headroom kept).
+    discounts: REAL discount lens — biggest % below the same resort's
+               summer-peak price first (ties: cheapest absolute total).
     luxury:    5-star only, most luxurious first, cheaper wins ties.
     winter:    warmest ambient air first, then warmest sea (genuine winter
                sun floats up; heated-pool-only cold spots sink honestly).
     """
     ordered = tuple(deals)
     return {
-        "discounts": tuple(sorted(ordered, key=lambda d: d.total_package_price_gbp)),
+        "discounts": tuple(
+            sorted(ordered, key=lambda d: (-d.vs_peak_pct, d.total_package_price_gbp))),
         "luxury": tuple(
             sorted(
                 (d for d in ordered if d.star_rating >= 5),
@@ -932,6 +1081,7 @@ def render_holiday_report(
         "booking_com", "expedia", "google_hotels", "google_flights",
     )
     btn_primary = "background:#38bdf8; color:#062033; text-decoration:none; padding:9px 14px; border-radius:5px; font-weight:700; font-size:14px; margin:2px 4px 2px 0; display:inline-block;"
+    btn_compare = "background:#7c3aed; color:#ffffff; text-decoration:none; padding:12px 20px; border-radius:8px; font-weight:700; font-size:14px; display:inline-block;"
     btn_muted = "background:#1e293b; color:#94a3b8; text-decoration:none; padding:7px 12px; border-radius:4px; font-weight:500; font-size:13px; margin:2px 3px 2px 0; display:inline-block; border:1px solid #334155;"
     
     out.append('<!DOCTYPE html><html><head><meta charset="utf-8"><title>')
@@ -963,8 +1113,8 @@ def render_holiday_report(
 
     # ── VERIFIED LIVE DEALS UNDER £5,000 (WHEN AVAILABLE) ──
     if deals:
-        out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">⭐ Verified Luxury Deals Under £5,000</h2>')
-        out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Hand-picked for your party — every resort clears £5,000 on the package <em>and</em> the true door-to-door total. Cheapest first.</p>')
+        out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">⭐ December Deals — Real Discounts vs Summer Peak</h2>')
+        out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Ranked by how much cheaper the <strong>same resort</strong> is in December versus its July/August peak (same rooms, nights, party of 5). Every deal also clears £5,000 package and door-to-door. Every button is property-targeted with your exact dates.</p>')
         # At-a-glance: one line per decision lens (no ranked walls).
         buckets = bucket_deals(deals)
         glance = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 16px 0;">'
@@ -973,8 +1123,8 @@ def render_holiday_report(
         b3 = buckets["winter"][0] if buckets["winter"] else None
         if b1 is not None:
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
-                       '<strong style="color:#0f172a;">💰 Biggest Discounted Deals:</strong> '
-                       + escape(b1.resort_name) + ' — <strong style="color:#059669;">£' + f'{5000.0 - b1.total_package_price_gbp:,.0f}' + ' under £5k</strong></td></tr>')
+                       '<strong style="color:#0f172a;">💰 Biggest Discount vs Summer Peak:</strong> '
+                       + escape(b1.resort_name) + ' — <strong style="color:#059669;">▼' + str(b1.vs_peak_pct) + '% (save £' + f'{b1.vs_peak_saving_gbp:,.0f}' + ' for the same resort)</strong></td></tr>')
         if b2 is not None:
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
                        '<strong style="color:#0f172a;">💎 Top Luxury Within £5k:</strong> '
@@ -1011,7 +1161,7 @@ def render_holiday_report(
             out.append('<div style="margin:5px 0 7px;">')
             out.append('<span style="background:#eff6ff; color:#1d4ed8; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + escape(deal.board_basis) + '</span> ')
             out.append('<span style="background:' + ('#dcfce7' if live else '#fef3c7') + '; color:' + ('#166534' if live else '#92400e') + '; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + ('🟢 LIVE VERIFIED' if live else '🟡 BENCHMARK PRICE') + '</span> ')
-            out.append('<span style="background:#f1f5f9; color:#334155; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">UNDER £5K BUDGET</span>')
+            out.append('<span style="background:#16a34a; color:#ffffff; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:800;">▼' + str(deal.vs_peak_pct) + '% vs summer peak · save £' + f'{deal.vs_peak_saving_gbp:,.0f}' + '</span>')
             history_chip = chip_by_resort.get(deal.resort_name, '')
             if history_chip:
                 out.append(' ' + history_chip)
@@ -1030,16 +1180,18 @@ def render_holiday_report(
             out.append('<td align="right" valign="middle" style="padding:8px 10px;">')
             out.append('<div style="color:#059669; font-size:30px; font-weight:800; white-space:nowrap;">£' + f'{deal.total_package_price_gbp:,.0f}' + '</div>')
             out.append('<div style="color:#64748b; font-size:13px; white-space:nowrap;">£' + f'{deal.price_per_person_gbp:,.0f}' + 'pp · D2D £' + f'{deal.true_d2d_gbp:,.0f}' + '</div>')
+            out.append('<div style="color:#b45309; font-size:12px; white-space:nowrap;">summer peak £' + f'{deal.peak_summer_total_gbp:,.0f}' + '</div>')
             out.append('</td>')
             out.append('</tr></table>')
-            # ONE obvious action + quiet alternatives (dated, party-encoded)
-            out.append('<a href="' + escape(build_booking_com_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="background:#2563eb; color:#ffffff; text-decoration:none; padding:12px 22px; border-radius:8px; font-weight:700; font-size:15px; display:inline-block;">Check live dates &amp; prices →</a>')
-            out.append('<span style="color:#94a3b8; font-size:13px; margin:0 6px;">or</span>')
-            out.append('<a href="' + escape(deal.flight_booking_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none; font-weight:600;">flights</a>')
+            # Property-targeted actions: book THIS hotel dated, or compare
+            # every vendor's price for it on one card.
+            out.append('<a href="' + escape(deal.booking_deep_url, quote=True) + '" style="background:#2563eb; color:#ffffff; text-decoration:none; padding:12px 22px; border-radius:8px; font-weight:700; font-size:15px; display:inline-block;">Book this hotel, your dates →</a>')
+            out.append(' ') 
+            out.append('<a href="' + escape(deal.compare_url, quote=True) + '" style="' + btn_compare + '">Compare all vendors →</a>')
+            out.append('<div style="margin-top:6px;"><span style="color:#94a3b8; font-size:13px; margin:0 6px 0 0;">or</span>')
+            out.append('<a href="' + escape(deal.flight_booking_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none; font-weight:600;">flights only</a>')
             out.append('<span style="color:#cbd5e1;"> · </span>')
-            out.append('<a href="' + escape(build_expedia_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none;">Expedia</a>')
-            out.append('<span style="color:#cbd5e1;"> · </span>')
-            out.append('<a href="' + escape(build_google_hotels_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none;">Google Hotels</a>')
+            out.append('<a href="' + escape(deal.expedia_deep_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none;">Expedia</a>')
             out.append('<span style="color:#cbd5e1;"> · </span>')
             out.append('<a href="' + escape(deal.hotel_booking_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none;">Resort direct</a>')
             # Best verified package guide for this destination: easyJet guides

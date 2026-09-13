@@ -145,12 +145,18 @@ class HolidayPlannerTests(unittest.TestCase):
         )
         deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
         html = render_holiday_report(config, generated_at="2026-09-06T12:00:00+00:00", deals=deals)
-        self.assertIn("Verified Luxury Deals Under £5,000", html)
-        self.assertIn("UNDER £5K BUDGET", html)
+        self.assertIn("December Deals — Real Discounts vs Summer Peak", html)
+        self.assertIn("vs summer peak", html)
+        self.assertIn("save £", html)
         self.assertIn("Lara Barut Collection", html)
-        self.assertIn("Biggest Discounted Deals", html)
+        self.assertIn("Biggest Discount vs Summer Peak", html)
         self.assertIn("Top Luxury Within", html)
         self.assertIn("Best Winter Facilities", html)
+        # Property-targeted deep links with exact dates + party.
+        self.assertIn("Book this hotel, your dates", html)
+        self.assertIn("Compare all vendors", html)
+        self.assertIn("ss=Jaz+Aquaviva+Hurghada", html)
+        self.assertIn("q=Jaz+Aquaviva+Hurghada", html)
         # Verify compact size: guaranteed < 70 KB so Gmail (102 KB clip limit)
         # will never clip it. Budget raised from 45 KB to cover date-encoded
         # Booking.com / Expedia / Google Hotels buttons on every deal.
@@ -165,10 +171,17 @@ class HolidayPlannerTests(unittest.TestCase):
         deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
         buckets = bucket_deals(deals)
         self.assertEqual(set(buckets), {"discounts", "luxury", "winter"})
-        # Discounts: cheapest whole-party total first.
-        totals = [d.total_package_price_gbp for d in buckets["discounts"]]
-        self.assertEqual(totals, sorted(totals))
+        # Discounts: REAL discount lens — biggest % below the same resort's
+        # summer-peak price first (ties broken by cheapest absolute total).
+        keys = [(-d.vs_peak_pct, d.total_package_price_gbp) for d in buckets["discounts"]]
+        self.assertEqual(keys, sorted(keys))
         self.assertEqual(len(buckets["discounts"]), len(deals))
+        # Every deal carries a real discount baseline + property deep links.
+        for deal in deals:
+            self.assertGreater(deal.peak_summer_total_gbp, deal.total_package_price_gbp)
+            self.assertGreater(deal.vs_peak_pct, 0)
+            self.assertIn("q=", deal.compare_url)
+            self.assertIn("ss=", deal.booking_deep_url)
         # Luxury: 5-star only.
         self.assertTrue(all(d.star_rating >= 5 for d in buckets["luxury"]))
         self.assertGreaterEqual(len(buckets["luxury"]), 4)
