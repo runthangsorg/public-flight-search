@@ -86,12 +86,22 @@ jobs:
           cd /tmp/history-repo
           mkdir -p data
           touch data/holiday_price_history.jsonl
-          # Merge-append: keep existing lines, add new observations, drop
-          # exact duplicate lines (safe: run_id makes every real line unique).
+          # Merge-append: keep existing lines, add new observations.
+          # The runner cannot see prior history (it lives here, in the
+          # private repo), so day-level dedupe is enforced HERE at the point
+          # of truth: keep the FIRST observation per resort+dates per day.
           cat data/holiday_price_history.jsonl \
               "$GITHUB_WORKSPACE/data/holiday_price_history.jsonl" \
-              | awk '!seen[$0]++' > /tmp/history_merged.jsonl
-          mv /tmp/history_merged.jsonl data/holiday_price_history.jsonl
+          | awk '
+            !/^\{/ { print; next }
+            {
+              fp = ""; dt = "";
+              if (match($0, /"fingerprint": "[^"]+"/)) fp = substr($0, RSTART + 16, RLENGTH - 16);
+              if (match($0, /"observed_at": "[^"]+"/)) dt = substr($0, RSTART + 16, RLENGTH - 16);
+              key = fp "|" substr(dt, 1, 10);
+              if (!(key in seen)) { seen[key] = 1; print }
+            }' > data/history_merged.tmp \
+          && mv data/history_merged.tmp data/holiday_price_history.jsonl
           git config user.name "holiday-history-bot"
           git config user.email "history@localhost"
           git add data/holiday_price_history.jsonl
