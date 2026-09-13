@@ -65,7 +65,7 @@ def _seed_history_from_private_repo(history_path: Path) -> int:
         env = dict(os.environ)
         env["GIT_SSH_COMMAND"] = (
             f"ssh -i {key_file} -o IdentitiesOnly=yes "
-            "-o StrictHostKeyChecking=accept-new"
+            "-o StrictHostKeyChecking=accept-new -o BatchMode=yes"
         )
         subprocess.run(
             ["git", "clone", "--depth", "1", git_url, str(workdir)],
