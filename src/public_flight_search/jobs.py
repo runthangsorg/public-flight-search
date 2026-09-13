@@ -6,10 +6,12 @@ import asyncio
 from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
 
 from .config import load_flight_config, build_search_plan
 from .google_flights import build_google_flights_url, search_google_flights
 from .holidays import _date_pairs, collect_holiday_deals, count_provider_entries, load_holiday_config, render_holiday_report
+from .holiday_history import append_history, render_history_html, summarize_trends
 from .mailer import send_html
 from .report import render_flight_report
 from .trip_config import (
@@ -169,11 +171,19 @@ def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
         config, max_budget_gbp=5000.0,
         live_flight_offers=live_offers or None,
     )
+    # Trends are computed BEFORE today's observation is appended, so the
+    # chips always compare against prior runs only.
+    trends = summarize_trends(deals)
     html = render_holiday_report(
         config,
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         deals=deals,
+        history_chips=render_history_html(trends),
     )
+    history_path = Path(
+        os.environ.get("HOLIDAY_HISTORY_PATH", "data/holiday_price_history.jsonl")
+    )
+    appended = 0 if dry_run else append_history(deals, path=history_path)
     if not dry_run:
         send_html(os.environ.get("HOLIDAY_EMAIL_SUBJECT", "Holiday package watch"), html)
     date_combination_count = len(_date_pairs(config))
@@ -185,6 +195,7 @@ def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
         "deal_count": len(deals),
         "live_flight_airports": len(live_offers),
         "live_attempted": live_attempted,
+        "history_observations_appended": appended,
         "email_sent": not dry_run,
     }
     print(json.dumps(result, sort_keys=True))

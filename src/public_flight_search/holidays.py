@@ -890,6 +890,7 @@ def render_holiday_report(
     *,
     generated_at: str,
     deals: Sequence[PackageDeal] = (),
+    history_chips: Optional[Sequence[str]] = None,
 ) -> str:
     out: list[str] = []
     pairs = _date_pairs(config)
@@ -984,7 +985,7 @@ def render_holiday_report(
                        + '</p>')
 
         out.append('<h3 style="margin:20px 0 10px 0; color:#f8fafc; font-size:15px; font-weight:700;">Full details</h3>')
-        for deal in deals:
+        for deal_idx, deal in enumerate(deals):
             stars_str = '★' * deal.star_rating
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-bottom:16px; background:#0d1520; border:1px solid #059669; border-radius:8px; overflow:hidden;">')
             out.append('<tr><td style="padding:14px 16px; background:#064e3b; border-bottom:1px solid #059669;">')
@@ -1006,7 +1007,10 @@ def render_holiday_report(
             out.append('</span>')
             out.append('<span style="background:#1e293b;color:#fbbf24;padding:2px 6px;border-radius:4px;font-weight:600;font-size:11px;margin-left:6px">')
             out.append(escape(deal.confidence))
-            out.append('</span></div>')
+            out.append('</span>')
+            if history_chips is not None and deal_idx < len(history_chips) and history_chips[deal_idx]:
+                out.append(' ' + history_chips[deal_idx])
+            out.append('</div>')
 
             out.append('<div style="color:#94a3b8; font-size:13px; line-height:1.6; margin-bottom:12px;">')
             out.append('<strong>' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ')</strong><br>')
