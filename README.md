@@ -10,14 +10,29 @@ The engine has three boundaries:
 - `ci.yml` runs synthetic tests on pushes and pull requests without secrets.
 - `flight-digest.yml` performs bounded Google Flights results-page searches on
   schedule or manual dispatch.
-- `holiday-planner.yml` creates a precise provider-entry checklist for private
-  destination, date, room and flight-time preferences.
+- `holiday-planner.yml` runs the December package-holiday deal engine:
+  benchmark-priced resorts with real discount intelligence versus each
+  resort's summer-peak price, the recovered winter-tracker value model
+  (mosque access, food-reality, luxury, winter facilities, activities,
+  flight quality on a 0-10 scale, weighted into a 0-100 value score with
+  honesty caps), per-person deal classification, property-targeted
+  Booking.com / Google Hotels / Expedia deep links with exact dates and
+  party, per-deal price history with trend chips, and direct SMTP delivery.
 
 No workflow uploads reports or raw provider data as public artifacts. Reports
 are delivered directly by SMTP only when a scheduled or explicitly non-dry
 manual run is enabled.
 
 ## Evidence semantics
+
+Resort prices are market-supported BENCHMARKS (badge: BENCHMARK PRICE) or
+live observations (badge: LIVE VERIFIED); discount percentages compare the
+December benchmark to the same resort's July/August peak benchmark for the
+identical rooms, nights and party. Criteria scores are curated benchmarks
+requiring verification — never presented as live observations. Price history
+is appended (day-deduped) to the PRIVATE `runthangsorg/dealsearch` data repo
+via a write-scoped deploy key; this public tree never gains write access and
+never stores personalised data.
 
 Google Flights cards are labelled `results_page_only`. They are useful fare
 observations, not checkout verification. The displayed-fare basis can vary, so
