@@ -80,6 +80,9 @@ class HolidayPlannerTests(unittest.TestCase):
                 "madeira",
                 "lanzarote",
                 "cape_verde",
+                "fuerteventura",
+                "gran_canaria",
+                "paphos",
             },
         )
 
@@ -160,7 +163,11 @@ class HolidayPlannerTests(unittest.TestCase):
         # Strict-mode transparency: removed resorts are listed with reasons.
         self.assertIn("Strict filters applied", html)
         self.assertIn("Jaz Aquaviva", html)
-        self.assertIn("ONE family unit", html)
+        self.assertIn("ONE booking", html)
+        # Vidamar (2× connecting-rooms fallback, no sand beach) is dropped by
+        # the walkable-beach non-negotiable and shown in the transparency list.
+        self.assertIn("Vidamar Resort Madeira", html)
+        self.assertIn("no genuine walkable private beach", html)
         # Verify compact size: guaranteed < 70 KB so Gmail (102 KB clip limit)
         # will never clip it. Budget raised from 45 KB to cover date-encoded
         # Booking.com / Expedia / Google Hotels buttons on every deal.

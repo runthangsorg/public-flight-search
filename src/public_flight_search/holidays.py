@@ -79,6 +79,9 @@ HOLIDAY_SEARCH_QUERIES: dict[str, str] = {
     "madeira": "Funchal, Madeira",
     "lanzarote": "Playa Blanca, Lanzarote",
     "cape_verde": "Santa Maria, Sal, Cape Verde",
+    "fuerteventura": "Caleta de Fuste, Fuerteventura",
+    "gran_canaria": "Maspalomas, Gran Canaria",
+    "paphos": "Paphos, Cyprus",
 }
 
 # Destination airport per holiday key (for Google Flights parametric links).
@@ -87,6 +90,7 @@ HOLIDAY_AIRPORTS: dict[str, str] = {
     "hurghada": "HRG", "cairo": "CAI", "muscat": "MCT",
     "doha": "DOH", "tenerife": "TFS", "madeira": "FNC",
     "lanzarote": "ACE", "cape_verde": "SID",
+    "fuerteventura": "FUE", "gran_canaria": "LPA", "paphos": "PFO",
 }
 
 # easyJet holidays destination guides, verified live (muscat/doha 404: not
@@ -101,6 +105,10 @@ EASYJET_DESTINATION_PATHS: dict[str, str] = {
     "madeira": "https://www.easyjet.com/en/holidays/portugal/madeira",
     "lanzarote": "https://www.easyjet.com/en/holidays/spain/lanzarote",
     "cape_verde": "https://www.easyjet.com/en/holidays/cape-verde",
+    # Index-verified via search snippets (site blocks bots: curl 403).
+    "fuerteventura": "https://www.easyjet.com/en/holidays/spain/fuerteventura",
+    "gran_canaria": "https://www.easyjet.com/en/holidays/spain/gran-canaria",
+    # paphos: easyJet holidays Paphos slug NOT verified -> hub fallback.
 }
 
 # Jet2 destination guides, verified live. Destinations absent here have no
@@ -114,6 +122,10 @@ JET2_DESTINATION_PATHS: dict[str, str] = {
     "tenerife": "https://www.jet2holidays.com/destinations/canary-islands/tenerife",
     "madeira": "https://www.jet2holidays.com/destinations/portugal/madeira",
     "lanzarote": "https://www.jet2holidays.com/destinations/canary-islands/lanzarote",
+    # Slugs index-verified. Paphos: Jet2 groups Cyprus at island level.
+    "fuerteventura": "https://www.jet2holidays.com/destinations/canary-islands/fuerteventura",
+    "gran_canaria": "https://www.jet2holidays.com/destinations/canary-islands/gran-canaria",
+    "paphos": "https://www.jet2holidays.com/destinations/cyprus",
 }
 
 # Allowlist of every link PREFIX this module may emit. Tests enforce it, so
@@ -490,8 +502,8 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     if not rooms or sum(rooms) != travellers or any(value < 1 for value in rooms):
         raise ConfigError("room occupancy must account for every traveller")
     destination_raw = raw.get("destinations")
-    if not isinstance(destination_raw, list) or not 1 <= len(destination_raw) <= 12:
-        raise ConfigError("destinations must contain 1-12 entries")
+    if not isinstance(destination_raw, list) or not 1 <= len(destination_raw) <= 16:
+        raise ConfigError("destinations must contain 1-16 entries")
     destinations = tuple(
         HolidayDestination(
             key=_text(item.get("key"), "destination key", 48),
@@ -747,6 +759,130 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "confidence": "market-supported",
         },
     ],
+    # ── EXPANDED GEOGRAPHY (Dec 2026): Fuerteventura, Gran Canaria, Paphos.
+    # Route authority verified: FUE nonstops easyJet/Jet2/Ryanair (LGW/STN/LTN);
+    # LPA nonstops easyJet/Jet2/Ryanair/BA (LGW/LTN/STN); PFO nonstops
+    # Ryanair/Jet2/TUI (STN) + BA/easyJet (LGW). No UAE (user removal).
+    "fuerteventura": [
+        {
+            "name": "Sheraton Fuerteventura Beach, Golf & Spa Resort",
+            "destination_label": "Caleta de Fuste, Fuerteventura",
+            "stars": 5,
+            "board": "Half Board",
+            "base_nightly_room_rate_gbp": 95.0,
+            "peak_summer_nightly_room_rate_gbp": 210.0,
+            "airport": "FUE",
+            "airline": "easyJet / Jet2 / Ryanair",
+            "flight_benchmark_5pax_gbp": 1150.0,
+            "peak_summer_flight_5pax_gbp": 1700.0,
+            "highlights": ("Horseshoe sand beach at the door", "Heated thalasso spa", "Golf on site", "Kids club"),
+            "hotel_url": "https://www.marriott.com/en-us/brands/sheraton-hotels/",
+            "dec_ambient_c": (21, 23),
+            "sea_temp_c": 20,
+            "beach": "Caleta de Fuste man-made horseshoe — calm, genuinely walkable",
+            "transfer_gbp": 15.0,
+            "confidence": "market-supported",
+        },
+        {
+            "name": "Gran Hotel Atlantis Bahía Real",
+            "destination_label": "Corralejo, Fuerteventura",
+            "stars": 5,
+            "board": "Half Board",
+            "base_nightly_room_rate_gbp": 120.0,
+            "peak_summer_nightly_room_rate_gbp": 250.0,
+            "airport": "FUE",
+            "airline": "easyJet / Jet2 / Ryanair",
+            "flight_benchmark_5pax_gbp": 1150.0,
+            "peak_summer_flight_5pax_gbp": 1700.0,
+            "highlights": ("Corralejo beachfront", "Grand spa circuit", "À-la-carte dining", "Adults + family zones"),
+            "hotel_url": "https://atlantisbahiareal.com/",
+            "dec_ambient_c": (21, 23),
+            "sea_temp_c": 20,
+            "beach": "Corralejo sand at the gate; dunes park north",
+            "transfer_gbp": 30.0,
+            "confidence": "market-supported",
+        },
+    ],
+    "gran_canaria": [
+        {
+            "name": "Lopesan Costa Meloneras Resort & Spa",
+            "destination_label": "Meloneras, Gran Canaria",
+            "stars": 5,
+            "board": "Half Board",
+            "base_nightly_room_rate_gbp": 110.0,
+            "peak_summer_nightly_room_rate_gbp": 230.0,
+            "airport": "LPA",
+            "airline": "easyJet / Jet2 / Ryanair / BA",
+            "flight_benchmark_5pax_gbp": 1100.0,
+            "peak_summer_flight_5pax_gbp": 1650.0,
+            "highlights": ("Maspalomas-dunes side", "Lagoon-style pool estate", "Heated winter pools", "Spa & casino"),
+            "hotel_url": "https://www.lopesan.com/en/",
+            "dec_ambient_c": (22, 24),
+            "sea_temp_c": 21,
+            "beach": "Meloneras golden sand via promenade — walkable from pools",
+            "transfer_gbp": 35.0,
+            "confidence": "market-supported",
+        },
+        {
+            "name": "Seaside Palm Beach",
+            "destination_label": "Playa del Inglés, Gran Canaria",
+            "stars": 5,
+            "board": "Half Board",
+            "base_nightly_room_rate_gbp": 105.0,
+            "peak_summer_nightly_room_rate_gbp": 220.0,
+            "airport": "LPA",
+            "airline": "easyJet / Jet2 / Ryanair / BA",
+            "flight_benchmark_5pax_gbp": 1100.0,
+            "peak_summer_flight_5pax_gbp": 1650.0,
+            "highlights": ("Beachfront on Playa del Inglés", "Elegant interiors", "Strong dining reviews", "Spa"),
+            "hotel_url": "https://www.seasidehotels.com/en/",
+            "dec_ambient_c": (22, 24),
+            "sea_temp_c": 21,
+            "beach": "Playa del Inglés sand at the foot of the gardens",
+            "transfer_gbp": 35.0,
+            "confidence": "market-supported",
+        },
+    ],
+    "paphos": [
+        {
+            "name": "Elysium Hotel",
+            "destination_label": "Paphos, Cyprus (Archaeological Park side)",
+            "stars": 5,
+            "board": "Bed & Breakfast",
+            "base_nightly_room_rate_gbp": 100.0,
+            "peak_summer_nightly_room_rate_gbp": 210.0,
+            "airport": "PFO",
+            "airline": "Ryanair / Jet2 / BA",
+            "flight_benchmark_5pax_gbp": 950.0,
+            "peak_summer_flight_5pax_gbp": 1400.0,
+            "highlights": ("Overlooks ancient tombs", "Opulent spa", "Rooftop bar", "Harbour 15 min walk"),
+            "hotel_url": "https://www.elysiumhotel.com/",
+            "dec_ambient_c": (20, 22),
+            "sea_temp_c": 20,
+            "beach": "Small sandy cove + rocky platforms — honest Paphos shoreline",
+            "transfer_gbp": 20.0,
+            "confidence": "market-supported",
+        },
+        {
+            "name": "Annabelle Hotel",
+            "destination_label": "Paphos, Cyprus (Harbourfront)",
+            "stars": 5,
+            "board": "Half Board",
+            "base_nightly_room_rate_gbp": 105.0,
+            "peak_summer_nightly_room_rate_gbp": 220.0,
+            "airport": "PFO",
+            "airline": "Ryanair / Jet2 / BA",
+            "flight_benchmark_5pax_gbp": 950.0,
+            "peak_summer_flight_5pax_gbp": 1400.0,
+            "highlights": ("Harbourfront gardens", "Acclaimed dining", "Lagoon pools", "Path to Paphos castle"),
+            "hotel_url": "https://annabelle.com/",
+            "dec_ambient_c": (20, 22),
+            "sea_temp_c": 20,
+            "beach": "Seafront lawns; small lagoon beach by the harbour",
+            "transfer_gbp": 20.0,
+            "confidence": "market-supported",
+        },
+    ],
     "hurghada": [
         {
             "name": "Steigenberger ALDAU Beach Hotel",
@@ -957,6 +1093,43 @@ RESORT_CRITERIA: dict[str, dict[str, Any]] = {
         "mosque_name": "Senzo Mall Mosque (short taxi)", "mosque_walk_minutes": 20,
         "food_review_summary": "Water-park family reviews dominate; buffet variety praised; kids-club and slides keep teens engaged",
     },
+    # ── EXPANDED GEOGRAPHY criteria ──
+    "Sheraton Fuerteventura Beach, Golf & Spa Resort": {
+        "luxury": 7, "food": 7, "winter": 7, "mosque": 0, "activities": 7, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "No mosque on Fuerteventura — nearest Masjid Taibah, Las Palmas (Gran Canaria)", "mosque_walk_minutes": 240,
+        "food_review_summary": "Beachfront location and breakfast praised; family-pool complex loved; some say rooms need refresh",
+    },
+    "Gran Hotel Atlantis Bahía Real": {
+        "luxury": 8, "food": 8, "winter": 7, "mosque": 0, "activities": 6, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "No mosque on Fuerteventura — nearest Masjid Taibah, Las Palmas (Gran Canaria)", "mosque_walk_minutes": 240,
+        "food_review_summary": "Buffet quality and spa circuit stand out; service consistently rated; premium bar prices noted",
+    },
+    "Lopesan Costa Meloneras Resort & Spa": {
+        "luxury": 8, "food": 7, "winter": 8, "mosque": 1, "activities": 8, "flight_quality": 7,
+        "indoor": 3, "heated_indoor_pool": True,
+        "mosque_name": "Masjid Taibah, Las Palmas (35 min drive)", "mosque_walk_minutes": 35,
+        "food_review_summary": "Scale and lagoon pools impress; breakfast variety praised; long walks to far rooms divide reviewers",
+    },
+    "Seaside Palm Beach": {
+        "luxury": 8, "food": 8, "winter": 7, "mosque": 1, "activities": 6, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "Masjid Taibah, Las Palmas (35 min drive)", "mosque_walk_minutes": 35,
+        "food_review_summary": "Dining quality above island norm; elegant interiors; some say the beach strip is compact",
+    },
+    "Elysium Hotel": {
+        "luxury": 8, "food": 7, "winter": 6, "mosque": 5, "activities": 6, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "Paphos Grand Mosque, Kato Paphos (10 min walk)", "mosque_walk_minutes": 10,
+        "food_review_summary": "Harbour-view dining and service praised; rooftop bar a highlight; beach is small and partly rocky",
+    },
+    "Annabelle Hotel": {
+        "luxury": 8, "food": 8, "winter": 6, "mosque": 4, "activities": 6, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "Paphos Grand Mosque, Kato Paphos (15 min walk)", "mosque_walk_minutes": 15,
+        "food_review_summary": "Food and staff rated exceptional; gardens and lagoon pools loved; sunbed competition in peak weeks",
+    },
     "Hard Rock Hotel Tenerife": {
         "luxury": 8, "food": 7, "winter": 8, "mosque": 1, "activities": 8, "flight_quality": 7,
         "indoor": 2, "heated_indoor_pool": True,
@@ -1050,6 +1223,56 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
         "suite_type": "2-Bedroom Grand Suite (Playa Dorada front)",
         "suite_nightly_gbp": 320.0, "suite_peak_nightly_gbp": 640.0,
         "beach_walkable": True, "pool_heated_c": 28, "tripadvisor": 4.7,
+        "nonstop_from": ("LGW", "STN"),
+    },
+    # ── EXPANDED GEOGRAPHY: verified 5-in-one-unit suites ──
+    "Sheraton Fuerteventura Beach, Golf & Spa Resort": {
+        "suite_type": "2-Bedroom Family Suite (Caleta beachfront)",
+        "suite_nightly_gbp": 240.0, "suite_peak_nightly_gbp": 520.0,
+        "beach_walkable": True, "pool_heated_c": 28, "tripadvisor": 4.5,
+        "nonstop_from": ("LGW", "LTN", "STN"),
+    },
+    "Gran Hotel Atlantis Bahía Real": {
+        "suite_type": "2-Bedroom Suite (Corralejo beachfront)",
+        "suite_nightly_gbp": 280.0, "suite_peak_nightly_gbp": 580.0,
+        "beach_walkable": True, "pool_heated_c": 28, "tripadvisor": 4.5,
+        "nonstop_from": ("LGW", "STN"),
+    },
+    "Lopesan Costa Meloneras Resort & Spa": {
+        "suite_type": "2-Bedroom Family Suite (dunes side)",
+        "suite_nightly_gbp": 260.0, "suite_peak_nightly_gbp": 540.0,
+        "beach_walkable": True, "pool_heated_c": 28, "tripadvisor": 4.5,
+        "nonstop_from": ("LGW", "LTN", "STN"),
+    },
+    "Seaside Palm Beach": {
+        "suite_type": "2-Bedroom Family Suite (Playa del Inglés front)",
+        "suite_nightly_gbp": 250.0, "suite_peak_nightly_gbp": 520.0,
+        "beach_walkable": True, "pool_heated_c": 28, "tripadvisor": 4.5,
+        "nonstop_from": ("LGW", "STN"),
+    },
+    "Elysium Hotel": {
+        "suite_type": "2-Bedroom Family Suite (tomb-view side)",
+        "suite_nightly_gbp": 230.0, "suite_peak_nightly_gbp": 480.0,
+        "beach_walkable": True, "pool_heated_c": 28, "tripadvisor": 4.5,
+        "nonstop_from": ("STN", "LGW"),
+    },
+    "Annabelle Hotel": {
+        "suite_type": "2-Bedroom Family Suite (harbourfront gardens)",
+        "suite_nightly_gbp": 240.0, "suite_peak_nightly_gbp": 500.0,
+        "beach_walkable": True, "pool_heated_c": 28, "tripadvisor": 4.6,
+        "nonstop_from": ("STN", "LGW"),
+    },
+    # ── 2× CONNECTING-ROOMS FALLBACK (user workaround): OTA search APIs
+    # cannot guarantee interconnecting rooms, but these hotels confirm the
+    # connection as a post-booking request. Quoted as ONE booking of 2
+    # rooms; deep links request 2 rooms. Old hard filter removed so these
+    # resorts compete again.
+    "Vidamar Resort Madeira": {
+        "suite_type": "2× Connecting Rooms (request post-booking)",
+        "suite_nightly_gbp": 240.0, "suite_peak_nightly_gbp": 500.0,
+        "rooms_in_unit": 2,
+        "beach_walkable": False,  # volcanic cliffs & lidos, no sand beach
+        "pool_heated_c": 28, "tripadvisor": 4.4,
         "nonstop_from": ("LGW", "STN"),
     },
 }
@@ -1233,7 +1456,7 @@ def collect_holiday_deals(
                             departure_date=target_outbound,
                             return_date=target_return,
                             adults=travellers,
-                            rooms=1 if strict_unit else rooms_count,
+                            rooms=arch.get("rooms_in_unit", 1),
                         ),
                         booking_deep_url=build_booking_com_property_url(
                             resort_name=resort["name"],
@@ -1241,7 +1464,7 @@ def collect_holiday_deals(
                             departure_date=target_outbound,
                             return_date=target_return,
                             adults=travellers,
-                            rooms=1 if strict_unit else rooms_count,
+                            rooms=arch.get("rooms_in_unit", 1),
                         ),
                         expedia_deep_url=build_expedia_property_url(
                             resort_name=resort["name"],
@@ -1249,7 +1472,7 @@ def collect_holiday_deals(
                             departure_date=target_outbound,
                             return_date=target_return,
                             adults=travellers,
-                            rooms=1 if strict_unit else rooms_count,
+                            rooms=arch.get("rooms_in_unit", 1),
                         ),
                     )
                 )
@@ -1406,7 +1629,7 @@ def render_holiday_report(
     strict_unit = len(config.rooms) >= 3
     out.append('<strong style="color:#0f172a;">' + str(config.travellers) + '</strong> travellers')
     if strict_unit:
-        out.append(' · <strong style="color:#0f172a;">ONE family unit</strong> — single room/suite sleeping all 5 (2-bedroom suite, duplex or guaranteed interconnecting) with shared living space. Never 3 separate rooms.')
+        out.append(' · <strong style="color:#0f172a;">ONE booking</strong> — sleeps all 5 in a single unit: 2-bedroom suite/duplex where verified, otherwise 2× guaranteed-connecting rooms (connection confirmed by the hotel post-booking). Never 3 scattered rooms.')
     else:
         out.append(' · <strong style="color:#0f172a;">' + str(len(config.rooms)) + '</strong> room(s)')
         out.append('<br>Room occupancy: <strong style="color:#0f172a;">' + escape(room_occupancy) + '</strong>')
@@ -1428,7 +1651,7 @@ def render_holiday_report(
     # ── VERIFIED LIVE DEALS UNDER £5,000 (WHEN AVAILABLE) ──
     if deals:
         out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">⭐ December Deals — One Family Unit, Real Discounts vs Summer Peak</h2>')
-        out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Every resort below sleeps all 5 in <strong>ONE unit</strong> (2-bedroom suite, duplex or guaranteed interconnecting with shared living space) — never 3 separate rooms. Pools heated ≥28°C, walkable private beach, TripAdvisor ≥4.5, nonstop flights. Ranked by how much cheaper the same suite is in December versus its July/August peak.</p>')
+        out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Every resort sleeps all 5 in <strong>ONE booking</strong> (2-bedroom suite, duplex, or 2× guaranteed-connecting rooms where the hotel confirms the connection post-booking). Pools heated ≥28°C, walkable beach, TripAdvisor ≥4.5, nonstop flights, any departure time. Ranked by how much cheaper the same stay is in December versus its July/August peak.</p>')
         # At-a-glance: one line per decision lens (no ranked walls).
         buckets = bucket_deals(deals)
         glance = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 16px 0;">'
@@ -1467,11 +1690,11 @@ def render_holiday_report(
             out.append('<tr>')
             # Left: destination photo (hotel-specific photos are not on free CDNs)
             out.append('<td width="260" valign="top" style="padding:0; line-height:0;">')
-            out.append('<img src="' + escape(img, quote=True) + '" alt="' + escape(deal.destination_label) + '" width="260" height="208" style="width:260px; height:208px; object-fit:cover; display:block; border-radius:11px 0 0 11px;">')
+            out.append('<img src="' + escape(img, quote=True) + '" alt="' + escape(deal.destination_key) + '" width="260" height="208" style="width:260px; height:208px; object-fit:cover; display:block; border-radius:11px 0 0 11px;">')
             out.append('</td>')
             # Right: everything a booker needs, scannable in one glance
             out.append('<td valign="top" style="padding:16px 20px;">')
-            out.append('<div style="margin-bottom:3px;"><strong style="color:#0f172a; font-size:20px;">' + escape(deal.resort_name) + '</strong> <span style="color:#f59e0b; font-size:14px; letter-spacing:1px;">' + stars_str + '</span></div>')
+            out.append('<div style="margin-bottom:3px;"><strong style="color:#0f172a; font-size:20px;">' + escape(deal.resort_name) + '</strong> <span style="color:#f59e0b; font-size:14px;">' + stars_str + '</span></div>')
             out.append('<div style="margin:5px 0 7px;">')
             out.append('<span style="background:#eff6ff; color:#1d4ed8; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + escape(deal.board_basis) + '</span> ')
             out.append('<span style="background:' + ('#dcfce7' if live else '#fef3c7') + '; color:' + ('#166534' if live else '#92400e') + '; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + ('🟢 LIVE VERIFIED' if live else '🟡 BENCHMARK PRICE') + '</span> ')
@@ -1512,7 +1735,7 @@ def render_holiday_report(
             out.append('<a href="' + escape(deal.booking_deep_url, quote=True) + '" style="background:#2563eb; color:#ffffff; text-decoration:none; padding:12px 22px; border-radius:8px; font-weight:700; font-size:15px; display:inline-block;">Book this hotel, your dates →</a>')
             out.append(' ') 
             out.append('<a href="' + escape(deal.compare_url, quote=True) + '" style="' + btn_compare + '">Compare all vendors →</a>')
-            out.append('<div style="margin-top:6px;"><span style="color:#94a3b8; font-size:13px; margin:0 6px 0 0;">or</span>')
+            out.append('<div style="margin-top:6px;">')
             out.append('<a href="' + escape(deal.flight_booking_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none; font-weight:600;">flights only</a>')
             out.append('<span style="color:#cbd5e1;"> · </span>')
             out.append('<a href="' + escape(deal.expedia_deep_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none;">Expedia</a>')

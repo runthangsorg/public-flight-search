@@ -9,8 +9,8 @@
     ]
   },
   "departure_window": [
-    "08:00",
-    "18:00"
+    "06:00",
+    "23:59"
   ],
   "origins": [
     "LHR",
@@ -38,72 +38,93 @@
     },
     {
       "key": "malta",
-      "label": "Valletta, Malta (heritage city break \u2014 15\u00b0C, no beach weather)",
+      "label": "Valletta, Malta (heritage city break — 15°C, no beach weather)",
       "airports": [
         "MLA"
       ]
     },
     {
       "key": "taghazout",
-      "label": "Taghazout Bay, Morocco (surf coast, 23\u00b0C winter sun)",
+      "label": "Taghazout Bay, Morocco (surf coast, 23°C winter sun)",
       "airports": [
         "AGA"
       ]
     },
     {
       "key": "hurghada",
-      "label": "Hurghada & Red Sea, Egypt (25\u00b0C warmth, all inclusive)",
+      "label": "Hurghada & Red Sea, Egypt (25°C warmth, all inclusive)",
       "airports": [
         "HRG"
       ]
     },
     {
       "key": "cairo",
-      "label": "Cairo & Giza, Egypt (pyramids & Nile \u2014 cultural, no beach)",
+      "label": "Cairo & Giza, Egypt (pyramids & Nile — cultural, no beach)",
       "airports": [
         "CAI"
       ]
     },
     {
       "key": "muscat",
-      "label": "Muscat, Oman (26\u00b0C+ tropical coast)",
+      "label": "Muscat, Oman (26°C+ tropical coast)",
       "airports": [
         "MCT"
       ]
     },
     {
       "key": "doha",
-      "label": "Doha, Qatar (private-beach resorts, 24\u00b0C)",
+      "label": "Doha, Qatar (private-beach resorts, 24°C)",
       "airports": [
         "DOH"
       ]
     },
     {
       "key": "tenerife",
-      "label": "Tenerife, Canary Islands (22\u201324\u00b0C eternal spring)",
+      "label": "Tenerife, Canary Islands (22–24°C eternal spring)",
       "airports": [
         "TFS"
       ]
     },
     {
       "key": "madeira",
-      "label": "Funchal, Madeira (levada hiking \u2014 volcanic island, no sand)",
+      "label": "Funchal, Madeira (levada hiking — volcanic island, no sand)",
       "airports": [
         "FNC"
       ]
     },
     {
       "key": "lanzarote",
-      "label": "Playa Blanca, Lanzarote (21\u201323\u00b0C, family beach resort)",
+      "label": "Playa Blanca, Lanzarote (21–23°C, family beach resort)",
       "airports": [
         "ACE"
       ]
     },
     {
       "key": "cape_verde",
-      "label": "Sal Island, Cape Verde (26\u00b0C+ tropical beach)",
+      "label": "Sal Island, Cape Verde (26°C+ tropical beach)",
       "airports": [
         "SID"
+      ]
+    },
+    {
+      "key": "fuerteventura",
+      "label": "Caleta de Fuste & Corralejo, Fuerteventura (21-23°C winter sun)",
+      "airports": [
+        "FUE"
+      ]
+    },
+    {
+      "key": "gran_canaria",
+      "label": "Meloneras & Playa del Inglés, Gran Canaria (22-24°C winter sun)",
+      "airports": [
+        "LPA"
+      ]
+    },
+    {
+      "key": "paphos",
+      "label": "Paphos, Cyprus (harbour + archaeology, 20-22°C)",
+      "airports": [
+        "PFO"
       ]
     }
   ]
