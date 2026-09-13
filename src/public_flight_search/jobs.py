@@ -5,13 +5,24 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import json
+import logging
 import os
 from pathlib import Path
+import shutil
+import subprocess
 
 from .config import load_flight_config, build_search_plan
 from .google_flights import build_google_flights_url, search_google_flights
 from .holidays import _date_pairs, collect_holiday_deals, count_provider_entries, load_holiday_config, render_holiday_report
-from .holiday_history import append_history, render_history_html, summarize_trends
+from .holiday_history import (
+    append_history,
+    build_change_digest,
+    last_history_observation,
+    read_history,
+    render_change_digest_html,
+    render_history_html,
+    summarize_trends,
+)
 from .mailer import send_html
 from .report import render_flight_report
 from .trip_config import (
@@ -26,6 +37,54 @@ from .pareto import rank_bucket_sections
 
 class FlightCollectionError(RuntimeError):
     """Prevent an empty fare collection from becoming a misleading email."""
+
+
+logger = logging.getLogger(__name__)
+
+
+def _seed_history_from_private_repo(history_path: Path) -> int:
+    """Fetch prior price history from the private data repo BEFORE building.
+
+    The price-history file lives in the PRIVATE dealsearch repo; the job
+    clones it here so trends, chips and the change digest carry real
+    memory instead of 'first time tracked' on every run. Best-effort:
+    any failure leaves no file and the report degrades honestly —
+    delivery never depends on history.
+    """
+    git_url = os.environ.get("HOLIDAY_HISTORY_GIT_URL", "").strip()
+    deploy_key = os.environ.get("HISTORY_DEPLOY_KEY", "").strip()
+    if not git_url or not deploy_key:
+        return 0
+    try:
+        workdir = Path("/tmp/history-seed")
+        if workdir.exists():
+            shutil.rmtree(workdir)
+        key_file = Path("/tmp/history_seed_key")
+        key_file.write_text(deploy_key)
+        key_file.chmod(0o600)
+        env = dict(os.environ)
+        env["GIT_SSH_COMMAND"] = (
+            f"ssh -i {key_file} -o IdentitiesOnly=yes "
+            "-o StrictHostKeyChecking=accept-new"
+        )
+        subprocess.run(
+            ["git", "clone", "--depth", "1", git_url, str(workdir)],
+            check=True,
+            capture_output=True,
+            env=env,
+            timeout=120,
+        )
+        src = workdir / "data" / "holiday_price_history.jsonl"
+        if not src.exists():
+            return 0
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, history_path)
+        rows = len(read_history(path=history_path))
+        print(json.dumps({"history_seeded_rows": rows}, sort_keys=True))
+        return rows
+    except Exception:
+        logger.exception("History seeding failed; continuing without prior history")
+        return 0
 
 
 def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
@@ -152,7 +211,7 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     return result
 
 
-def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
+def run_holiday_planner(*, dry_run: bool, force_send: bool = False) -> dict[str, int | bool]:
     config = load_holiday_config(os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON", ""))
     # Bounded live flight injection (GHA-safe HTTP only, no browser).
     # Disabled by default; enable with HOLIDAY_LIVE_FLIGHTS=1. Full
@@ -171,20 +230,47 @@ def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
         config, max_budget_gbp=5000.0,
         live_flight_offers=live_offers or None,
     )
+    # MEMORY BEFORE BUILD: seed prior history from the private repo so the
+    # chips and change digest describe real movement, not 'first time
+    # tracked'. Dry runs skip seeding (never touch the private repo).
+    history_path = Path(
+        os.environ.get("HOLIDAY_HISTORY_PATH", "data/holiday_price_history.jsonl")
+    )
+    seeded_rows = 0 if dry_run else _seed_history_from_private_repo(history_path)
     # Trends are computed BEFORE today's observation is appended, so the
     # chips always compare against prior runs only.
-    trends = summarize_trends(deals)
+    trends = summarize_trends(deals, path=history_path)
+    digest = build_change_digest(trends, path=history_path)
     html = render_holiday_report(
         config,
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         deals=deals,
         history_chips=render_history_html(trends),
-    )
-    history_path = Path(
-        os.environ.get("HOLIDAY_HISTORY_PATH", "data/holiday_price_history.jsonl")
+        change_digest_html=render_change_digest_html(digest),
     )
     appended = 0 if dry_run else append_history(deals, path=history_path)
-    if not dry_run:
+    # Last PRIOR observation: read from the seeded file BEFORE today's
+    # append landed (seeded_rows>0 means we have a real timestamp).
+    last_prior = ""
+    if seeded_rows:
+        last_prior = last_history_observation(
+            path=Path("/tmp/history-seed/data/holiday_price_history.jsonl")
+        )
+    # ANTI-DUPLICATE SEND: benchmark-driven deals rarely move day to day.
+    # A 3x-week identical blast trains the reader to ignore the inbox, so
+    # the email only goes out when something a reader would care about
+    # happened: any drop, any rise, any new resort, or the very first run.
+    # A flat re-quote is suppressed (still tracked, still persisted).
+    # force_send overrides — and is itself overridden by dry-run so a dry
+    # run can never email.
+    send_email = (not dry_run) and (
+        bool(force_send)
+        or not digest["has_prior"]
+        or bool(digest["drops"])
+        or bool(digest["rises"])
+        or bool(digest["new"])
+    )
+    if send_email:
         send_html(os.environ.get("HOLIDAY_EMAIL_SUBJECT", "Holiday package watch"), html)
     date_combination_count = len(_date_pairs(config))
     result = {
@@ -196,7 +282,10 @@ def run_holiday_planner(*, dry_run: bool) -> dict[str, int | bool]:
         "live_flight_airports": len(live_offers),
         "live_attempted": live_attempted,
         "history_observations_appended": appended,
-        "email_sent": not dry_run,
+        "history_seeded_rows": seeded_rows,
+        "send_skipped_no_change": (not dry_run) and not send_email,
+        "last_prior_observation": last_prior,
+        "email_sent": send_email,
     }
     print(json.dumps(result, sort_keys=True))
     return result

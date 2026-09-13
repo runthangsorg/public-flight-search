@@ -1576,6 +1576,7 @@ def render_holiday_report(
     generated_at: str,
     deals: Sequence[PackageDeal] = (),
     history_chips: Optional[Sequence[str]] = None,
+    change_digest_html: str = "",
 ) -> str:
     out: list[str] = []
     pairs = _date_pairs(config)
@@ -1637,6 +1638,11 @@ def render_holiday_report(
     out.append('<br>Outbound <strong style="color:#0f172a;">' + escape(', '.join(config.outbound_dates)) + '</strong> · Return <strong style="color:#0f172a;">' + escape(', '.join(config.return_dates)) + '</strong>')
     out.append('</td></tr></table>')
     out.append('</td></tr><tr><td>')
+    # WHAT CHANGED SINCE THE LAST REPORT — the strip that makes each email
+    # worth opening. Empty (renders nothing) on the very first run.
+    if change_digest_html:
+        out.append(change_digest_html)
+        out.append('</td></tr><tr><td>')
 
     # ── STRICT FILTER TRANSPARENCY: every removed resort and why ──
     if LAST_FILTERED_OUT:

@@ -34,12 +34,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if arguments and arguments[0] in {"flight-digest", "holiday-planner"}:
         command = arguments.pop(0)
         dry_run = "--dry-run" in arguments
-        if set(arguments) - {"--dry-run"}:
-            raise SystemExit("only --dry-run is accepted for production jobs")
+        force_send = "--force-send" in arguments
+        if set(arguments) - {"--dry-run", "--force-send"}:
+            raise SystemExit("only --dry-run and --force-send are accepted for production jobs")
         if command == "flight-digest":
             run_flight_digest(dry_run=dry_run)
         else:
-            run_holiday_planner(dry_run=dry_run)
+            run_holiday_planner(dry_run=dry_run, force_send=force_send)
         return 0
     args = build_parser().parse_args(arguments)
     if not 1 <= args.max_results <= 100:

@@ -16,8 +16,10 @@ import json
 import logging
 import math
 import os
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
+from html import escape
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -191,9 +193,11 @@ def summarize_trends(
             min_price = min(float(r.get("total_package_price_gbp", 0.0)) for r in prior)
             max_price = max(float(r.get("total_package_price_gbp", 0.0)) for r in prior)
             obs_count = len(prior)
+            last_price = float(prior[-1].get("total_package_price_gbp", 0.0))
         else:
             min_price = max_price = 0.0
             obs_count = 0
+            last_price = None
         out.append(
             {
                 "fingerprint": fp,
@@ -201,11 +205,133 @@ def summarize_trends(
                 "current": current,
                 "prior_min": min_price if prior else None,
                 "prior_max": max_price if prior else None,
+                "prior_last": last_price,
                 "delta_vs_min": (current - min_price) if prior else None,
+                "delta_vs_last": (current - last_price) if prior else None,
                 "prior_observations": obs_count,
             }
         )
     return out
+
+
+def build_change_digest(
+    trends: List[Dict[str, Any]],
+    *,
+    path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """What changed since the last report: drops, rises, new resorts.
+
+    Compares each deal's current price against its LAST observation (the
+    previous report's number), not the cheapest-ever. ``has_prior`` is
+    False until at least one deal has any history — the first run has
+    nothing to compare and the digest says so by being empty.
+    """
+    drops: List[Dict[str, Any]] = []
+    rises: List[Dict[str, Any]] = []
+    new: List[str] = []
+    unchanged = 0
+    has_prior = False
+    for t in trends:
+        if t.get("prior_observations"):
+            has_prior = True
+        prev = t.get("prior_last")
+        if prev is None:
+            new.append(str(t.get("resort_name", "")))
+            continue
+        delta = float(t.get("current", 0.0)) - float(prev)
+        if delta <= -0.01:
+            drops.append({"name": str(t.get("resort_name", "")), "current": float(t.get("current", 0.0)), "prev": float(prev), "delta": delta})
+        elif delta >= 0.01:
+            rises.append({"name": str(t.get("resort_name", "")), "current": float(t.get("current", 0.0)), "prev": float(prev), "delta": delta})
+        else:
+            unchanged += 1
+    return {
+        "has_prior": has_prior,
+        "drops": drops,
+        "rises": rises,
+        "new": new,
+        "unchanged": unchanged,
+        "last_report_at": last_history_observation(path=path),
+    }
+
+
+_LAST_AT_RE = re.compile(r'"observed_at": "([^"]+)"')
+
+
+def last_history_observation(*, path: Optional[Path] = None) -> str:
+    """Timestamp of the most recent observation in history ('' if none).
+
+    Reads the tail of the file only — cheap even as history grows.
+    """
+    in_path = Path(path) if path else HISTORY_DEFAULT_PATH
+    if not in_path.exists():
+        return ""
+    try:
+        with open(in_path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 4096))
+            tail = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+    stamps = _LAST_AT_RE.findall(tail)
+    return stamps[-1] if stamps else ""
+
+
+def render_change_digest_html(digest: Dict[str, Any]) -> str:
+    """One compact strip: what changed since the last report. Empty when
+    there is no prior data (first run) — never a wall of noise."""
+    if not digest.get("has_prior"):
+        return ""
+    parts: List[str] = []
+    for d in digest.get("drops", []):
+        parts.append(
+            '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">&#9660; '
+            + escape(d["name"])
+            + " £"
+            + f"{abs(d['delta']):,.0f} cheaper</span>"
+        )
+    for d in digest.get("rises", []):
+        parts.append(
+            '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">&#9650; '
+            + escape(d["name"])
+            + " £"
+            + f"{d['delta']:,.0f} pricier</span>"
+        )
+    for name in digest.get("new", []):
+        parts.append(
+            '<span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">✦ '
+            + escape(name)
+            + " new</span>"
+        )
+    unchanged = int(digest.get("unchanged", 0))
+    if unchanged and parts:
+        parts.append(
+            '<span style="color:#64748b;font-size:13px;">'
+            + str(unchanged)
+            + " unchanged</span>"
+        )
+    stamp = str(digest.get("last_report_at") or "")
+    when = ""
+    if stamp:
+        when = (
+            '<span style="color:#94a3b8;font-size:13px;">vs last report '
+            + escape(stamp[:16].replace("T", " "))
+            + " UTC</span>"
+        )
+    if not parts:
+        return (
+            '<p style="margin:0 0 14px 0; color:#64748b; font-size:14px;">'
+            "No price movement since the last report — every tracked resort is at its previous price. "
+            + when
+            + "</p>"
+        )
+    parts.append(when)
+    return (
+        '<div style="margin:0 0 14px 0; line-height:2;">'
+        + " ".join(parts)
+        + "</div>"
+    )
 
 
 def render_history_html(trends: List[Dict[str, Any]]) -> List[str]:
