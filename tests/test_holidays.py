@@ -145,18 +145,22 @@ class HolidayPlannerTests(unittest.TestCase):
         )
         deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
         html = render_holiday_report(config, generated_at="2026-09-06T12:00:00+00:00", deals=deals)
-        self.assertIn("December Deals — Real Discounts vs Summer Peak", html)
+        self.assertIn("December Deals — One Family Unit, Real Discounts vs Summer Peak", html)
         self.assertIn("vs summer peak", html)
         self.assertIn("save £", html)
         self.assertIn("Lara Barut Collection", html)
         self.assertIn("Biggest Discount vs Summer Peak", html)
         self.assertIn("Top Luxury Within", html)
         self.assertIn("Best Winter Facilities", html)
-        # Property-targeted deep links with exact dates + party.
+        # Property-targeted deep links with exact dates + party, ONE unit.
         self.assertIn("Book this hotel, your dates", html)
         self.assertIn("Compare all vendors", html)
-        self.assertIn("ss=Jaz+Aquaviva+Hurghada", html)
-        self.assertIn("q=Jaz+Aquaviva+Hurghada", html)
+        self.assertIn("ss=Lara+Barut+Collection+Antalya", html)
+        self.assertIn("no_rooms=1", html)
+        # Strict-mode transparency: removed resorts are listed with reasons.
+        self.assertIn("Strict filters applied", html)
+        self.assertIn("Jaz Aquaviva", html)
+        self.assertIn("ONE family unit", html)
         # Verify compact size: guaranteed < 70 KB so Gmail (102 KB clip limit)
         # will never clip it. Budget raised from 45 KB to cover date-encoded
         # Booking.com / Expedia / Google Hotels buttons on every deal.
@@ -195,27 +199,33 @@ class HolidayPlannerTests(unittest.TestCase):
                 self.assertLessEqual(deal.total_package_price_gbp, 5000.0)
                 self.assertLessEqual(deal.true_d2d_gbp, 5000.0)
 
-    def test_cairo_trio_within_one_hour_transfer_radius(self):
-        from public_flight_search.holidays import bucket_deals
+    def test_strict_filters_drop_non_conforming_resorts(self):
+        """User strict mandate: city stays and resorts without a verified
+        one-unit room sleeping 5, walkable beach, heated ≥28°C pools and
+        TripAdvisor ≥4.5 are filtered out with an explicit reason."""
+        from public_flight_search.holidays import collect_holiday_deals
         root = Path(__file__).parents[1]
         config = load_holiday_config(
             (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
         )
         deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
-        cairo = [d for d in deals if d.destination_key == "cairo"]
-        self.assertEqual(len(cairo), 3)
-        names = {d.resort_name for d in cairo}
-        self.assertEqual(
-            names,
-            {"Kempinski Nile Hotel Cairo", "Marriott Mena House", "JW Marriott Hotel Cairo"},
-        )
-        for deal in cairo:
-            # No Nile-front requirement: anywhere within ~1hr of CAI/sights.
-            self.assertLessEqual(deal.transfer_gbp, 45.0)
-            self.assertIn("CAI", " ".join(deal.highlights))
-        html = render_holiday_report(config, generated_at="2026-09-06T12:00:00+00:00", deals=deals)
-        for snippet in ("JW Marriott Hotel Cairo", "≈1 hr from CAI", "city stay, no sea swimming"):
-            self.assertIn(snippet, html)
+        names = {d.resort_name for d in deals}
+        # Cairo trio is a city break — no walkable private beach → excluded.
+        self.assertNotIn("Kempinski Nile Hotel Cairo", names)
+        self.assertNotIn("Marriott Mena House", names)
+        self.assertNotIn("JW Marriott Hotel Cairo", names)
+        # User exclusions honoured.
+        self.assertNotIn("Jaz Aquaviva", names)
+        self.assertNotIn("Jungle Aqua Park", names)
+        # Every survivor has verified one-unit architecture facts.
+        from public_flight_search import holidays as hol
+        for deal in deals:
+            self.assertIn(deal.resort_name, hol.SUITE_ARCHITECTURE)
+            arch = hol.SUITE_ARCHITECTURE[deal.resort_name]
+            self.assertTrue(arch["beach_walkable"])
+            self.assertGreaterEqual(arch["pool_heated_c"], 28)
+            self.assertGreaterEqual(arch["tripadvisor"], 4.5)
+            self.assertLessEqual(deal.total_package_price_gbp, 5000.0)
 
 
 if __name__ == "__main__":
