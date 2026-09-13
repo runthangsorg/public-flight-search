@@ -885,10 +885,10 @@ def bucket_deals(
     }
 
 
-# Hero + per-destination imagery (verified stable CDN URLs; free-to-use
-# Wikimedia Commons thumbs / Unsplash). Emails render images by URL —
-# no attachments, no binary in the public repo.
-HERO_IMAGE = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200&q=75&auto=format&fit=crop"
+# Per-destination imagery for deal cards (verified stable Wikimedia Commons
+# thumbnails; free-to-use). Emails render images by URL — no attachments,
+# no binary in the public repo. Resorts without a hotel-specific free photo
+# use their destination image (visually distinct per destination).
 DEST_IMAGES: dict[str, str] = {
     "hurghada": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/af/Hurghada%2C_Qesm_Hurghada%2C_Red_Sea_Governorate%2C_Egypt_-_panoramio_%28306%29.jpg/960px-Hurghada%2C_Qesm_Hurghada%2C_Red_Sea_Governorate%2C_Egypt_-_panoramio_%28306%29.jpg",
     "tenerife": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/Playa-Las-Vistas-Tenerife-03.jpg/960px-Playa-Las-Vistas-Tenerife-03.jpg",
@@ -936,126 +936,112 @@ def render_holiday_report(
     
     out.append('<!DOCTYPE html><html><head><meta charset="utf-8"><title>')
     out.append(escape(config.report_title))
-    out.append('</title></head><body style="margin:0; padding:0; background:#08111f; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; line-height:1.5;">')
-    out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:760px; margin:0 auto; background:#08111f;">')
-    out.append('<tr><td style="padding:18px 16px 0;">')
-    # Travel-agent hero: full-bleed beach image over a title band.
-    out.append('<img src="' + HERO_IMAGE + '" alt="Your December sunshine shortlist" width="728" style="width:100%; max-width:728px; height:190px; object-fit:cover; display:block; border-radius:12px 12px 0 0;">')
-    out.append('<div bgcolor="#13315c" style="background:linear-gradient(135deg,#0b2545,#13315c); border-radius:0 0 12px 12px; padding:18px 20px;">')
-    out.append('<h1 style="margin:0 0 6px 0; color:#f8fafc; font-size:24px; font-weight:800;">☀️ ' + escape(config.report_title) + '</h1>')
-    out.append('<p style="margin:0; color:#9eb0c7; font-size:13px;">')
+    out.append('</title></head><body style="margin:0; padding:0; background:#eef2f7; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; line-height:1.5;">')
+    # Full-width light canvas; inner column centered via align=center
+    # (Gmail strips margin:auto on tables).
+    out.append('<table role="presentation" width="100%" bgcolor="#eef2f7" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px 12px;">')
+    out.append('<table role="presentation" width="760" cellpadding="0" cellspacing="0" style="width:100%; max-width:760px;">')
+    out.append('<tr><td style="padding:0 0 14px 0;">')
+    out.append('<h1 style="margin:0 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">☀️ ' + escape(config.report_title) + '</h1>')
+    out.append('<p style="margin:0; color:#64748b; font-size:13px;">')
     out.append(escape(generated_at))
     out.append(' · ')
     out.append(str(len(config.destinations)))
     out.append(' destinations · ')
     out.append(str(len(pairs)))
     out.append(' valid date combinations</p>')
-    out.append('</div>')
-    out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:16px 0 20px;">')
-    out.append('<tr><td style="padding:12px 14px; background:#0d1520; border:1px solid #1e3a5f; border-radius:8px; color:#9eb0c7; font-size:13px;">')
-    out.append('<strong style="color:#f8fafc;">' + str(config.travellers) + '</strong> travellers · <strong style="color:#f8fafc;">' + str(len(config.rooms)) + '</strong> room(s)')
-    out.append('<br>Room occupancy: <strong style="color:#f8fafc;">' + escape(room_occupancy) + '</strong>')
-    out.append('<br>Preferred departure: <strong style="color:#f8fafc;">' + escape(config.departure_window[0]) + '–' + escape(config.departure_window[1]) + '</strong>')
-    out.append('<br>Outbound options: <strong style="color:#f8fafc;">' + escape(', '.join(config.outbound_dates)) + '</strong>')
-    out.append('<br>Return options: <strong style="color:#f8fafc;">' + escape(', '.join(config.return_dates)) + '</strong>')
+    out.append('</td></tr>')
+    out.append('<tr><td style="padding:0 0 18px 0;">')
+    out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">')
+    out.append('<tr><td style="padding:10px 14px; color:#475569; font-size:13px;">')
+    out.append('<strong style="color:#0f172a;">' + str(config.travellers) + '</strong> travellers · <strong style="color:#0f172a;">' + str(len(config.rooms)) + '</strong> room(s)')
+    out.append('<br>Room occupancy: <strong style="color:#0f172a;">' + escape(room_occupancy) + '</strong>')
+    out.append('<br>Preferred departure <strong style="color:#0f172a;">' + escape(config.departure_window[0]) + '–' + escape(config.departure_window[1]) + '</strong>')
+    out.append('<br>Outbound <strong style="color:#0f172a;">' + escape(', '.join(config.outbound_dates)) + '</strong> · Return <strong style="color:#0f172a;">' + escape(', '.join(config.return_dates)) + '</strong>')
     out.append('</td></tr></table>')
+    out.append('</td></tr><tr><td>')
 
     # ── VERIFIED LIVE DEALS UNDER £5,000 (WHEN AVAILABLE) ──
     if deals:
-        out.append('<h2 style="margin:20px 0 12px 0; color:#34d399; font-size:18px; font-weight:800;">⭐ Verified Luxury Deals Under £5,000</h2>')
-        out.append('<p style="margin:14px 0 6px 0; color:#cbd5e1; font-size:14px; line-height:1.6;">Every resort below clears <strong style="color:#f8fafc;">£5,000</strong> on the package <em>and</em> the true door-to-door total for your party. Each button opens <strong style="color:#f8fafc;">live, dated results</strong> for your exact dates — just confirm the checkout total before booking.</p>')
-        out.append('<p style="margin:0 0 14px 0; color:#64748b; font-size:11px;">🟡 BENCHMARK PRICE = curated resort benchmark · 🟢 LIVE VERIFIED = live results-page evidence seen this week</p>')
-
+        out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:20px; font-weight:800;">⭐ Verified Luxury Deals Under £5,000</h2>')
+        out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:13px;">Hand-picked for your party — every resort clears £5,000 on the package <em>and</em> the true door-to-door total. Cheapest first.</p>')
+        # At-a-glance: one line per decision lens (no ranked walls).
         buckets = bucket_deals(deals)
-        row_style = 'margin:0 0 6px;padding:8px 10px;background:#0d1520;border-radius:6px;color:#cbd5e1;font-size:13px'
-        link_style = 'color:#38bdf8; font-weight:700; text-decoration:none;'
+        glance = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 16px 0;">'
+        b1 = buckets["discounts"][0] if buckets["discounts"] else None
+        b2 = buckets["luxury"][0] if buckets["luxury"] else None
+        b3 = buckets["winter"][0] if buckets["winter"] else None
+        if b1 is not None:
+            glance += ('<tr><td style="padding:7px 12px; color:#475569; font-size:12px; border-bottom:1px solid #f1f5f9;">'
+                       '<strong style="color:#0f172a;">💰 Biggest Discounted Deals:</strong> '
+                       + escape(b1.resort_name) + ' — <strong style="color:#059669;">£' + f'{5000.0 - b1.total_package_price_gbp:,.0f}' + ' under £5k</strong></td></tr>')
+        if b2 is not None:
+            glance += ('<tr><td style="padding:7px 12px; color:#475569; font-size:12px; border-bottom:1px solid #f1f5f9;">'
+                       '<strong style="color:#0f172a;">💎 Top Luxury Within £5k:</strong> '
+                       + escape(b2.resort_name) + ' · ' + escape(b2.board_basis) + '</td></tr>')
+        if b3 is not None:
+            glance += ('<tr><td style="padding:7px 12px; color:#475569; font-size:12px;">'
+                       '<strong style="color:#0f172a;">☀️ Best Winter Facilities:</strong> '
+                       + escape(b3.resort_name) + ' — ' + str(b3.dec_ambient_c[0]) + '–' + str(b3.dec_ambient_c[1]) + '°C air, sea ' + str(b3.sea_temp_c) + '°C</td></tr>')
+        glance += '</table>'
+        out.append(glance)
 
-        # ── BUCKET 1: biggest discounts (cheapest first = most budget kept) ──
-        out.append('<h3 style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">💰 Biggest Discounted Deals</h3>')
-        out.append('<p style="margin:0 0 10px 0; color:#94a3b8; font-size:12px;">Cheapest first — the most budget kept for your party.</p>')
-        for rank, deal in enumerate(buckets["discounts"], 1):
-            under = 5000.0 - deal.total_package_price_gbp
-            out.append('<p style="' + row_style + '">')
-            out.append(f'#{rank} <strong style="color:#f8fafc;">' + escape(deal.resort_name) + '</strong> '
-                       + str(deal.star_rating) + '* — '
-                       + '<strong style="color:#34d399;">£' + f'{under:,.0f}' + ' under £5k</strong> '
-                       + '</p>')
+        # Chips align with the caller's `deals` order; index them by resort
+        # name so the card order below (cheapest first) stays correct.
+        chip_by_resort = {}
+        if history_chips is not None:
+            chip_by_resort = {d.resort_name: history_chips[i] for i, d in enumerate(deals) if i < len(history_chips)}
 
-        # ── BUCKET 2: top luxury within budget ──
-        out.append('<h3 style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">💎 Top Luxury Within £5k</h3>')
-        out.append('<p style="margin:0 0 10px 0; color:#94a3b8; font-size:12px;">Stars then board; all clear £5k on package AND D2D.</p>')
-        for rank, deal in enumerate(buckets["luxury"], 1):
-            out.append('<p style="' + row_style + '">')
-            out.append(f'#{rank} <strong style="color:#f8fafc;">' + escape(deal.resort_name) + '</strong> '
-                       + str(deal.star_rating) + '* · ' + escape(deal.board_basis) + ' — £' + f'{deal.total_package_price_gbp:,.0f}' + ' total, D2D £' + f'{deal.true_d2d_gbp:,.0f}' + ' '
-                       + '</p>')
-
-        # ── BUCKET 3: best winter facilities ──
-        out.append('<h3 style="margin:18px 0 8px 0; color:#fbbf24; font-size:16px; font-weight:800;">☀️ Best Winter Facilities</h3>')
-        out.append('<p style="margin:0 0 10px 0; color:#94a3b8; font-size:12px;">Warmest real December air first — heated pools mean nothing in 15°C air.</p>')
-        for rank, deal in enumerate(buckets["winter"], 1):
-            out.append('<p style="' + row_style + '">')
-            out.append(f'#{rank} <strong style="color:#f8fafc;">' + escape(deal.resort_name) + '</strong> — '
-                       + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C air · ' + str(deal.sea_temp_c) + '°C sea · £' + f'{deal.total_package_price_gbp:,.0f}' + ' total '
-                       + '</p>')
-
-        out.append('<h3 style="margin:26px 0 12px 0; color:#f8fafc; font-size:18px; font-weight:800;">🏖️ The shortlist, deal by deal</h3>')
-        for deal_idx, deal in enumerate(deals):
-            stars_str = '★' * deal.star_rating
-            img = DEST_IMAGES.get(deal.destination_key.lower(), HERO_IMAGE)
-            out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-bottom:22px; background:#0d1520; border:1px solid #1e3a5f; border-radius:12px; overflow:hidden;">')
-            out.append('<tr><td style="padding:0; line-height:0;">')
-            out.append('<img src="' + escape(img, quote=True) + '" alt="' + escape(deal.destination_label) + '" width="728" style="width:100%; max-width:728px; height:170px; object-fit:cover; display:block; border-radius:11px 11px 0 0;">')
-            out.append('</td></tr>')
-            out.append('<tr><td style="padding:12px 16px; background:#064e3b; border-bottom:1px solid #059669;">')
-            out.append('<span style="color:#fbbf24; font-size:15px; letter-spacing:2px;">' + stars_str + '</span>')
-            out.append('<strong style="color:#f8fafc; font-size:17px; margin-left:8px;">' + escape(deal.resort_name) + '</strong>')
-            out.append('<span style="background:#065f46; color:#a7f3d0; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:700; margin-left:8px;">' + escape(deal.board_basis) + '</span>')
+        rooms_n = len(config.rooms)
+        ordered = sorted(deals, key=lambda d: d.total_package_price_gbp)
+        for deal in ordered:
+            stars_str = '★' * deal.star_rating + '☆' * (5 - deal.star_rating)
+            img = DEST_IMAGES.get(deal.destination_key.lower(), DEST_IMAGES["hurghada"])
             live = deal.confidence == 'verified-exact-date'
-            out.append('<div style="margin-top:6px; color:#9eb0c7; font-size:12px;">')
-            out.append('📍 ' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ')')
-            out.append(' · ' + escape(deal.outbound_date) + ' → ' + escape(deal.return_date) + ' · ' + str(deal.nights) + ' nights')
-            out.append(' <span style="background:#1e293b; color:' + ('#6ee7b7' if live else '#fbbf24') + '; padding:2px 7px; border-radius:9999px; font-size:10px; font-weight:700;">' + ('🟢 LIVE VERIFIED' if live else '🟡 BENCHMARK PRICE') + '</span></div>')
-            out.append('</td></tr>')
-            
-            out.append('<tr><td style="padding:14px 16px;">')
-            out.append('<div style="margin-bottom:10px;">')
-            out.append('<span style="background:#059669; color:#f8fafc; padding:4px 10px; border-radius:4px; font-weight:800; font-size:14px; margin-right:8px;">')
-            out.append('£' + f'{deal.total_package_price_gbp:,.0f}' + ' Total')
-            out.append('</span>')
-            out.append('<span style="background:#1e293b; color:#a7f3d0; padding:4px 8px; border-radius:4px; font-weight:700; font-size:12px; margin-right:8px;">')
-            out.append('£' + f'{deal.price_per_person_gbp:,.0f}' + ' / person')
-            out.append('</span>')
-            out.append('<span style="background:#065f46;color:#6ee7b7;padding:2px 6px;border-radius:4px;font-weight:600;font-size:11px">')
-            out.append('UNDER £5K BUDGET')
-            out.append('</span>')
-            if history_chips is not None and deal_idx < len(history_chips) and history_chips[deal_idx]:
-                out.append(' ' + history_chips[deal_idx])
+            under = 5000.0 - deal.total_package_price_gbp
+            out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate; border-spacing:0; margin:0 0 14px 0; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">')
+            out.append('<tr>')
+            # Left: destination photo (hotel-specific photos are not on free CDNs)
+            out.append('<td width="220" valign="top" style="padding:0; line-height:0;">')
+            out.append('<img src="' + escape(img, quote=True) + '" alt="' + escape(deal.destination_label) + '" width="220" height="176" style="width:220px; height:176px; object-fit:cover; display:block; border-radius:11px 0 0 11px;">')
+            out.append('</td>')
+            # Right: everything a booker needs, scannable in one glance
+            out.append('<td valign="top" style="padding:13px 16px;">')
+            out.append('<div style="margin-bottom:3px;"><strong style="color:#0f172a; font-size:17px;">' + escape(deal.resort_name) + '</strong> <span style="color:#f59e0b; font-size:12px; letter-spacing:1px;">' + stars_str + '</span></div>')
+            out.append('<div style="margin:5px 0 7px;">')
+            out.append('<span style="background:#eff6ff; color:#1d4ed8; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:700;">' + escape(deal.board_basis) + '</span> ')
+            out.append('<span style="background:' + ('#dcfce7' if live else '#fef3c7') + '; color:' + ('#166534' if live else '#92400e') + '; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:700;">' + ('🟢 LIVE VERIFIED' if live else '🟡 BENCHMARK PRICE') + '</span> ')
+            out.append('<span style="background:#f1f5f9; color:#334155; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:700;">UNDER £5K BUDGET</span>')
+            history_chip = chip_by_resort.get(deal.resort_name, '')
+            if history_chip:
+                out.append(' ' + history_chip)
             out.append('</div>')
-
-            out.append('<div style="color:#94a3b8; font-size:13px; line-height:1.7; margin-bottom:12px;">')
-            if deal.sea_temp_c:
-                out.append('🌡️ December: ' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C air · ' + str(deal.sea_temp_c) + '°C sea<br>')
-            else:
-                out.append('🌡️ December: ' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C air · city stay, no sea swimming<br>')
-            if deal.beach:
-                out.append('🏖️ ' + escape(deal.beach) + '<br>')
-            out.append('✈️ ' + escape(deal.airline) + ' return flights (' + escape(deal.origin_airports[0] + ' +' + str(len(deal.origin_airports) - 1)) + ') — <strong style="color:#e2e8f0;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br>')
-            out.append('🏨 ' + str(len(config.rooms)) + ' rooms × ' + str(deal.nights) + ' nights — <strong style="color:#e2e8f0;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br>')
-            out.append('🧾 True door-to-door <strong style="color:#e2e8f0;">£' + f'{deal.true_d2d_gbp:,.0f}' + '</strong> <span style="color:#64748b;">= £' + f'{deal.total_package_price_gbp:,.0f}' + ' package + £' + f'{deal.uk_ground_gbp:,.2f}' + ' UK ground + £' + f'{deal.transfer_gbp:,.0f}' + ' transfer</span>')
+            out.append('<div style="color:#64748b; font-size:12px; margin-bottom:7px;">📍 ' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ') · ' + escape(deal.outbound_date) + ' → ' + escape(deal.return_date) + ' · ' + str(deal.nights) + ' nights</div>')
             if deal.highlights:
-                out.append('<br>✨ ' + escape(' · '.join(deal.highlights)))
-            out.append('</div>')
-            
-            out.append('<div style="margin-top:12px;">')
-            out.append('<a href="' + escape(deal.flight_booking_url, quote=True) + '" style="' + btn_primary + '">✈️ Flights for your dates</a>')
-            # Dynamic hotel searches encode the exact deal dates + party, so
-            # every button opens dated results — never a static homepage.
-            rooms_n = len(config.rooms)
-            out.append('<a href="' + escape(build_booking_com_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="' + btn_primary + '">Booking.com</a>')
-            out.append('<a href="' + escape(build_expedia_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="' + btn_muted + '">Expedia</a>')
-            out.append('<a href="' + escape(build_google_hotels_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="' + btn_muted + '">Google Hotels</a>')
-            out.append('<a href="' + escape(deal.hotel_booking_url, quote=True) + '" style="' + btn_muted + '">Resort Direct</a>')
+                out.append('<div style="color:#475569; font-size:12px; margin-bottom:8px;">✨ ' + escape(' · '.join(deal.highlights)) + '</div>')
+            # Facts strip: flights | stay | December weather | BIG price
+            out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#f8fafc; border-radius:8px; margin-bottom:10px;"><tr>')
+            out.append('<td style="padding:8px 10px; color:#64748b; font-size:11px;">✈️ Flights<br><strong style="color:#0f172a; font-size:13px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:10px;">' + escape(deal.airline.split('/')[0].strip()) + '</span></td>')
+            out.append('<td style="padding:8px 10px; color:#64748b; font-size:11px; border-left:1px solid #e2e8f0;">🏨 Stay<br><strong style="color:#0f172a; font-size:13px;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:10px;">' + str(rooms_n) + ' rooms × ' + str(deal.nights) + 'n</span></td>')
+            if deal.sea_temp_c:
+                out.append('<td style="padding:8px 10px; color:#64748b; font-size:11px; border-left:1px solid #e2e8f0;">🌡️ December<br><strong style="color:#0f172a; font-size:13px;">' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C</strong><br><span style="font-size:10px;">sea ' + str(deal.sea_temp_c) + '°C</span></td>')
+            else:
+                out.append('<td style="padding:8px 10px; color:#64748b; font-size:11px; border-left:1px solid #e2e8f0;">🌡️ December<br><strong style="color:#0f172a; font-size:13px;">' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C</strong><br><span style="font-size:10px;">city stay, no sea swimming</span></td>')
+            out.append('<td align="right" valign="middle" style="padding:8px 10px;">')
+            out.append('<div style="color:#059669; font-size:24px; font-weight:800; white-space:nowrap;">£' + f'{deal.total_package_price_gbp:,.0f}' + '</div>')
+            out.append('<div style="color:#64748b; font-size:11px; white-space:nowrap;">£' + f'{deal.price_per_person_gbp:,.0f}' + 'pp · D2D £' + f'{deal.true_d2d_gbp:,.0f}' + '</div>')
+            out.append('</td>')
+            out.append('</tr></table>')
+            # ONE obvious action + quiet alternatives (dated, party-encoded)
+            out.append('<a href="' + escape(build_booking_com_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="background:#2563eb; color:#ffffff; text-decoration:none; padding:10px 18px; border-radius:8px; font-weight:700; font-size:13px; display:inline-block;">Check live dates &amp; prices →</a>')
+            out.append('<span style="color:#94a3b8; font-size:11px; margin:0 6px;">or</span>')
+            out.append('<a href="' + escape(deal.flight_booking_url, quote=True) + '" style="color:#2563eb; font-size:12px; text-decoration:none; font-weight:600;">flights</a>')
+            out.append('<span style="color:#cbd5e1;"> · </span>')
+            out.append('<a href="' + escape(build_expedia_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="color:#2563eb; font-size:12px; text-decoration:none;">Expedia</a>')
+            out.append('<span style="color:#cbd5e1;"> · </span>')
+            out.append('<a href="' + escape(build_google_hotels_url(destination=deal.destination_key, departure_date=deal.outbound_date, return_date=deal.return_date, adults=config.travellers, rooms=rooms_n), quote=True) + '" style="color:#2563eb; font-size:12px; text-decoration:none;">Google Hotels</a>')
+            out.append('<span style="color:#cbd5e1;"> · </span>')
+            out.append('<a href="' + escape(deal.hotel_booking_url, quote=True) + '" style="color:#2563eb; font-size:12px; text-decoration:none;">Resort direct</a>')
             # Best verified package guide for this destination: easyJet guides
             # carry live lead-in prices; Jet2 second; hub fallback otherwise.
             guide_url = EASYJET_DESTINATION_PATHS.get(
@@ -1067,32 +1053,34 @@ def render_holiday_report(
                 if deal.destination_key.lower() in EASYJET_DESTINATION_PATHS
                 else ("Jet2holidays" if deal.destination_key.lower() in JET2_DESTINATION_PATHS else "loveholidays")
             )
-            out.append('<a href="' + escape(guide_url, quote=True) + '" style="' + btn_muted + '">' + guide_label + '</a>')
-            out.append('</div></td></tr></table>')
+            out.append('<span style="color:#cbd5e1;"> · </span>')
+            out.append('<a href="' + escape(guide_url, quote=True) + '" style="color:#2563eb; font-size:12px; text-decoration:none;">' + guide_label + '</a>')
+            out.append('</td>')
+            out.append('</tr></table>')
 
     if not deals:
-        out.append('<h2 style="margin:0 0 12px 0; color:#f8fafc; font-size:18px; font-weight:700;">Package Deal Search Links</h2>')
+        out.append('<h2 style="margin:0 0 12px 0; color:#0f172a; font-size:18px; font-weight:800;">Package Deal Search Links</h2>')
         
         adults = config.travellers
         rooms = len(config.rooms)
         
         for dest in config.destinations:
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:12px 0;">')
-            out.append('<tr style="background:#1e293b;"><td colspan="2" style="padding:10px 12px; color:#f8fafc; font-size:15px; font-weight:700;">')
+            out.append('<tr style="background:#0f172a;"><td colspan="2" style="padding:10px 12px; color:#f8fafc; font-size:15px; font-weight:700;">')
             out.append(escape(dest.label))
             out.append('</td></tr>')
-            out.append('<tr style="background:#0d1520;"><td colspan="2" style="padding:6px 12px; color:#94a3b8; font-size:12px;">')
+            out.append('<tr style="background:#f8fafc;"><td colspan="2" style="padding:6px 12px; color:#475569; font-size:12px;">')
             out.append('From: ' + escape(', '.join(config.origins)) + ' · destination airports: ' + escape(', '.join(dest.airports)))
             out.append(' · ' + str(adults) + ' travellers · room occupancy ' + escape(room_occupancy))
             out.append('</td></tr>')
-            out.append('<tr style="background:#0d1520;"><td colspan="2" style="padding:4px 12px; color:#6ee7b7; font-size:12px; font-weight:600;">All Inclusive · Half Board · Full Board · Room Only</td></tr>')
+            out.append('<tr style="background:#eff6ff;"><td colspan="2" style="padding:4px 12px; color:#1d4ed8; font-size:12px; font-weight:600;">All Inclusive · Half Board · Full Board · Room Only</td></tr>')
             
             # ── TOP PICKS: 3 representative date pairs with DYNAMIC buttons ──
             # Each pair encodes exact dates + party (Booking/Expedia/Google),
             # so links open dated results instead of static homepages. Package
             # hubs (which cannot encode dates) render once below to stay under
             # Gmail's 102 KB clipping limit.
-            out.append('<tr><td colspan="2" style="padding:12px 12px 4px; color:#fbbf24; font-size:13px; font-weight:700;">')
+            out.append('<tr><td colspan="2" style="padding:12px 12px 4px; color:#b45309; font-size:13px; font-weight:700;">')
             out.append('⭐ Top Picks (3 of ' + str(len(pairs)) + ' date combinations — dates encoded in every link)')
             out.append('</td></tr><tr><td colspan="2" style="padding:4px 10px 10px;">')
             for outbound, returning in shortlist:
@@ -1147,9 +1135,10 @@ def render_holiday_report(
             out.append('</table>')
         
         out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-top:24px;">')
-        out.append('<tr><td style="padding:14px; background:#392d14; border-radius:6px; color:#fde68a; font-size:12px; line-height:1.5;">')
-        out.append('<strong style="color:#fbbf24;">⚠ No live prices collected</strong> — these are provider search entry points, not verified checkout deep links. Some providers accept only the first departure airport or room count in a URL. Reapply every origin option, the exact room occupancy <strong>' + escape(room_occupancy) + '</strong>, preferred departure time, board basis, baggage and transfers before relying on a result. Verify the final whole-party checkout total and protection before booking.')
+        out.append('<tr><td style="padding:14px; background:#fef3c7; border-radius:6px; color:#78350f; font-size:12px; line-height:1.5;">')
+        out.append('<strong style="color:#92400e;">⚠ No live prices collected</strong> — these are provider search entry points, not verified checkout deep links. Some providers accept only the first departure airport or room count in a URL. Reapply every origin option, the exact room occupancy <strong>' + escape(room_occupancy) + '</strong>, preferred departure time, board basis, baggage and transfers before relying on a result. Verify the final whole-party checkout total and protection before booking.')
         out.append('</td></tr></table>')
+    out.append('</td></tr></table>')
     out.append('</td></tr></table></body></html>')
     
     return ''.join(out)

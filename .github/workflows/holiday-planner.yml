@@ -82,7 +82,7 @@ jobs:
           # forbids email-shaped literals (user at host dot tld) in tracked files.
           GH_USER_PART="git@"
           GH_HOST_PART="github.com"
-          git clone --depth 1 "${GH_USER_PART}${GH_HOST_PART}:runthangsorg/flightdealsearch.git" /tmp/history-repo
+          git clone --depth 1 "${GH_USER_PART}${GH_HOST_PART}:runthangsorg/dealsearch.git" /tmp/history-repo
           cd /tmp/history-repo
           mkdir -p data
           touch data/holiday_price_history.jsonl
