@@ -583,6 +583,9 @@ class PackageDeal:
     compare_url: str = ""   # Google Hotels property card — all vendors' prices
     booking_deep_url: str = ""  # Booking.com property-targeted, dated
     expedia_deep_url: str = ""  # Expedia property-targeted, dated
+    # Room architecture of THIS quote. A 2-bed family suite and 3 separate
+    # rooms are different products: prices must never merge into one series.
+    unit_architecture: str = ""
     # Recovered criteria model (from the winter tracker contract):
     # curated 0-10 benchmark scores per resort. Honest, review-required —
     # presented as benchmarks, never as live observations.
@@ -1220,6 +1223,7 @@ def collect_holiday_deals(
                             else resort.get("hotel_url", "")
                         ),
                         peak_summer_total_gbp=peak_total,
+                        unit_architecture=arch["suite_type"],
                         **_criteria_fields(resort["name"], price_pp),
                         # STRICT mode: links request ONE unit for 5 (family
                         # suite/interconnecting), never 3 separate rooms.
@@ -1491,7 +1495,8 @@ def render_holiday_report(
             # Facts strip: flights | stay | December weather | BIG price
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#f8fafc; border-radius:8px; margin-bottom:10px;"><tr>')
             out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(deal.airline.split('/')[0].strip()) + '</span></td>')
-            out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🏨 Stay<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + str(rooms_n) + ' rooms × ' + str(deal.nights) + 'n</span></td>')
+            suite_label = deal.unit_architecture or (str(rooms_n) + ' rooms')
+            out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🏨 Stay<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(suite_label) + ' · ' + str(deal.nights) + 'n</span></td>')
             if deal.sea_temp_c:
                 out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🌡️ December<br><strong style="color:#0f172a; font-size:16px;">' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C</strong><br><span style="font-size:12px;">sea ' + str(deal.sea_temp_c) + '°C</span></td>')
             else:

@@ -28,6 +28,7 @@ class _Deal:
     hotel_price_total_gbp: float
     true_d2d_gbp: float
     confidence: str = "market-supported"
+    unit_architecture: str = ""
 
 
 def _deal(price: float = 3000.0) -> _Deal:
@@ -184,6 +185,22 @@ class RenderHistoryHtmlTests(unittest.TestCase):
         ]
         snippets = render_history_html(trends)
         self.assertIn("above tracked min", snippets[0])
+    def test_unit_architecture_separates_price_series(self):
+        """A 2-bed family suite and 3 separate rooms are different products:
+        same resort + dates must yield DIFFERENT fingerprints and never
+        collapse into one price series at the day-dedupe merge point."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            suite = _deal(price=2128.0)
+            suite.unit_architecture = "2-Bedroom Family Suite (shared lounge)"
+            three_rooms = _deal(price=4340.0)
+            three_rooms.unit_architecture = ""
+            append_history([suite], path=path)
+            append_history([three_rooms], path=path)
+            rows = read_history(path=path)
+            self.assertEqual(len(rows), 2)
+            self.assertNotEqual(rows[0]["fingerprint"], rows[1]["fingerprint"])
+            self.assertEqual(rows[0]["unit_architecture"], "2-Bedroom Family Suite (shared lounge)")
 
 
 if __name__ == "__main__":
