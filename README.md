@@ -19,6 +19,13 @@ The engine has three boundaries:
   Booking.com / Google Hotels / Expedia deep links with exact dates and
   party, per-deal price history with trend chips, and direct SMTP delivery.
 
+Emails are change-driven, not scheduled spam: before building, the job seeds
+prior price history from the private data repo and computes a change digest
+(drops / rises / new resorts vs the last report). A flat re-quote is
+suppressed — it is still tracked and persisted, just not emailed. Sends fire
+when something moved, when a new resort enters, on the first ever run, or
+when `--force-send` (CLI / workflow_dispatch input) is used deliberately.
+
 No workflow uploads reports or raw provider data as public artifacts. Reports
 are delivered directly by SMTP only when a scheduled or explicitly non-dry
 manual run is enabled.
