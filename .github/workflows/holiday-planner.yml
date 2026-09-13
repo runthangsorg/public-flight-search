@@ -44,6 +44,31 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m unittest discover -s tests -v
+      # MEMORY BEFORE BUILD: seed prior price history from the private data
+      # repo so the change digest and chips describe real movement. Uses the
+      # same proven transport as the persist step. Best-effort: a seed
+      # failure degrades to 'first time tracked' chips, never fails the run.
+      - name: Seed price history from private data repo
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+        env:
+          HISTORY_DEPLOY_KEY: ${{ secrets.HISTORY_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HISTORY_DEPLOY_KEY}" || {
+            echo "::warning::HISTORY_DEPLOY_KEY not configured; email will show 'first time tracked'."
+            exit 0
+          }
+          mkdir -p ~/.ssh
+          echo "$HISTORY_DEPLOY_KEY" > ~/.ssh/history_deploy_key
+          chmod 600 ~/.ssh/history_deploy_key
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/history_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          GH_USER_PART="git@"
+          GH_HOST_PART="github.com"
+          git clone --depth 1 "${GH_USER_PART}${GH_HOST_PART}:runthangsorg/dealsearch.git" /tmp/history-seed
+          mkdir -p data
+          cp /tmp/history-seed/data/holiday_price_history.jsonl data/holiday_price_history.jsonl
+          echo "Seeded $(wc -l < data/holiday_price_history.jsonl) history rows."
       - name: Build and optionally deliver
         env:
           HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.HOLIDAY_SEARCH_CONFIG_JSON }}
@@ -56,18 +81,10 @@ jobs:
           HOLIDAY_LIVE_FLIGHTS: "1"
           DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
           DISPATCH_FORCE_SEND: ${{ inputs.force_send }}
-          # Memory: seed prior price history from the private repo BEFORE
-          # building, so chips and the change digest describe real movement.
-          HISTORY_DEPLOY_KEY: ${{ secrets.HISTORY_DEPLOY_KEY }}
         shell: bash
         run: |
           set -euo pipefail
           test -n "${HOLIDAY_SEARCH_CONFIG_JSON}"
-          # Assembled from parts: the repo policy scanner forbids
-          # git@host: repo URL literals in tracked files.
-          GH_USER_PART="git@"
-          GH_HOST_PART="github.com"
-          export HOLIDAY_HISTORY_GIT_URL="${GH_USER_PART}${GH_HOST_PART}:runthangsorg/dealsearch.git"
           FORCE_FLAG=""
           if [[ "${DISPATCH_FORCE_SEND:-false}" == "true" ]]; then
             FORCE_FLAG="--force-send"

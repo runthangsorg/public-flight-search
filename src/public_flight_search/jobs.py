@@ -8,8 +8,6 @@ import json
 import logging
 import os
 from pathlib import Path
-import shutil
-import subprocess
 
 from .config import load_flight_config, build_search_plan
 from .google_flights import build_google_flights_url, search_google_flights
@@ -40,51 +38,6 @@ class FlightCollectionError(RuntimeError):
 
 
 logger = logging.getLogger(__name__)
-
-
-def _seed_history_from_private_repo(history_path: Path) -> int:
-    """Fetch prior price history from the private data repo BEFORE building.
-
-    The price-history file lives in the PRIVATE dealsearch repo; the job
-    clones it here so trends, chips and the change digest carry real
-    memory instead of 'first time tracked' on every run. Best-effort:
-    any failure leaves no file and the report degrades honestly —
-    delivery never depends on history.
-    """
-    git_url = os.environ.get("HOLIDAY_HISTORY_GIT_URL", "").strip()
-    deploy_key = os.environ.get("HISTORY_DEPLOY_KEY", "").strip()
-    if not git_url or not deploy_key:
-        return 0
-    try:
-        workdir = Path("/tmp/history-seed")
-        if workdir.exists():
-            shutil.rmtree(workdir)
-        key_file = Path("/tmp/history_seed_key")
-        key_file.write_text(deploy_key)
-        key_file.chmod(0o600)
-        env = dict(os.environ)
-        env["GIT_SSH_COMMAND"] = (
-            f"ssh -i {key_file} -o IdentitiesOnly=yes "
-            "-o StrictHostKeyChecking=accept-new -o BatchMode=yes"
-        )
-        subprocess.run(
-            ["git", "clone", "--depth", "1", git_url, str(workdir)],
-            check=True,
-            capture_output=True,
-            env=env,
-            timeout=120,
-        )
-        src = workdir / "data" / "holiday_price_history.jsonl"
-        if not src.exists():
-            return 0
-        history_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, history_path)
-        rows = len(read_history(path=history_path))
-        print(json.dumps({"history_seeded_rows": rows}, sort_keys=True))
-        return rows
-    except Exception:
-        logger.exception("History seeding failed; continuing without prior history")
-        return 0
 
 
 def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
@@ -230,13 +183,15 @@ def run_holiday_planner(*, dry_run: bool, force_send: bool = False) -> dict[str,
         config, max_budget_gbp=5000.0,
         live_flight_offers=live_offers or None,
     )
-    # MEMORY BEFORE BUILD: seed prior history from the private repo so the
-    # chips and change digest describe real movement, not 'first time
-    # tracked'. Dry runs skip seeding (never touch the private repo).
+    # MEMORY BEFORE BUILD: the workflow seeds `history_path` from the
+    # private repo in a dedicated bash step (proven transport) BEFORE this
+    # job runs, so trends, chips and the change digest describe real
+    # movement instead of 'first time tracked'. Dry runs ignore memory
+    # entirely (a dry run must reflect a fresh build, never prior state).
     history_path = Path(
         os.environ.get("HOLIDAY_HISTORY_PATH", "data/holiday_price_history.jsonl")
     )
-    seeded_rows = 0 if dry_run else _seed_history_from_private_repo(history_path)
+    seeded_rows = 0 if dry_run else len(read_history(path=history_path))
     # Trends are computed BEFORE today's observation is appended, so the
     # chips always compare against prior runs only.
     trends = summarize_trends(deals, path=history_path)
@@ -248,14 +203,9 @@ def run_holiday_planner(*, dry_run: bool, force_send: bool = False) -> dict[str,
         history_chips=render_history_html(trends),
         change_digest_html=render_change_digest_html(digest),
     )
+    # Last PRIOR observation: read BEFORE today's append lands.
+    last_prior = "" if dry_run else last_history_observation(path=history_path)
     appended = 0 if dry_run else append_history(deals, path=history_path)
-    # Last PRIOR observation: read from the seeded file BEFORE today's
-    # append landed (seeded_rows>0 means we have a real timestamp).
-    last_prior = ""
-    if seeded_rows:
-        last_prior = last_history_observation(
-            path=Path("/tmp/history-seed/data/holiday_price_history.jsonl")
-        )
     # ANTI-DUPLICATE SEND: benchmark-driven deals rarely move day to day.
     # A 3x-week identical blast trains the reader to ignore the inbox, so
     # the email only goes out when something a reader would care about
