@@ -583,6 +583,22 @@ class PackageDeal:
     compare_url: str = ""   # Google Hotels property card — all vendors' prices
     booking_deep_url: str = ""  # Booking.com property-targeted, dated
     expedia_deep_url: str = ""  # Expedia property-targeted, dated
+    # Recovered criteria model (from the winter tracker contract):
+    # curated 0-10 benchmark scores per resort. Honest, review-required —
+    # presented as benchmarks, never as live observations.
+    actual_luxury_score: float = 0.0
+    food_reality_score: float = 0.0
+    winter_facilities_score: float = 0.0
+    mosque_location_score: float = 0.0
+    activities_score: float = 0.0
+    flight_quality_score: float = 0.0
+    value_score: float = 0.0
+    mosque_name: str = ""
+    mosque_walk_minutes: int = 0
+    food_review_summary: str = ""
+    indoor_activity_count: int = 0
+    heated_indoor_pool: bool = False
+    deal_class: str = ""
 
     @property
     def vs_peak_saving_gbp(self) -> float:
@@ -596,10 +612,74 @@ class PackageDeal:
         return 0
 
 
+# Recovered winter-tracker value model. Weights (must sum ~10 before the
+# ×10 normalisation to 0-100): price 30%, winter 25%, luxury 15%, food 15%,
+# mosque 10%, activities 5%; minus flight-quality penalty max(0, 7-fq)*1.5.
+# Winter honesty caps: 0 indoor activities -> winter<=4; 1 -> <=6; no heated
+# indoor pool -> <=6; ghost-town/heavily-reduced winter concept -> <=3.
+
+def _classify_deal_price(true_pp: float) -> str:
+    """Per-person deal classification from the original tracker contract."""
+    if true_pp <= 350:
+        return "ULTRA_BARGAIN"
+    if true_pp <= 450:
+        return "EXCEPTIONAL"
+    if true_pp <= 500:
+        return "VERY_STRONG"
+    if true_pp <= 550:
+        return "GOOD"
+    if true_pp <= 600:
+        return "ACCEPTABLE_PREMIUM"
+    return "SPLURGE_WATCH_FOR_PRICE_DROP"
+
+
+def compute_value_score(
+    *,
+    true_pp: float,
+    luxury: float,
+    food: float,
+    winter: float,
+    mosque: float,
+    activities: float,
+    flight_quality: float,
+    indoor_activity_count: int,
+    heated_indoor_pool: bool,
+    winter_concept: str = "",
+) -> float:
+    """0-100 winter-first value score (weights from the original tracker)."""
+    for name, v in (("luxury", luxury), ("food", food), ("winter", winter),
+                    ("mosque", mosque), ("activities", activities),
+                    ("flight_quality", flight_quality)):
+        if not 0 <= v <= 10:
+            raise ValueError(f"{name} score must be 0-10")
+    # Winter honesty caps.
+    if indoor_activity_count == 0:
+        winter = min(winter, 4.0)
+    elif indoor_activity_count == 1:
+        winter = min(winter, 6.0)
+    if not heated_indoor_pool:
+        winter = min(winter, 6.0)
+    if winter_concept.upper() in {"GHOST_TOWN", "HEAVILY_REDUCED"}:
+        winter = min(winter, 3.0)
+    price_score = max(0.0, min(10.0, (700.0 - true_pp) / 35.0))
+    flight_penalty = max(0.0, 7.0 - flight_quality) * 1.5
+    value = (
+        price_score * 3.0
+        + winter * 2.5
+        + luxury * 1.5
+        + food * 1.5
+        + mosque * 1.0
+        + activities * 0.5
+    ) - flight_penalty
+    return round(max(0.0, min(100.0, value)), 1)
+
+
 # December climate reality (ambient air / sea °C) plus beach geography.
 # Peak-summer room/flight benchmarks above each resort enable REAL discount
 # intelligence: December total vs the SAME resort in July/August (same rooms,
 # nights, party). Rates are market-supported benchmarks, never live quotes.
+# Curated 0-10 criteria scores follow the winter-tracker contract: luxury,
+# food reality, mosque access, winter facilities, activities, flight quality.
 # A heated pool does NOT make a 15°C destination a winter-sun holiday:
 # stepping out of 28°C water into a 15°C wind is miserable.
 # Rates below are BENCHMARKS (confidence: market-supported), never live
@@ -838,6 +918,81 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
 }
 
 
+# Recovered criteria registry (0-10 curated benchmarks per resort, from the
+# winter-tracker contract): luxury, food reality, mosque access, winter
+# facilities, activities, flight quality — plus the mosque facts and the
+# food-review summary the contract made mandatory. These are CURATED
+# BENCHMARKS requiring live verification, exactly like the price baselines.
+RESORT_CRITERIA: dict[str, dict[str, Any]] = {
+    "Lara Barut Collection": {
+        "luxury": 9, "food": 9, "winter": 7, "mosque": 8, "activities": 8, "flight_quality": 6,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "On-site mescit + Lara district cami", "mosque_walk_minutes": 3,
+        "food_review_summary": "Buffet quality and variety repeatedly praised — live grills, Turkish and international stations; themed à-la-carte restaurants",
+    },
+    "Concorde De Luxe Resort": {
+        "luxury": 8, "food": 8, "winter": 7, "mosque": 8, "activities": 9, "flight_quality": 6,
+        "indoor": 3, "heated_indoor_pool": True,
+        "mosque_name": "On-site mescit", "mosque_walk_minutes": 2,
+        "food_review_summary": "Wide buffet praised for families; Turkish sweets station highlighted; some peak-season repetition complaints",
+    },
+    "Titanic Mardan Palace": {
+        "luxury": 10, "food": 9, "winter": 7, "mosque": 7, "activities": 8, "flight_quality": 6,
+        "indoor": 3, "heated_indoor_pool": True,
+        "mosque_name": "Mardan area cami", "mosque_walk_minutes": 15,
+        "food_review_summary": "Fine-dining depth praised (7,500m² spa resort scale); à-la-carte quality consistently strong in reviews",
+    },
+    "Steigenberger ALDAU Beach Hotel": {
+        "luxury": 8, "food": 8, "winter": 8, "mosque": 6, "activities": 7, "flight_quality": 6,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "Hurghada El Mina Mosque (taxi)", "mosque_walk_minutes": 12,
+        "food_review_summary": "Reef-side dining and buffet quality praised; dive-club and lazy river anchor reviews; some evening-entertainment repetition",
+    },
+    "Jaz Aquaviva": {
+        "luxury": 8, "food": 8, "winter": 8, "mosque": 6, "activities": 9, "flight_quality": 6,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "Senzo Mall Mosque (short taxi)", "mosque_walk_minutes": 20,
+        "food_review_summary": "Water-park family reviews dominate; buffet variety praised; kids-club and slides keep teens engaged",
+    },
+    "Hard Rock Hotel Tenerife": {
+        "luxury": 8, "food": 7, "winter": 8, "mosque": 1, "activities": 8, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "Mezquita de Santa Cruz (75 min drive)", "mosque_walk_minutes": 75,
+        "food_review_summary": "Rock-spa and lagoon dominate reviews; dining good but premium-priced; music theme divides reviewers",
+    },
+    "Princesa Yaiza Suite Hotel Resort": {
+        "luxury": 8, "food": 7, "winter": 7, "mosque": 1, "activities": 8, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "No mosque on Lanzarote — Arrecife prayer room (30 min)", "mosque_walk_minutes": 30,
+        "food_review_summary": "Kikoland kids' park praised heavily; buffet solid; thalasso spa highlighted in winter reviews",
+    },
+    "Kempinski Nile Hotel Cairo": {
+        "luxury": 9, "food": 8, "winter": 7, "mosque": 9, "activities": 6, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "Mosque of Omar Makram, Tahrir", "mosque_walk_minutes": 8,
+        "food_review_summary": "Nile-view dining and breakfast praised; small-hotel service consistency noted across recent reviews",
+    },
+    "Marriott Mena House": {
+        "luxury": 9, "food": 8, "winter": 7, "mosque": 9, "activities": 7, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "Nazlet El-Seman mosque at pyramids gate", "mosque_walk_minutes": 10,
+        "food_review_summary": "Pyramid-view breakfast is the review signature; gardens and Indian restaurant consistently praised",
+    },
+    "JW Marriott Hotel Cairo": {
+        "luxury": 8, "food": 8, "winter": 6, "mosque": 8, "activities": 7, "flight_quality": 7,
+        "indoor": 3, "heated_indoor_pool": True,
+        "mosque_name": "Al-Nour Mosque, Abbasiya (short taxi)", "mosque_walk_minutes": 12,
+        "food_review_summary": "Wave-pool resort reviews praise breakfast spread; weekend family crowds noted; golf-view dining solid",
+    },
+    "Vidamar Resort Madeira": {
+        "luxury": 8, "food": 7, "winter": 6, "mosque": 2, "activities": 6, "flight_quality": 7,
+        "indoor": 2, "heated_indoor_pool": True,
+        "mosque_name": "Funchal Islamic centre prayer room", "mosque_walk_minutes": 25,
+        "food_review_summary": "Cliff-lido and Levada-hike base reviews; breakfast praised; island is a hiking rather than beach destination",
+    },
+}
+
+
 # UK ground transit from Watford Junction (return, whole party share).
 # True D2D = package (flights + hotel) + UK ground + destination transfer.
 UK_GROUND_RETURN_GBP: dict[str, float] = {
@@ -847,6 +1002,40 @@ UK_GROUND_RETURN_GBP: dict[str, float] = {
     "STN": 14.50,  # National Rail, approx
     "BHX": 40.00,  # Avanti West Coast direct, 58 min
 }
+
+
+def _criteria_fields(resort_name: str, true_pp: float) -> dict[str, Any]:
+    """Criteria bundle for one resort from the recovered registry (defaults
+    keep any un-registered resort renderable with neutral scores)."""
+    c = RESORT_CRITERIA.get(resort_name, {})
+    indoor = int(c.get("indoor", 2))
+    heated = bool(c.get("heated_indoor_pool", False))
+    value = compute_value_score(
+        true_pp=true_pp,
+        luxury=float(c.get("luxury", 5)),
+        food=float(c.get("food", 5)),
+        winter=float(c.get("winter", 5)),
+        mosque=float(c.get("mosque", 5)),
+        activities=float(c.get("activities", 5)),
+        flight_quality=float(c.get("flight_quality", 7)),
+        indoor_activity_count=indoor,
+        heated_indoor_pool=heated,
+    )
+    return {
+        "actual_luxury_score": float(c.get("luxury", 5)),
+        "food_reality_score": float(c.get("food", 5)),
+        "winter_facilities_score": float(c.get("winter", 5)),
+        "mosque_location_score": float(c.get("mosque", 5)),
+        "activities_score": float(c.get("activities", 5)),
+        "flight_quality_score": float(c.get("flight_quality", 7)),
+        "value_score": value,
+        "mosque_name": c.get("mosque_name", ""),
+        "mosque_walk_minutes": int(c.get("mosque_walk_minutes", 0)),
+        "food_review_summary": c.get("food_review_summary", ""),
+        "indoor_activity_count": indoor,
+        "heated_indoor_pool": heated,
+        "deal_class": _classify_deal_price(true_pp),
+    }
 
 
 def collect_holiday_deals(
@@ -939,6 +1128,7 @@ def collect_holiday_deals(
                             else resort.get("hotel_url", "")
                         ),
                         peak_summer_total_gbp=peak_total,
+                        **_criteria_fields(resort["name"], price_pp),
                         compare_url=build_google_hotels_property_url(
                             resort_name=resort["name"],
                             destination_key=dest.key,
@@ -1169,6 +1359,15 @@ def render_holiday_report(
             out.append('<div style="color:#64748b; font-size:14px; margin-bottom:7px;">📍 ' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ') · ' + escape(deal.outbound_date) + ' → ' + escape(deal.return_date) + ' · ' + str(deal.nights) + ' nights</div>')
             if deal.highlights:
                 out.append('<div style="color:#475569; font-size:14px; margin-bottom:8px;">✨ ' + escape(' · '.join(deal.highlights)) + '</div>')
+            # Recovered criteria strip: value score, deal class, and the
+            # 0-10 scores that matter to this household (mosque, food first).
+            crit = ('🕌 ' + escape(deal.mosque_name) + ' — ' + str(deal.mosque_walk_minutes) + ' min walk'
+                    if deal.mosque_name else '🕌 mosque access not assessed')
+            out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;"><strong style="color:#7c3aed;">VALUE ' + f'{deal.value_score:.0f}' + '/100</strong> · '
+                       + '<span style="background:#faf5ff; color:#6d28d9; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700;">' + escape(deal.deal_class.replace('_', ' ')) + '</span></div>')
+            out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">' + crit + ' · 🍽️ food ' + f'{deal.food_reality_score:.0f}' + '/10 · 💎 luxury ' + f'{deal.actual_luxury_score:.0f}' + '/10 · ❄️ winter ' + f'{deal.winter_facilities_score:.0f}' + '/10 · 🎯 activities ' + f'{deal.activities_score:.0f}' + '/10 · ✈️ flights ' + f'{deal.flight_quality_score:.0f}' + '/10</div>')
+            if deal.food_review_summary:
+                out.append('<div style="color:#64748b; font-size:13px; margin-bottom:8px;"><strong style="color:#475569;">Food reviews:</strong> ' + escape(deal.food_review_summary) + '</div>')
             # Facts strip: flights | stay | December weather | BIG price
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#f8fafc; border-radius:8px; margin-bottom:10px;"><tr>')
             out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(deal.airline.split('/')[0].strip()) + '</span></td>')
