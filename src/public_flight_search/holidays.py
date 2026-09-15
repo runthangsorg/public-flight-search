@@ -614,6 +614,10 @@ class PackageDeal:
     indoor_activity_count: int = 0
     heated_indoor_pool: bool = False
     deal_class: str = ""
+    # Rank position by the winter-first value score within the LAST collect
+    # run (1 = best). Gives history a stable, score-derived ordinal so trend
+    # deltas read "rose/fell in value rank", never just raw price wobble.
+    rank_value: int = 0
 
     @property
     def vs_peak_saving_gbp(self) -> float:
@@ -1477,7 +1481,11 @@ def collect_holiday_deals(
                     )
                 )
 
-    deals.sort(key=lambda d: (-d.vs_peak_pct, d.total_package_price_gbp))
+    deals.sort(key=lambda d: (-d.vs_peak_pct, -d.value_score, d.total_package_price_gbp))
+    # Stamp the value-score rank (1 = best) so history tracks movement in the
+    # composite ranking, not just raw price wobble.
+    for rank, deal in enumerate(sorted(deals, key=lambda d: -d.value_score), 1):
+        object.__setattr__(deal, "rank_value", rank)
     # Attach the transparency list (filtered resorts + reasons) to the first
     # caller via module-level export for the renderer; the function returns
     # deals only (signature stability for tests/CLI), so stash on the tuple's
@@ -1529,18 +1537,24 @@ def bucket_deals(
     deals: Sequence[PackageDeal],
     max_budget_gbp: float = 5000.0,
 ) -> dict[str, tuple[PackageDeal, ...]]:
-    """Split deals into the three reader buckets.
+    """Split deals into the reader decision lenses.
 
     discounts: REAL discount lens — biggest % below the same resort's
-               summer-peak price first (ties: cheapest absolute total).
+               summer-peak price first; ties break on the winter-first value
+               score (a bigger % off a miserable-winter property is not the
+               better deal), then cheapest absolute total.
     luxury:    5-star only, most luxurious first, cheaper wins ties.
     winter:    warmest ambient air first, then warmest sea (genuine winter
                sun floats up; heated-pool-only cold spots sink honestly).
+    value:     highest recovered-tracker value score first (price 30%,
+               winter 25%, luxury/food 15% each, mosque 10%, activities 5%,
+               flight-quality penalty) — the composite "was this winter
+               worth it" lens.
     """
     ordered = tuple(deals)
     return {
         "discounts": tuple(
-            sorted(ordered, key=lambda d: (-d.vs_peak_pct, d.total_package_price_gbp))),
+            sorted(ordered, key=lambda d: (-d.vs_peak_pct, -d.value_score, d.total_package_price_gbp))),
         "luxury": tuple(
             sorted(
                 (d for d in ordered if d.star_rating >= 5),
@@ -1553,6 +1567,8 @@ def bucket_deals(
                 key=lambda d: (-d.dec_ambient_c[0], -d.sea_temp_c, d.total_package_price_gbp),
             )
         ),
+        "value": tuple(
+            sorted(ordered, key=lambda d: (-d.value_score, d.total_package_price_gbp))),
     }
 
 
@@ -1673,9 +1689,14 @@ def render_holiday_report(
                        '<strong style="color:#0f172a;">💎 Top Luxury Within £5k:</strong> '
                        + escape(b2.resort_name) + ' · ' + escape(b2.board_basis) + '</td></tr>')
         if b3 is not None:
-            glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px;">'
+            glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
                        '<strong style="color:#0f172a;">☀️ Best Winter Facilities:</strong> '
                        + escape(b3.resort_name) + ' — ' + str(b3.dec_ambient_c[0]) + '–' + str(b3.dec_ambient_c[1]) + '°C air, sea ' + str(b3.sea_temp_c) + '°C</td></tr>')
+        b4 = buckets["value"][0] if buckets["value"] else None
+        if b4 is not None:
+            glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px;">'
+                       '<strong style="color:#0f172a;">🏆 Best Overall Value:</strong> '
+                       + escape(b4.resort_name) + ' — VALUE ' + f'{b4.value_score:.0f}' + '/100 (winter-first score)</td></tr>')
         glance += '</table>'
         out.append(glance)
 

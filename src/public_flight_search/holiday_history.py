@@ -96,6 +96,8 @@ def append_history(
                     # "verified-exact-date" confidence IS the codebase's
                     # signal for live evidence (see holidays.py live_used).
                     "live_used": str(getattr(d, "confidence", "")) == "verified-exact-date",
+                    "value_score": float(getattr(d, "value_score", 0.0) or 0.0),
+                    "rank_value": int(getattr(d, "rank_value", 0) or 0),
                     "observed_at": now,
                     "run_id": run_id,
                 }
@@ -194,10 +196,16 @@ def summarize_trends(
             max_price = max(float(r.get("total_package_price_gbp", 0.0)) for r in prior)
             obs_count = len(prior)
             last_price = float(prior[-1].get("total_package_price_gbp", 0.0))
+            last_rank = int(prior[-1].get("rank_value", 0) or 0)
+            last_score = float(prior[-1].get("value_score", 0.0) or 0.0)
         else:
             min_price = max_price = 0.0
             obs_count = 0
             last_price = None
+            last_rank = None
+            last_score = None
+        current_rank = int(getattr(d, "rank_value", 0) or 0)
+        current_score = float(getattr(d, "value_score", 0.0) or 0.0)
         out.append(
             {
                 "fingerprint": fp,
@@ -209,6 +217,19 @@ def summarize_trends(
                 "delta_vs_min": (current - min_price) if prior else None,
                 "delta_vs_last": (current - last_price) if prior else None,
                 "prior_observations": obs_count,
+                # Value-score rank movement vs the last observation. Zero
+                # ranks (legacy rows / unregistered resorts) compare as None
+                # rather than a fake +/- movement.
+                "current_value_score": current_score,
+                "prior_value_score": last_score,
+                "score_delta": (round(current_score - last_score, 1) if (last_score is not None) else None),
+                "current_rank": current_rank,
+                "prior_rank": last_rank if last_rank else None,
+                "rank_delta": (
+                    (last_rank - current_rank)
+                    if (last_rank and current_rank)
+                    else None
+                ),
             }
         )
     return out
@@ -229,11 +250,22 @@ def build_change_digest(
     drops: List[Dict[str, Any]] = []
     rises: List[Dict[str, Any]] = []
     new: List[str] = []
+    value_changes: List[Dict[str, Any]] = []
     unchanged = 0
     has_prior = False
     for t in trends:
         if t.get("prior_observations"):
             has_prior = True
+        rank_delta = t.get("rank_delta")
+        if rank_delta and t.get("prior_rank"):
+            value_changes.append(
+                {
+                    "name": str(t.get("resort_name", "")),
+                    "current_rank": int(t.get("current_rank", 0) or 0),
+                    "prior_rank": int(t.get("prior_rank", 0) or 0),
+                    "delta": int(rank_delta),
+                }
+            )
         prev = t.get("prior_last")
         if prev is None:
             new.append(str(t.get("resort_name", "")))
@@ -250,6 +282,7 @@ def build_change_digest(
         "drops": drops,
         "rises": rises,
         "new": new,
+        "value_changes": value_changes,
         "unchanged": unchanged,
         "last_report_at": last_history_observation(path=path),
     }
@@ -303,6 +336,16 @@ def render_change_digest_html(digest: Dict[str, Any]) -> str:
             '<span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">✦ '
             + escape(name)
             + " new</span>"
+        )
+    for v in digest.get("value_changes", []):
+        arrow = "&#9650;" if int(v["delta"]) > 0 else "&#9660;"
+        bg, fg = ("#dbeafe", "#1d4ed8") if int(v["delta"]) > 0 else ("#fef3c7", "#92400e")
+        parts.append(
+            '<span style="background:' + bg + ";color:" + fg
+            + ';padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">'
+            + arrow + " "
+            + escape(v["name"])
+            + f" value rank {v['current_rank']} (was {v['prior_rank']})</span>"
         )
     unchanged = int(digest.get("unchanged", 0))
     if unchanged and parts:
@@ -369,4 +412,23 @@ def render_history_html(trends: List[Dict[str, Any]]) -> List[str]:
         snippets.append(
             f'<span style="color:#64748b;font-size:12px;">{obs} obs &middot; min &pound;{t["prior_min"]:.2f}</span> {chip}'
         )
+        # Value-rank movement chip: only when both ranks are known and the
+        # composite ranking actually moved. Price-quiet runs still surface
+        # "your best-value pick changed" — the movement that matters when
+        # benchmarks are static.
+        rank_delta = t.get("rank_delta")
+        if rank_delta:
+            if rank_delta > 0:
+                rank_chip = (
+                    '<span style="background:#dbeafe;color:#1d4ed8;'
+                    'padding:1px 8px;border-radius:9999px;font-size:12px;">'
+                    f"&#9650; value rank {t['current_rank']} (was {t['prior_rank']})</span>"
+                )
+            else:
+                rank_chip = (
+                    '<span style="background:#fef3c7;color:#92400e;'
+                    'padding:1px 8px;border-radius:9999px;font-size:12px;">'
+                    f"&#9660; value rank {t['current_rank']} (was {t['prior_rank']})</span>"
+                )
+            snippets[-1] = snippets[-1] + " " + rank_chip
     return snippets

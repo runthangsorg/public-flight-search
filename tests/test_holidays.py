@@ -181,12 +181,17 @@ class HolidayPlannerTests(unittest.TestCase):
         )
         deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
         buckets = bucket_deals(deals)
-        self.assertEqual(set(buckets), {"discounts", "luxury", "winter"})
+        self.assertEqual(set(buckets), {"discounts", "luxury", "winter", "value"})
         # Discounts: REAL discount lens — biggest % below the same resort's
-        # summer-peak price first (ties broken by cheapest absolute total).
-        keys = [(-d.vs_peak_pct, d.total_package_price_gbp) for d in buckets["discounts"]]
+        # summer-peak price first; equal-% ties break on the winter-first
+        # value score, then cheapest absolute total.
+        keys = [(-d.vs_peak_pct, -d.value_score, d.total_package_price_gbp) for d in buckets["discounts"]]
         self.assertEqual(keys, sorted(keys))
         self.assertEqual(len(buckets["discounts"]), len(deals))
+        # Value lens: composite winter-first score, highest first.
+        values = [d.value_score for d in buckets["value"]]
+        self.assertEqual(values, sorted(values, reverse=True))
+        self.assertEqual(len(buckets["value"]), len(deals))
         # Every deal carries a real discount baseline + property deep links.
         for deal in deals:
             self.assertGreater(deal.peak_summer_total_gbp, deal.total_package_price_gbp)
@@ -205,6 +210,38 @@ class HolidayPlannerTests(unittest.TestCase):
             for deal in bucket:
                 self.assertLessEqual(deal.total_package_price_gbp, 5000.0)
                 self.assertLessEqual(deal.true_d2d_gbp, 5000.0)
+
+    def test_discount_ties_break_on_value_score(self):
+        """Equal-% discount: the miserable-winter property must not outrank
+        a genuine-winter-sun property just because it was listed first."""
+        from public_flight_search.holidays import bucket_deals
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = list(collect_holiday_deals(config, max_budget_gbp=5000.0))
+        if len(deals) < 2:
+            self.skipTest("need at least two deals")
+        a, b = deals[0], deals[1]
+        # Force an equal discount % with different value scores.
+        object.__setattr__(a, "peak_summer_total_gbp", a.total_package_price_gbp / 0.8)
+        object.__setattr__(b, "peak_summer_total_gbp", b.total_package_price_gbp / 0.8)
+        high, low = (a, b) if a.value_score >= b.value_score else (b, a)
+        buckets = bucket_deals([a, b])
+        self.assertIs(buckets["discounts"][0], high)
+
+    def test_collect_stamps_value_rank(self):
+        """rank_value is 1..N over the value score with no ties."""
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        self.assertTrue(deals)
+        ranks = sorted(d.rank_value for d in deals)
+        self.assertEqual(ranks, list(range(1, len(deals) + 1)))
+        best = max(deals, key=lambda d: d.value_score)
+        self.assertEqual(best.rank_value, 1)
 
     def test_strict_filters_drop_non_conforming_resorts(self):
         """User strict mandate: city stays and resorts without a verified

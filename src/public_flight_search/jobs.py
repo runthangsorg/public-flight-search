@@ -219,6 +219,9 @@ def run_holiday_planner(*, dry_run: bool, force_send: bool = False) -> dict[str,
         or bool(digest["drops"])
         or bool(digest["rises"])
         or bool(digest["new"])
+        # Composite-ranking movement is reader-worthy even when benchmarks
+        # are price-quiet: "your best-value pick changed" justifies the send.
+        or bool(digest.get("value_changes"))
     )
     if send_email:
         send_html(os.environ.get("HOLIDAY_EMAIL_SUBJECT", "Holiday package watch"), html)

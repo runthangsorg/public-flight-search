@@ -203,5 +203,115 @@ class RenderHistoryHtmlTests(unittest.TestCase):
             self.assertEqual(rows[0]["unit_architecture"], "2-Bedroom Family Suite (shared lounge)")
 
 
+@dataclass
+class _ScoredDeal(_Deal):
+    value_score: float = 0.0
+    rank_value: int = 0
+
+
+def _scored_deal(price: float = 3000.0, *, value_score: float = 0.0,
+                 rank_value: int = 0, resort_name: str = "Test Resort") -> _ScoredDeal:
+    return _ScoredDeal(
+        resort_name=resort_name,
+        destination_key="dubai",
+        destination_label="Dubai, UAE",
+        outbound_date="2026-12-22",
+        return_date="2026-12-30",
+        nights=8,
+        total_package_price_gbp=price,
+        price_per_person_gbp=price / 5,
+        flight_price_total_gbp=price / 2,
+        hotel_price_total_gbp=price / 2,
+        true_d2d_gbp=price + 66.5,
+        value_score=value_score,
+        rank_value=rank_value,
+    )
+
+
+class ValueRankTests(unittest.TestCase):
+    """Value-score rank is persisted and surfaced as reader-worthy movement."""
+
+    def test_append_persists_score_and_rank(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            deal = _scored_deal(resort_name="Scored Resort", value_score=78.4, rank_value=2)
+            append_history([deal], path=path)
+            rows = read_history(path=path)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["value_score"], 78.4)
+            self.assertEqual(rows[0]["rank_value"], 2)
+
+    def test_rank_delta_positive_when_rank_improves(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            append_history([_scored_deal(value_score=70.0, rank_value=3)], path=path)
+            _backdate(path)
+            # Same price, better rank (3 -> 1): price-quiet, rank-moved.
+            improved = _scored_deal(value_score=84.0, rank_value=1)
+            trends = summarize_trends([improved], path=path)
+            self.assertEqual(trends[0]["prior_rank"], 3)
+            self.assertEqual(trends[0]["current_rank"], 1)
+            self.assertEqual(trends[0]["rank_delta"], 2)  # +2 places
+            self.assertEqual(trends[0]["score_delta"], 14.0)
+            snippets = render_history_html(trends)
+            self.assertIn("value rank 1 (was 3)", snippets[0])
+
+    def test_rank_unchanged_produces_no_chip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            append_history([_scored_deal(value_score=70.0, rank_value=3)], path=path)
+            _backdate(path)
+            trends = summarize_trends([_scored_deal(value_score=70.0, rank_value=3)], path=path)
+            # Same rank = zero movement (distinct from None = rank unknown).
+            self.assertEqual(trends[0]["rank_delta"], 0)
+            snippets = render_history_html(trends)
+            self.assertNotIn("value rank", snippets[0])
+
+    def test_legacy_rows_without_rank_yield_none(self):
+        """Legacy history (pre-rank rows) must not fake a rank movement."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            append_history([_deal(price=3000.0)], path=path)  # no rank_value
+            _backdate(path)
+            trends = summarize_trends([_scored_deal(value_score=80.0, rank_value=1)], path=path)
+            self.assertIsNone(trends[0]["prior_rank"])
+            self.assertIsNone(trends[0]["rank_delta"])
+
+    def test_digest_includes_value_changes(self):
+        from public_flight_search.holiday_history import build_change_digest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            append_history([_scored_deal(value_score=70.0, rank_value=3)], path=path)
+            _backdate(path)
+            digest = build_change_digest(
+                summarize_trends([_scored_deal(value_score=84.0, rank_value=1)], path=path),
+                path=path,
+            )
+            self.assertEqual(len(digest["value_changes"]), 1)
+            vc = digest["value_changes"][0]
+            self.assertEqual(vc["name"], "Test Resort")
+            self.assertEqual(vc["current_rank"], 1)
+            self.assertEqual(vc["prior_rank"], 3)
+
+    def test_digest_value_changes_render(self):
+        from public_flight_search.holiday_history import render_change_digest_html
+
+        html = render_change_digest_html(
+            {
+                "has_prior": True,
+                "drops": [],
+                "rises": [],
+                "new": [],
+                "value_changes": [
+                    {"name": "Resort A", "current_rank": 1, "prior_rank": 4, "delta": 3}
+                ],
+                "unchanged": 2,
+            }
+        )
+        self.assertIn("value rank 1 (was 4)", html)
+        self.assertIn("Resort A", html)
+
+
 if __name__ == "__main__":
     unittest.main()
