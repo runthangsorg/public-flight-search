@@ -23,6 +23,7 @@ FAILED_404 = "FAILED_404"
 FAILED_REDIRECT = "FAILED_REDIRECT"
 FAILED_WRONG_ROUTE = "FAILED_WRONG_ROUTE"
 FAILED_BOT_CHALLENGE = "FAILED_BOT_CHALLENGE"
+UNVERIFIED = "UNVERIFIED"
 PREFILLED_DEEP_LINK = "PREFILLED_DEEP_LINK"
 LANDING_PAGE = "LANDING_PAGE"
 
@@ -50,14 +51,19 @@ LANDING_PATHS = {"", "/", "/en", "/en-gb", "/en-us", "/uk", "/gb", "/home", "/in
 
 
 def provider_domain_matches_label(provider: str, url: str) -> bool:
-    """Check that the URL hostname matches the expected provider."""
-    try:
-        hostname = urlparse(url).hostname or ""
-    except Exception:
-        return False
-    provider_lower = provider.lower().replace(" ", "")
-    hostname_lower = hostname.lower()
-    return provider_lower in hostname_lower or hostname_lower.endswith(f".{provider_lower}.co.uk")
+    """Check that the URL hostname matches the expected provider.
+
+    Delegates to :func:`booking_links.provider_domain_matches_label` so the
+    project has exactly ONE domain-verification rule. This module used to
+    carry its own copy, which was a substring test:
+    ``"kayak" in "kayak.co.uk.attacker.example"`` returned True. Two
+    implementations of a security check that disagree is worse than one
+    imperfect implementation, because the weaker one silently sets the
+    guarantee for whichever caller happens to use it.
+    """
+    from .booking_links import provider_domain_matches_label as _strict
+
+    return _strict(provider, url)
 
 
 def verify_booking_link(
@@ -167,6 +173,3 @@ def verify_booking_link(
         result["notes"] = "Official booking portal verified"
 
     return result
-
-
-UNVERIFIED = "UNVERIFIED"

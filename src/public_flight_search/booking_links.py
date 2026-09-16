@@ -70,11 +70,27 @@ PROVIDER_ALLOWED_DOMAINS = {
 }
 
 
+def _host_matches_suffixes(hostname: str, names: tuple[str, ...]) -> bool:
+    """True when ``hostname`` IS one of ``names`` or a subdomain of one.
+
+    This is the only safe shape for a domain comparison. A substring test
+    (``"kayak" in hostname``) accepts ``kayak.co.uk.attacker.example``,
+    because the attacker only has to embed the brand. Anchoring on a label
+    boundary means the brand must BE the registrable name.
+    """
+    return any(hostname == name or hostname.endswith("." + name) for name in names)
+
+
 def provider_domain_matches_label(provider: str, url: str) -> bool:
-    """Verify URL hostname belongs to the claimed provider."""
+    """Verify URL hostname belongs to the claimed provider.
+
+    Every provider is matched on a domain-label boundary, including
+    providers absent from :data:`PROVIDER_ALLOWED_DOMAINS`. An unknown
+    provider is never accepted merely because its name appears somewhere
+    inside the hostname.
+    """
     try:
-        parsed = urlparse(url)
-        hostname = (parsed.hostname or "").lower()
+        hostname = (urlparse(url).hostname or "").lower().rstrip(".")
         if not hostname:
             return False
 
@@ -86,12 +102,19 @@ def provider_domain_matches_label(provider: str, url: str) -> bool:
                 break
 
         allowed = PROVIDER_ALLOWED_DOMAINS.get(canon) if canon else None
-        if not allowed:
-            # Fallback: clean provider name should appear in hostname
-            clean = "".join(c for c in provider.lower() if c.isalnum())
-            return clean in hostname if clean else False
+        if allowed:
+            return _host_matches_suffixes(hostname, tuple(allowed))
 
-        return any(hostname == d or hostname.endswith("." + d) for d in allowed)
+        # Unknown provider: the name must be the registrable label itself,
+        # so "example" matches example.com (and www.example.com) but never
+        # example.com.attacker.net.
+        clean = "".join(c for c in provider.lower() if c.isalnum())
+        if not clean:
+            return False
+        candidates = tuple(
+            f"{clean}{suffix}" for suffix in (".com", ".co.uk", ".net", ".org", ".io")
+        )
+        return _host_matches_suffixes(hostname, candidates)
     except Exception:
         return False
 

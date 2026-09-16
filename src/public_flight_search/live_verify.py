@@ -1,133 +1,143 @@
-"""Live verification boundary for the public engine.
+"""Live flight-evidence boundary for the public engine.
 
-Architecture rule (see travel-deal-engine skill + AUTOMATION_OWNERSHIP):
-public GHA runners must stay fast, free and secret-free. Deep stealth
-package verification — Camoufox anti-detect browser, FlareSolverr
-Cloudflare bypass, human-like cursor cadence — runs in the PRIVATE
-`flightdealsearch` engine on local laptop / misc VM compute, never on
-public GitHub-hosted runners.
+Why this module no longer scrapes Google Flights for prices
+-----------------------------------------------------------
 
-This module is the honest seam between the two:
+It used to fetch the results page over plain HTTP and, when it found an
+amount, convert it into a whole-party return total with::
 
-- On public GHA: `try_live_flight_offers()` performs a BOUNDED Google
-  Flights HTTP fetch (no browser, no Cloudflare bypass, 12-search cap,
-  60 s budget). When it succeeds, holiday deals are labelled
-  `verified-exact-date`; when it fails or is disabled, deals stay
-  `market-supported` benchmarks and the report says so.
-- Full Camoufox/FlareSolverr package checkout verification is NOT
-  attempted here. Use `/home/kc/flightdealsearch` (`holiday_live_verify.py`,
-  `patchright_verify.py`, `flare_solverr_client.py`,
-  `anti_detect_browser.py`) on local/VM compute for that.
+    estimate = one_way_per_person * travellers * 2
 
-No function here ever invents a price. Empty evidence suppresses the
-deal rather than hallucinating one.
+That number was then stamped ``verified-exact-date`` on the holiday deal.
+It was wrong twice over, and the correction matters more than the code:
+
+1. **The figure is fabricated.** A return total derived from a one-way
+   per-person fare is an estimate wearing a verification label. The
+   repository's own rule is that an estimate, filename match, benchmark or
+   unreviewed extraction is never described as verified evidence.
+2. **The page carries no fares at all.** Verified 2026-09-16: the HTML the
+   server returns contains zero currency amounts across every
+   ``AF_initDataCallback`` payload (``ds:0``–``ds:4``). Fares are loaded by
+   a follow-up XHR once JavaScript runs, so a plain HTTP fetch cannot
+   obtain a real fare no matter how it is parsed. The old parser also read
+   an assumed payload path (``payload[3][0]``) that had since become
+   ``None``, so it returned nothing on every run — which is why the
+   fabricated branch was so rarely exercised, and why
+   ``live_flight_airports`` was always 0.
+
+Where real live prices come from instead
+----------------------------------------
+
+Browser automation, on the private compute tiers only, because public
+GitHub-hosted runners must not run it. The private ``dealsearch`` engine
+drives a real browser, clears the consent wall, reads the rendered
+itinerary cards and records the whole-party total the provider actually
+displayed — with times, carrier, stops, layover and per-tier baggage.
+See ``holiday_scraper/live/`` in that repository.
+
+This module is therefore an **honest seam**, not a scraper:
+
+* :func:`try_live_flight_offers` returns only evidence that satisfies the
+  whole-party, exact-date contract. Today that is nothing, and it says so.
+* :class:`LiveFareEvidence` forces the basis to travel with the figure, so
+  a per-person amount can never be consumed as a party total.
+* No function here invents, extrapolates or multiplies a price. Empty
+  evidence leaves deals at ``market-supported`` benchmarks.
 """
 
 from __future__ import annotations
 
-import asyncio
-import os
-from typing import Mapping
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Mapping, Optional
+
+#: Bases on which a displayed amount can be a whole-trip total. Only these
+#: may promote a deal to ``verified-exact-date``.
+WHOLE_PARTY_BASES: frozenset[str] = frozenset(
+    {
+        "whole_party_return_total",
+        "whole_party_one_way_total",
+    }
+)
+
+#: Bases that describe something other than the party's total for the trip.
+#: These are explicitly *not* promotable, which is the whole point: the old
+#: code multiplied a per-person one-way amount and called it verified.
+NON_PROMOTABLE_BASES: frozenset[str] = frozenset(
+    {
+        "per_person_one_way",
+        "per_person_return",
+        "nightly_room_rate",
+        "derived_from_per_person",
+    }
+)
+
+
+@dataclass(frozen=True)
+class LiveFareEvidence:
+    """A live fare together with the basis it was displayed on.
+
+    The basis is mandatory precisely so that a consumer cannot silently
+    treat a per-person amount as a party total.
+    """
+
+    airport: str
+    total_gbp: float
+    basis: str
+    source_url: str
+    observed_at: str
+    exact_date_match: bool = True
+    note: str = ""
+
+    @property
+    def promotable(self) -> bool:
+        """True only when this may label a deal ``verified-exact-date``."""
+        return self.basis in WHOLE_PARTY_BASES and self.exact_date_match
+
+    @property
+    def is_non_promotable_basis(self) -> bool:
+        return self.basis in NON_PROMOTABLE_BASES
 
 
 def _live_enabled() -> bool:
+    import os
+
     return os.getenv("HOLIDAY_LIVE_FLIGHTS", "").lower() in {"1", "true", "yes"}
 
 
-def try_live_flight_offers(config, *, max_searches: int = 12) -> Mapping[str, float]:
-    """Return {airport: live 5-pax return GBP} or {} when unavailable.
+def live_evidence_unavailable_reason() -> str:
+    """Human-readable statement of why no live fares are available here.
 
-    Bounded for GHA: caps searches, enforces a short deadline, swallows all
-    errors. Callers must treat {} as "stay on benchmarks", never as zero.
+    Surfaced in the job summary so an operator sees why the report is on
+    benchmarks instead of assuming the live path ran cleanly.
+    """
+    return (
+        "Live exact-date fares require a real browser (the results page "
+        "carries no fares in its server-rendered HTML). Browser automation "
+        "does not run on public runners: it runs on the private compute "
+        "tiers. Deals therefore remain market-supported benchmarks."
+    )
+
+
+def try_live_flight_offers(
+    config, *, max_searches: int = 12
+) -> Mapping[str, LiveFareEvidence]:
+    """Return promotable live fare evidence keyed by airport.
+
+    Returns an empty mapping. That is a deliberate, documented outcome
+    rather than a failure being swallowed: a plain HTTP request cannot
+    obtain a fare from these results pages, so there is nothing honest to
+    return, and returning a derived figure would be the bug this module
+    exists to prevent.
+
+    Callers must treat an empty mapping as "stay on benchmarks" and must
+    never read it as a zero price.
     """
     if not _live_enabled():
         return {}
-    try:
-        from .config import FlightSearch
-        from .google_flights import search_google_flights
-    except Exception:
-        return {}
 
-    origins = tuple(config.origins[:2])
-    # Representative pair only — full-matrix live pricing is the private
-    # engine's job (Camoufox/FlareSolverr on local/VM).
-    try:
-        pairs = sorted(
-            (o, r) for o in config.outbound_dates for r in config.return_dates
-            if r > o
-        )
-    except Exception:
-        return {}
-    if not pairs:
-        return {}
-    outbound, returning = pairs[len(pairs) // 2]
-
-    searches: list[FlightSearch] = []
-    for dest in config.destinations:
-        airports = getattr(dest, "airports", ())
-        if not airports:
-            continue
-        searches.append(
-            FlightSearch(
-                key=f"holiday_{dest.key}",
-                label=getattr(dest, "label", dest.key),
-                origins=origins,
-                destinations=tuple(a.upper() for a in airports[:1]),
-                dates=(outbound,),
-                travellers=config.travellers,
-                cabin_class="ECONOMY",
-                departure_window=config.departure_window,
-                max_stops=1,
-                max_duration_minutes=720,
-                max_price_per_traveller_gbp=None,
-            )
-        )
-    searches = searches[: max(1, min(max_searches, 12))]
-    if not searches:
-        return {}
-
-    prev_max = os.getenv("GOOGLE_FLIGHTS_MAX_SEARCHES")
-    prev_timeout = os.getenv("GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS")
-    prev_delay = os.getenv("GOOGLE_FLIGHTS_DELAY_SECONDS")
-    os.environ["GOOGLE_FLIGHTS_MAX_SEARCHES"] = str(len(searches))
-    os.environ["GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS"] = "60"
-    os.environ["GOOGLE_FLIGHTS_DELAY_SECONDS"] = "2"
-    try:
-        grouped = asyncio.run(search_google_flights(tuple(searches)))
-    except Exception:
-        return {}
-    finally:
-        if prev_max is None:
-            os.environ.pop("GOOGLE_FLIGHTS_MAX_SEARCHES", None)
-        else:
-            os.environ["GOOGLE_FLIGHTS_MAX_SEARCHES"] = prev_max
-        if prev_timeout is None:
-            os.environ.pop("GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS", None)
-        else:
-            os.environ["GOOGLE_FLIGHTS_TOTAL_TIMEOUT_SECONDS"] = prev_timeout
-        if prev_delay is None:
-            os.environ.pop("GOOGLE_FLIGHTS_DELAY_SECONDS", None)
-        else:
-            os.environ["GOOGLE_FLIGHTS_DELAY_SECONDS"] = prev_delay
-
-    offers: dict[str, float] = {}
-    for search in searches:
-        dest_airport = search.destinations[0] if search.destinations else ""
-        best = None
-        for offer in grouped.get(search.key, ()):
-            # One-way observed fare × travellers ≈ return estimate × 2 legs.
-            # Conservative: one-way observed × 2 × travellers, capped sanely.
-            try:
-                one_way_pp = (
-                    offer.price_per_traveller
-                    if offer.price_per_traveller
-                    else offer.price
-                )
-                estimate = round(float(one_way_pp) * config.travellers * 2, 2)
-            except (TypeError, ValueError):
-                continue
-            if 100 <= estimate <= 15000 and (best is None or estimate < best):
-                best = estimate
-        if best is not None and dest_airport:
-            offers[dest_airport] = best
-    return offers
+    # The HTTP path is retained only as an explicit capability statement.
+    # If a future provider does serve fares to a non-browser client, its
+    # reader must return LiveFareEvidence carrying a whole-party basis —
+    # never a bare float, and never a multiplied per-person figure.
+    return {}

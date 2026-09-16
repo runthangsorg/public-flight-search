@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from .config import ConfigError, _airports, _dates, _text, _validate_report_title, _window
 from .google_flights import build_google_flights_roundtrip_url
+from .live_verify import LiveFareEvidence
 
 
 @dataclass(frozen=True)
@@ -578,6 +579,11 @@ class PackageDeal:
     hotel_booking_url: str
     is_under_budget: bool
     highlights: tuple[str, ...] = ()
+    #: The basis the flight figure was displayed on. A benchmark is a
+    #: benchmark; only a whole-party, exact-date amount may be labelled
+    #: verified. Carrying the basis on the deal is what lets the report
+    #: state it instead of implying all flight figures are equivalent.
+    flight_price_basis: str = "benchmark_supplied"
     # True door-to-door: package + UK ground + destination transfer.
     uk_ground_gbp: float = 0.0
     transfer_gbp: float = 0.0
@@ -1356,7 +1362,7 @@ def _criteria_fields(resort_name: str, true_pp: float) -> dict[str, Any]:
 def collect_holiday_deals(
     config: HolidayConfig,
     max_budget_gbp: float = 5000.0,
-    live_flight_offers: Optional[Mapping[str, float]] = None,
+    live_flight_offers: Optional[Mapping[str, LiveFareEvidence]] = None,
 ) -> tuple[PackageDeal, ...]:
     """Calculate holiday packages, enforcing the budget on BOTH the package
     total (flights + hotel) AND the True D2D total (package + UK ground +
@@ -1386,9 +1392,19 @@ def collect_holiday_deals(
         for resort in resorts:
             airport = resort["airport"]
             flight_cost = resort["flight_benchmark_5pax_gbp"]
-            live_used = bool(live_flight_offers and airport in live_flight_offers)
-            if live_used:
-                flight_cost = live_flight_offers[airport]  # type: ignore[index]
+            # Live evidence must be a WHOLE-PARTY, exact-date amount to be
+            # used at all. A per-person figure is never multiplied up into
+            # a party total: deriving one and stamping it verified was the
+            # bug this guard exists to make unrepeatable.
+            evidence = live_flight_offers.get(airport) if live_flight_offers else None
+            live_used = bool(evidence is not None and evidence.promotable)
+            if live_used and evidence is not None:
+                flight_cost = evidence.total_gbp
+            flight_basis = (
+                evidence.basis
+                if (live_used and evidence is not None)
+                else "benchmark_supplied"
+            )
 
             # ONE family unit pricing (strict mandate) with suite premium.
             arch = SUITE_ARCHITECTURE[resort["name"]]
@@ -1426,6 +1442,7 @@ def collect_holiday_deals(
                         origin_airports=config.origins,
                         destination_airport=airport,
                         flight_price_total_gbp=flight_cost,
+                        flight_price_basis=flight_basis,
                         hotel_price_total_gbp=hotel_cost,
                         total_package_price_gbp=total_pkg,
                         price_per_person_gbp=price_pp,
@@ -1445,8 +1462,8 @@ def collect_holiday_deals(
                             else resort.get("confidence", "market-supported")
                         ),
                         source_url=(
-                            flight_link
-                            if live_used
+                            evidence.source_url
+                            if (live_used and evidence is not None)
                             else resort.get("hotel_url", "")
                         ),
                         peak_summer_total_gbp=peak_total,
