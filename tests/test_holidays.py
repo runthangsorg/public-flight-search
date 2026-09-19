@@ -271,6 +271,38 @@ class HolidayPlannerTests(unittest.TestCase):
             self.assertGreaterEqual(arch["tripadvisor"], 4.5)
             self.assertLessEqual(deal.total_package_price_gbp, 5000.0)
 
+    def test_cabin_class_and_budget_support(self):
+        root = Path(__file__).parents[1]
+        july_path = root / "examples" / "july_holiday_config.json"
+        self.assertTrue(july_path.exists())
+        config = load_holiday_config(july_path.read_text(encoding="utf-8"))
+        self.assertEqual(config.cabin_class, "BUSINESS")
+        self.assertEqual(config.max_budget_gbp, 12000.0)
+        self.assertEqual(config.travellers, 5)
+
+        deals = collect_holiday_deals(config)
+        self.assertTrue(deals)
+        for deal in deals:
+            self.assertIn(deal.cabin_class, {"BUSINESS", "PREMIUM_ECONOMY"})
+            self.assertLessEqual(deal.total_package_price_gbp, 12000.0)
+
+        html = render_holiday_report(config, generated_at="2026-07-01T10:00:00+00:00", deals=deals)
+        self.assertIn("Business Class", html)
+
+    def test_invalid_cabin_class_rejected(self):
+        payload = {
+            "report_title": "Test",
+            "party": {"travellers": 2, "rooms": [2]},
+            "departure_window": ["06:00", "21:00"],
+            "origins": ["LHR"],
+            "outbound_dates": ["2026-12-20"],
+            "return_dates": ["2026-12-28"],
+            "cabin_class": "INVALID_CABIN",
+            "destinations": [{"key": "antalya", "label": "Antalya", "airports": ["AYT"]}],
+        }
+        with self.assertRaises(ConfigError):
+            load_holiday_config(json.dumps(payload))
+
 
 if __name__ == "__main__":
     unittest.main()

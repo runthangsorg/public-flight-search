@@ -1,0 +1,99 @@
+{
+  "report_title": "July Summer Holiday Packages: Family Luxury Watch",
+  "party": {
+    "travellers": 5,
+    "rooms": [
+      2,
+      2,
+      1
+    ]
+  },
+  "cabin_class": "BUSINESS",
+  "max_budget_gbp": 12000,
+  "departure_window": [
+    "06:00",
+    "23:59"
+  ],
+  "origins": [
+    "LHR",
+    "LGW",
+    "LTN",
+    "STN"
+  ],
+  "outbound_dates": [
+    "2026-07-18",
+    "2026-07-21",
+    "2026-07-25"
+  ],
+  "return_dates": [
+    "2026-07-25",
+    "2026-07-28",
+    "2026-08-01"
+  ],
+  "destinations": [
+    {
+      "key": "antalya",
+      "label": "Antalya Riviera, Turkey (Ultra All Inclusive resorts)",
+      "airports": [
+        "AYT"
+      ],
+      "cabin_class": "BUSINESS"
+    },
+    {
+      "key": "tenerife",
+      "label": "Tenerife, Canary Islands (luxury resort suite)",
+      "airports": [
+        "TFS"
+      ],
+      "cabin_class": "BUSINESS"
+    },
+    {
+      "key": "malta",
+      "label": "Valletta, Malta (heritage coastal break)",
+      "airports": [
+        "MLA"
+      ],
+      "cabin_class": "PREMIUM_ECONOMY"
+    },
+    {
+      "key": "paphos",
+      "label": "Paphos, Cyprus (harbour + 5-star Mediterranean)",
+      "airports": [
+        "PFO"
+      ],
+      "cabin_class": "BUSINESS"
+    },
+    {
+      "key": "taghazout",
+      "label": "Taghazout Bay, Morocco (Fairmont coastal)",
+      "airports": [
+        "AGA"
+      ],
+      "cabin_class": "PREMIUM_ECONOMY"
+    },
+    {
+      "key": "hurghada",
+      "label": "Hurghada & Red Sea, Egypt (Steigenberger luxury)",
+      "airports": [
+        "HRG"
+      ],
+      "cabin_class": "BUSINESS"
+    },
+    {
+      "key": "doha",
+      "label": "Doha, Qatar (private-beach resorts)",
+      "airports": [
+        "DOH"
+      ],
+      "cabin_class": "BUSINESS"
+    },
+    {
+      "key": "muscat",
+      "label": "Muscat, Oman (tropical coast & private bay)",
+      "airports": [
+        "MCT"
+      ],
+      "cabin_class": "BUSINESS"
+    }
+  ]
+}

@@ -10,6 +10,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from public_flight_search.config import FlightSearch
 from public_flight_search.google_flights import (
+    TRIP_MULTI_CITY,
+    TRIP_ONE_WAY,
+    TRIP_ROUND_TRIP,
     _is_waf_response,
     build_google_flights_multicity_url,
     build_google_flights_url,
@@ -17,6 +20,58 @@ from public_flight_search.google_flights import (
     _parse_flight_cards,
     search_google_flights,
 )
+
+
+def _read_varint(raw: bytes, index: int) -> tuple[int, int]:
+    """Read one varint.
+
+    The key can be longer than a single byte (field 19 encodes as
+    ``0x98 0x01``), so reading it one byte at a time desynchronises the
+    parse and hides a wrong trip type instead of failing.
+    """
+    value = 0
+    shift = 0
+    while True:
+        byte = raw[index]
+        index += 1
+        value |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return value, index
+        shift += 7
+
+
+def tfs_fields(url: str) -> list[int]:
+    """Top-level field numbers in the URL's ``tfs`` payload."""
+    raw = base64.b64decode(unquote(url.split("tfs=", 1)[1].split("&", 1)[0]))
+    numbers: list[int] = []
+    index = 0
+    while index < len(raw):
+        key, index = _read_varint(raw, index)
+        number, wire_type = key >> 3, key & 7
+        numbers.append(number)
+        if wire_type == 2:
+            length, index = _read_varint(raw, index)
+            index += length
+        elif wire_type == 0:
+            _value, index = _read_varint(raw, index)
+    return numbers
+
+
+def tfs_trip_type(url: str) -> int:
+    """Read ``tfs`` field 19 (the trip type) out of a built URL."""
+    raw = base64.b64decode(unquote(url.split("tfs=", 1)[1].split("&", 1)[0]))
+    index = 0
+    while index < len(raw):
+        key, index = _read_varint(raw, index)
+        number, wire_type = key >> 3, key & 7
+        if wire_type == 2:
+            length, index = _read_varint(raw, index)
+            index += length
+        elif wire_type == 0:
+            value, index = _read_varint(raw, index)
+            if number == 19:
+                return value
+    raise AssertionError("no trip type in the tfs payload")
 
 
 class BuildGoogleFlightsUrlTests(unittest.TestCase):
@@ -94,6 +149,31 @@ class BuildRoundtripUrlTests(unittest.TestCase):
         )
         self.assertNotEqual(one_way, round_trip)
 
+    def test_roundtrip_declares_the_round_trip_type(self):
+        """Two legs are not enough; field 19 must say round trip.
+
+        Regression for the bug where every return search carried the
+        one-way trip type, so Google priced only the outbound and the
+        results were reported as whole-party return totals. Comparing
+        strings (as the test above does) cannot catch this.
+        """
+        url = build_google_flights_roundtrip_url(
+            origin="LGW", destination="DOH",
+            outbound_date="2026-12-22", return_date="2026-12-30",
+            travellers=5, cabin_class="BUSINESS",
+        )
+        self.assertEqual(tfs_trip_type(url), TRIP_ROUND_TRIP)
+        self.assertNotEqual(tfs_trip_type(url), TRIP_ONE_WAY)
+        self.assertEqual(tfs_fields(url).count(3), 2)
+
+    def test_one_way_declares_the_one_way_type(self):
+        url = build_google_flights_url(
+            origin="LHR", destination="MCT", date="2026-09-15",
+            travellers=1, cabin_class="ECONOMY",
+        )
+        self.assertEqual(tfs_trip_type(url), TRIP_ONE_WAY)
+        self.assertEqual(tfs_fields(url).count(3), 1)
+
     def test_rejects_return_before_outbound(self):
         with self.assertRaises(ValueError):
             build_google_flights_roundtrip_url(
@@ -133,6 +213,24 @@ class BuildMulticityUrlTests(unittest.TestCase):
             travellers=2,
         )
         self.assertEqual(via_roundtrip, via_multi)
+
+    def test_open_jaw_declares_the_multi_city_type(self):
+        """An open-jaw is not a round trip; claiming otherwise tells the
+        provider to price an itinerary the traveller is not taking."""
+        url = build_google_flights_multicity_url(
+            out_orig="LHR", out_dest="MCT", out_date="2026-09-16",
+            ret_orig="AUH", ret_dest="LHR", ret_date="2026-09-27",
+            travellers=1,
+        )
+        self.assertEqual(tfs_trip_type(url), TRIP_MULTI_CITY)
+
+    def test_plain_round_trip_through_multicity_is_still_a_round_trip(self):
+        url = build_google_flights_multicity_url(
+            out_orig="LHR", out_dest="DXB", out_date="2026-09-16",
+            ret_orig="DXB", ret_dest="LHR", ret_date="2026-09-27",
+            travellers=2,
+        )
+        self.assertEqual(tfs_trip_type(url), TRIP_ROUND_TRIP)
 
 
 class ParseFlightCardsTests(unittest.TestCase):

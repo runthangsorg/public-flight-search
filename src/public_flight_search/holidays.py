@@ -19,6 +19,7 @@ class HolidayDestination:
     key: str
     label: str
     airports: tuple[str, ...]
+    cabin_class: str = "ECONOMY"
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,8 @@ class HolidayConfig:
     outbound_dates: tuple[str, ...]
     return_dates: tuple[str, ...]
     destinations: tuple[HolidayDestination, ...]
+    cabin_class: str = "ECONOMY"
+    max_budget_gbp: float = 5000.0
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +391,7 @@ def build_google_flights_holiday_url(
     departure_date: str,
     return_date: str,
     adults: int,
+    cabin_class: str = "ECONOMY",
 ) -> str:
     """Google Flights structured round-trip for a holiday date pair.
 
@@ -404,6 +408,7 @@ def build_google_flights_holiday_url(
         origin=origin, destination=airport,
         outbound_date=departure_date, return_date=return_date,
         travellers=max(1, min(9, adults)),
+        cabin_class=cabin_class,
     )
 
 
@@ -416,6 +421,7 @@ def build_provider_urls(
     return_date: str,
     adults: int,
     rooms: int,
+    cabin_class: str = "ECONOMY",
 ) -> dict[str, str]:
     """Verified provider entry points for one destination/date pair.
 
@@ -455,6 +461,7 @@ def build_provider_urls(
             destination=key, origin_airports=origin_airports,
             departure_date=departure_date, return_date=return_date,
             adults=adults,
+            cabin_class=cabin_class,
         ),
     }
     if key in JET2_DESTINATION_PATHS:
@@ -477,6 +484,7 @@ def count_provider_entries(config: HolidayConfig) -> int:
                 return_date=returning,
                 adults=config.travellers,
                 rooms=len(config.rooms),
+                cabin_class=dest.cabin_class,
             )
         )
         for dest in config.destinations
@@ -489,7 +497,11 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         raw = json.loads(payload)
     except json.JSONDecodeError as exc:
         raise ConfigError("holiday configuration is not valid JSON") from exc
-    allowed = {"report_title", "party", "departure_window", "origins", "outbound_dates", "return_dates", "destinations"}
+    allowed = {
+        "report_title", "party", "departure_window", "origins",
+        "outbound_dates", "return_dates", "destinations",
+        "cabin_class", "max_budget_gbp",
+    }
     if not isinstance(raw, dict) or set(raw) - allowed:
         raise ConfigError("holiday configuration contains unknown fields")
     party = raw.get("party")
@@ -502,18 +514,39 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     rooms = tuple(int(value) for value in rooms_raw)
     if not rooms or sum(rooms) != travellers or any(value < 1 for value in rooms):
         raise ConfigError("room occupancy must account for every traveller")
+
+    valid_cabins = {"ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"}
+    root_cabin = str(raw.get("cabin_class", "ECONOMY")).upper()
+    if root_cabin not in valid_cabins:
+        raise ConfigError(f"unsupported cabin_class: {root_cabin}")
+
+    max_budget_raw = raw.get("max_budget_gbp", 5000.0)
+    try:
+        max_budget = float(max_budget_raw)
+        if max_budget <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise ConfigError("max_budget_gbp must be a positive number")
+
     destination_raw = raw.get("destinations")
+    dest_allowed = {"key", "label", "airports", "cabin_class"}
     if not isinstance(destination_raw, list) or not 1 <= len(destination_raw) <= 16:
         raise ConfigError("destinations must contain 1-16 entries")
-    destinations = tuple(
-        HolidayDestination(
-            key=_text(item.get("key"), "destination key", 48),
-            label=_text(item.get("label"), "destination label"),
-            airports=_airports(item.get("airports"), "destination airports"),
+    destinations = []
+    for item in destination_raw:
+        if not isinstance(item, dict) or set(item) - dest_allowed:
+            continue
+        dest_cabin = str(item.get("cabin_class", root_cabin)).upper()
+        if dest_cabin not in valid_cabins:
+            raise ConfigError(f"unsupported destination cabin_class: {dest_cabin}")
+        destinations.append(
+            HolidayDestination(
+                key=_text(item.get("key"), "destination key", 48),
+                label=_text(item.get("label"), "destination label"),
+                airports=_airports(item.get("airports"), "destination airports"),
+                cabin_class=dest_cabin,
+            )
         )
-        for item in destination_raw
-        if isinstance(item, dict) and not set(item) - {"key", "label", "airports"}
-    )
     if len(destinations) != len(destination_raw):
         raise ConfigError("a destination contains unknown fields")
     outbound_dates = _dates(raw.get("outbound_dates"), "outbound_dates")
@@ -538,7 +571,9 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         origins=_airports(raw.get("origins"), "origins"),
         outbound_dates=outbound_dates,
         return_dates=return_dates,
-        destinations=destinations,
+        destinations=tuple(destinations),
+        cabin_class=root_cabin,
+        max_budget_gbp=max_budget,
     )
 
 
@@ -584,6 +619,7 @@ class PackageDeal:
     #: verified. Carrying the basis on the deal is what lets the report
     #: state it instead of implying all flight figures are equivalent.
     flight_price_basis: str = "benchmark_supplied"
+    cabin_class: str = "ECONOMY"
     # True door-to-door: package + UK ground + destination transfer.
     uk_ground_gbp: float = 0.0
     transfer_gbp: float = 0.0
@@ -1361,13 +1397,15 @@ def _criteria_fields(resort_name: str, true_pp: float) -> dict[str, Any]:
 
 def collect_holiday_deals(
     config: HolidayConfig,
-    max_budget_gbp: float = 5000.0,
+    max_budget_gbp: Optional[float] = None,
     live_flight_offers: Optional[Mapping[str, LiveFareEvidence]] = None,
 ) -> tuple[PackageDeal, ...]:
     """Calculate holiday packages, enforcing the budget on BOTH the package
     total (flights + hotel) AND the True D2D total (package + UK ground +
     destination transfer). Anything over budget on either measure is dropped —
     never labelled "under budget" while breaching the ceiling."""
+    if max_budget_gbp is None:
+        max_budget_gbp = getattr(config, "max_budget_gbp", 5000.0)
     pairs = _date_pairs(config)
     shortlist = _shortlist_pairs(pairs)
     deals: list[PackageDeal] = []
@@ -1389,9 +1427,17 @@ def collect_holiday_deals(
     for dest in config.destinations:
         resorts, dropped = filter_resorts(WINTER_RESORT_CATALOG.get(dest.key.lower(), []))
         filtered_out.extend(dropped)
+        cabin = getattr(dest, "cabin_class", "") or getattr(config, "cabin_class", "ECONOMY")
+        cabin_multipliers = {
+            "ECONOMY": 1.0,
+            "PREMIUM_ECONOMY": 1.6,
+            "BUSINESS": 2.5,
+            "FIRST": 4.5,
+        }
+        flight_mult = cabin_multipliers.get(cabin.upper(), 1.0)
         for resort in resorts:
             airport = resort["airport"]
-            flight_cost = resort["flight_benchmark_5pax_gbp"]
+            flight_cost = round(resort["flight_benchmark_5pax_gbp"] * flight_mult, 2)
             # Live evidence must be a WHOLE-PARTY, exact-date amount to be
             # used at all. A per-person figure is never multiplied up into
             # a party total: deriving one and stamping it verified was the
@@ -1403,7 +1449,7 @@ def collect_holiday_deals(
             flight_basis = (
                 evidence.basis
                 if (live_used and evidence is not None)
-                else "benchmark_supplied"
+                else ("benchmark_supplied" if cabin.upper() == "ECONOMY" else f"benchmark_supplied_{cabin.lower()}")
             )
 
             # ONE family unit pricing (strict mandate) with suite premium.
@@ -1427,6 +1473,7 @@ def collect_holiday_deals(
                     outbound_date=target_outbound,
                     return_date=target_return,
                     travellers=travellers,
+                    cabin_class=cabin,
                 )
                 deals.append(
                     PackageDeal(
@@ -1443,6 +1490,7 @@ def collect_holiday_deals(
                         destination_airport=airport,
                         flight_price_total_gbp=flight_cost,
                         flight_price_basis=flight_basis,
+                        cabin_class=cabin,
                         hotel_price_total_gbp=hotel_cost,
                         total_package_price_gbp=total_pkg,
                         price_per_person_gbp=price_pp,
@@ -1739,7 +1787,13 @@ def render_holiday_report(
             # Right: everything a booker needs, scannable in one glance
             out.append('<td valign="top" style="padding:16px 20px;">')
             out.append('<div style="margin-bottom:3px;"><strong style="color:#0f172a; font-size:20px;">' + escape(deal.resort_name) + '</strong> <span style="color:#f59e0b; font-size:14px;">' + stars_str + '</span></div>')
+            cabin_badge = ""
+            if getattr(deal, "cabin_class", "") == "BUSINESS":
+                cabin_badge = '<span style="background:#fdf2f8; color:#9d174d; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">💼 Business Class</span> '
+            elif getattr(deal, "cabin_class", "") == "PREMIUM_ECONOMY":
+                cabin_badge = '<span style="background:#f0fdfa; color:#0f766e; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">✨ Premium Economy</span> '
             out.append('<div style="margin:5px 0 7px;">')
+            out.append(cabin_badge)
             out.append('<span style="background:#eff6ff; color:#1d4ed8; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + escape(deal.board_basis) + '</span> ')
             out.append('<span style="background:' + ('#dcfce7' if live else '#fef3c7') + '; color:' + ('#166534' if live else '#92400e') + '; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + ('🟢 LIVE VERIFIED' if live else '🟡 BENCHMARK PRICE') + '</span> ')
             out.append('<span style="background:#16a34a; color:#ffffff; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:800;">▼' + str(deal.vs_peak_pct) + '% vs summer peak · save £' + f'{deal.vs_peak_saving_gbp:,.0f}' + '</span>')
@@ -1760,8 +1814,9 @@ def render_holiday_report(
             if deal.food_review_summary:
                 out.append('<div style="color:#64748b; font-size:13px; margin-bottom:8px;"><strong style="color:#475569;">Food reviews:</strong> ' + escape(deal.food_review_summary) + '</div>')
             # Facts strip: flights | stay | December weather | BIG price
+            cabin_label = f" ({deal.cabin_class.replace('_', ' ').title()})" if getattr(deal, "cabin_class", "ECONOMY") != "ECONOMY" else ""
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#f8fafc; border-radius:8px; margin-bottom:10px;"><tr>')
-            out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(deal.airline.split('/')[0].strip()) + '</span></td>')
+            out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights' + cabin_label + '<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(deal.airline.split('/')[0].strip()) + '</span></td>')
             suite_label = deal.unit_architecture or (str(rooms_n) + ' rooms')
             out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🏨 Stay<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(suite_label) + ' · ' + str(deal.nights) + 'n</span></td>')
             if deal.sea_temp_c:

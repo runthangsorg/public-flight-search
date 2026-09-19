@@ -86,12 +86,28 @@ def _leg(origin: str, destination: str, date: str) -> bytes:
     )
 
 
-def _seat_and_travellers(travellers: int, cabin_class: str) -> tuple[bytes, bytes]:
+#: ``tfs`` field 19 is the trip type. It is not cosmetic: with the
+#: one-way value (2) the provider prices ONLY the first leg even when a
+#: second leg is present, and renders a form with an empty return field.
+#: Verified live 2026-09-18. Emitting two legs without the matching trip
+#: type is what previously labelled one-way fares as return totals.
+_TRIP_TYPE_FIELD = 19
+TRIP_ROUND_TRIP = 1
+TRIP_ONE_WAY = 2
+TRIP_MULTI_CITY = 3
+
+
+def _seat_field(travellers: int, cabin_class: str) -> bytes:
+    """Encode the cabin selector. Trip type is a separate field."""
     seats = {"ECONOMY": 1, "PREMIUM_ECONOMY": 2, "BUSINESS": 3, "FIRST": 4}
     seat = seats.get(cabin_class.upper())
     if seat is None or not 1 <= travellers <= 9:
         raise ValueError("unsupported travellers or cabin class")
-    return _varint((9 << 3) | 0) + _varint(seat), _varint((19 << 3) | 0) + _varint(2)
+    return _varint((9 << 3) | 0) + _varint(seat)
+
+
+def _trip_type_field(trip_type: int) -> bytes:
+    return _varint((_TRIP_TYPE_FIELD << 3) | 0) + _varint(trip_type)
 
 
 def build_google_flights_url(
@@ -99,12 +115,11 @@ def build_google_flights_url(
     travellers: int, cabin_class: str,
 ) -> str:
     """Build Google's current structured one-way search URL."""
-    seat, cabin = _seat_and_travellers(travellers, cabin_class)
     info = (
         _field(3, _leg(origin, destination, date))
         + _field(8, bytes([1]) * travellers)
-        + seat
-        + cabin
+        + _seat_field(travellers, cabin_class)
+        + _trip_type_field(TRIP_ONE_WAY)
     )
     return "https://www.google.com/travel/flights/search?" + urlencode({"tfs": b64encode(info).decode(), "curr": "GBP", "hl": "en-GB"})
 
@@ -144,13 +159,19 @@ def build_google_flights_multicity_url(
     """
     if ret_date <= out_date:
         raise ValueError("ret_date must be after out_date")
-    seat, cabin = _seat_and_travellers(travellers, cabin_class)
+    # A true round trip returns to where it started; anything else (an
+    # open-jaw, for instance) is a multi-city itinerary to the provider.
+    # Both need their own trip type: sending the round-trip value for an
+    # open-jaw, or the one-way value for either, silently changes which
+    # itinerary the displayed price belongs to.
+    plain_round_trip = ret_orig == out_dest and ret_dest == out_orig
+    trip_type = TRIP_ROUND_TRIP if plain_round_trip else TRIP_MULTI_CITY
     info = (
         _field(3, _leg(out_orig, out_dest, out_date))
         + _field(3, _leg(ret_orig, ret_dest, ret_date))
         + _field(8, bytes([1]) * travellers)
-        + seat
-        + cabin
+        + _seat_field(travellers, cabin_class)
+        + _trip_type_field(trip_type)
     )
     return "https://www.google.com/travel/flights/search?" + urlencode({"tfs": b64encode(info).decode(), "curr": "GBP", "hl": "en-GB"})
 

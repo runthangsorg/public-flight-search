@@ -180,7 +180,7 @@ def run_holiday_planner(*, dry_run: bool, force_send: bool = False) -> dict[str,
     except Exception:
         live_offers = {}
     deals = collect_holiday_deals(
-        config, max_budget_gbp=5000.0,
+        config, max_budget_gbp=config.max_budget_gbp,
         live_flight_offers=live_offers or None,
     )
     # MEMORY BEFORE BUILD: the workflow seeds `history_path` from the
