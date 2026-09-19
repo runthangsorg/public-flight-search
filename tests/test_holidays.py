@@ -303,6 +303,38 @@ class HolidayPlannerTests(unittest.TestCase):
         with self.assertRaises(ConfigError):
             load_holiday_config(json.dumps(payload))
 
+    def test_business_cabin_never_names_lcc_carriers(self):
+        """Luxury regression: a BUSINESS card must name a carrier that sells
+        business — never SunExpress/Ryanair/easyJet/Jet2 (economy-only)."""
+        from public_flight_search import holidays as hol
+
+        root = Path(__file__).parents[1]
+        july_path = root / "examples" / "july_holiday_config.json"
+        config = load_holiday_config(july_path.read_text(encoding="utf-8"))
+        deals = collect_holiday_deals(config)
+        self.assertTrue(deals)
+        lcc_markers = ("sunexpress", "pegasus", "ryanair", "easyjet", "jet2", "wizz")
+        for deal in deals:
+            if deal.cabin_class in ("BUSINESS", "FIRST", "PREMIUM_ECONOMY"):
+                lowered = deal.airline.lower()
+                for marker in lcc_markers:
+                    self.assertNotIn(
+                        marker, lowered,
+                        f"{deal.resort_name} {deal.cabin_class} names LCC: {deal.airline}",
+                    )
+                # Same-cabin peak: business Dec total compares to business peak.
+                self.assertGreater(
+                    deal.peak_summer_total_gbp, deal.total_package_price_gbp,
+                    f"{deal.resort_name} peak should exceed December in the same cabin",
+                )
+        # Spot-check the cabin_carrier helper directly.
+        self.assertIn("Turkish", hol.cabin_carrier(airport="AYT", cabin="BUSINESS", economy_carrier="SunExpress / Pegasus"))
+        self.assertIn("Club Europe", hol.cabin_carrier(airport="PFO", cabin="BUSINESS", economy_carrier="Ryanair / Jet2 / BA"))
+        self.assertEqual(
+            hol.cabin_carrier(airport="AYT", cabin="ECONOMY", economy_carrier="SunExpress / Pegasus"),
+            "SunExpress / Pegasus",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

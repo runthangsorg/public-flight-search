@@ -1360,6 +1360,69 @@ UK_GROUND_RETURN_GBP: dict[str, float] = {
     "BHX": 40.00,  # Avanti West Coast direct, 58 min
 }
 
+# Carriers with NO business/premium cabin — never label them as luxury.
+# SunExpress, Pegasus, Ryanair, easyJet, Jet2, Wizz Air are single-cabin
+# (economy-only) operators on these leisure routes. Stamping their names on
+# a "Business Class" card (2026-09-19 bug) is a false claim: the benchmark
+# multiplier prices a cabin they do not sell.
+LCC_NO_PREMIUM_CABIN: frozenset[str] = frozenset({
+    "sunexpress", "pegasus", "pegasus airlines", "ryanair", "easyjet",
+    "easy jet", "jet2", "wizz air", "wizz air uk",
+})
+
+# Real business-capable carriers per destination airport. Used whenever the
+# requested cabin is BUSINESS/FIRST/PREMIUM_ECONOMY so the card names an
+# airline that actually sells that cabin on the London route — never an LCC.
+# Short-haul "business" is Club Europe / Turkish Business (blocked middle
+# seat + lounge + priority, not lie-flat); long-haul is true lie-flat.
+# Prices remain market-supported BENCHMARKS (multiplier estimate), never live
+# verified totals — live cabin-exact verification runs on private browser
+# compute only (dealsearch holiday_scraper/live).
+BUSINESS_CARRIER_BY_AIRPORT: dict[str, str] = {
+    "AYT": "Turkish Airlines Business (via IST)",
+    "PFO": "British Airways Club Europe",
+    "HRG": "Turkish Airlines Business (via IST)",
+    "CAI": "British Airways Club Europe / EgyptAir Business",
+    "TFS": "British Airways Club Europe",
+    "ACE": "British Airways Club Europe",
+    "FUE": "British Airways Club Europe",
+    "LPA": "British Airways Club Europe",
+    "MLA": "British Airways Club Europe",
+    "AGA": "British Airways Club Europe",
+    "FNC": "British Airways Club Europe",
+    "SID": "TUI / British Airways (best available premium cabin)",
+    "MCT": "Oman Air Business / British Airways Club World",
+    "DOH": "Qatar Airways Business / British Airways Club World",
+}
+
+PREMIUM_CARRIER_BY_AIRPORT: dict[str, str] = {
+    "AYT": "Turkish Airlines Premium (via IST) / BA Euro Traveller Plus",
+    "PFO": "British Airways Euro Traveller Plus",
+    "HRG": "Turkish Airlines Premium (via IST)",
+    "CAI": "EgyptAir Premium / BA World Traveller Plus",
+    "TFS": "British Airways Euro Traveller Plus",
+    "ACE": "British Airways Euro Traveller Plus",
+    "FUE": "British Airways Euro Traveller Plus",
+    "LPA": "British Airways Euro Traveller Plus",
+    "MLA": "British Airways Euro Traveller Plus",
+    "AGA": "British Airways Euro Traveller Plus",
+    "FNC": "British Airways Euro Traveller Plus",
+    "SID": "TUI Premium / BA Euro Traveller Plus",
+    "MCT": "Oman Air Premium / BA World Traveller Plus",
+    "DOH": "Qatar Airways Premium / BA World Traveller Plus",
+}
+
+
+def cabin_carrier(*, airport: str, cabin: str, economy_carrier: str) -> str:
+    """Return the display carrier for a cabin — never an LCC as luxury."""
+    upper = (cabin or "ECONOMY").upper()
+    code = (airport or "").upper()
+    if upper == "BUSINESS" or upper == "FIRST":
+        return BUSINESS_CARRIER_BY_AIRPORT.get(code, "Flag carrier Business (live check required)")
+    if upper == "PREMIUM_ECONOMY":
+        return PREMIUM_CARRIER_BY_AIRPORT.get(code, "Flag carrier Premium (live check required)")
+    return economy_carrier
+
 
 def _criteria_fields(resort_name: str, true_pp: float) -> dict[str, Any]:
     """Criteria bundle for one resort from the recovered registry (defaults
@@ -1438,6 +1501,11 @@ def collect_holiday_deals(
         for resort in resorts:
             airport = resort["airport"]
             flight_cost = round(resort["flight_benchmark_5pax_gbp"] * flight_mult, 2)
+            # Luxury cabin displays a carrier that actually sells that cabin.
+            # Never present SunExpress/Ryanair/easyJet/Jet2 as "Business".
+            display_airline = cabin_carrier(
+                airport=airport, cabin=cabin, economy_carrier=resort["airline"]
+            )
             # Live evidence must be a WHOLE-PARTY, exact-date amount to be
             # used at all. A per-person figure is never multiplied up into
             # a party total: deriving one and stamping it verified was the
@@ -1460,9 +1528,12 @@ def collect_holiday_deals(
             transfer = float(resort.get("transfer_gbp", 30.0))
             true_d2d = round(total_pkg + uk_ground + transfer, 2)
             # REAL discount baseline: the SAME suite, same nights/party, at
-            # the resort's summer peak (Jul/Aug school-holiday highs).
+            # the resort's summer peak (Jul/Aug school-holiday highs), in the
+            # SAME cabin so a Business December total is compared against a
+            # Business peak total — never against an Economy peak.
             peak_hotel = round(arch["suite_peak_nightly_gbp"] * nights, 2)
-            peak_total = round(resort["peak_summer_flight_5pax_gbp"] + peak_hotel, 2)
+            peak_flight = round(resort["peak_summer_flight_5pax_gbp"] * flight_mult, 2)
+            peak_total = round(peak_flight + peak_hotel, 2)
             # STRICT: both measures must clear the ceiling.
             under_budget = total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
 
@@ -1485,7 +1556,7 @@ def collect_holiday_deals(
                         outbound_date=target_outbound,
                         return_date=target_return,
                         nights=nights,
-                        airline=resort["airline"],
+                        airline=display_airline,
                         origin_airports=config.origins,
                         destination_airport=airport,
                         flight_price_total_gbp=flight_cost,
@@ -1788,10 +1859,13 @@ def render_holiday_report(
             out.append('<td valign="top" style="padding:16px 20px;">')
             out.append('<div style="margin-bottom:3px;"><strong style="color:#0f172a; font-size:20px;">' + escape(deal.resort_name) + '</strong> <span style="color:#f59e0b; font-size:14px;">' + stars_str + '</span></div>')
             cabin_badge = ""
+            cabin_is_premium = getattr(deal, "cabin_class", "ECONOMY") in ("BUSINESS", "FIRST", "PREMIUM_ECONOMY")
             if getattr(deal, "cabin_class", "") == "BUSINESS":
-                cabin_badge = '<span style="background:#fdf2f8; color:#9d174d; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">💼 Business Class</span> '
+                cabin_badge = '<span style="background:#fdf2f8; color:#9d174d; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">💼 Business Class' + ('' if live else ' (estimate)') + '</span> '
             elif getattr(deal, "cabin_class", "") == "PREMIUM_ECONOMY":
-                cabin_badge = '<span style="background:#f0fdfa; color:#0f766e; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">✨ Premium Economy</span> '
+                cabin_badge = '<span style="background:#f0fdfa; color:#0f766e; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">✨ Premium Economy' + ('' if live else ' (estimate)') + '</span> '
+            elif getattr(deal, "cabin_class", "") == "FIRST":
+                cabin_badge = '<span style="background:#fdf2f8; color:#9d174d; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">🥇 First Class' + ('' if live else ' (estimate)') + '</span> '
             out.append('<div style="margin:5px 0 7px;">')
             out.append(cabin_badge)
             out.append('<span style="background:#eff6ff; color:#1d4ed8; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + escape(deal.board_basis) + '</span> ')
@@ -1815,8 +1889,13 @@ def render_holiday_report(
                 out.append('<div style="color:#64748b; font-size:13px; margin-bottom:8px;"><strong style="color:#475569;">Food reviews:</strong> ' + escape(deal.food_review_summary) + '</div>')
             # Facts strip: flights | stay | December weather | BIG price
             cabin_label = f" ({deal.cabin_class.replace('_', ' ').title()})" if getattr(deal, "cabin_class", "ECONOMY") != "ECONOMY" else ""
+            # Premium cabins name a real business-capable carrier in full —
+            # never truncate to an LCC fragment. Benchmark estimates carry an
+            # explicit live-check note; only verified-exact-date is a live fare.
+            flight_carrier_display = escape(deal.airline) if cabin_is_premium else escape(deal.airline.split('/')[0].strip())
+            flight_note = "" if live else ("<br><span style=\"font-size:11px;\">estimate — live cabin check required</span>" if cabin_is_premium else "")
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#f8fafc; border-radius:8px; margin-bottom:10px;"><tr>')
-            out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights' + cabin_label + '<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(deal.airline.split('/')[0].strip()) + '</span></td>')
+            out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights' + cabin_label + '<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + flight_carrier_display + '</span>' + flight_note + '</td>')
             suite_label = deal.unit_architecture or (str(rooms_n) + ' rooms')
             out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🏨 Stay<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(suite_label) + ' · ' + str(deal.nights) + 'n</span></td>')
             if deal.sea_temp_c:
