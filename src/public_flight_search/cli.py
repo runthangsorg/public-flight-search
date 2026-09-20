@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Optional, Sequence
 
@@ -31,16 +32,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
-    if arguments and arguments[0] in {"flight-digest", "holiday-planner"}:
+    if arguments and arguments[0] in {"flight-digest", "holiday-planner", "july-holiday-planner"}:
         command = arguments.pop(0)
         dry_run = "--dry-run" in arguments
         force_send = "--force-send" in arguments
-        if set(arguments) - {"--dry-run", "--force-send"}:
-            raise SystemExit("only --dry-run and --force-send are accepted for production jobs")
+        config_path = ""
+        if "--config" in arguments:
+            idx = arguments.index("--config")
+            if idx + 1 < len(arguments):
+                config_path = arguments[idx + 1]
+                del arguments[idx:idx + 2]
+        allowed_flags = {"--dry-run", "--force-send"}
+        if set(arguments) - allowed_flags:
+            raise SystemExit("only --dry-run, --force-send, and --config are accepted for production jobs")
         if command == "flight-digest":
             run_flight_digest(dry_run=dry_run)
+        elif command == "july-holiday-planner":
+            if not config_path and not os.environ.get("JULY_HOLIDAY_SEARCH_CONFIG_JSON") and not os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON"):
+                config_path = "examples/july_holiday_config.json"
+            run_holiday_planner(dry_run=dry_run, force_send=force_send, config_path=config_path)
         else:
-            run_holiday_planner(dry_run=dry_run, force_send=force_send)
+            run_holiday_planner(dry_run=dry_run, force_send=force_send, config_path=config_path)
         return 0
     args = build_parser().parse_args(arguments)
     if not 1 <= args.max_results <= 100:

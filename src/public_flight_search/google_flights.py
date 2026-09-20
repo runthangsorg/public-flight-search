@@ -12,8 +12,10 @@ from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 import json
 import os
+import random
 import re
 import time
+import urllib.error
 import urllib.request
 from typing import Any, Iterable
 from urllib.parse import urlencode
@@ -247,9 +249,11 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
         _dbg(f"Parsed {len(offers)} offers for {origin}→{dest} {day}")
 
         if idx < len(specs) - 1:
-            delay = float(os.getenv("GOOGLE_FLIGHTS_DELAY_SECONDS", "12"))
-            _dbg(f"Waiting {delay}s before next request...")
-            time.sleep(delay)
+            base_delay = float(os.getenv("GOOGLE_FLIGHTS_DELAY_SECONDS", "12"))
+            delay = random.uniform(base_delay * 0.85, base_delay * 1.25) if base_delay > 0 else 0
+            if delay > 0:
+                _dbg(f"Waiting {delay:.1f}s before next request (jittered)...")
+                time.sleep(delay)
 
     deduped: dict[str, list[FlightOffer]] = {}
     for key, values in grouped.items():
@@ -275,10 +279,21 @@ async def search_google_flights(searches: Iterable[FlightSearch]) -> dict[str, t
     return {key: tuple(vals) for key, vals in deduped.items()}
 
 
-def _fetch_page_html(url: str) -> str | None:
-    """Fetch Google Flights page HTML via urllib with realistic headers."""
+_USER_AGENTS = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
+)
+
+
+def _fetch_page_html(url: str, retries: int = 1) -> str | None:
+    """Fetch Google Flights page HTML via urllib with realistic headers and bot evasion."""
+    ua = random.choice(_USER_AGENTS)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        "User-Agent": ua,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-GB,en-US;q=0.9,en;q=0.8",
         "Accept-Encoding": "identity",
@@ -288,16 +303,29 @@ def _fetch_page_html(url: str) -> str | None:
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1",
+        "Sec-Ch-Ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"' if "Windows" in ua else ('"macOS"' if "Macintosh" in ua else '"Linux"'),
         "DNT": "1",
         "Cookie": "SOCS=CAISHAgBEhJnd3NfMjAyNDA1MDgtMF9SQzIaAmVuIAEaBgiA_LyuBg; CONSENT=PENDING+999",
     }
     req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return resp.read().decode("utf-8", errors="replace")
-    except Exception as e:
-        _dbg(f"HTTP fetch error: {type(e).__name__}")
-        return None
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and attempt < retries:
+                backoff = random.uniform(2.0, 5.0)
+                _dbg(f"HTTP {e.code}: backing off {backoff:.1f}s before retry...")
+                time.sleep(backoff)
+                continue
+            _dbg(f"HTTP fetch error: {e.code}")
+            return None
+        except Exception as e:
+            _dbg(f"HTTP fetch error: {type(e).__name__}")
+            return None
+    return None
 
 
 class _StructuredScriptParser(HTMLParser):

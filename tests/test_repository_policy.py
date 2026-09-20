@@ -26,7 +26,7 @@ class RepositoryPolicyTests(unittest.TestCase):
 
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertNotIn("schedule:", ci)
-        for name in ("flight-digest.yml", "holiday-planner.yml"):
+        for name in ("flight-digest.yml", "holiday-planner.yml", "july-holiday-planner.yml"):
             production = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
             self.assertNotIn("pull_request:", production)
             self.assertNotIn("push:", production)
@@ -34,9 +34,11 @@ class RepositoryPolicyTests(unittest.TestCase):
 
         flight = (ROOT / ".github/workflows/flight-digest.yml").read_text(encoding="utf-8")
         holiday = (ROOT / ".github/workflows/holiday-planner.yml").read_text(encoding="utf-8")
+        july = (ROOT / ".github/workflows/july-holiday-planner.yml").read_text(encoding="utf-8")
         self.assertNotIn("HOLIDAY_SEARCH_CONFIG_JSON", flight)
         self.assertLess(flight.index("Run safety tests"), flight.index("FLIGHT_SEARCH_CONFIG_JSON"))
         self.assertLess(holiday.index("Run safety tests"), holiday.index("HOLIDAY_SEARCH_CONFIG_JSON"))
+        self.assertLess(july.index("Run safety tests"), july.index("JULY_HOLIDAY_SEARCH_CONFIG_JSON"))
 
     def test_readme_does_not_claim_browser_runtime_or_history_provenance(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

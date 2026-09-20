@@ -9,6 +9,10 @@
     ]
   },
   "cabin_class": "BUSINESS",
+  "cabin_classes": [
+    "BUSINESS",
+    "PREMIUM_ECONOMY"
+  ],
   "max_budget_gbp": 12000,
   "departure_window": [
     "06:00",

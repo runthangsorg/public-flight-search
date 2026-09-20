@@ -20,6 +20,7 @@ class HolidayDestination:
     label: str
     airports: tuple[str, ...]
     cabin_class: str = "ECONOMY"
+    cabin_classes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class HolidayConfig:
     return_dates: tuple[str, ...]
     destinations: tuple[HolidayDestination, ...]
     cabin_class: str = "ECONOMY"
+    cabin_classes: tuple[str, ...] = ()
     max_budget_gbp: float = 5000.0
 
 
@@ -500,7 +502,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     allowed = {
         "report_title", "party", "departure_window", "origins",
         "outbound_dates", "return_dates", "destinations",
-        "cabin_class", "max_budget_gbp",
+        "cabin_class", "cabin_classes", "max_budget_gbp",
     }
     if not isinstance(raw, dict) or set(raw) - allowed:
         raise ConfigError("holiday configuration contains unknown fields")
@@ -520,6 +522,17 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     if root_cabin not in valid_cabins:
         raise ConfigError(f"unsupported cabin_class: {root_cabin}")
 
+    root_cabins_raw = raw.get("cabin_classes")
+    if root_cabins_raw is not None:
+        if not isinstance(root_cabins_raw, list) or not root_cabins_raw:
+            raise ConfigError("cabin_classes must be a non-empty list")
+        root_cabins = tuple(str(c).upper() for c in root_cabins_raw)
+        for c in root_cabins:
+            if c not in valid_cabins:
+                raise ConfigError(f"unsupported cabin_class in cabin_classes: {c}")
+    else:
+        root_cabins = (root_cabin,)
+
     max_budget_raw = raw.get("max_budget_gbp", 5000.0)
     try:
         max_budget = float(max_budget_raw)
@@ -529,22 +542,36 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         raise ConfigError("max_budget_gbp must be a positive number")
 
     destination_raw = raw.get("destinations")
-    dest_allowed = {"key", "label", "airports", "cabin_class"}
+    dest_allowed = {"key", "label", "airports", "cabin_class", "cabin_classes"}
     if not isinstance(destination_raw, list) or not 1 <= len(destination_raw) <= 16:
         raise ConfigError("destinations must contain 1-16 entries")
     destinations = []
     for item in destination_raw:
         if not isinstance(item, dict) or set(item) - dest_allowed:
             continue
-        dest_cabin = str(item.get("cabin_class", root_cabin)).upper()
-        if dest_cabin not in valid_cabins:
-            raise ConfigError(f"unsupported destination cabin_class: {dest_cabin}")
+        dest_cabins_raw = item.get("cabin_classes")
+        if dest_cabins_raw is not None:
+            if not isinstance(dest_cabins_raw, list) or not dest_cabins_raw:
+                raise ConfigError("destination cabin_classes must be a non-empty list")
+            dest_cabins = tuple(str(c).upper() for c in dest_cabins_raw)
+            for c in dest_cabins:
+                if c not in valid_cabins:
+                    raise ConfigError(f"unsupported destination cabin_class in cabin_classes: {c}")
+            effective_dest_cabin = dest_cabins[0]
+        else:
+            dest_cabin = str(item.get("cabin_class", root_cabin)).upper()
+            if dest_cabin not in valid_cabins:
+                raise ConfigError(f"unsupported destination cabin_class: {dest_cabin}")
+            dest_cabins = (dest_cabin,) if "cabin_class" in item else root_cabins
+            effective_dest_cabin = dest_cabin
+
         destinations.append(
             HolidayDestination(
                 key=_text(item.get("key"), "destination key", 48),
                 label=_text(item.get("label"), "destination label"),
                 airports=_airports(item.get("airports"), "destination airports"),
-                cabin_class=dest_cabin,
+                cabin_class=effective_dest_cabin,
+                cabin_classes=dest_cabins,
             )
         )
     if len(destinations) != len(destination_raw):
@@ -573,6 +600,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         return_dates=return_dates,
         destinations=tuple(destinations),
         cabin_class=root_cabin,
+        cabin_classes=root_cabins,
         max_budget_gbp=max_budget,
     )
 
@@ -1487,135 +1515,137 @@ def collect_holiday_deals(
     nights = (ret_dt - dep_dt).days
     uk_ground = UK_GROUND_RETURN_GBP.get(config.origins[0], 16.50)
 
+    cabin_multipliers = {
+        "ECONOMY": 1.0,
+        "PREMIUM_ECONOMY": 1.6,
+        "BUSINESS": 2.5,
+        "FIRST": 4.5,
+    }
+
     for dest in config.destinations:
         resorts, dropped = filter_resorts(WINTER_RESORT_CATALOG.get(dest.key.lower(), []))
         filtered_out.extend(dropped)
-        cabin = getattr(dest, "cabin_class", "") or getattr(config, "cabin_class", "ECONOMY")
-        cabin_multipliers = {
-            "ECONOMY": 1.0,
-            "PREMIUM_ECONOMY": 1.6,
-            "BUSINESS": 2.5,
-            "FIRST": 4.5,
-        }
-        flight_mult = cabin_multipliers.get(cabin.upper(), 1.0)
-        for resort in resorts:
-            airport = resort["airport"]
-            flight_cost = round(resort["flight_benchmark_5pax_gbp"] * flight_mult, 2)
-            # Luxury cabin displays a carrier that actually sells that cabin.
-            # Never present SunExpress/Ryanair/easyJet/Jet2 as "Business".
-            display_airline = cabin_carrier(
-                airport=airport, cabin=cabin, economy_carrier=resort["airline"]
-            )
-            # Live evidence must be a WHOLE-PARTY, exact-date amount to be
-            # used at all. A per-person figure is never multiplied up into
-            # a party total: deriving one and stamping it verified was the
-            # bug this guard exists to make unrepeatable.
-            evidence = live_flight_offers.get(airport) if live_flight_offers else None
-            live_used = bool(evidence is not None and evidence.promotable)
-            if live_used and evidence is not None:
-                flight_cost = evidence.total_gbp
-            flight_basis = (
-                evidence.basis
-                if (live_used and evidence is not None)
-                else ("benchmark_supplied" if cabin.upper() == "ECONOMY" else f"benchmark_supplied_{cabin.lower()}")
-            )
-
-            # ONE family unit pricing (strict mandate) with suite premium.
-            arch = SUITE_ARCHITECTURE[resort["name"]]
-            hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
-            total_pkg = round(flight_cost + hotel_cost, 2)
-            price_pp = round(total_pkg / travellers, 2)
-            transfer = float(resort.get("transfer_gbp", 30.0))
-            true_d2d = round(total_pkg + uk_ground + transfer, 2)
-            # REAL discount baseline: the SAME suite, same nights/party, at
-            # the resort's summer peak (Jul/Aug school-holiday highs), in the
-            # SAME cabin so a Business December total is compared against a
-            # Business peak total — never against an Economy peak.
-            peak_hotel = round(arch["suite_peak_nightly_gbp"] * nights, 2)
-            peak_flight = round(resort["peak_summer_flight_5pax_gbp"] * flight_mult, 2)
-            peak_total = round(peak_flight + peak_hotel, 2)
-            # STRICT: both measures must clear the ceiling.
-            under_budget = total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
-
-            if under_budget:
-                flight_link = build_google_flights_roundtrip_url(
-                    origin=config.origins[0],
-                    destination=airport,
-                    outbound_date=target_outbound,
-                    return_date=target_return,
-                    travellers=travellers,
-                    cabin_class=cabin,
+        dest_cabins = getattr(dest, "cabin_classes", ()) or (getattr(dest, "cabin_class", "") or getattr(config, "cabin_class", "ECONOMY"),)
+        for cabin in dest_cabins:
+            flight_mult = cabin_multipliers.get(cabin.upper(), 1.0)
+            for resort in resorts:
+                airport = resort["airport"]
+                flight_cost = round(resort["flight_benchmark_5pax_gbp"] * flight_mult, 2)
+                # Luxury cabin displays a carrier that actually sells that cabin.
+                # Never present SunExpress/Ryanair/easyJet/Jet2 as "Business".
+                display_airline = cabin_carrier(
+                    airport=airport, cabin=cabin, economy_carrier=resort["airline"]
                 )
-                deals.append(
-                    PackageDeal(
-                        resort_name=resort["name"],
-                        destination_label=resort["destination_label"],
-                        destination_key=dest.key,
-                        star_rating=resort["stars"],
-                        board_basis=resort["board"],
+                # Live evidence must be a WHOLE-PARTY, exact-date amount to be
+                # used at all. A per-person figure is never multiplied up into
+                # a party total: deriving one and stamping it verified was the
+                # bug this guard exists to make unrepeatable.
+                evidence = live_flight_offers.get(airport) if live_flight_offers else None
+                live_used = bool(evidence is not None and evidence.promotable)
+                if live_used and evidence is not None:
+                    flight_cost = evidence.total_gbp
+                flight_basis = (
+                    evidence.basis
+                    if (live_used and evidence is not None)
+                    else ("benchmark_supplied" if cabin.upper() == "ECONOMY" else f"benchmark_supplied_{cabin.lower()}")
+                )
+
+                # ONE family unit pricing (strict mandate) with suite premium.
+                arch = SUITE_ARCHITECTURE[resort["name"]]
+                hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
+                total_pkg = round(flight_cost + hotel_cost, 2)
+                price_pp = round(total_pkg / travellers, 2)
+                transfer = float(resort.get("transfer_gbp", 30.0))
+                true_d2d = round(total_pkg + uk_ground + transfer, 2)
+                # REAL discount baseline: the SAME suite, same nights/party, at
+                # the resort's summer peak (Jul/Aug school-holiday highs), in the
+                # SAME cabin so a Business December total is compared against a
+                # Business peak total — never against an Economy peak.
+                peak_hotel = round(arch["suite_peak_nightly_gbp"] * nights, 2)
+                peak_flight = round(resort["peak_summer_flight_5pax_gbp"] * flight_mult, 2)
+                peak_total = round(peak_flight + peak_hotel, 2)
+                # STRICT: both measures must clear the ceiling.
+                under_budget = total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
+
+                if under_budget:
+                    flight_link = build_google_flights_roundtrip_url(
+                        origin=config.origins[0],
+                        destination=airport,
                         outbound_date=target_outbound,
                         return_date=target_return,
-                        nights=nights,
-                        airline=display_airline,
-                        origin_airports=config.origins,
-                        destination_airport=airport,
-                        flight_price_total_gbp=flight_cost,
-                        flight_price_basis=flight_basis,
+                        travellers=travellers,
                         cabin_class=cabin,
-                        hotel_price_total_gbp=hotel_cost,
-                        total_package_price_gbp=total_pkg,
-                        price_per_person_gbp=price_pp,
-                        flight_booking_url=flight_link,
-                        hotel_booking_url=resort["hotel_url"],
-                        is_under_budget=True,
-                        highlights=resort["highlights"],
-                        uk_ground_gbp=uk_ground,
-                        transfer_gbp=transfer,
-                        true_d2d_gbp=true_d2d,
-                        dec_ambient_c=resort.get("dec_ambient_c", (0, 0)),
-                        sea_temp_c=resort.get("sea_temp_c", 0),
-                        beach=resort.get("beach", ""),
-                        confidence=(
-                            "verified-exact-date"
-                            if live_used
-                            else resort.get("confidence", "market-supported")
-                        ),
-                        source_url=(
-                            evidence.source_url
-                            if (live_used and evidence is not None)
-                            else resort.get("hotel_url", "")
-                        ),
-                        peak_summer_total_gbp=peak_total,
-                        unit_architecture=arch["suite_type"],
-                        **_criteria_fields(resort["name"], price_pp),
-                        # STRICT mode: links request ONE unit for 5 (family
-                        # suite/interconnecting), never 3 separate rooms.
-                        compare_url=build_google_hotels_property_url(
-                            resort_name=resort["name"],
-                            destination_key=dest.key,
-                            departure_date=target_outbound,
-                            return_date=target_return,
-                            adults=travellers,
-                            rooms=arch.get("rooms_in_unit", 1),
-                        ),
-                        booking_deep_url=build_booking_com_property_url(
-                            resort_name=resort["name"],
-                            destination_key=dest.key,
-                            departure_date=target_outbound,
-                            return_date=target_return,
-                            adults=travellers,
-                            rooms=arch.get("rooms_in_unit", 1),
-                        ),
-                        expedia_deep_url=build_expedia_property_url(
-                            resort_name=resort["name"],
-                            destination_key=dest.key,
-                            departure_date=target_outbound,
-                            return_date=target_return,
-                            adults=travellers,
-                            rooms=arch.get("rooms_in_unit", 1),
-                        ),
                     )
-                )
+                    deals.append(
+                        PackageDeal(
+                            resort_name=resort["name"],
+                            destination_label=resort["destination_label"],
+                            destination_key=dest.key,
+                            star_rating=resort["stars"],
+                            board_basis=resort["board"],
+                            outbound_date=target_outbound,
+                            return_date=target_return,
+                            nights=nights,
+                            airline=display_airline,
+                            origin_airports=config.origins,
+                            destination_airport=airport,
+                            flight_price_total_gbp=flight_cost,
+                            flight_price_basis=flight_basis,
+                            cabin_class=cabin,
+                            hotel_price_total_gbp=hotel_cost,
+                            total_package_price_gbp=total_pkg,
+                            price_per_person_gbp=price_pp,
+                            flight_booking_url=flight_link,
+                            hotel_booking_url=resort["hotel_url"],
+                            is_under_budget=True,
+                            highlights=resort["highlights"],
+                            uk_ground_gbp=uk_ground,
+                            transfer_gbp=transfer,
+                            true_d2d_gbp=true_d2d,
+                            dec_ambient_c=resort.get("dec_ambient_c", (0, 0)),
+                            sea_temp_c=resort.get("sea_temp_c", 0),
+                            beach=resort.get("beach", ""),
+                            confidence=(
+                                "verified-exact-date"
+                                if live_used
+                                else resort.get("confidence", "market-supported")
+                            ),
+                            source_url=(
+                                evidence.source_url
+                                if (live_used and evidence is not None)
+                                else resort.get("hotel_url", "")
+                            ),
+                            peak_summer_total_gbp=peak_total,
+                            unit_architecture=arch["suite_type"],
+                            **_criteria_fields(resort["name"], price_pp),
+                            # STRICT mode: links request ONE unit for 5 (family
+                            # suite/interconnecting), never 3 separate rooms.
+                            compare_url=build_google_hotels_property_url(
+                                resort_name=resort["name"],
+                                destination_key=dest.key,
+                                departure_date=target_outbound,
+                                return_date=target_return,
+                                adults=travellers,
+                                rooms=arch.get("rooms_in_unit", 1),
+                            ),
+                            booking_deep_url=build_booking_com_property_url(
+                                resort_name=resort["name"],
+                                destination_key=dest.key,
+                                departure_date=target_outbound,
+                                return_date=target_return,
+                                adults=travellers,
+                                rooms=arch.get("rooms_in_unit", 1),
+                            ),
+                            expedia_deep_url=build_expedia_property_url(
+                                resort_name=resort["name"],
+                                destination_key=dest.key,
+                                departure_date=target_outbound,
+                                return_date=target_return,
+                                adults=travellers,
+                                rooms=arch.get("rooms_in_unit", 1),
+                            ),
+                        )
+                    )
 
     deals.sort(key=lambda d: (-d.vs_peak_pct, -d.value_score, d.total_package_price_gbp))
     # Stamp the value-score rank (1 = best) so history tracks movement in the
@@ -1844,7 +1874,10 @@ def render_holiday_report(
 
         rooms_n = len(config.rooms)
         ordered = sorted(deals, key=lambda d: d.total_package_price_gbp)
-        for deal in ordered:
+        # Gmail clips emails over 102 KB. Cap rendered cards to top 10 to keep
+        # HTML payload strictly under 70 KB while all deals are tracked in history.
+        rendered_deals = ordered[:10]
+        for deal in rendered_deals:
             stars_str = '★' * deal.star_rating + '☆' * (5 - deal.star_rating)
             img = DEST_IMAGES.get(deal.destination_key.lower(), DEST_IMAGES["hurghada"])
             live = deal.confidence == 'verified-exact-date'
@@ -1934,6 +1967,11 @@ def render_holiday_report(
             out.append('<a href="' + escape(guide_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none;">' + guide_label + '</a>')
             out.append('</td>')
             out.append('</tr></table>')
+
+        if len(ordered) > len(rendered_deals):
+            out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:10px 0 16px 0;"><tr><td align="center" style="padding:10px; color:#64748b; font-size:13px;">')
+            out.append('Showing top ' + str(len(rendered_deals)) + ' of ' + str(len(ordered)) + ' packages under budget (ranked by total price). All observations tracked in price history.')
+            out.append('</td></tr></table>')
 
     if not deals:
         out.append('<h2 style="margin:0 0 12px 0; color:#0f172a; font-size:22px; font-weight:800;">Package Deal Search Links</h2>')

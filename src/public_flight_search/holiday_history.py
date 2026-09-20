@@ -37,11 +37,13 @@ def _run_id() -> str:
     return f"run-{stamp}-{os.getpid()}"
 
 
-def _fingerprint(resort: str, dest_key: str, outbound: str, return_: str, unit: str = "") -> str:
-    # `unit` (room architecture) is part of the identity: quoting a 2-bed
-    # family suite is NOT the same product as 3 separate rooms, and their
-    # price histories must stay separate series.
+def _fingerprint(resort: str, dest_key: str, outbound: str, return_: str, unit: str = "", cabin: str = "") -> str:
+    # `unit` (room architecture) and `cabin` are part of the identity: quoting
+    # a 2-bed family suite in Business is NOT the same product as Economy or 3
+    # separate rooms, and their price histories must stay separate series.
     raw = f"{resort}|{dest_key}|{outbound}|{return_}|{unit}"
+    if cabin and cabin.upper() != "ECONOMY":
+        raw += f"|{cabin.upper()}"
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -52,6 +54,7 @@ def _deal_fingerprint(deal: Any) -> str:
         str(getattr(deal, "outbound_date", "")),
         str(getattr(deal, "return_date", "")),
         str(getattr(deal, "unit_architecture", "")),
+        str(getattr(deal, "cabin_class", "")),
     )
 
 
@@ -87,6 +90,7 @@ def append_history(
                     "return_date": str(getattr(d, "return_date", "")),
                     "nights": getattr(d, "nights", 0),
                     "unit_architecture": str(getattr(d, "unit_architecture", "")),
+                    "cabin_class": str(getattr(d, "cabin_class", "ECONOMY")),
                     "total_package_price_gbp": total,
                     "price_per_person_gbp": float(getattr(d, "price_per_person_gbp", 0.0)),
                     "flight_price_total_gbp": float(getattr(d, "flight_price_total_gbp", 0.0)),

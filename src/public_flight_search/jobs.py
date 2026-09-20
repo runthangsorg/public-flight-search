@@ -164,8 +164,33 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     return result
 
 
-def run_holiday_planner(*, dry_run: bool, force_send: bool = False) -> dict[str, int | bool]:
-    config = load_holiday_config(os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON", ""))
+def run_holiday_planner(
+    *,
+    dry_run: bool,
+    force_send: bool = False,
+    config_path: str = "",
+) -> dict[str, int | bool]:
+    payload = ""
+    if config_path and os.path.exists(config_path):
+        with open(config_path, encoding="utf-8") as handle:
+            payload = handle.read()
+    if not payload:
+        payload = (
+            os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON")
+            or os.environ.get("JULY_HOLIDAY_SEARCH_CONFIG_JSON")
+            or ""
+        )
+    if not payload and os.environ.get("HOLIDAY_CONFIG_PATH"):
+        cpath = os.environ["HOLIDAY_CONFIG_PATH"]
+        if os.path.exists(cpath):
+            with open(cpath, encoding="utf-8") as handle:
+                payload = handle.read()
+    if not payload:
+        dec_example = Path(__file__).parents[2] / "examples" / "dec_holiday_config.json"
+        if dec_example.exists():
+            payload = dec_example.read_text(encoding="utf-8")
+
+    config = load_holiday_config(payload)
     # Bounded live flight injection (GHA-safe HTTP only, no browser).
     # Disabled by default; enable with HOLIDAY_LIVE_FLIGHTS=1. Full
     # Camoufox/FlareSolverr package verification stays in the private
@@ -188,8 +213,10 @@ def run_holiday_planner(*, dry_run: bool, force_send: bool = False) -> dict[str,
     # job runs, so trends, chips and the change digest describe real
     # movement instead of 'first time tracked'. Dry runs ignore memory
     # entirely (a dry run must reflect a fresh build, never prior state).
+    is_july = "july" in config.report_title.lower() or any("-07-" in d for d in config.outbound_dates)
+    default_history_name = "july_holiday_price_history.jsonl" if is_july else "holiday_price_history.jsonl"
     history_path = Path(
-        os.environ.get("HOLIDAY_HISTORY_PATH", "data/holiday_price_history.jsonl")
+        os.environ.get("HOLIDAY_HISTORY_PATH", f"data/{default_history_name}")
     )
     seeded_rows = 0 if dry_run else len(read_history(path=history_path))
     # Trends are computed BEFORE today's observation is appended, so the
@@ -223,8 +250,10 @@ def run_holiday_planner(*, dry_run: bool, force_send: bool = False) -> dict[str,
         # are price-quiet: "your best-value pick changed" justifies the send.
         or bool(digest.get("value_changes"))
     )
+    default_subject = "July Summer Luxury Holiday Watch" if is_july else "December Holiday Package Watch"
+    subject = os.environ.get("HOLIDAY_EMAIL_SUBJECT") or default_subject
     if send_email:
-        send_html(os.environ.get("HOLIDAY_EMAIL_SUBJECT", "Holiday package watch"), html)
+        send_html(subject, html)
     date_combination_count = len(_date_pairs(config))
     result = {
         "destination_count": len(config.destinations),
