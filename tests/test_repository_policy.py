@@ -40,6 +40,20 @@ class RepositoryPolicyTests(unittest.TestCase):
         self.assertLess(holiday.index("Run safety tests"), holiday.index("HOLIDAY_SEARCH_CONFIG_JSON"))
         self.assertLess(july.index("Run safety tests"), july.index("JULY_HOLIDAY_SEARCH_CONFIG_JSON"))
 
+    def test_holiday_planners_seed_live_fare_evidence_before_build(self):
+        # A planner that builds without the live-evidence seed silently
+        # degrades every card to benchmarks; pin the seed in both planners.
+        for name in ("holiday-planner.yml", "july-holiday-planner.yml"):
+            workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            self.assertIn(
+                "cp /tmp/history-seed/data/holiday_live_evidence.json", workflow, name
+            )
+            self.assertLess(
+                workflow.index("holiday_live_evidence.json"),
+                workflow.index("Build and optionally deliver"),
+                name,
+            )
+
     def test_readme_does_not_claim_browser_runtime_or_history_provenance(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("browser-backed", readme)
