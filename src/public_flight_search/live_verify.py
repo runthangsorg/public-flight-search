@@ -281,6 +281,14 @@ def load_live_flight_evidence(
         if hunted_travellers != int(getattr(config, "travellers", 0)):
             _warn_skip(airport, f"party {hunted_travellers} != report party {config.travellers}")
             continue
+        # Origin must match too: a whole-party fare read from a different
+        # departure airport answers a different question (and the report's
+        # UK ground cost is origin-specific).
+        entry_origin = str(item.get("origin", "")).strip().upper()
+        report_origin = str(getattr(config, "origins", [""])[0]).strip().upper()
+        if entry_origin and entry_origin != report_origin:
+            _warn_skip(airport, f"origin {entry_origin} != report origin {report_origin}")
+            continue
 
         entry = LiveFareEvidence(
             airport=airport,

@@ -231,6 +231,14 @@ class TestEvidenceFileLoader(unittest.TestCase):
         self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
         self.assertIn("party", consume_skip_log()[0])
 
+    def test_wrong_origin_is_rejected(self):
+        # A whole-party fare read from a different departure airport answers
+        # a different question, and the report's UK ground cost is origin-
+        # specific — so origin must match too.
+        path = self._write([self._rec(origin="LGW")])
+        self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
+        self.assertIn("origin", consume_skip_log()[0])
+
     def test_stale_observation_is_rejected(self):
         path = self._write([self._rec(observed_at=self.stale)])
         self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
