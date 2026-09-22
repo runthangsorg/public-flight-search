@@ -469,10 +469,12 @@ class EmailPresentationTests(unittest.TestCase):
         class _FakeDeal:
             vs_peak_pct = 52
             dec_ambient_c = (15, 17)
+            outbound_date = "2026-12-22"  # winter trip → floor applies
 
         class _WarmDeal:
             vs_peak_pct = 40
             dec_ambient_c = (24, 26)
+            outbound_date = "2026-12-22"
 
         # Ascending-sort key: the MORE NEGATIVE value ranks first. Cold 52%
         # de-weights to 26 → key −26; warm 40% keeps −40. Warm sorts first.
@@ -480,6 +482,40 @@ class EmailPresentationTests(unittest.TestCase):
             weather_weighted_discount_pct(_WarmDeal()),
             weather_weighted_discount_pct(_FakeDeal()),
         )
+
+    def test_weather_floor_skips_summer_trips(self):
+        """The December-temperature floor is a WINTER-search rule: a July
+        trip to a resort that is 15°C in December is 30°C+ in July and must
+        not be penalised."""
+        from public_flight_search.holidays import compute_value_score
+
+        july_cold_resort = compute_value_score(
+            true_pp=500.0, luxury=8, food=8, winter=7, mosque=8, activities=7,
+            flight_quality=8, indoor_activity_count=2, heated_indoor_pool=True,
+            dec_avg_temp_c=15.0,
+        )
+        dec_trip = compute_value_score(
+            true_pp=500.0, luxury=8, food=8, winter=7, mosque=8, activities=7,
+            flight_quality=8, indoor_activity_count=2, heated_indoor_pool=True,
+            dec_avg_temp_c=15.0,
+        )
+        # Same inputs — but the JULY config's cards are priced on a July
+        # departure, so collect() must pass dec_avg_temp_c=None for them.
+        root = Path(__file__).parents[1]
+        july_config = load_holiday_config(
+            (root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
+        )
+        july_deals = collect_holiday_deals(july_config)
+        self.assertTrue(july_deals)
+        self.assertTrue(all(d.outbound_date[5:7] == "07" for d in july_deals))
+        # July deals score as if dec_avg_temp_c=None: an Antalya resort's
+        # July value score must equal the unpenalised computation.
+        from public_flight_search.holidays import _dec_temp_for_floor
+        self.assertIsNone(_dec_temp_for_floor("2027-07-05", 15.0))
+        self.assertIsNone(_dec_temp_for_floor("2027-04-10", 15.0))  # summer boundary
+        self.assertEqual(_dec_temp_for_floor("2026-12-22", 15.0), 15.0)
+        self.assertEqual(_dec_temp_for_floor("2026-11-15", 15.0), 15.0)
+        self.assertEqual(_dec_temp_for_floor("2027-03-01", 15.0), 15.0)  # Mar = winter trip
 
 
 if __name__ == "__main__":

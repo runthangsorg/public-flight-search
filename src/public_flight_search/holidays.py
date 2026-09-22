@@ -733,6 +733,26 @@ def _classify_deal_price(true_pp: float) -> str:
 #: (21–26°C) are the ones that should float up for winter searches.
 WINTER_SUN_FLOOR_C: float = 20.0
 
+#: Months in which the trip itself experiences winter (Nov–Mar). The
+#: December-temperature floor exists to stop a cold beach riding a big
+#: discount up a WINTER search; a July trip to the same resort is 30°C+ and
+#: must not be penalised for December weather.
+WINTER_TRIP_MONTHS: frozenset[int] = frozenset({11, 12, 1, 2, 3})
+
+
+def _dec_temp_for_floor(outbound_date: str, dec_avg_temp_c: float) -> Optional[float]:
+    """December average the weather floor may use for THIS trip, or None.
+
+    Winter trips (Nov–Mar departures) get the floor; summer trips are
+    exempt — the mandate penalises cold WINTER beach destinations, not
+    resorts that are merely cold in a month the reader isn't travelling.
+    """
+    try:
+        month = int(outbound_date[5:7])
+    except (TypeError, ValueError, IndexError):
+        return dec_avg_temp_c
+    return dec_avg_temp_c if month in WINTER_TRIP_MONTHS else None
+
 
 def compute_value_score(
     *,
@@ -1666,8 +1686,9 @@ def collect_holiday_deals(
                             **_criteria_fields(
                                 resort["name"],
                                 price_pp,
-                                dec_avg_temp_c=float(
-                                    resort.get("dec_ambient_c", (0, 0))[0]
+                                dec_avg_temp_c=_dec_temp_for_floor(
+                                    target_outbound,
+                                    float(resort.get("dec_ambient_c", (0, 0))[0]),
                                 ),
                             ),
                             # STRICT mode: links request ONE unit for 5 (family
@@ -1762,7 +1783,8 @@ def weather_weighted_discount_pct(deal: PackageDeal) -> float:
     ``sorted`` use.
     """
     pct = float(deal.vs_peak_pct)
-    if deal.dec_ambient_c[0] < WINTER_SUN_FLOOR_C:
+    floor_temp = _dec_temp_for_floor(deal.outbound_date, float(deal.dec_ambient_c[0]))
+    if floor_temp is not None and floor_temp < WINTER_SUN_FLOOR_C:
         pct *= 0.5
     return -pct
 
