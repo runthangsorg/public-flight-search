@@ -424,7 +424,7 @@ class EmailPresentationTests(unittest.TestCase):
             # & in names is entity-escaped in HTML. A hotel may be absent
             # from the rendered top-10 (count 0) but must NEVER render twice.
             self.assertLessEqual(html.count(">" + escape(name) + "<"), 1, f"{name} rendered more than once")
-        self.assertIn("Optional flight upgrades", html)
+        self.assertIn("Other cabin options for the same hotel", html)
         self.assertIn("+£", html)  # exact delta per upgrade
         # Card count == unique hotels rendered (≤10).
         self.assertLessEqual(html.count("Compare all vendors"), 10)

@@ -2070,7 +2070,16 @@ def render_holiday_report(
             suite_label = deal.unit_architecture or (str(rooms_n) + ' rooms')
             out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🏨 Stay<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(suite_label) + ' · ' + str(deal.nights) + 'n</span></td>')
             if deal.sea_temp_c:
-                out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🌡️ December<br><strong style="color:#0f172a; font-size:16px;">' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C</strong><br><span style="font-size:12px;">sea ' + str(deal.sea_temp_c) + '°C</span></td>')
+                # Weather-floor honesty (2026-09-22 mandate): on winter trips
+                # below the 20°C floor, say so ON the temperature cell — the
+                # discount is real but the beach may not be usable.
+                floor_temp = _dec_temp_for_floor(deal.outbound_date, float(deal.dec_ambient_c[0]))
+                floor_note = (
+                    '<br><span style="font-size:11px; color:#b45309;">below 20°C winter-sun floor — ranked accordingly</span>'
+                    if floor_temp is not None and floor_temp < WINTER_SUN_FLOOR_C
+                    else ''
+                )
+                out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🌡️ December<br><strong style="color:#0f172a; font-size:16px;">' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C</strong><br><span style="font-size:12px;">sea ' + str(deal.sea_temp_c) + '°C</span>' + floor_note + '</td>')
             else:
                 out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🌡️ December<br><strong style="color:#0f172a; font-size:16px;">' + str(deal.dec_ambient_c[0]) + '–' + str(deal.dec_ambient_c[1]) + '°C</strong><br><span style="font-size:12px;">city stay, no sea swimming</span></td>')
             out.append('<td align="right" valign="middle" style="padding:8px 10px;">')
@@ -2079,22 +2088,28 @@ def render_holiday_report(
             out.append('<div style="color:#b45309; font-size:12px; white-space:nowrap;">summer peak £' + f'{deal.peak_summer_total_gbp:,.0f}' + '</div>')
             out.append('</td>')
             out.append('</tr></table>')
-            # ONE CARD PER HOTEL: premium cabins surface here as optional
-            # add-ons with the exact total to expect — never as duplicate
-            # cards. Live-verified upgrades say so; estimates stay quiet.
+            # ONE CARD PER HOTEL: other cabins surface here as alternates
+            # for the same hotel & dates — never as duplicate cards. An
+            # Economy line CAN appear (e.g. its live read exceeds a stale
+            # premium benchmark), so "upgrade" is the wrong frame: the
+            # header is neutral and Economy carries its own badge. Deltas
+            # render signed: +£ dearer, −£ cheaper.
             upgrades = [x for x in entry["group"] if x.cabin_class != deal.cabin_class]
             if upgrades:
-                out.append('<div style="margin:0 0 10px 0; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;"><strong style="color:#0f172a; font-size:13px;">Optional flight upgrades</strong>')
+                out.append('<div style="margin:0 0 10px 0; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;"><strong style="color:#0f172a; font-size:13px;">Other cabin options for the same hotel &amp; dates</strong>')
                 upgrade_badges = {
                     "BUSINESS": "💼 Business Class",
                     "PREMIUM_ECONOMY": "✨ Premium Economy",
                     "FIRST": "🥇 First",
+                    "ECONOMY": "🏷️ Economy",
                 }
+                live_mark = ''
                 for up in sorted(upgrades, key=lambda x: x.total_package_price_gbp):
                     delta = up.total_package_price_gbp - deal.total_package_price_gbp
                     badge = upgrade_badges.get(up.cabin_class, up.cabin_class)
+                    delta_str = '+£' + f'{delta:,.0f}' if delta >= 0 else '−£' + f'{abs(delta):,.0f}'
                     live_mark = ' · <span style="color:#166534; font-weight:700;">🟢 live observed</span>' if up.confidence == 'verified-exact-date' else ''
-                    out.append('<div style="margin-top:4px; color:#475569;">' + badge + ' +£' + f'{delta:,.0f}' + ' → £' + f'{up.total_package_price_gbp:,.0f}' + ' total · ' + escape(up.airline.split('/')[0].strip()) + live_mark + '</div>')
+                    out.append('<div style="margin-top:4px; color:#475569;">' + badge + ' ' + delta_str + ' → £' + f'{up.total_package_price_gbp:,.0f}' + ' total · ' + escape(up.airline.split('/')[0].strip()) + live_mark + '</div>')
                 out.append('</div>')
             # Property-targeted actions: book THIS hotel dated, or compare
             # every vendor's price for it on one card.

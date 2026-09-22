@@ -69,7 +69,8 @@ class HolidayJobTests(unittest.TestCase):
         send.assert_called_once()  # only the first run emailed
 
     def test_price_drop_re_sends(self):
-        """A drop vs last report always re-sends, even same-day."""
+        """A drop vs last report re-sends once the cooldown has passed
+        (cooldown explicitly disabled here to isolate the drop rule)."""
         root = Path(__file__).parents[1]
         payload = (root / "examples" / "dec_holiday_config.json").read_text()
         send = self._patch_smtp()
@@ -77,6 +78,7 @@ class HolidayJobTests(unittest.TestCase):
             env = {
                 "HOLIDAY_SEARCH_CONFIG_JSON": payload,
                 "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "h.jsonl"),
+                "HOLIDAY_EMAIL_COOLDOWN_MINUTES": "0",
             }
             with patch.dict(os.environ, env):
                 first = run_holiday_planner(dry_run=False)
@@ -93,6 +95,36 @@ class HolidayJobTests(unittest.TestCase):
         self.assertTrue(third["email_sent"])
         self.assertFalse(third["send_skipped_no_change"])
         self.assertEqual(send.call_count, 2)
+
+    def test_cooldown_suppresses_rapid_refire_even_on_drop(self):
+        """2026-09-22: 3 emails landed in 35 minutes while hunt batches
+        landed (each batch produced benchmark→live drops). A reader-worthy
+        change no longer re-sends within the cooldown window; the next
+        scheduled run carries it."""
+        root = Path(__file__).parents[1]
+        payload = (root / "examples" / "dec_holiday_config.json").read_text()
+        send = self._patch_smtp()
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HOLIDAY_SEARCH_CONFIG_JSON": payload,
+                "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "h.jsonl"),
+            }
+            with patch.dict(os.environ, env):
+                first = run_holiday_planner(dry_run=False)
+                self.assertTrue(first["email_sent"])
+                history_file = Path(env["HOLIDAY_HISTORY_PATH"])
+                rows = [json.loads(l) for l in history_file.read_text().splitlines() if l.strip()]
+                target = rows[-1]
+                target["total_package_price_gbp"] -= 200.0
+                rows.append(target)
+                history_file.write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n")
+                rapid = run_holiday_planner(dry_run=False)
+                self.assertFalse(rapid["email_sent"])
+                self.assertIn("cooldown", rapid["email_cooldown_reason"])
+                # force_send still overrides the cooldown.
+                forced = run_holiday_planner(dry_run=False, force_send=True)
+                self.assertTrue(forced["email_sent"])
+        self.assertEqual(send.call_count, 2)  # first + forced; rapid suppressed
 
 
 class FlightJobTests(unittest.TestCase):

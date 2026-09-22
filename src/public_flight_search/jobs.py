@@ -261,6 +261,27 @@ def run_holiday_planner(
         # are price-quiet: "your best-value pick changed" justifies the send.
         or bool(digest.get("value_changes"))
     )
+    # SEND COOLDOWN (2026-09-22: 3 near-identical emails in 35 minutes while
+    # hunt batches landed): a reader-worthy change no longer sends if the
+    # last email went out less than HOLIDAY_EMAIL_COOLDOWN_MINUTES ago
+    # (default 180). force_send still overrides; dry runs never reach here.
+    cooldown_minutes = float(os.environ.get("HOLIDAY_EMAIL_COOLDOWN_MINUTES", "180"))
+    cooldown_reason = ""
+    if send_email and not force_send and last_prior and cooldown_minutes > 0:
+        try:
+            last_dt = datetime.fromisoformat(last_prior.replace("Z", "+00:00"))
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            age_minutes = (datetime.now(timezone.utc) - last_dt).total_seconds() / 60.0
+            if age_minutes < cooldown_minutes:
+                send_email = False
+                cooldown_reason = (
+                    f"last email {age_minutes:.0f}m ago < {cooldown_minutes:.0f}m cooldown"
+                )
+        except ValueError:
+            pass  # unparseable timestamp: never suppress on bad data
+    if cooldown_reason:
+        print(f"email suppressed by cooldown: {cooldown_reason}")
     default_subject = "July Summer Luxury Holiday Watch" if is_july else "December Holiday Package Watch"
     subject = os.environ.get("HOLIDAY_EMAIL_SUBJECT") or default_subject
     if send_email:
@@ -286,6 +307,7 @@ def run_holiday_planner(
         "send_skipped_no_change": (not dry_run) and not send_email,
         "last_prior_observation": last_prior,
         "email_sent": send_email,
+        "email_cooldown_reason": cooldown_reason,
     }
     print(json.dumps(result, sort_keys=True))
     return result
