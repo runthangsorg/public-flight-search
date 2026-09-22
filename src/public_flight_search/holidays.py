@@ -1920,9 +1920,12 @@ def render_holiday_report(
             under = 5000.0 - deal.total_package_price_gbp
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate; border-spacing:0; margin:0 0 14px 0; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">')
             out.append('<tr>')
-            # Left: destination photo (hotel-specific photos are not on free CDNs)
+            # Left: destination-area photo with an HONEST caption. The image
+            # is the destination (free-licensed Commons), not the hotel —
+            # saying so is the difference between "illustrative" and "fake".
             out.append('<td width="260" valign="top" style="padding:0; line-height:0;">')
-            out.append('<img src="' + escape(img, quote=True) + '" alt="' + escape(deal.destination_key) + '" width="260" height="208" style="width:260px; height:208px; object-fit:cover; display:block; border-radius:11px 0 0 11px;">')
+            out.append('<img src="' + escape(img, quote=True) + '" alt="' + escape(deal.destination_label) + ' area" width="260" height="184" style="width:260px; height:184px; object-fit:cover; display:block; border-radius:11px 0 0 11px;">')
+            out.append('<div style="width:260px; box-sizing:border-box; padding:4px 10px 5px 10px; background:#f1f5f9; color:#64748b; font-size:10px; line-height:1.4; border-radius:0 0 0 11px;">📷 ' + escape(deal.destination_label) + ' — area photo, not the hotel</div>')
             out.append('</td>')
             # Right: everything a booker needs, scannable in one glance
             out.append('<td valign="top" style="padding:16px 20px;">')

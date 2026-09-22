@@ -379,7 +379,7 @@ class EmailPresentationTests(unittest.TestCase):
         html = render_change_digest_html(digest)
         # 4 drop pills + 4 new pills + collapse line + timestamp.
         self.assertEqual(html.count("cheaper</span>"), 4)
-        self.assertEqual(html.count("new</span>"), 4)
+        self.assertEqual(html.count("now under budget</span>"), 4)
         # 9 drops - 4 shown + 9 new - 4 shown = 10 collapsed.
         self.assertIn("+10 more moved", html)
 

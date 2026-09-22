@@ -256,8 +256,10 @@ class ValueRankTests(unittest.TestCase):
             self.assertEqual(trends[0]["current_rank"], 1)
             self.assertEqual(trends[0]["rank_delta"], 2)  # +2 places
             self.assertEqual(trends[0]["score_delta"], 14.0)
+            # Per-card rank chips were removed (2026-09-22): card-level rank
+            # shuffle is noise; movement surfaces in the digest instead.
             snippets = render_history_html(trends)
-            self.assertIn("value rank 1 (was 3)", snippets[0])
+            self.assertNotIn("rank", snippets[0])
 
     def test_rank_unchanged_produces_no_chip(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -312,7 +314,7 @@ class ValueRankTests(unittest.TestCase):
                 "unchanged": 2,
             }
         )
-        self.assertIn("value rank 1 (was 4)", html)
+        self.assertIn("is now #1 by value (was #4)", html)
         self.assertIn("Resort A", html)
 
 

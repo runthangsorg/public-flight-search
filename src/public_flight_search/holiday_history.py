@@ -393,25 +393,33 @@ def render_change_digest_html(digest: Dict[str, Any]) -> str:
         shown += 1
     more += max(0, len(digest.get("rises", [])) - _DIGEST_CAP_RISES)
     for name in digest.get("new", [])[:_DIGEST_CAP_NEW]:
+        # "new" means the resort crossed INTO the under-budget funnel —
+        # say that, because "new" implied we started tracking it, which
+        # read as fake the moment every run had "new" resorts.
         parts.append(
             '<span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">✦ '
             + escape(name)
-            + " new</span>"
+            + " now under budget</span>"
         )
         shown += 1
     more += max(0, len(digest.get("new", [])) - _DIGEST_CAP_NEW)
+    # Rank movement: only the TOP movers make the digest at all, and the
+    # pill states what it means for the reader (position among value-ranked
+    # picks). Swaps outside the top 10 are invisible in every card anyway.
     for v in digest.get("value_changes", [])[:_DIGEST_CAP_VALUE]:
         arrow = "&#9650;" if int(v["delta"]) > 0 else "&#9660;"
         bg, fg = ("#dbeafe", "#1d4ed8") if int(v["delta"]) > 0 else ("#fef3c7", "#92400e")
+        if int(v["current_rank"]) > 10 and int(v["prior_rank"]) > 10:
+            more += 1
+            continue
         parts.append(
             '<span style="background:' + bg + ";color:" + fg
             + ';padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">'
             + arrow + " "
             + escape(v["name"])
-            + f" value rank {v['current_rank']} (was {v['prior_rank']})</span>"
+            + f" is now #{v['current_rank']} by value (was #{v['prior_rank']})</span>"
         )
         shown += 1
-    more += max(0, len(digest.get("value_changes", [])) - _DIGEST_CAP_VALUE)
     if more:
         parts.append(
             '<span style="color:#64748b;font-size:13px;">+'
@@ -485,23 +493,8 @@ def render_history_html(trends: List[Dict[str, Any]]) -> List[str]:
         snippets.append(
             f'<span style="color:#64748b;font-size:12px;">{obs} obs &middot; min &pound;{t["prior_min"]:.2f}</span> {chip}'
         )
-        # Value-rank movement chip: only when both ranks are known and the
-        # composite ranking actually moved. Price-quiet runs still surface
-        # "your best-value pick changed" — the movement that matters when
-        # benchmarks are static.
-        rank_delta = t.get("rank_delta")
-        if rank_delta:
-            if rank_delta > 0:
-                rank_chip = (
-                    '<span style="background:#dbeafe;color:#1d4ed8;'
-                    'padding:1px 8px;border-radius:9999px;font-size:12px;">'
-                    f"&#9650; value rank {t['current_rank']} (was {t['prior_rank']})</span>"
-                )
-            else:
-                rank_chip = (
-                    '<span style="background:#fef3c7;color:#92400e;'
-                    'padding:1px 8px;border-radius:9999px;font-size:12px;">'
-                    f"&#9660; value rank {t['current_rank']} (was {t['prior_rank']})</span>"
-                )
-            snippets[-1] = snippets[-1] + " " + rank_chip
+        # Per-card rank-movement chips were REMOVED (2026-09-22 reader
+        # feedback): "value rank 25 (was 26)" on every card is rank-shuffle
+        # noise, not deal movement. Composite-rank movement still surfaces
+        # in the change digest, capped to the top movers only.
     return snippets
