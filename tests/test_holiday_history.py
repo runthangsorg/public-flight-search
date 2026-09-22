@@ -158,10 +158,13 @@ class SummarizeTrendsTests(unittest.TestCase):
 
 
 class RenderHistoryHtmlTests(unittest.TestCase):
-    def test_first_time_tracked_chip(self):
+    def test_first_run_chip_is_suppressed(self):
+        # The digest's capped "new" pills already announce first sightings;
+        # per-card "first time tracked" chips on every new resort card made
+        # the first email a wall of the same sentence (2026-09-22 fix).
         trends = [{"prior_observations": 0}]
         snippets = render_history_html(trends)
-        self.assertIn("first time tracked", snippets[0])
+        self.assertEqual(snippets, [""])
 
     def test_below_min_chip_is_positive(self):
         trends = [

@@ -23,6 +23,16 @@ from html import escape
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+# Digest strip caps: how many pills of each kind the change digest may
+# render before collapsing the rest into a single "+N more moved" line.
+# The first run of the uncapped renderer produced a ~30-pill ticker wall
+# that made the email unreadable — these are the fix, kept as module
+# constants so tests can pin them.
+_DIGEST_CAP_DROPS = 4
+_DIGEST_CAP_RISES = 2
+_DIGEST_CAP_NEW = 4
+_DIGEST_CAP_VALUE = 4
+
 HISTORY_DEFAULT_PATH = Path("data/holiday_price_history.jsonl")
 
 logger = logging.getLogger(__name__)
@@ -255,32 +265,68 @@ def build_change_digest(
     rises: List[Dict[str, Any]] = []
     new: List[str] = []
     value_changes: List[Dict[str, Any]] = []
-    unchanged = 0
     has_prior = False
+    # One resort sells in several cabin classes, so several trends share a
+    # name. Without dedup the digest shows "Concorde new" three or four
+    # times — the ticker wall that made the email unreadable. Classify each
+    # RESORT once, keeping its loudest signal (biggest absolute move).
+    drop_by_name: Dict[str, Dict[str, Any]] = {}
+    rise_by_name: Dict[str, Dict[str, Any]] = {}
+    value_by_name: Dict[str, Dict[str, Any]] = {}
+    new_names: set[str] = set()
+    quiet_names: set[str] = set()
     for t in trends:
         if t.get("prior_observations"):
             has_prior = True
+        name = str(t.get("resort_name", ""))
         rank_delta = t.get("rank_delta")
         if rank_delta and t.get("prior_rank"):
-            value_changes.append(
-                {
-                    "name": str(t.get("resort_name", "")),
-                    "current_rank": int(t.get("current_rank", 0) or 0),
-                    "prior_rank": int(t.get("prior_rank", 0) or 0),
-                    "delta": int(rank_delta),
-                }
-            )
+            entry = {
+                "name": name,
+                "current_rank": int(t.get("current_rank", 0) or 0),
+                "prior_rank": int(t.get("prior_rank", 0) or 0),
+                "delta": int(rank_delta),
+            }
+            prior = value_by_name.get(name)
+            if prior is None or abs(entry["delta"]) > abs(prior["delta"]):
+                value_by_name[name] = entry
         prev = t.get("prior_last")
         if prev is None:
-            new.append(str(t.get("resort_name", "")))
+            new_names.add(name)
             continue
         delta = float(t.get("current", 0.0)) - float(prev)
         if delta <= -0.01:
-            drops.append({"name": str(t.get("resort_name", "")), "current": float(t.get("current", 0.0)), "prev": float(prev), "delta": delta})
+            entry = {"name": name, "current": float(t.get("current", 0.0)), "prev": float(prev), "delta": delta}
+            prior = drop_by_name.get(name)
+            if prior is None or entry["delta"] < prior["delta"]:
+                drop_by_name[name] = entry
+            quiet_names.discard(name)
         elif delta >= 0.01:
-            rises.append({"name": str(t.get("resort_name", "")), "current": float(t.get("current", 0.0)), "prev": float(prev), "delta": delta})
+            entry = {"name": name, "current": float(t.get("current", 0.0)), "prev": float(prev), "delta": delta}
+            prior = rise_by_name.get(name)
+            if prior is None or entry["delta"] > prior["delta"]:
+                rise_by_name[name] = entry
+            quiet_names.discard(name)
         else:
-            unchanged += 1
+            # A quiet cabin variant of a resort that moved elsewhere must
+            # not resurrect it as "unchanged" — only classify if it has no
+            # louder signal already.
+            if not (drop_by_name.get(name) or rise_by_name.get(name) or name in new_names):
+                quiet_names.add(name)
+    # A resort first seen now is "new" regardless of its rank movement —
+    # rank deltas with no price history are noise.
+    for name in new_names:
+        drop_by_name.pop(name, None)
+        rise_by_name.pop(name, None)
+        value_by_name.pop(name, None)
+        quiet_names.discard(name)
+    drops = sorted(drop_by_name.values(), key=lambda d: d["delta"])
+    rises = sorted(rise_by_name.values(), key=lambda d: -d["delta"])
+    value_changes = sorted(
+        value_by_name.values(), key=lambda v: -abs(v["delta"])
+    )
+    new = sorted(new_names)
+    unchanged = len(quiet_names)
     return {
         "has_prior": has_prior,
         "drops": drops,
@@ -317,31 +363,44 @@ def last_history_observation(*, path: Optional[Path] = None) -> str:
 
 def render_change_digest_html(digest: Dict[str, Any]) -> str:
     """One compact strip: what changed since the last report. Empty when
-    there is no prior data (first run) — never a wall of noise."""
+    there is no prior data (first run) — never a wall of noise.
+
+    Pills are CAPPED (largest moves first) so a volatile week cannot
+    recreate the ticker wall: everything beyond the cap collapses into a
+    single quiet "+N more moved" line.
+    """
     if not digest.get("has_prior"):
         return ""
     parts: List[str] = []
-    for d in digest.get("drops", []):
+    shown = 0
+    more = 0
+    for d in digest.get("drops", [])[:_DIGEST_CAP_DROPS]:
         parts.append(
             '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">&#9660; '
             + escape(d["name"])
             + " £"
             + f"{abs(d['delta']):,.0f} cheaper</span>"
         )
-    for d in digest.get("rises", []):
+        shown += 1
+    more += max(0, len(digest.get("drops", [])) - _DIGEST_CAP_DROPS)
+    for d in digest.get("rises", [])[:_DIGEST_CAP_RISES]:
         parts.append(
             '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">&#9650; '
             + escape(d["name"])
             + " £"
             + f"{d['delta']:,.0f} pricier</span>"
         )
-    for name in digest.get("new", []):
+        shown += 1
+    more += max(0, len(digest.get("rises", [])) - _DIGEST_CAP_RISES)
+    for name in digest.get("new", [])[:_DIGEST_CAP_NEW]:
         parts.append(
             '<span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">✦ '
             + escape(name)
             + " new</span>"
         )
-    for v in digest.get("value_changes", []):
+        shown += 1
+    more += max(0, len(digest.get("new", [])) - _DIGEST_CAP_NEW)
+    for v in digest.get("value_changes", [])[:_DIGEST_CAP_VALUE]:
         arrow = "&#9650;" if int(v["delta"]) > 0 else "&#9660;"
         bg, fg = ("#dbeafe", "#1d4ed8") if int(v["delta"]) > 0 else ("#fef3c7", "#92400e")
         parts.append(
@@ -350,6 +409,14 @@ def render_change_digest_html(digest: Dict[str, Any]) -> str:
             + arrow + " "
             + escape(v["name"])
             + f" value rank {v['current_rank']} (was {v['prior_rank']})</span>"
+        )
+        shown += 1
+    more += max(0, len(digest.get("value_changes", [])) - _DIGEST_CAP_VALUE)
+    if more:
+        parts.append(
+            '<span style="color:#64748b;font-size:13px;">+'
+            + str(more)
+            + " more moved</span>"
         )
     unchanged = int(digest.get("unchanged", 0))
     if unchanged and parts:
@@ -386,9 +453,11 @@ def render_history_html(trends: List[Dict[str, Any]]) -> List[str]:
     snippets: List[str] = []
     for t in trends:
         if not t.get("prior_observations"):
-            snippets.append(
-                '<span style="color:#64748b;font-size:12px;">first time tracked</span>'
-            )
+            # First-run noise guard: the change digest already announces new
+            # resorts (capped), and on a first run EVERY card carried this
+            # chip — the same sentence ten times. The empty chip renders as
+            # nothing; history tracking itself is unaffected.
+            snippets.append("")
             continue
         delta = t.get("delta_vs_min")
         obs = t["prior_observations"]

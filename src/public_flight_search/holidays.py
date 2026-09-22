@@ -791,7 +791,7 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "flight_benchmark_5pax_gbp": 648.0,
             "peak_summer_flight_5pax_gbp": 1180.0,
             "highlights": ("Heated seawater pool (28°C)", "8 à la carte restaurants", "Thalasso spa", "Private sandy beach"),
-            "hotel_url": "https://www.baruthotels.com/lara-barut-collection/",
+            "hotel_url": "https://barutlara.com/",  # baruthotels.com/lara-barut-collection 404 (verified 2026-09-22)
             "dec_ambient_c": (15, 17),
             "sea_temp_c": 19,
             "beach": "Sandy but 15-17°C air — pools only, no sunbathing",
@@ -854,7 +854,7 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "flight_benchmark_5pax_gbp": 1150.0,
             "peak_summer_flight_5pax_gbp": 1700.0,
             "highlights": ("Horseshoe sand beach at the door", "Heated thalasso spa", "Golf on site", "Kids club"),
-            "hotel_url": "https://www.marriott.com/en-us/brands/sheraton-hotels/",
+            "hotel_url": "https://www.marriott.com/en-us/hotels/fuesi-sheraton-fuerteventura-beach-golf-and-spa-resort/overview/",  # property page; generic brand page 404 (verified 2026-09-22)
             "dec_ambient_c": (21, 23),
             "sea_temp_c": 20,
             "beach": "Caleta de Fuste man-made horseshoe — calm, genuinely walkable",
@@ -1754,17 +1754,28 @@ def bucket_deals(
     }
 
 
-# Per-destination imagery for deal cards (verified stable Wikimedia Commons
-# thumbnails; free-to-use). Emails render images by URL — no attachments,
-# no binary in the public repo. Resorts without a hotel-specific free photo
-# use their destination image (visually distinct per destination).
+# Per-destination imagery for deal cards. Emails render images by URL — no
+# attachments, no binary in the public repo. One DISTINCT verified Wikimedia
+# Commons thumb per destination (resolved via the Commons search API,
+# verified live 2026-09-22). Every destination key used by the catalog MUST
+# appear here: the fallback that used to serve Hurghada's beach for 8 of 14
+# destinations was removed — a missing key is a loud KeyError in tests, not
+# a wrong photo in the email.
 DEST_IMAGES: dict[str, str] = {
-    "hurghada": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/af/Hurghada%2C_Qesm_Hurghada%2C_Red_Sea_Governorate%2C_Egypt_-_panoramio_%28306%29.jpg/960px-Hurghada%2C_Qesm_Hurghada%2C_Red_Sea_Governorate%2C_Egypt_-_panoramio_%28306%29.jpg",
-    "tenerife": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/Playa-Las-Vistas-Tenerife-03.jpg/960px-Playa-Las-Vistas-Tenerife-03.jpg",
-    "lanzarote": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/Beach_in_Playa_Blanca_-_Lanzarote_-B20.jpg/960px-Beach_in_Playa_Blanca_-_Lanzarote_-B20.jpg",
-    "madeira": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/65/S%C3%A3o_Martinho_%28Madeira%2C_Portugal%29%2C_Pestana_Ocean_Bay_--_2025_--_0259.jpg/960px-S%C3%A3o_Martinho_%28Madeira%2C_Portugal%29%2C_Pestana_Ocean_Bay_--_2025_--_0259.jpg",
     "antalya": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/Konyaalt%C4%B1_Beach%2C_Antalya%2C_Turkey%2C_March_2022_-_Cafe.jpg/960px-Konyaalt%C4%B1_Beach%2C_Antalya%2C_Turkey%2C_March_2022_-_Cafe.jpg",
+    "malta": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9d/Valletta%2C_Malta%27s_Grand_Harbor.jpg/960px-Valletta%2C_Malta%27s_Grand_Harbor.jpg",
+    "taghazout": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/42/Camel_on_the_beach_at_Taghazout_%288591453987%29.jpg/960px-Camel_on_the_beach_at_Taghazout_%288591453987%29.jpg",
+    "hurghada": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/af/Hurghada%2C_Qesm_Hurghada%2C_Red_Sea_Governorate%2C_Egypt_-_panoramio_%28306%29.jpg/960px-Hurghada%2C_Qesm_Hurghada%2C_Red_Sea_Governorate%2C_Egypt_-_panoramio_%28306%29.jpg",
     "cairo": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d6/All_pyramids_of_Giza_panorama_2.jpg/960px-All_pyramids_of_Giza_panorama_2.jpg",
+    "muscat": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/2b/Palacio_de_Al_Alam%2C_Mascate%2C_Om%C3%A1n%2C_2024-08-14%2C_DD_36.jpg/960px-Palacio_de_Al_Alam%2C_Mascate%2C_Om%C3%A1n%2C_2024-08-14%2C_DD_36.jpg",
+    "doha": "https://thumb.wikimedia.org/wikipedia/commons/thumb/f/f3/Doha_West_Bay_Skyline_Qatar_Jan_2020.jpg/960px-Doha_West_Bay_Skyline_Qatar_Jan_2020.jpg",
+    "tenerife": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/Playa-Las-Vistas-Tenerife-03.jpg/960px-Playa-Las-Vistas-Tenerife-03.jpg",
+    "madeira": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/65/S%C3%A3o_Martinho_%28Madeira%2C_Portugal%29%2C_Pestana_Ocean_Bay_--_2025_--_0259.jpg/960px-S%C3%A3o_Martinho_%28Madeira%2C_Portugal%29%2C_Pestana_Ocean_Bay_--_2025_--_0259.jpg",
+    "lanzarote": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a9/Beach_in_Playa_Blanca_-_Lanzarote_-B20.jpg/960px-Beach_in_Playa_Blanca_-_Lanzarote_-B20.jpg",
+    "cape_verde": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/Sal_Sta_Maria_beach_hotel.jpg/960px-Sal_Sta_Maria_beach_hotel.jpg",
+    "fuerteventura": "https://thumb.wikimedia.org/wikipedia/commons/thumb/2/22/Flickr_-_ronsaunders47_-_CALETA_DE_FUSTE_._FUERTEVENTURA._THE_BOARDWALK...jpg/960px-Flickr_-_ronsaunders47_-_CALETA_DE_FUSTE_._FUERTEVENTURA._THE_BOARDWALK...jpg",
+    "gran_canaria": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5e/Aerial_view_of_Maspalomas_in_Gran_Canaria_with_its_dunes_and_beach_%2852757100017%29.jpg/960px-Aerial_view_of_Maspalomas_in_Gran_Canaria_with_its_dunes_and_beach_%2852757100017%29.jpg",
+    "paphos": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/38/Paphos_Castle_and_Paphos_Marina%2C_Paphos%2C_Cyprus.jpg/960px-Paphos_Castle_and_Paphos_Marina%2C_Paphos%2C_Cyprus.jpg",
 }
 
 
@@ -1895,7 +1906,9 @@ def render_holiday_report(
         rendered_deals = ordered[:10]
         for deal in rendered_deals:
             stars_str = '★' * deal.star_rating + '☆' * (5 - deal.star_rating)
-            img = DEST_IMAGES.get(deal.destination_key.lower(), DEST_IMAGES["hurghada"])
+            # No fallback: a destination without a mapped image is a bug to
+            # fix in DEST_IMAGES, not a licence to show the wrong beach.
+            img = DEST_IMAGES[deal.destination_key.lower()]
             live = deal.confidence == 'verified-exact-date'
             under = 5000.0 - deal.total_package_price_gbp
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate; border-spacing:0; margin:0 0 14px 0; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">')

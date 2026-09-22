@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import unittest
 
+import public_flight_search.holidays as hol
 from public_flight_search.holidays import collect_holiday_deals, load_holiday_config, render_holiday_report
 from public_flight_search.config import ConfigError
 
@@ -334,6 +335,74 @@ class HolidayPlannerTests(unittest.TestCase):
             hol.cabin_carrier(airport="AYT", cabin="ECONOMY", economy_carrier="SunExpress / Pegasus"),
             "SunExpress / Pegasus",
         )
+
+
+class EmailPresentationTests(unittest.TestCase):
+    """The reader-facing fixes of 2026-09-22: distinct real images, no dead
+    resort links, and a change digest that stays a strip instead of a wall."""
+
+    def test_every_catalog_destination_has_distinct_image(self):
+        from public_flight_search.holidays import DEST_IMAGES
+
+        dest_keys = set(hol.WINTER_RESORT_CATALOG)
+        missing = dest_keys - set(DEST_IMAGES)
+        self.assertEqual(missing, set(), f"DEST_IMAGES missing: {sorted(missing)}")
+        # Distinctness is the point: the old fallback served one beach photo
+        # for 8 of 14 destinations.
+        self.assertEqual(len(set(DEST_IMAGES.values())), len(DEST_IMAGES))
+        for url in DEST_IMAGES.values():
+            self.assertTrue(url.startswith("https://thumb.wikimedia.org/"), url)
+
+    def test_resort_hotel_urls_are_canonical(self):
+        for resorts in hol.WINTER_RESORT_CATALOG.values():
+            for resort in resorts:
+                url = resort.get("hotel_url", "")
+                self.assertTrue(url.startswith("https://"), url)
+                # Both dead hosts removed after the 2026-09-22 link audit.
+                self.assertNotIn("baruthotels.com", url, resort["name"])
+                self.assertNotIn("/brands/sheraton-hotels/", url, resort["name"])
+
+    def test_change_digest_pills_are_capped(self):
+        from public_flight_search.holiday_history import render_change_digest_html
+
+        digest = {
+            "has_prior": True,
+            "drops": [
+                {"name": f"Drop {i}", "current": 100.0, "prev": 200.0, "delta": -100.0}
+                for i in range(9)
+            ],
+            "rises": [],
+            "new": [f"New {i}" for i in range(9)],
+            "value_changes": [],
+            "unchanged": 0,
+        }
+        html = render_change_digest_html(digest)
+        # 4 drop pills + 4 new pills + collapse line + timestamp.
+        self.assertEqual(html.count("cheaper</span>"), 4)
+        self.assertEqual(html.count("new</span>"), 4)
+        # 9 drops - 4 shown + 9 new - 4 shown = 10 collapsed.
+        self.assertIn("+10 more moved", html)
+
+    def test_change_digest_dedupes_resorts_across_cabins(self):
+        from public_flight_search.holiday_history import build_change_digest
+
+        trends = [
+            {"resort_name": "Concorde", "prior_observations": 1, "prior_last": None, "rank_delta": 2, "current_rank": 1, "prior_rank": 3},
+            {"resort_name": "Concorde", "prior_observations": 1, "prior_last": None, "rank_delta": 2, "current_rank": 2, "prior_rank": 4},
+            {"resort_name": "Lara", "prior_observations": 3, "prior_last": 2100.0, "current": 1900.0},
+            {"resort_name": "Lara", "prior_observations": 3, "prior_last": 2600.0, "current": 2400.0},
+        ]
+        digest = build_change_digest(trends)
+        self.assertEqual(digest["new"], ["Concorde"])
+        self.assertEqual(len(digest["drops"]), 1)
+        self.assertEqual(digest["drops"][0]["name"], "Lara")
+        self.assertEqual(digest["drops"][0]["delta"], -200.0)
+
+    def test_render_history_html_suppresses_first_run_chip(self):
+        from public_flight_search.holiday_history import render_history_html
+
+        snippets = render_history_html([{"prior_observations": 0}])
+        self.assertEqual(snippets, [""])
 
 
 if __name__ == "__main__":
