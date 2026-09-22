@@ -303,6 +303,13 @@ def load_live_flight_evidence(
         if entry_cabin not in EVIDENCE_CABINS:
             _warn_skip(airport, f"cabin {entry_cabin!r} is not a reportable cabin")
             continue
+        # Legacy records exported before the cabin-aware seam carry no cabin
+        # field. They were whole-party ECONOMY totals by export rule, so
+        # defaulting them to ECONOMY is faithful — and the "legacy" marker
+        # keeps their provenance honest.
+        legacy_record = "cabin_class" not in item
+        if legacy_record:
+            entry_cabin = "ECONOMY"
         entry = LiveFareEvidence(
             airport=airport,
             total_gbp=total,
@@ -310,7 +317,9 @@ def load_live_flight_evidence(
             source_url=source_url,
             observed_at=observed_raw,
             exact_date_match=True,
-            note=str(item.get("note", "")).strip(),
+            note=(
+                ("legacy pre-cabin-seam export; economy by export rule" if legacy_record else str(item.get("note", "")).strip())
+            ),
             carrier=str(item.get("carrier", "")).strip(),
             cabin_class=entry_cabin,
         )

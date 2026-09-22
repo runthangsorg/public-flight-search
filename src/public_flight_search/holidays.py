@@ -726,6 +726,14 @@ def _classify_deal_price(true_pp: float) -> str:
     return "SPLURGE_WATCH_FOR_PRICE_DROP"
 
 
+#: Weather floor (2026-09-22 user mandate): a beach destination whose
+#: December average ambient temperature is below this cannot deliver a beach
+#: holiday, so its vs-peak discount is de-weighted in ranking and its value
+#: score takes a hard penalty. Red Sea, Canary and Middle East destinations
+#: (21–26°C) are the ones that should float up for winter searches.
+WINTER_SUN_FLOOR_C: float = 20.0
+
+
 def compute_value_score(
     *,
     true_pp: float,
@@ -738,8 +746,15 @@ def compute_value_score(
     indoor_activity_count: int,
     heated_indoor_pool: bool,
     winter_concept: str = "",
+    dec_avg_temp_c: Optional[float] = None,
 ) -> float:
-    """0-100 winter-first value score (weights from the original tracker)."""
+    """0-100 winter-first value score (weights from the original tracker).
+
+    ``dec_avg_temp_c`` (December average ambient °C) applies the weather
+    floor: below 20°C the score loses 1.5 points per degree under the floor
+    (capped at −15) — a 50% discount is invalid if the weather makes a beach
+    holiday impossible.
+    """
     for name, v in (("luxury", luxury), ("food", food), ("winter", winter),
                     ("mosque", mosque), ("activities", activities),
                     ("flight_quality", flight_quality)):
@@ -756,6 +771,11 @@ def compute_value_score(
         winter = min(winter, 3.0)
     price_score = max(0.0, min(10.0, (700.0 - true_pp) / 35.0))
     flight_penalty = max(0.0, 7.0 - flight_quality) * 1.5
+    # Weather floor: hard penalty for beach resorts that cannot deliver a
+    # beach in December. Antalya (15°C) drops; Hurghada (24°C) does not.
+    temp_penalty = 0.0
+    if dec_avg_temp_c is not None and dec_avg_temp_c < WINTER_SUN_FLOOR_C:
+        temp_penalty = min(15.0, (WINTER_SUN_FLOOR_C - dec_avg_temp_c) * 1.5)
     value = (
         price_score * 3.0
         + winter * 2.5
@@ -763,7 +783,7 @@ def compute_value_score(
         + food * 1.5
         + mosque * 1.0
         + activities * 0.5
-    ) - flight_penalty
+    ) - flight_penalty - temp_penalty
     return round(max(0.0, min(100.0, value)), 1)
 
 
@@ -1456,7 +1476,9 @@ def cabin_carrier(*, airport: str, cabin: str, economy_carrier: str) -> str:
     return economy_carrier
 
 
-def _criteria_fields(resort_name: str, true_pp: float) -> dict[str, Any]:
+def _criteria_fields(
+    resort_name: str, true_pp: float, dec_avg_temp_c: Optional[float] = None
+) -> dict[str, Any]:
     """Criteria bundle for one resort from the recovered registry (defaults
     keep any un-registered resort renderable with neutral scores)."""
     c = RESORT_CRITERIA.get(resort_name, {})
@@ -1472,6 +1494,7 @@ def _criteria_fields(resort_name: str, true_pp: float) -> dict[str, Any]:
         flight_quality=float(c.get("flight_quality", 7)),
         indoor_activity_count=indoor,
         heated_indoor_pool=heated,
+        dec_avg_temp_c=dec_avg_temp_c,
     )
     return {
         "actual_luxury_score": float(c.get("luxury", 5)),
@@ -1640,7 +1663,13 @@ def collect_holiday_deals(
                             ),
                             peak_summer_total_gbp=peak_total,
                             unit_architecture=arch["suite_type"],
-                            **_criteria_fields(resort["name"], price_pp),
+                            **_criteria_fields(
+                                resort["name"],
+                                price_pp,
+                                dec_avg_temp_c=float(
+                                    resort.get("dec_ambient_c", (0, 0))[0]
+                                ),
+                            ),
                             # STRICT mode: links request ONE unit for 5 (family
                             # suite/interconnecting), never 3 separate rooms.
                             compare_url=build_google_hotels_property_url(
@@ -1670,7 +1699,7 @@ def collect_holiday_deals(
                         )
                     )
 
-    deals.sort(key=lambda d: (-d.vs_peak_pct, -d.value_score, d.total_package_price_gbp))
+    deals.sort(key=lambda d: (weather_weighted_discount_pct(d), -d.value_score, d.total_package_price_gbp))
     # Stamp the value-score rank (1 = best) so history tracks movement in the
     # composite ranking, not just raw price wobble.
     for rank, deal in enumerate(sorted(deals, key=lambda d: -d.value_score), 1):
@@ -1722,6 +1751,22 @@ def luxury_score(deal: PackageDeal) -> int:
     return deal.star_rating * 10 + BOARD_LUXURY_WEIGHT.get(deal.board_basis.lower(), 0)
 
 
+def weather_weighted_discount_pct(deal: PackageDeal) -> float:
+    """Discount%% re-weighted for winter reality (2026-09-22 user mandate).
+
+    At or above the 20°C December floor the raw vs-peak discount ranks
+    as-is. Below the floor it is halved — a beach resort you cannot beach
+    at must not ride a huge saving to the top of a winter-sun list. Red
+    Sea, Canary and Middle East destinations (21–26°C) therefore float up
+    over e.g. Antalya's ▼52%% at 15°C. Returned negated for ascending
+    ``sorted`` use.
+    """
+    pct = float(deal.vs_peak_pct)
+    if deal.dec_ambient_c[0] < WINTER_SUN_FLOOR_C:
+        pct *= 0.5
+    return -pct
+
+
 def bucket_deals(
     deals: Sequence[PackageDeal],
     max_budget_gbp: float = 5000.0,
@@ -1729,9 +1774,10 @@ def bucket_deals(
     """Split deals into the reader decision lenses.
 
     discounts: REAL discount lens — biggest % below the same resort's
-               summer-peak price first; ties break on the winter-first value
-               score (a bigger % off a miserable-winter property is not the
-               better deal), then cheapest absolute total.
+               summer-peak price first, WEATHER-WEIGHTED: below the 20°C
+               December floor the discount is halved (a huge saving on a
+               beach you cannot use is not a winter-sun deal); ties break on
+               the winter-first value score, then cheapest absolute total.
     luxury:    5-star only, most luxurious first, cheaper wins ties.
     winter:    warmest ambient air first, then warmest sea (genuine winter
                sun floats up; heated-pool-only cold spots sink honestly).
@@ -1743,7 +1789,7 @@ def bucket_deals(
     ordered = tuple(deals)
     return {
         "discounts": tuple(
-            sorted(ordered, key=lambda d: (-d.vs_peak_pct, -d.value_score, d.total_package_price_gbp))),
+            sorted(ordered, key=lambda d: (weather_weighted_discount_pct(d), -d.value_score, d.total_package_price_gbp))),
         "luxury": tuple(
             sorted(
                 (d for d in ordered if d.star_rating >= 5),
@@ -1761,12 +1807,11 @@ def bucket_deals(
     }
 
 
-# Per-destination imagery for deal cards. Emails render images by URL — no
-# attachments, no binary in the public repo. One DISTINCT verified Wikimedia
-# Commons thumb per destination (resolved via the Commons search API,
-# verified live 2026-09-22). Every destination key used by the catalog MUST
-# appear here: the fallback that used to serve Hurghada's beach for 8 of 14
-# destinations was removed — a missing key is a loud KeyError in tests, not
+# SUSPENDED (2026-09-22 user mandate): destination photos read as "fake"
+# next to named resorts — a Commons AREA photo cannot represent a specific
+# hotel, and mapping images to hotel IDs is unsolved. Cards are TEXT-ONLY
+# until a per-hotel image source exists. Data kept for that future fix; the
+# renderer must not emit <img> tags (locked by test).
 # a wrong photo in the email.
 DEST_IMAGES: dict[str, str] = {
     "antalya": "https://thumb.wikimedia.org/wikipedia/commons/thumb/4/48/Konyaalt%C4%B1_Beach%2C_Antalya%2C_Turkey%2C_March_2022_-_Cafe.jpg/960px-Konyaalt%C4%B1_Beach%2C_Antalya%2C_Turkey%2C_March_2022_-_Cafe.jpg",
@@ -1904,30 +1949,43 @@ def render_holiday_report(
         # name so the card order below (cheapest first) stays correct.
         chip_by_resort = {}
         if history_chips is not None:
-            chip_by_resort = {d.resort_name: history_chips[i] for i, d in enumerate(deals) if i < len(history_chips)}
+            for i, d in enumerate(deals):
+                if i >= len(history_chips):
+                    break
+                # Chip follows the BASELINE (cheapest cabin) card per hotel.
+                prev = chip_by_resort.get(d.resort_name)
+                if prev is None or d.total_package_price_gbp < prev[0]:
+                    chip_by_resort[d.resort_name] = (d.total_package_price_gbp, history_chips[i])
+            chip_by_resort = {name: chip for name, (_, chip) in chip_by_resort.items()}
 
         rooms_n = len(config.rooms)
         ordered = sorted(deals, key=lambda d: d.total_package_price_gbp)
-        # Gmail clips emails over 102 KB. Cap rendered cards to top 10 to keep
-        # HTML payload strictly under 70 KB while all deals are tracked in history.
-        rendered_deals = ordered[:10]
-        for deal in rendered_deals:
+        # ONE CARD PER HOTEL (2026-09-22 user mandate): never list the same
+        # hotel twice. The cheapest viable cabin is the card's baseline price;
+        # premium cabins become "Optional add-on" lines inside that card.
+        hotels: list[dict] = []
+        seen_hotels: set[str] = set()
+        for d in ordered:
+            if d.resort_name in seen_hotels:
+                continue
+            seen_hotels.add(d.resort_name)
+            hotels.append({
+                "base": d,
+                "group": [x for x in ordered if x.resort_name == d.resort_name],
+            })
+        # Gmail clips emails over 102 KB. Cap rendered cards to top 10 hotels
+        # to keep HTML payload strictly under 70 KB while every cabin deal
+        # stays tracked in history.
+        rendered_hotels = hotels[:10]
+        for entry in rendered_hotels:
+            deal = entry["base"]
             stars_str = '★' * deal.star_rating + '☆' * (5 - deal.star_rating)
-            # No fallback: a destination without a mapped image is a bug to
-            # fix in DEST_IMAGES, not a licence to show the wrong beach.
-            img = DEST_IMAGES[deal.destination_key.lower()]
             live = deal.confidence == 'verified-exact-date'
             under = 5000.0 - deal.total_package_price_gbp
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate; border-spacing:0; margin:0 0 14px 0; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">')
             out.append('<tr>')
-            # Left: destination-area photo with an HONEST caption. The image
-            # is the destination (free-licensed Commons), not the hotel —
-            # saying so is the difference between "illustrative" and "fake".
-            out.append('<td width="260" valign="top" style="padding:0; line-height:0;">')
-            out.append('<img src="' + escape(img, quote=True) + '" alt="' + escape(deal.destination_label) + ' area" width="260" height="184" style="width:260px; height:184px; object-fit:cover; display:block; border-radius:11px 0 0 11px;">')
-            out.append('<div style="width:260px; box-sizing:border-box; padding:4px 10px 5px 10px; background:#f1f5f9; color:#64748b; font-size:10px; line-height:1.4; border-radius:0 0 0 11px;">📷 ' + escape(deal.destination_label) + ' — area photo, not the hotel</div>')
-            out.append('</td>')
-            # Right: everything a booker needs, scannable in one glance
+            # TEXT-ONLY card (images suspended 2026-09-22): no <img> tags
+            # until a per-hotel image source exists. One cell, one glance.
             out.append('<td valign="top" style="padding:16px 20px;">')
             out.append('<div style="margin-bottom:3px;"><strong style="color:#0f172a; font-size:20px;">' + escape(deal.resort_name) + '</strong> <span style="color:#f59e0b; font-size:14px;">' + stars_str + '</span></div>')
             cabin_badge = ""
@@ -1999,6 +2057,23 @@ def render_holiday_report(
             out.append('<div style="color:#b45309; font-size:12px; white-space:nowrap;">summer peak £' + f'{deal.peak_summer_total_gbp:,.0f}' + '</div>')
             out.append('</td>')
             out.append('</tr></table>')
+            # ONE CARD PER HOTEL: premium cabins surface here as optional
+            # add-ons with the exact total to expect — never as duplicate
+            # cards. Live-verified upgrades say so; estimates stay quiet.
+            upgrades = [x for x in entry["group"] if x.cabin_class != deal.cabin_class]
+            if upgrades:
+                out.append('<div style="margin:0 0 10px 0; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;"><strong style="color:#0f172a; font-size:13px;">Optional flight upgrades</strong>')
+                upgrade_badges = {
+                    "BUSINESS": "💼 Business Class",
+                    "PREMIUM_ECONOMY": "✨ Premium Economy",
+                    "FIRST": "🥇 First",
+                }
+                for up in sorted(upgrades, key=lambda x: x.total_package_price_gbp):
+                    delta = up.total_package_price_gbp - deal.total_package_price_gbp
+                    badge = upgrade_badges.get(up.cabin_class, up.cabin_class)
+                    live_mark = ' · <span style="color:#166534; font-weight:700;">🟢 live observed</span>' if up.confidence == 'verified-exact-date' else ''
+                    out.append('<div style="margin-top:4px; color:#475569;">' + badge + ' +£' + f'{delta:,.0f}' + ' → £' + f'{up.total_package_price_gbp:,.0f}' + ' total · ' + escape(up.airline.split('/')[0].strip()) + live_mark + '</div>')
+                out.append('</div>')
             # Property-targeted actions: book THIS hotel dated, or compare
             # every vendor's price for it on one card.
             out.append('<a href="' + escape(deal.booking_deep_url, quote=True) + '" style="background:#2563eb; color:#ffffff; text-decoration:none; padding:12px 22px; border-radius:8px; font-weight:700; font-size:15px; display:inline-block;">Book this hotel, your dates →</a>')
@@ -2026,9 +2101,9 @@ def render_holiday_report(
             out.append('</td>')
             out.append('</tr></table>')
 
-        if len(ordered) > len(rendered_deals):
+        if len(hotels) > len(rendered_hotels):
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:10px 0 16px 0;"><tr><td align="center" style="padding:10px; color:#64748b; font-size:13px;">')
-            out.append('Showing top ' + str(len(rendered_deals)) + ' of ' + str(len(ordered)) + ' packages under budget (ranked by total price). All observations tracked in price history.')
+            out.append('Showing top ' + str(len(rendered_hotels)) + ' hotels of ' + str(len(hotels)) + ' under budget — one card per hotel, cheapest cabin as the baseline, all ' + str(len(ordered)) + ' cabin options tracked in price history.')
             out.append('</td></tr></table>')
 
     if not deals:

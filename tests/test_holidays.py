@@ -183,10 +183,12 @@ class HolidayPlannerTests(unittest.TestCase):
         deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
         buckets = bucket_deals(deals)
         self.assertEqual(set(buckets), {"discounts", "luxury", "winter", "value"})
-        # Discounts: REAL discount lens — biggest % below the same resort's
-        # summer-peak price first; equal-% ties break on the winter-first
-        # value score, then cheapest absolute total.
-        keys = [(-d.vs_peak_pct, -d.value_score, d.total_package_price_gbp) for d in buckets["discounts"]]
+        # Discounts: WEATHER-WEIGHTED discount lens (2026-09-22 mandate) —
+        # below the 20°C December floor the discount de-weights to half, so
+        # warm Red Sea/Canary destinations outrank a colder resort's bigger
+        # raw discount; ties break on value score, then cheapest total.
+        from public_flight_search.holidays import weather_weighted_discount_pct
+        keys = [(weather_weighted_discount_pct(d), -d.value_score, d.total_package_price_gbp) for d in buckets["discounts"]]
         self.assertEqual(keys, sorted(keys))
         self.assertEqual(len(buckets["discounts"]), len(deals))
         # Value lens: composite winter-first score, highest first.
@@ -403,6 +405,81 @@ class EmailPresentationTests(unittest.TestCase):
 
         snippets = render_history_html([{"prior_observations": 0}])
         self.assertEqual(snippets, [""])
+
+    def test_one_card_per_hotel_with_upgrade_addons(self):
+        """2026-09-22 mandate: never list the same hotel twice. The cheapest
+        cabin is the baseline card; premium cabins appear once inside it as
+        optional add-ons with the exact delta."""
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        html = render_holiday_report(config, generated_at="2026-09-22T10:00:00+00:00", deals=deals)
+        names = [d.resort_name for d in deals]
+        dupes = {n for n in names if names.count(n) > 1}
+        self.assertTrue(dupes, "test premise: at least one hotel priced in multiple cabins")
+        from html import escape
+        for name in dupes:
+            # & in names is entity-escaped in HTML. A hotel may be absent
+            # from the rendered top-10 (count 0) but must NEVER render twice.
+            self.assertLessEqual(html.count(">" + escape(name) + "<"), 1, f"{name} rendered more than once")
+        self.assertIn("Optional flight upgrades", html)
+        self.assertIn("+£", html)  # exact delta per upgrade
+        # Card count == unique hotels rendered (≤10).
+        self.assertLessEqual(html.count("Compare all vendors"), 10)
+
+    def test_cards_are_text_only_images_suspended(self):
+        """2026-09-22 mandate: image rendering is suspended — no <img> tags
+        in deal cards until a per-hotel image source exists."""
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        html = render_holiday_report(config, generated_at="2026-09-22T10:00:00+00:00", deals=deals)
+        self.assertNotIn("<img", html)
+
+    def test_weather_floor_penalises_cold_beach_destinations(self):
+        """2026-09-22 mandate: a 50%% discount is invalid if the weather makes
+        a beach holiday impossible. Below 20°C December average the value
+        score takes a hard penalty and the discount lens de-weights it."""
+        from public_flight_search.holidays import compute_value_score, weather_weighted_discount_pct
+
+        warm = compute_value_score(
+            true_pp=500.0, luxury=8, food=8, winter=7, mosque=8, activities=7,
+            flight_quality=8, indoor_activity_count=2, heated_indoor_pool=True,
+            dec_avg_temp_c=24.0,
+        )
+        cold = compute_value_score(
+            true_pp=500.0, luxury=8, food=8, winter=7, mosque=8, activities=7,
+            flight_quality=8, indoor_activity_count=2, heated_indoor_pool=True,
+            dec_avg_temp_c=15.0,
+        )
+        self.assertGreater(warm, cold)
+        self.assertGreaterEqual(warm - cold, 7.0)  # 5°C under floor × 1.5
+        # At/above the floor: no penalty.
+        floor = compute_value_score(
+            true_pp=500.0, luxury=8, food=8, winter=7, mosque=8, activities=7,
+            flight_quality=8, indoor_activity_count=2, heated_indoor_pool=True,
+            dec_avg_temp_c=20.0,
+        )
+        self.assertEqual(floor, warm)
+
+        class _FakeDeal:
+            vs_peak_pct = 52
+            dec_ambient_c = (15, 17)
+
+        class _WarmDeal:
+            vs_peak_pct = 40
+            dec_ambient_c = (24, 26)
+
+        # Ascending-sort key: the MORE NEGATIVE value ranks first. Cold 52%
+        # de-weights to 26 → key −26; warm 40% keeps −40. Warm sorts first.
+        self.assertLess(
+            weather_weighted_discount_pct(_WarmDeal()),
+            weather_weighted_discount_pct(_FakeDeal()),
+        )
 
 
 if __name__ == "__main__":
