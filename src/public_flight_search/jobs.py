@@ -30,6 +30,13 @@ from .trip_config import (
     TripBucket,
 )
 from .pairing import pair_outbound_return, combine_legs
+
+
+def _live_evidence_default_path() -> str:
+    """Where the workflow seeds the private engine's evidence export."""
+    from .live_verify import DEFAULT_EVIDENCE_PATH
+
+    return DEFAULT_EVIDENCE_PATH
 from .pareto import rank_bucket_sections
 
 
@@ -192,16 +199,20 @@ def run_holiday_planner(
 
     config = load_holiday_config(payload)
     # Bounded live flight injection (GHA-safe HTTP only, no browser).
-    # Disabled by default; enable with HOLIDAY_LIVE_FLIGHTS=1. Full
-    # Camoufox/FlareSolverr package verification stays in the private
-    # flightdealsearch engine on local/VM compute.
     live_offers: dict[str, float] = {}
     live_attempted = False
+    live_skipped: list[str] = []
     try:
-        from .live_verify import try_live_flight_offers
+        from . import live_verify
 
         live_attempted = True
-        live_offers = dict(try_live_flight_offers(config))
+        evidence_path = os.environ.get(
+            "HOLIDAY_LIVE_EVIDENCE_PATH", live_verify.DEFAULT_EVIDENCE_PATH
+        )
+        live_offers = dict(
+            live_verify.try_live_flight_offers(config, path=evidence_path)
+        )
+        live_skipped = live_verify.consume_skip_log()
     except Exception:
         live_offers = {}
     deals = collect_holiday_deals(
@@ -263,6 +274,13 @@ def run_holiday_planner(
         "deal_count": len(deals),
         "live_flight_airports": len(live_offers),
         "live_attempted": live_attempted,
+        "live_evidence_file_found": os.path.exists(
+            os.environ.get(
+                "HOLIDAY_LIVE_EVIDENCE_PATH",
+                _live_evidence_default_path(),
+            )
+        ),
+        "live_skipped": live_skipped,
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
         "send_skipped_no_change": (not dry_run) and not send_email,

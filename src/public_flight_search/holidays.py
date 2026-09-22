@@ -659,6 +659,10 @@ class PackageDeal:
     # Data provenance per confidence gates.
     confidence: str = "market-supported"
     source_url: str = ""
+    # When a live whole-party fare is used, the carrier the provider actually
+    # displayed (may differ from the benchmark carrier); empty on benchmarks.
+    live_carrier: str = ""
+    live_observed_at: str = ""
     # Real discount intelligence: the SAME resort at summer peak prices
     # (same rooms/nights/party) and property-level cross-vendor links.
     peak_summer_total_gbp: float = 0.0
@@ -1544,6 +1548,8 @@ def collect_holiday_deals(
                 live_used = bool(evidence is not None and evidence.promotable)
                 if live_used and evidence is not None:
                     flight_cost = evidence.total_gbp
+                    if evidence.carrier:
+                        display_airline = evidence.carrier
                 flight_basis = (
                     evidence.basis
                     if (live_used and evidence is not None)
@@ -1614,6 +1620,16 @@ def collect_holiday_deals(
                                 evidence.source_url
                                 if (live_used and evidence is not None)
                                 else resort.get("hotel_url", "")
+                            ),
+                            live_carrier=(
+                                evidence.carrier
+                                if (live_used and evidence is not None)
+                                else ""
+                            ),
+                            live_observed_at=(
+                                evidence.observed_at
+                                if (live_used and evidence is not None)
+                                else ""
                             ),
                             peak_summer_total_gbp=peak_total,
                             unit_architecture=arch["suite_type"],
@@ -1903,6 +1919,16 @@ def render_holiday_report(
             out.append(cabin_badge)
             out.append('<span style="background:#eff6ff; color:#1d4ed8; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + escape(deal.board_basis) + '</span> ')
             out.append('<span style="background:' + ('#dcfce7' if live else '#fef3c7') + '; color:' + ('#166534' if live else '#92400e') + '; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + ('🟢 LIVE VERIFIED' if live else '🟡 BENCHMARK PRICE') + '</span> ')
+            if live and getattr(deal, "live_observed_at", ""):
+                # AUDITABLE, not decorative: the chip must state WHEN the fare
+                # was observed and LINK to the page the amount was read from.
+                # A bare "LIVE" label is exactly the unverifiable claim the
+                # data-provenance mandate forbids.
+                try:
+                    observed_day = str(deal.live_observed_at)[:10]
+                except (TypeError, ValueError):
+                    observed_day = ""
+                out.append('<span style="color:#166534; font-size:11px;">observed ' + escape(observed_day) + ' · </span><a href="' + escape(deal.source_url, quote=True) + '" style="color:#166534; font-size:11px;">fare source ↗</a>')
             out.append('<span style="background:#16a34a; color:#ffffff; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:800;">▼' + str(deal.vs_peak_pct) + '% vs summer peak · save £' + f'{deal.vs_peak_saving_gbp:,.0f}' + '</span>')
             history_chip = chip_by_resort.get(deal.resort_name, '')
             if history_chip:
@@ -1926,7 +1952,16 @@ def render_holiday_report(
             # never truncate to an LCC fragment. Benchmark estimates carry an
             # explicit live-check note; only verified-exact-date is a live fare.
             flight_carrier_display = escape(deal.airline) if cabin_is_premium else escape(deal.airline.split('/')[0].strip())
-            flight_note = "" if live else ("<br><span style=\"font-size:11px;\">estimate — live cabin check required</span>" if cabin_is_premium else "")
+            if live:
+                # Name the carrier the provider actually displayed for this
+                # whole-party fare, not the benchmark assumption.
+                flight_note = (
+                    '<br><span style="font-size:11px; color:#166534;">'
+                    + escape(getattr(deal, "live_carrier", "") or deal.airline)
+                    + ' — live observed fare</span>'
+                )
+            else:
+                flight_note = "<br><span style=\"font-size:11px;\">estimate — live cabin check required</span>" if cabin_is_premium else ""
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#f8fafc; border-radius:8px; margin-bottom:10px;"><tr>')
             out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights' + cabin_label + '<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + flight_carrier_display + '</span>' + flight_note + '</td>')
             suite_label = deal.unit_architecture or (str(rooms_n) + ' rooms')

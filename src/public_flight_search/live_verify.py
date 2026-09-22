@@ -38,7 +38,10 @@ See ``holiday_scraper/live/`` in that repository.
 This module is therefore an **honest seam**, not a scraper:
 
 * :func:`try_live_flight_offers` returns only evidence that satisfies the
-  whole-party, exact-date contract. Today that is nothing, and it says so.
+  whole-party, exact-date contract. The evidence arrives as a committed
+  file exported by the private engine (``holiday_live_evidence.json``),
+  seeded by the workflow alongside price history; every entry is
+  re-validated here for basis, exact dates, party size and freshness.
 * :class:`LiveFareEvidence` forces the basis to travel with the figure, so
   a per-person amount can never be consumed as a party total.
 * No function here invents, extrapolates or multiplies a price. Empty
@@ -47,6 +50,8 @@ This module is therefore an **honest seam**, not a scraper:
 
 from __future__ import annotations
 
+import json
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Mapping, Optional
@@ -88,6 +93,7 @@ class LiveFareEvidence:
     observed_at: str
     exact_date_match: bool = True
     note: str = ""
+    carrier: str = ""
 
     @property
     def promotable(self) -> bool:
@@ -119,25 +125,201 @@ def live_evidence_unavailable_reason() -> str:
     )
 
 
+#: Evidence older than this is treated as stale cache, never as live.
+EVIDENCE_MAX_AGE_HOURS = 72
+
+#: Where the workflow lands the private engine's evidence file.
+DEFAULT_EVIDENCE_PATH = "data/holiday_live_evidence.json"
+
+
+def _target_date_pair(config) -> tuple[str, str]:
+    """The exact outbound/return pair the report is actually priced on.
+
+    Must match the pair selection in ``holidays.collect_holiday_deals``:
+    the middle element of the shortlisted date pairs.
+    """
+    from .holidays import _date_pairs, _shortlist_pairs
+
+    pairs = _shortlist_pairs(_date_pairs(config))
+    if not pairs:
+        return "", ""
+    return pairs[len(pairs) // 2]
+
+
+#: Skips from the most recent evidence load, surfaced in the job summary
+#: so an operator sees exactly why an airport stayed on benchmarks.
+_SKIP_LOG: list[str] = []
+
+
+def consume_skip_log() -> list[str]:
+    """Return and clear the skip reasons recorded by the last evidence load."""
+    items = list(_SKIP_LOG)
+    _SKIP_LOG.clear()
+    return items
+
+
+def _warn_skip(airport: str, reason: str) -> None:
+    message = f"{airport or '?'}: {reason}"
+    _SKIP_LOG.append(message)
+    print(f"live-evidence: skipping {message}", file=sys.stderr)
+
+
+def _parse_observed_at(raw: str) -> Optional[datetime]:
+    try:
+        value = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (ValueError, AttributeError, TypeError):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def load_live_flight_evidence(
+    config,
+    *,
+    path: str = DEFAULT_EVIDENCE_PATH,
+    now: Optional[datetime] = None,
+) -> dict[str, LiveFareEvidence]:
+    """Load live-fare evidence produced by the private ``dealsearch`` engine.
+
+    The private engine drives a real browser, reads the itinerary card the
+    provider actually rendered, and records the whole-party total WITH its
+    price basis and provenance. Its exporter writes this file; the public
+    workflow seeds it from the private repo exactly like price history.
+
+    Acceptance is deliberately strict — an entry is consumed only when
+    every one of these holds:
+
+    * ``basis`` is a whole-party basis (per-person amounts are never
+      multiplied up — that was the fabrication this module exists to
+      prevent);
+    * the hunt's outbound/return dates match the report's priced pair
+      exactly;
+    * the hunt's party size matches ``config.travellers`` (a whole-party
+      total is only valid for the party it was quoted for);
+    * the observation is younger than ``EVIDENCE_MAX_AGE_HOURS`` — older
+      observations are stale cache, not live;
+    * ``source_url`` is a real http(s) URL and ``total_gbp`` is a positive
+      finite number.
+
+    Anything else is skipped with a reason on stderr. A missing or
+    unreadable file returns an empty mapping (stay on benchmarks) — never
+    a fabricated figure and never a crash.
+    """
+    del now  # parameter kept for test injection via _parse_observed_at callers
+    target_outbound, target_return = _target_date_pair(config)
+    if not target_outbound:
+        return {}
+
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return {}
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"live-evidence: unreadable {path}: {exc}", file=sys.stderr)
+        return {}
+
+    entries = payload.get("evidence", []) if isinstance(payload, dict) else payload
+    if not isinstance(entries, list):
+        print(f"live-evidence: {path} has no evidence list", file=sys.stderr)
+        return {}
+
+    now_dt = datetime.now(timezone.utc)
+    evidence: dict[str, LiveFareEvidence] = {}
+    for index, item in enumerate(entries):
+        if not isinstance(item, dict):
+            _warn_skip(f"#{index}", "not an object")
+            continue
+        airport = str(item.get("airport", "")).strip().upper()
+        basis = str(item.get("basis", "")).strip()
+        try:
+            total = float(item.get("total_gbp"))
+        except (TypeError, ValueError):
+            _warn_skip(airport, "total_gbp missing or not a number")
+            continue
+        if not airport or not total > 0 or total != total or total in (
+            float("inf"), float("-inf")
+        ):
+            _warn_skip(airport or f"#{index}", "airport missing or total not positive/finite")
+            continue
+        if basis not in WHOLE_PARTY_BASES:
+            _warn_skip(airport, f"basis {basis!r} is not a whole-party basis")
+            continue
+        source_url = str(item.get("source_url", "")).strip()
+        if not source_url.startswith(("http://", "https://")):
+            _warn_skip(airport, "source_url missing or not http(s)")
+            continue
+        observed_raw = str(item.get("observed_at", "")).strip()
+        observed = _parse_observed_at(observed_raw)
+        if observed is None:
+            _warn_skip(airport, "observed_at missing or unparseable")
+            continue
+        age_hours = (now_dt - observed).total_seconds() / 3600.0
+        if age_hours < 0:
+            _warn_skip(airport, "observed_at is in the future")
+            continue
+        if age_hours > EVIDENCE_MAX_AGE_HOURS:
+            _warn_skip(airport, f"stale: observed {age_hours:.0f}h ago (max {EVIDENCE_MAX_AGE_HOURS}h)")
+            continue
+        exact_dates = item.get("exact_dates") or {}
+        if (
+            str(exact_dates.get("outbound", "")).strip() != target_outbound
+            or str(exact_dates.get("return", "")).strip() != target_return
+        ):
+            _warn_skip(
+                airport,
+                f"dates {exact_dates.get('outbound')}…{exact_dates.get('return')} "
+                f"do not match the priced pair {target_outbound}…{target_return}",
+            )
+            continue
+        try:
+            hunted_travellers = int(item.get("travellers"))
+        except (TypeError, ValueError):
+            _warn_skip(airport, "travellers missing — party size unverifiable")
+            continue
+        if hunted_travellers != int(getattr(config, "travellers", 0)):
+            _warn_skip(airport, f"party {hunted_travellers} != report party {config.travellers}")
+            continue
+
+        entry = LiveFareEvidence(
+            airport=airport,
+            total_gbp=total,
+            basis=basis,
+            source_url=source_url,
+            observed_at=observed_raw,
+            exact_date_match=True,
+            note=str(item.get("note", "")).strip(),
+            carrier=str(item.get("carrier", "")).strip(),
+        )
+        # Keep the freshest observation per airport.
+        existing = evidence.get(airport)
+        if existing is None or observed_raw > existing.observed_at:
+            evidence[airport] = entry
+    return evidence
+
+
 def try_live_flight_offers(
-    config, *, max_searches: int = 12
+    config,
+    *,
+    max_searches: int = 12,
+    path: str = DEFAULT_EVIDENCE_PATH,
 ) -> Mapping[str, LiveFareEvidence]:
     """Return promotable live fare evidence keyed by airport.
 
-    Returns an empty mapping. That is a deliberate, documented outcome
-    rather than a failure being swallowed: a plain HTTP request cannot
-    obtain a fare from these results pages, so there is nothing honest to
-    return, and returning a derived figure would be the bug this module
-    exists to prevent.
+    Two activation paths, both explicit operator actions:
 
-    Callers must treat an empty mapping as "stay on benchmarks" and must
-    never read it as a zero price.
+    * the evidence file exists (the workflow seeds it from the private
+      engine's committed export — no network is touched here);
+    * ``HOLIDAY_LIVE_FLIGHTS`` is set (historical gate, kept for tests).
+
+    With neither, returns an empty mapping: a deliberate, documented
+    outcome — deals stay on benchmarks, never on a derived figure.
+    ``max_searches`` is retained for signature compatibility and unused.
     """
-    if not _live_enabled():
-        return {}
+    del max_searches
+    import os
 
-    # The HTTP path is retained only as an explicit capability statement.
-    # If a future provider does serve fares to a non-browser client, its
-    # reader must return LiveFareEvidence carrying a whole-party basis —
-    # never a bare float, and never a multiplied per-person figure.
-    return {}
+    if not _live_enabled() and not os.path.exists(path):
+        return {}
+    return load_live_flight_evidence(config, path=path)
