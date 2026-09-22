@@ -300,9 +300,11 @@ def load_live_flight_evidence(
             note=str(item.get("note", "")).strip(),
             carrier=str(item.get("carrier", "")).strip(),
         )
-        # Keep the freshest observation per airport.
+        # Keep the freshest observation per airport. Compare parsed
+        # datetimes, not raw strings: ISO timestamps with mixed offsets
+        # ("+00:00" vs "Z") do not sort correctly lexicographically.
         existing = evidence.get(airport)
-        if existing is None or observed_raw > existing.observed_at:
+        if existing is None or observed > _parse_observed_at(existing.observed_at):
             evidence[airport] = entry
     return evidence
 
