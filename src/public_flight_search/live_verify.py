@@ -94,6 +94,7 @@ class LiveFareEvidence:
     exact_date_match: bool = True
     note: str = ""
     carrier: str = ""
+    cabin_class: str = "ECONOMY"
 
     @property
     def promotable(self) -> bool:
@@ -130,6 +131,14 @@ EVIDENCE_MAX_AGE_HOURS = 72
 
 #: Where the workflow lands the private engine's evidence file.
 DEFAULT_EVIDENCE_PATH = "data/holiday_live_evidence.json"
+
+
+#: Cabins the holiday report may consume live evidence for. The December
+#: report prices ECONOMY/PREMIUM_ECONOMY/BUSINESS cards; the July mandate is
+#: BUSINESS-led. FIRST has no card in either report today.
+EVIDENCE_CABINS: frozenset[str] = frozenset(
+    {"ECONOMY", "PREMIUM_ECONOMY", "BUSINESS"}
+)
 
 
 def _target_date_pair(config) -> tuple[str, str]:
@@ -290,6 +299,10 @@ def load_live_flight_evidence(
             _warn_skip(airport, f"origin {entry_origin} != report origin {report_origin}")
             continue
 
+        entry_cabin = str(item.get("cabin_class", "ECONOMY")).strip().upper()
+        if entry_cabin not in EVIDENCE_CABINS:
+            _warn_skip(airport, f"cabin {entry_cabin!r} is not a reportable cabin")
+            continue
         entry = LiveFareEvidence(
             airport=airport,
             total_gbp=total,
@@ -299,13 +312,16 @@ def load_live_flight_evidence(
             exact_date_match=True,
             note=str(item.get("note", "")).strip(),
             carrier=str(item.get("carrier", "")).strip(),
+            cabin_class=entry_cabin,
         )
-        # Keep the freshest observation per airport. Compare parsed
-        # datetimes, not raw strings: ISO timestamps with mixed offsets
-        # ("+00:00" vs "Z") do not sort correctly lexicographically.
-        existing = evidence.get(airport)
+        # Key by (airport, cabin): the report renders ECONOMY, PREMIUM_ECONOMY
+        # and BUSINESS cards for the same airport, and an ECONOMY fare must
+        # never price (let alone LIVE-verify) a Business card. Freshness
+        # tie-break is now within a cabin, not within an airport.
+        key = (airport, entry_cabin)
+        existing = evidence.get(key)
         if existing is None or observed > _parse_observed_at(existing.observed_at):
-            evidence[airport] = entry
+            evidence[key] = entry
     return evidence
 
 
@@ -315,7 +331,7 @@ def try_live_flight_offers(
     max_searches: int = 12,
     path: str = DEFAULT_EVIDENCE_PATH,
 ) -> Mapping[str, LiveFareEvidence]:
-    """Return promotable live fare evidence keyed by airport.
+    """Return promotable live fare evidence keyed by (airport, cabin).
 
     Two activation paths, both explicit operator actions:
 

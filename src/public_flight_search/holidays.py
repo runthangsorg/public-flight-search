@@ -1543,8 +1543,15 @@ def collect_holiday_deals(
                 # Live evidence must be a WHOLE-PARTY, exact-date amount to be
                 # used at all. A per-person figure is never multiplied up into
                 # a party total: deriving one and stamping it verified was the
-                # bug this guard exists to make unrepeatable.
-                evidence = live_flight_offers.get(airport) if live_flight_offers else None
+                # bug this guard exists to make unrepeatable. The lookup is
+                # CABIN-aware: an Economy fare must never price (or verify) a
+                # Business card — the cards' multipliers exist precisely
+                # because the cabins cost different amounts.
+                evidence = (
+                    live_flight_offers.get((airport, cabin.upper()))
+                    if live_flight_offers
+                    else None
+                )
                 live_used = bool(evidence is not None and evidence.promotable)
                 if live_used and evidence is not None:
                     flight_cost = evidence.total_gbp

@@ -27,6 +27,7 @@ CONFIG_JSON = """
   "departure_window": ["06:00", "23:59"],
   "outbound_dates": ["2026-12-22"],
   "return_dates": ["2026-12-30"],
+  "cabin_classes": ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS"],
   "destinations": [
     {"key": "antalya", "label": "Antalya", "airports": ["AYT"]}
   ]
@@ -34,7 +35,7 @@ CONFIG_JSON = """
 """
 
 
-def _evidence(basis: str, total: float, *, exact: bool = True) -> LiveFareEvidence:
+def _evidence(basis: str, total: float, *, exact: bool = True, cabin: str = "ECONOMY") -> LiveFareEvidence:
     return LiveFareEvidence(
         airport="AYT",
         total_gbp=total,
@@ -42,6 +43,7 @@ def _evidence(basis: str, total: float, *, exact: bool = True) -> LiveFareEviden
         source_url="https://example.invalid/search",
         observed_at="2026-09-16T00:00:00+00:00",
         exact_date_match=exact,
+        cabin_class=cabin,
     )
 
 
@@ -85,8 +87,12 @@ class TestDealLabelling(unittest.TestCase):
         for deal in deals:
             self.assertNotEqual(deal.confidence, "verified-exact-date")
             # Every benchmark deal states that its flight figure is a
-            # benchmark, rather than leaving the basis ambiguous.
-            self.assertEqual(deal.flight_price_basis, "benchmark_supplied")
+            # benchmark and WHICH cabin the benchmark was taken in, rather
+            # than leaving either ambiguous.
+            expected = "benchmark_supplied" if deal.cabin_class == "ECONOMY" else (
+                f"benchmark_supplied_{deal.cabin_class.lower()}"
+            )
+            self.assertEqual(deal.flight_price_basis, expected)
 
     def test_a_per_person_basis_does_not_promote_and_is_not_multiplied(self):
         # 5 travellers at GBP200 per person is GBP1,000 only if multiplied.
@@ -108,7 +114,7 @@ class TestDealLabelling(unittest.TestCase):
 
     def test_whole_party_exact_date_evidence_promotes_and_carries_its_basis(self):
         deals = self._deals(
-            {"AYT": _evidence("whole_party_return_total", 1234.56)}
+            {("AYT", "ECONOMY"): _evidence("whole_party_return_total", 1234.56)}
         )
         promoted = [d for d in deals if d.confidence == "verified-exact-date"]
         self.assertTrue(promoted, "whole-party exact-date evidence should promote")
@@ -116,6 +122,36 @@ class TestDealLabelling(unittest.TestCase):
             self.assertEqual(deal.flight_price_total_gbp, 1234.56)
             self.assertEqual(deal.flight_price_basis, "whole_party_return_total")
             self.assertEqual(deal.source_url, "https://example.invalid/search")
+
+    def test_business_card_prices_only_from_business_evidence(self):
+        # The 2026-09-22 cabin-seam fix: an ECONOMY fare must never price (or
+        # LIVE-verify) the Business card of the same airport.
+        economy_only = self._deals(
+            {("AYT", "ECONOMY"): _evidence("whole_party_return_total", 1234.56)}
+        )
+        business = [
+            d
+            for d in economy_only
+            if getattr(d, "cabin_class", "") == "BUSINESS"
+        ]
+        self.assertTrue(business)
+        for deal in business:
+            self.assertNotEqual(deal.confidence, "verified-exact-date")
+
+        both = self._deals(
+            {
+                ("AYT", "ECONOMY"): _evidence("whole_party_return_total", 1234.56),
+                ("AYT", "BUSINESS"): _evidence(
+                    "whole_party_return_total", 3100.0, cabin="BUSINESS"
+                ),
+            }
+        )
+        business_promoted = [
+            d for d in both if d.cabin_class == "BUSINESS" and d.confidence == "verified-exact-date"
+        ]
+        self.assertTrue(business_promoted, "BUSINESS evidence should verify BUSINESS cards")
+        for deal in business_promoted:
+            self.assertEqual(deal.flight_price_total_gbp, 3100.0)
 
 
 class TestNoFabrication(unittest.TestCase):
@@ -191,7 +227,7 @@ class TestEvidenceFileLoader(unittest.TestCase):
     def test_valid_entry_is_accepted_and_promotes_the_deal(self):
         path = self._write([self._rec(total_gbp=1234.5, carrier="Ajet")])
         offers = try_live_flight_offers(self.config, path=path)
-        self.assertEqual(set(offers), {"AYT"})
+        self.assertEqual(set(offers), {("AYT", "ECONOMY")})
         deals = {
             d.resort_name: d
             for d in collect_holiday_deals(
@@ -272,8 +308,24 @@ class TestEvidenceFileLoader(unittest.TestCase):
             ]
         )
         offers = try_live_flight_offers(self.config, path=path)
-        self.assertEqual(offers["AYT"].total_gbp, 2222.0)
+        self.assertEqual(offers[("AYT", "ECONOMY")].total_gbp, 2222.0)
         consume_skip_log()
+
+    def test_business_entry_is_accepted_and_keyed_separately(self):
+        # July's report is BUSINESS-led: a whole-party business fare must
+        # survive the loader and land on the BUSINESS key.
+        path = self._write(
+            [
+                self._rec(
+                    cabin_class="BUSINESS",
+                    total_gbp=3150.0,
+                    carrier="Turkish Airlines",
+                )
+            ]
+        )
+        offers = try_live_flight_offers(self.config, path=path)
+        self.assertEqual(set(offers), {("AYT", "BUSINESS")})
+        self.assertEqual(offers[("AYT", "BUSINESS")].total_gbp, 3150.0)
 
 
 if __name__ == "__main__":  # pragma: no cover
