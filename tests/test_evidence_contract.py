@@ -22,6 +22,7 @@ the hunt being re-aimed.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 import json
 import tempfile
@@ -60,6 +61,21 @@ SYNTHETIC = """
 """
 
 
+#: A fixed instant the loader accepts: not in the future, not stale.
+#:
+#: Every loader call below injects it as ``now`` as well as stamping it on the
+#: records, so the age is exactly 0h and no calendar date can turn these tests
+#: red. Before that, the loader ignored ``now`` (``del now``) and measured the
+#: real clock: this literal would have silently expired 72h after it was
+#: written, failing the contract tests — and every holiday report run, since
+#: the workflow runs the suite before it builds.
+OBSERVED_AT = "2026-09-23T00:00:00+00:00"
+
+
+def _observed_now() -> datetime:
+    return datetime.fromisoformat(OBSERVED_AT)
+
+
 def _load(path: Path):
     return load_holiday_config(path.read_text(encoding="utf-8"))
 
@@ -95,9 +111,6 @@ class TestContractMatchesCollectorExactly(unittest.TestCase):
     (airport, cabin) pairs — no more, no fewer.
     """
 
-    #: A fixed instant the loader will accept: not in the future, not stale.
-    OBSERVED_AT = "2026-09-23T00:00:00+00:00"
-
     def _write_evidence(self, entries: list[dict]) -> str:
         with tempfile.NamedTemporaryFile(
             "w", suffix=".json", delete=False
@@ -115,7 +128,7 @@ class TestContractMatchesCollectorExactly(unittest.TestCase):
                     "basis": "whole_party_return_total",
                     "total_gbp": 1000.0,
                     "source_url": "https://example.invalid/hunt",
-                    "observed_at": self.OBSERVED_AT,
+                    "observed_at": OBSERVED_AT,
                     "travellers": contract.travellers,
                     "origin": contract.origin,
                     "exact_dates": {
@@ -126,7 +139,9 @@ class TestContractMatchesCollectorExactly(unittest.TestCase):
                 for airport, cabin in contract.keys
             ]
         )
-        loaded = load_live_flight_evidence(config, path=path)
+        loaded = load_live_flight_evidence(
+            config, path=path, now=_observed_now()
+        )
         deals = collect_holiday_deals(
             config, max_budget_gbp=float("inf"), live_flight_offers=loaded or None
         )
@@ -209,7 +224,7 @@ class TestContractGaps(unittest.TestCase):
                             "basis": "whole_party_return_total",
                             "total_gbp": 1000.0,
                             "source_url": "https://example.invalid/hunt",
-                            "observed_at": "2026-09-23T00:00:00+00:00",
+                            "observed_at": OBSERVED_AT,
                             "travellers": contract.travellers,
                             "origin": contract.origin,
                             "exact_dates": {
@@ -222,7 +237,9 @@ class TestContractGaps(unittest.TestCase):
                 handle,
             )
             path = handle.name
-        loaded = load_live_flight_evidence(config, path=path)
+        loaded = load_live_flight_evidence(
+            config, path=path, now=_observed_now()
+        )
         gaps = evidence_contract_gaps(config, loaded)
         self.assertNotIn("AYT/ECONOMY", gaps["missing"])
         self.assertIn("ACE/ECONOMY", gaps["missing"])
@@ -363,6 +380,210 @@ class TestCatalogProvenance(unittest.TestCase):
         self.assertEqual(set(contract.airports), {"AYT", "HRG", "PFO", "TFS"})
         for dead in ("MLA", "DOH", "MCT", "AGA"):
             self.assertNotIn(dead, contract.airports, dead)
+
+
+class TestAgeReferenceIsInjectedNotGuessed(unittest.TestCase):
+    """The loader must measure age against ``now``, not the wall clock.
+
+    Regression, found by review 2026-09-23: ``load_live_flight_evidence``
+    accepted ``now`` and then did ``del now``, measuring every age against
+    ``datetime.now()``. The equivalence tests inject a fixed ``observed_at``,
+    so they passed while the wall clock was near it and would all have failed
+    on 2026-09-26 — blocking every holiday report, since the workflow runs
+    the suite before it builds. That is the same literal-date expiry class
+    this module's sibling fix removed from ``trip_config``.
+    """
+
+    def _write(self, observed: str, config) -> str:
+        contract = evidence_consumption_contract(config)
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".json", delete=False
+        ) as handle:
+            json.dump(
+                {
+                    "evidence": [
+                        {
+                            "airport": "AYT",
+                            "cabin_class": "ECONOMY",
+                            "basis": "whole_party_return_total",
+                            "total_gbp": 1000.0,
+                            "source_url": "https://example.invalid/hunt",
+                            "observed_at": observed,
+                            "travellers": contract.travellers,
+                            "origin": contract.origin,
+                            "exact_dates": {
+                                "outbound": contract.outbound,
+                                "return": contract.return_date,
+                            },
+                        }
+                    ]
+                },
+                handle,
+            )
+            return handle.name
+
+    def test_an_injected_now_decides_freshness_not_the_calendar(self):
+        config = _load(DEC_CONFIG)
+        # Long before today: the real clock can only ever call this stale.
+        observed = "2020-01-01T00:00:00+00:00"
+        path = self._write(observed, config)
+
+        self.assertEqual(load_live_flight_evidence(config, path=path), {})
+        loaded = load_live_flight_evidence(
+            config, path=path, now=datetime.fromisoformat(observed)
+        )
+        self.assertIn(("AYT", "ECONOMY"), loaded)
+
+    def test_a_fixed_fixture_stays_valid_years_later(self):
+        # The equivalence fixture must not depend on the day it runs.
+        config = _load(DEC_CONFIG)
+        observed = OBSERVED_AT
+        path = self._write(observed, config)
+        loaded = load_live_flight_evidence(
+            config, path=path, now=datetime.fromisoformat(observed)
+        )
+        self.assertEqual(set(loaded), {("AYT", "ECONOMY")})
+
+
+class TestFutureDatedEvidenceIsConsistent(unittest.TestCase):
+    """A record the loader rejects must not be reported as fresh."""
+
+    def test_future_dated_observation_is_not_the_newest_fresh_record(self):
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".json", delete=False
+        ) as handle:
+            json.dump(
+                {
+                    "evidence": [
+                        {"airport": "AYT", "observed_at": "2026-09-30T00:00:00+00:00"}
+                    ]
+                },
+                handle,
+            )
+            path = handle.name
+        fresh = evidence_freshness(path, now="2026-09-23T06:00:00+00:00")
+        # Before: stale=False with age_hours -150, while the loader's own skip
+        # log said "observed_at is in the future" for the same record.
+        self.assertTrue(fresh["stale"])
+        self.assertIsNone(fresh["newest_observed_at"])
+        self.assertEqual(fresh["future_dated"], 1)
+        self.assertEqual(fresh["record_count"], 1)
+
+    def test_a_usable_record_wins_over_a_future_dated_one(self):
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".json", delete=False
+        ) as handle:
+            json.dump(
+                {
+                    "evidence": [
+                        {"airport": "AYT", "observed_at": "2026-09-23T00:00:00+00:00"},
+                        {"airport": "TFS", "observed_at": "2026-09-30T00:00:00+00:00"},
+                    ]
+                },
+                handle,
+            )
+            path = handle.name
+        fresh = evidence_freshness(path, now="2026-09-23T06:00:00+00:00")
+        self.assertEqual(fresh["newest_observed_at"], "2026-09-23T00:00:00+00:00")
+        self.assertEqual(fresh["future_dated"], 1)
+        self.assertFalse(fresh["stale"])
+
+
+class TestReportableCabinsAreOneSet(unittest.TestCase):
+    """The loader gate and the renderable cabins must be one definition."""
+
+    def test_evidence_cabins_is_the_shared_report_cabin_set(self):
+        from public_flight_search.config import REPORT_CABINS
+        from public_flight_search.live_verify import EVIDENCE_CABINS
+
+        self.assertEqual(EVIDENCE_CABINS, REPORT_CABINS)
+
+    def test_first_is_reportable_because_the_report_renders_it(self):
+        # holidays.py renders a "🥇 First Class" badge and lists First in the
+        # "other cabin options" table, so the loader excluding FIRST meant a
+        # FIRST fare could be requested by the contract and rejected on load.
+        from public_flight_search.live_verify import EVIDENCE_CABINS
+
+        self.assertIn("FIRST", EVIDENCE_CABINS)
+
+    def test_every_contract_cabin_can_actually_be_loaded(self):
+        from public_flight_search.live_verify import EVIDENCE_CABINS
+
+        for path in (DEC_CONFIG, JULY_CONFIG):
+            with self.subTest(config=path.name):
+                contract = evidence_consumption_contract(_load(path))
+                cabins = {cabin for _, cabin in contract.keys}
+                self.assertLessEqual(cabins, EVIDENCE_CABINS)
+
+    def test_a_first_class_config_contract_is_loadable(self):
+        # The exact divergence the set-unification prevents: with FIRST in the
+        # config, the contract asks for a FIRST fare — and the loader used to
+        # answer "cabin 'FIRST' is not a reportable cabin" forever.
+        config = load_holiday_config(
+            SYNTHETIC.replace(
+                '"destinations": [',
+                '"cabin_classes": ["FIRST"],\n  "destinations": [',
+            )
+        )
+        contract = evidence_consumption_contract(config)
+        self.assertEqual({cabin for _, cabin in contract.keys}, {"FIRST"})
+
+        observed = "2026-09-23T00:00:00+00:00"
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".json", delete=False
+        ) as handle:
+            json.dump(
+                {
+                    "evidence": [
+                        {
+                            "airport": "AYT",
+                            "cabin_class": "FIRST",
+                            "basis": "whole_party_return_total",
+                            "total_gbp": 9000.0,
+                            "source_url": "https://example.invalid/hunt",
+                            "observed_at": observed,
+                            "travellers": contract.travellers,
+                            "origin": contract.origin,
+                            "exact_dates": {
+                                "outbound": contract.outbound,
+                                "return": contract.return_date,
+                            },
+                        }
+                    ]
+                },
+                handle,
+            )
+            path = handle.name
+        loaded = load_live_flight_evidence(
+            config, path=path, now=datetime.fromisoformat(observed)
+        )
+        self.assertIn(("AYT", "FIRST"), loaded)
+
+
+class TestLiveEvidenceCountsAreLabelledHonestly(unittest.TestCase):
+    """``live_flight_airports`` must count airports, not keys."""
+
+    def test_one_airport_with_three_cabins_is_one_airport(self):
+        from public_flight_search.jobs import _live_evidence_counts
+
+        counts = _live_evidence_counts(
+            {
+                ("AYT", "ECONOMY"): object(),
+                ("AYT", "PREMIUM_ECONOMY"): object(),
+                ("AYT", "BUSINESS"): object(),
+            }
+        )
+        # Before: len(mapping) == 3, so one airport reported as three.
+        self.assertEqual(counts["live_flight_airports"], 1)
+        self.assertEqual(counts["live_flight_cabins"], 3)
+
+    def test_empty_evidence_counts_zero(self):
+        from public_flight_search.jobs import _live_evidence_counts
+
+        self.assertEqual(
+            _live_evidence_counts({}),
+            {"live_flight_airports": 0, "live_flight_cabins": 0},
+        )
 
 
 if __name__ == "__main__":

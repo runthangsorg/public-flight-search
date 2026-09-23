@@ -8,6 +8,8 @@ import json
 import logging
 import os
 from pathlib import Path
+import sys
+from typing import Optional
 
 from .config import load_flight_config, build_search_plan
 from .google_flights import build_google_flights_url, search_google_flights
@@ -177,6 +179,19 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     return result
 
 
+def _live_evidence_counts(live_offers) -> dict[str, int]:
+    """Distinct airports and cabins among the promotable live fares.
+
+    The mapping is keyed by ``(airport, cabin)``, so its length counts keys:
+    three cabins priced for AYT alone would have been reported as three
+    "airports", the same mislabel the workflow seed log carried.
+    """
+    return {
+        "live_flight_airports": len({str(airport) for airport, _ in live_offers}),
+        "live_flight_cabins": len({str(cabin) for _, cabin in live_offers}),
+    }
+
+
 def run_holiday_planner(
     *,
     dry_run: bool,
@@ -213,14 +228,23 @@ def run_holiday_planner(
     live_offers: dict[tuple[str, str], object] = {}
     live_attempted = False
     live_skipped: list[str] = []
+    during_live_error: Optional[str] = None
     try:
         live_attempted = True
         live_offers = dict(
             live_verify.try_live_flight_offers(config, path=evidence_path)
         )
         live_skipped = live_verify.consume_skip_log()
-    except Exception:
+    except Exception as exc:
+        # Never silent: an empty mapping and a crashed seam look identical in
+        # the result JSON, and the difference matters (a crash means the
+        # numbers below describe nothing, not "no evidence yet").
         live_offers = {}
+        during_live_error = f"{type(exc).__name__}: {exc}"
+        live_skipped = [f"live-evidence load failed: {during_live_error}"]
+        print(
+            f"live-evidence: load failed: {during_live_error}", file=sys.stderr
+        )
     # CONSUMPTION CONTRACT (2026-09-23): the report prices ONE date pair from
     # ONE origin for a specific set of (airport, cabin) keys, and the private
     # hunt has no other way to learn that set. Before this was recorded, 125
@@ -235,13 +259,22 @@ def run_holiday_planner(
         "newest_observed_at": None,
         "age_hours": None,
         "stale": True,
+        "future_dated": 0,
     }
+    contract_error: Optional[str] = None
     try:
         contract = live_verify.evidence_consumption_contract(config)
         gaps = live_verify.evidence_contract_gaps(config, live_offers)
         freshness = live_verify.evidence_freshness(evidence_path)
-    except Exception:
+    except Exception as exc:
+        # The fallback shape is deliberately identical to a genuinely missing
+        # cache, so it MUST be labelled: without this an operator re-runs a
+        # hunt to "refresh" a cache that was never stale, and the contract
+        # silently disappears from the summary on exactly the runs that need
+        # it. Report the cause rather than swallowing it.
         contract, gaps = None, {"missing": [], "unused": []}
+        contract_error = f"{type(exc).__name__}: {exc}"
+        print(f"live-evidence: contract failed: {contract_error}", file=sys.stderr)
     deals = collect_holiday_deals(
         config, max_budget_gbp=config.max_budget_gbp,
         live_flight_offers=live_offers or None,
@@ -320,7 +353,9 @@ def run_holiday_planner(
         # Exact rendered-link count: Jet2 is omitted where it has no product.
         "provider_entry_count": count_provider_entries(config),
         "deal_count": len(deals),
-        "live_flight_airports": len(live_offers),
+        # (airport, cabin) keys, not airports: three cabins with fares for
+        # AYT alone is ONE airport, and the label has to mean what it says.
+        **_live_evidence_counts(live_offers),
         "live_attempted": live_attempted,
         "live_evidence_file_found": os.path.exists(
             os.environ.get(
@@ -338,6 +373,11 @@ def run_holiday_planner(
         "live_evidence_newest_observed_at": freshness["newest_observed_at"],
         "live_evidence_age_hours": freshness["age_hours"],
         "live_evidence_stale": freshness["stale"],
+        "live_evidence_future_dated": freshness["future_dated"],
+        # Non-null means the seam itself failed, so every live-evidence field
+        # above is a fallback shape rather than a measurement.
+        "live_evidence_contract_error": contract_error,
+        "live_evidence_load_error": during_live_error,
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
         "send_skipped_no_change": (not dry_run) and not send_email,

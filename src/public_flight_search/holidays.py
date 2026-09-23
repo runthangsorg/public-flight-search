@@ -9,7 +9,15 @@ import json
 from typing import Any, Mapping, Optional, Sequence
 from urllib.parse import urlencode
 
-from .config import ConfigError, _airports, _dates, _text, _validate_report_title, _window
+from .config import (
+    REPORT_CABINS,
+    ConfigError,
+    _airports,
+    _dates,
+    _text,
+    _validate_report_title,
+    _window,
+)
 from .google_flights import build_google_flights_roundtrip_url
 from .live_verify import LiveFareEvidence
 
@@ -517,7 +525,9 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     if not rooms or sum(rooms) != travellers or any(value < 1 for value in rooms):
         raise ConfigError("room occupancy must account for every traveller")
 
-    valid_cabins = {"ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"}
+    # Shared with the live-evidence loader and the renderer via config.py, so
+    # "the report can price this cabin" is one definition, not three.
+    valid_cabins = REPORT_CABINS
     root_cabin = str(raw.get("cabin_class", "ECONOMY")).upper()
     if root_cabin not in valid_cabins:
         raise ConfigError(f"unsupported cabin_class: {root_cabin}")

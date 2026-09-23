@@ -14,6 +14,19 @@ _CLOCK = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 _AI_TITLE_RE = re.compile(r"\b(ai|engineering|brief|news)\b", re.IGNORECASE)
 
 
+#: Every cabin this project can configure, price and render a card for.
+#:
+#: Single source of truth, deliberately at the bottom of the import graph so
+#: every layer can share it without a cycle. It was previously written out
+#: three times (here, in the holiday config loader, and in the live-evidence
+#: loader) and the copies had already drifted: the evidence loader omitted
+#: FIRST, so a config naming FIRST would have had the hunt contract ask for
+#: fares the loader then rejected as "not a reportable cabin".
+REPORT_CABINS: frozenset[str] = frozenset(
+    {"ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"}
+)
+
+
 class ConfigError(ValueError):
     """Raised when private runtime configuration is invalid or oversized."""
 
@@ -102,7 +115,7 @@ def _parse_search(raw: Mapping[str, Any]) -> FlightSearch:
     if not 30 <= duration <= 1440:
         raise ConfigError("max_duration_minutes is out of bounds")
     cabin = str(raw.get("cabin_class", "ECONOMY")).upper()
-    if cabin not in {"ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"}:
+    if cabin not in REPORT_CABINS:
         raise ConfigError("unsupported cabin_class")
     maximum = raw.get("max_price_per_traveller_gbp")
     maximum = None if maximum is None else float(maximum)

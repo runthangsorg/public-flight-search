@@ -56,6 +56,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Mapping, Optional
 
+# ``config`` sits below ``holidays`` in the import graph, so importing the
+# shared cabin set from there stays acyclic (holidays imports this module).
+from .config import REPORT_CABINS
+
 #: Bases on which a displayed amount can be a whole-trip total. Only these
 #: may promote a deal to ``verified-exact-date``.
 WHOLE_PARTY_BASES: frozenset[str] = frozenset(
@@ -133,12 +137,13 @@ EVIDENCE_MAX_AGE_HOURS = 72
 DEFAULT_EVIDENCE_PATH = "data/holiday_live_evidence.json"
 
 
-#: Cabins the holiday report may consume live evidence for. The December
-#: report prices ECONOMY/PREMIUM_ECONOMY/BUSINESS cards; the July mandate is
-#: BUSINESS-led. FIRST has no card in either report today.
-EVIDENCE_CABINS: frozenset[str] = frozenset(
-    {"ECONOMY", "PREMIUM_ECONOMY", "BUSINESS"}
-)
+#: Cabins the holiday report may consume live evidence for.
+#:
+#: Derived from ``config.REPORT_CABINS`` — the same set the holiday config
+#: loader validates against — so the loader gate and the renderable-cabin set
+#: cannot drift. Hardcoding a narrower list here is what made a FIRST fare
+#: consumable by the contract and simultaneously rejected by the loader.
+EVIDENCE_CABINS: frozenset[str] = REPORT_CABINS
 
 
 def priced_date_pair(config) -> tuple[str, str]:
@@ -287,13 +292,18 @@ def evidence_freshness(
     instead of leaving it to be inferred from a wall of skip reasons.
 
     ``stale`` True means no fresh evidence is available, including when the
-    file is missing or unreadable.
+    file is missing or unreadable, and including when every observation is
+    future-dated. A future-dated record is one the loader rejects outright
+    ("observed_at is in the future"), so it cannot be counted as the newest
+    observation here: doing so reported ``stale=False`` with a negative
+    ``age_hours`` while the same run's skip log said the record was dropped.
     """
     empty = {
         "record_count": 0,
         "newest_observed_at": None,
         "age_hours": None,
         "stale": True,
+        "future_dated": 0,
     }
     try:
         with open(path, encoding="utf-8") as handle:
@@ -305,27 +315,36 @@ def evidence_freshness(
     if not isinstance(entries, list):
         return empty
 
+    now_dt = _parse_observed_at(now or "") or datetime.now(timezone.utc)
     newest_raw: Optional[str] = None
     newest_dt: Optional[datetime] = None
     count = 0
+    future_dated = 0
     for item in entries:
         if not isinstance(item, dict):
             continue
         count += 1
         raw = str(item.get("observed_at", "")).strip()
         observed = _parse_observed_at(raw)
-        if observed is not None and (newest_dt is None or observed > newest_dt):
+        if observed is None:
+            continue
+        if observed > now_dt:
+            # Same rejection the loader applies, so the summary cannot
+            # contradict its own skip log.
+            future_dated += 1
+            continue
+        if newest_dt is None or observed > newest_dt:
             newest_dt, newest_raw = observed, raw
     if newest_dt is None:
-        return {**empty, "record_count": count}
+        return {**empty, "record_count": count, "future_dated": future_dated}
 
-    now_dt = _parse_observed_at(now or "") or datetime.now(timezone.utc)
     age_hours = (now_dt - newest_dt).total_seconds() / 3600.0
     return {
         "record_count": count,
         "newest_observed_at": newest_raw,
         "age_hours": round(age_hours, 3),
         "stale": age_hours > EVIDENCE_MAX_AGE_HOURS,
+        "future_dated": future_dated,
     }
 
 
@@ -389,7 +408,14 @@ def load_live_flight_evidence(
     unreadable file returns an empty mapping (stay on benchmarks) — never
     a fabricated figure and never a crash.
     """
-    del now  # parameter kept for test injection via _parse_observed_at callers
+    # ``now`` is the age reference, not decoration: the caller injects it so a
+    # test can pin a fixed observation instant. Measuring against the wall
+    # clock instead made every fixture a time bomb — a literal observed_at
+    # passes until it crosses EVIDENCE_MAX_AGE_HOURS, then the record is
+    # skipped as stale and the contract tests fail on a date, not a change.
+    now_dt = now or datetime.now(timezone.utc)
+    if now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
     target_outbound, target_return = _target_date_pair(config)
     if not target_outbound:
         return {}
@@ -408,7 +434,6 @@ def load_live_flight_evidence(
         print(f"live-evidence: {path} has no evidence list", file=sys.stderr)
         return {}
 
-    now_dt = datetime.now(timezone.utc)
     evidence: dict[str, LiveFareEvidence] = {}
     for index, item in enumerate(entries):
         if not isinstance(item, dict):
