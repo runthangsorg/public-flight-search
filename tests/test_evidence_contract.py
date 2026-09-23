@@ -303,6 +303,67 @@ class TestEvidenceContractCommand(unittest.TestCase):
         with self.assertRaises(SystemExit):
             main(["evidence-contract", "--send"])
 
+    def test_cli_fails_fast_on_a_missing_explicit_config(self):
+        # Regression: an explicit but missing path silently fell through to
+        # env, then to examples/dec_holiday_config.json. A typo therefore
+        # printed a valid DECEMBER contract with exit 0 and aimed the hunt at
+        # the wrong report entirely.
+        from public_flight_search.cli import main
+
+        import contextlib
+        import io
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            with self.assertRaises(SystemExit) as raised:
+                main(
+                    [
+                        "evidence-contract",
+                        "--config",
+                        "examples/july_holday_config.json",
+                    ]
+                )
+        self.assertIn("does not exist", str(raised.exception))
+        self.assertEqual(buffer.getvalue(), "")  # no contract was emitted
+
+    def test_cli_requires_a_path_after_config(self):
+        from public_flight_search.cli import main
+
+        with self.assertRaises(SystemExit):
+            main(["evidence-contract", "--config"])
+
+
+class TestCatalogProvenance(unittest.TestCase):
+    def test_contract_states_which_catalogue_produced_its_keys(self):
+        # The July report prices from a constant named WINTER_RESORT_CATALOG.
+        # That is surprising enough that the contract states it rather than
+        # leaving a hunt to infer it.
+        from public_flight_search.holidays import RESORT_CATALOG_NAME
+
+        for path in (DEC_CONFIG, JULY_CONFIG):
+            with self.subTest(config=path.name):
+                contract = evidence_consumption_contract(_load(path))
+                self.assertEqual(contract.catalog, RESORT_CATALOG_NAME)
+                self.assertEqual(contract.as_dict()["catalog"], RESORT_CATALOG_NAME)
+
+    def test_keys_come_from_the_catalogue_the_collector_reads(self):
+        # Destinations with no catalogue entry have no card in either season,
+        # so their airports must never appear as hunt targets. This is what
+        # made MLA/DOH/MCT/FNC/AGA dead crawl targets in September 2026.
+        from public_flight_search.holidays import (
+            WINTER_RESORT_CATALOG,
+            resort_catalog,
+        )
+
+        self.assertIs(resort_catalog(), WINTER_RESORT_CATALOG)
+        for absent in ("malta", "taghazout", "doha", "muscat"):
+            self.assertNotIn(absent, resort_catalog(), absent)
+
+        contract = evidence_consumption_contract(_load(JULY_CONFIG))
+        self.assertEqual(set(contract.airports), {"AYT", "HRG", "PFO", "TFS"})
+        for dead in ("MLA", "DOH", "MCT", "AGA"):
+            self.assertNotIn(dead, contract.airports, dead)
+
 
 if __name__ == "__main__":
     unittest.main()

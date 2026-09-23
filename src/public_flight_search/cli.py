@@ -44,13 +44,22 @@ def _evidence_contract(arguments: list[str]) -> int:
         if index + 1 < len(arguments):
             config_path = arguments[index + 1]
             del arguments[index : index + 2]
+        if not config_path:
+            raise SystemExit("--config requires a path")
     if set(arguments) - {"--hunt-config"}:
         raise SystemExit(
             "only --config and --hunt-config are accepted for evidence-contract"
         )
 
     payload = ""
-    if config_path and os.path.exists(config_path):
+    if config_path:
+        # An explicit path that does not exist is operator error, never a
+        # reason to fall through. Silently doing so aimed a hunt from the
+        # WRONG report: `--config examples/july_holday_config.json` (typo)
+        # printed a valid December contract and exited 0. Failing fast is the
+        # whole point of a contract emitted for machine consumption.
+        if not os.path.exists(config_path):
+            raise SystemExit(f"--config path does not exist: {config_path}")
         with open(config_path, encoding="utf-8") as handle:
             payload = handle.read()
     if not payload:

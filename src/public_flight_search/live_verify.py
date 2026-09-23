@@ -182,6 +182,9 @@ class EvidenceContract:
     travellers: int
     keys: tuple[tuple[str, str], ...]
     hunt_date_pairs: tuple[tuple[str, str], ...] = ()
+    #: Which resort catalogue produced ``keys``. Surprising enough to state:
+    #: the July report prices from a constant named WINTER_RESORT_CATALOG.
+    catalog: str = ""
 
     @property
     def airports(self) -> tuple[str, ...]:
@@ -201,6 +204,7 @@ class EvidenceContract:
             "airports": list(self.airports),
             "cabins": list(self.cabins),
             "keys": [f"{airport}/{cabin}" for airport, cabin in self.keys],
+            "catalog": self.catalog,
         }
 
     def hunt_config_overrides(self) -> dict:
@@ -226,7 +230,7 @@ def evidence_consumption_contract(config) -> Optional[EvidenceContract]:
     destination has a card, in which case no evidence could be consumed and
     a hunt would be wasted spend.
     """
-    from .holidays import card_lookup_keys
+    from .holidays import RESORT_CATALOG_NAME, card_lookup_keys
 
     outbound, returning = priced_date_pair(config)
     if not outbound:
@@ -242,6 +246,7 @@ def evidence_consumption_contract(config) -> Optional[EvidenceContract]:
         travellers=int(getattr(config, "travellers", 0) or 0),
         keys=keys,
         hunt_date_pairs=((outbound, returning),),
+        catalog=RESORT_CATALOG_NAME,
     )
 
 

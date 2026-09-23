@@ -640,6 +640,28 @@ def destination_cabins(
     )
 
 
+def resort_catalog() -> dict[str, list[dict[str, Any]]]:
+    """The single resort catalogue the report prices resorts from.
+
+    There is exactly one catalogue, and its name is historical rather than
+    seasonal: the **July** report prices from a constant called
+    ``WINTER_RESORT_CATALOG``. Destinations absent from it (malta,
+    taghazout, doha, muscat) therefore have no card in any report, which is
+    why ``card_lookup_keys`` excludes their airports and why a hunt that
+    crawls MLA/DOH/MCT is spending on keys nothing can ever consume.
+
+    Selecting a catalogue by trip season would be a pricing change, not a
+    naming one: the same curated resorts are sold in both seasons today, so
+    this is left as one catalogue and recorded in the contract instead.
+    """
+    return WINTER_RESORT_CATALOG
+
+
+#: Name reported as the contract's provenance so a hunt can see which list
+#: produced its target airports.
+RESORT_CATALOG_NAME = "WINTER_RESORT_CATALOG"
+
+
 def card_lookup_keys(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
     """Every ``(airport, cabin)`` pair the report can ever promote a fare for.
 
@@ -651,10 +673,11 @@ def card_lookup_keys(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
     two airports that do carry cards (ACE, PFO) were never hunted, leaving
     19 of 27 December cards on benchmarks for want of an aimed crawl.
     """
+    catalog = resort_catalog()
     keys: set[tuple[str, str]] = set()
     for destination in config.destinations:
         resorts, _dropped = filter_resorts(
-            WINTER_RESORT_CATALOG.get(destination.key.lower(), [])
+            catalog.get(destination.key.lower(), [])
         )
         cabins = destination_cabins(config, destination)
         for resort in resorts:
