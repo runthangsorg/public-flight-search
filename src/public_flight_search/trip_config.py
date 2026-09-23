@@ -7,7 +7,7 @@ injected at runtime via encrypted config. No PII in this module.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Tuple
 
 
@@ -118,47 +118,96 @@ class TripDefinition:
         return plan
 
 
-# Default trip definitions for September 2026 UAE/Muscat
-DEFAULT_TRIP_DEFINITIONS = (
-    TripDefinition(
-        key=TripBucket.SEPT_UAE_ROUNDTRIP,
-        label="Dubai / Abu Dhabi Round-trip",
-        bucket=TripBucket.SEPT_UAE_ROUNDTRIP,
-        outbound_origins=("LHR", "LGW", "LTN", "STN"),
-        outbound_destinations=("DXB", "AUH"),
-        outbound_dates=("2026-09-15", "2026-09-16"),
-        return_origins=("DXB", "AUH"),
-        return_destinations=("LHR", "LGW", "LTN", "STN"),
-        return_dates=("2026-09-26", "2026-09-27", "2026-09-28"),
-        passenger_party=PassengerParty(adults=1),
-        cabin_classes=("ECONOMY",),
-        departure_window=("06:00", "21:00"),
-        max_stops=1,
-        max_duration_minutes=720,
-        max_price_per_traveller_gbp=500.0,
-    ),
-    TripDefinition(
-        key=TripBucket.SEPT_MUSCAT_UAE_OPEN_JAW,
-        label="Muscat + Dubai Open Jaw",
-        bucket=TripBucket.SEPT_MUSCAT_UAE_OPEN_JAW,
-        outbound_origins=("LHR", "LGW", "LTN", "STN"),
-        outbound_destinations=("MCT",),
-        outbound_dates=("2026-09-15", "2026-09-16"),
-        return_origins=("DXB", "AUH"),
-        return_destinations=("LHR", "LGW", "LTN", "STN"),
-        return_dates=("2026-09-26", "2026-09-27", "2026-09-28"),
-        passenger_party=PassengerParty(adults=1),
-        cabin_classes=("ECONOMY",),
-        departure_window=("06:00", "21:00"),
-        max_stops=1,
-        max_duration_minutes=720,
-        max_price_per_traveller_gbp=500.0,
-        surface_segments=(
-            GroundSegment("MCT", "DXB", "COACH", 22.0, 360),
+# The digest runs twice a day, so its travel window has to roll. Absolute
+# literals are correct on the day they are written and expire a fortnight
+# later; after that every provider search returns zero cards and the job
+# reports a misleading empty-collection failure. That is exactly how the
+# digest died on 2026-09-22: green on 2026-09-03 with 13 paired
+# itineraries, then zero forever, because the September window it had been
+# searching since 2026-09-01 was in the past.
+TRIP_LEAD_DAYS = 21        # first outbound date, counted from the run date
+TRIP_OUTBOUND_DATES = 2    # consecutive candidate outbound dates
+TRIP_NIGHTS = 11           # first return date, counted from the outbound date
+TRIP_RETURN_DATES = 3      # consecutive candidate return dates
+
+
+def rolling_trip_dates(today: date) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    """Outbound and return candidate dates derived from ``today``.
+
+    Returns ``(outbound_dates, return_dates)``. The literal window this
+    replaced (out 2026-09-15/16, back 2026-09-26/27/28) is exactly what a
+    2026-08-25 run date produces, so only the expiry changed, not the trip
+    shape.
+    """
+    outbound_start = today + timedelta(days=TRIP_LEAD_DAYS)
+    outbound = tuple(
+        (outbound_start + timedelta(days=offset)).isoformat()
+        for offset in range(TRIP_OUTBOUND_DATES)
+    )
+    return_start = outbound_start + timedelta(days=TRIP_NIGHTS)
+    returning = tuple(
+        (return_start + timedelta(days=offset)).isoformat()
+        for offset in range(TRIP_RETURN_DATES)
+    )
+    return outbound, returning
+
+
+def default_trip_definitions(
+    today: date | None = None,
+) -> Tuple[TripDefinition, ...]:
+    """The UAE/Muscat digest trip windows, dated from ``today``.
+
+    Job code should call this per run so the window is derived from the
+    current date; the module constant below is dated once at import and
+    exists for the public API and tests.
+    """
+    reference = today or datetime.now(timezone.utc).date()
+    outbound_dates, return_dates = rolling_trip_dates(reference)
+    return (
+        TripDefinition(
+            key=TripBucket.SEPT_UAE_ROUNDTRIP,
+            label="Dubai / Abu Dhabi Round-trip",
+            bucket=TripBucket.SEPT_UAE_ROUNDTRIP,
+            outbound_origins=("LHR", "LGW", "LTN", "STN"),
+            outbound_destinations=("DXB", "AUH"),
+            outbound_dates=outbound_dates,
+            return_origins=("DXB", "AUH"),
+            return_destinations=("LHR", "LGW", "LTN", "STN"),
+            return_dates=return_dates,
+            passenger_party=PassengerParty(adults=1),
+            cabin_classes=("ECONOMY",),
+            departure_window=("06:00", "21:00"),
+            max_stops=1,
+            max_duration_minutes=720,
+            max_price_per_traveller_gbp=500.0,
         ),
-        hotel_anchors=("The St. Regis Al Mouj Muscat", "Grosvenor House Dubai Marina"),
-    ),
-)
+        TripDefinition(
+            key=TripBucket.SEPT_MUSCAT_UAE_OPEN_JAW,
+            label="Muscat + Dubai Open Jaw",
+            bucket=TripBucket.SEPT_MUSCAT_UAE_OPEN_JAW,
+            outbound_origins=("LHR", "LGW", "LTN", "STN"),
+            outbound_destinations=("MCT",),
+            outbound_dates=outbound_dates,
+            return_origins=("DXB", "AUH"),
+            return_destinations=("LHR", "LGW", "LTN", "STN"),
+            return_dates=return_dates,
+            passenger_party=PassengerParty(adults=1),
+            cabin_classes=("ECONOMY",),
+            departure_window=("06:00", "21:00"),
+            max_stops=1,
+            max_duration_minutes=720,
+            max_price_per_traveller_gbp=500.0,
+            surface_segments=(
+                GroundSegment("MCT", "DXB", "COACH", 22.0, 360),
+            ),
+            hotel_anchors=("The St. Regis Al Mouj Muscat", "Grosvenor House Dubai Marina"),
+        ),
+    )
+
+
+#: Dated at import time. Job code should prefer ``default_trip_definitions()``
+#: so a long-lived process never searches a window that has since expired.
+DEFAULT_TRIP_DEFINITIONS = default_trip_definitions()
 
 # Default holiday trip definition for December 2026
 DEFAULT_HOLIDAY_TRIP_DEFINITION = TripDefinition(

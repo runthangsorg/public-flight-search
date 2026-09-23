@@ -24,10 +24,10 @@ from .holiday_history import (
 from .mailer import send_html
 from .report import render_flight_report
 from .trip_config import (
-    DEFAULT_TRIP_DEFINITIONS,
     DEFAULT_HOLIDAY_TRIP_DEFINITION,
     TripDefinition,
     TripBucket,
+    default_trip_definitions,
 )
 from .pairing import pair_outbound_return, combine_legs
 
@@ -51,8 +51,14 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     """Run September UAE flight digest with multi-city pairing."""
     config = load_flight_config(os.environ.get("FLIGHT_SEARCH_CONFIG_JSON", ""))
 
+    # Derive the travel window from the run date. Absolute literals are
+    # correct only until they expire, after which every search returns no
+    # cards and the digest reports a misleading empty-collection failure
+    # (that is how it died on 2026-09-22).
+    trip_definitions = default_trip_definitions()
+
     # Build search plan from trip definitions
-    search_plan = build_search_plan(DEFAULT_TRIP_DEFINITIONS)
+    search_plan = build_search_plan(trip_definitions)
 
     # Search the same provider-neutral plan that is later paired and grouped.
     # The runtime config remains the report/fallback boundary; FlightSearch is
@@ -60,7 +66,7 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
     raw_offers = asyncio.run(search_google_flights(search_plan))
 
     request_metadata = {}
-    for trip in DEFAULT_TRIP_DEFINITIONS:
+    for trip in trip_definitions:
         for request in trip.build_search_plan():
             request_metadata[request.key] = (trip.bucket, request.key)
 
@@ -97,7 +103,7 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
 
     # Pair outbound + return legs for each trip bucket
     final_offers = {}
-    for trip in DEFAULT_TRIP_DEFINITIONS:
+    for trip in trip_definitions:
         bucket = trip.key
         trip_offers = []
 
@@ -155,7 +161,7 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
         config,
         final_offers,
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        trip_definitions=DEFAULT_TRIP_DEFINITIONS,
+        trip_definitions=trip_definitions,
     )
 
     if not dry_run:
@@ -163,7 +169,7 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
 
     result = {
         "search_count": len(config.searches),
-        "trip_count": len(DEFAULT_TRIP_DEFINITIONS),
+        "trip_count": len(trip_definitions),
         "itinerary_count": sum(len(v) for v in final_offers.values()),
         "email_sent": not dry_run,
     }

@@ -8,6 +8,8 @@ from .trip_config import (
     GroundSegment,
     DEFAULT_TRIP_DEFINITIONS,
     DEFAULT_HOLIDAY_TRIP_DEFINITION,
+    default_trip_definitions,
+    rolling_trip_dates,
 )
 from .pairing import pair_outbound_return, combine_legs
 from .booking_links import BookingLink, build_booking_links
@@ -26,6 +28,8 @@ __all__ = [
     "GroundSegment",
     "DEFAULT_TRIP_DEFINITIONS",
     "DEFAULT_HOLIDAY_TRIP_DEFINITION",
+    "default_trip_definitions",
+    "rolling_trip_dates",
     "pair_outbound_return",
     "combine_legs",
     "BookingLink",
