@@ -15,6 +15,11 @@ on:
         required: false
         default: false
         type: boolean
+      seed_evidence:
+        description: "Seed the private live-fare evidence only (read-only, no email) so a dry run can verify the live path"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -74,14 +79,48 @@ jobs:
             touch data/july_holiday_price_history.jsonl
             echo "No prior July history file; starting fresh."
           fi
-          # Seed live-fare evidence produced by the private browser engine.
-          # Same proven transport as history: the engine commits its whole-
-          # party, exact-date fare observations (with source_url + observed_at)
-          # to the private repo; the runner seeds them here. The loader
-          # re-validates every entry — basis, exact dates, party, freshness —
-          # so anything stale or wrong-basis just stays on benchmarks.
-          if [[ -f /tmp/history-seed/data/holiday_live_evidence.json ]]; then
-            cp /tmp/history-seed/data/holiday_live_evidence.json data/holiday_live_evidence.json
+      # Live-fare evidence is CURRENT MARKET DATA; price history is
+      # history-memory. A dry run must not see prior observations ("a dry run
+      # reflects a fresh build, never prior state"), but it may see live
+      # fares. Keeping the two seeds in separate steps is what makes that
+      # distinction expressible, and it means an operator can verify the
+      # private-vault transport with `dry_run=true, seed_evidence=true` —
+      # read-only and without sending an email — instead of discovering a
+      # broken deploy key from a delivered report that had silently fallen
+      # back to benchmarks.
+      - name: Seed live-fare evidence from private data repo
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.dry_run == false || inputs.seed_evidence == true))
+        env:
+          HISTORY_DEPLOY_KEY: ${{ secrets.HISTORY_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HISTORY_DEPLOY_KEY}" || {
+            echo "::warning::HISTORY_DEPLOY_KEY not configured; report will run on benchmarks."
+            exit 0
+          }
+          # A scheduled run has already cloned the private repo for history;
+          # reuse that checkout rather than cloning twice.
+          EVIDENCE_SRC="/tmp/history-seed/data/holiday_live_evidence.json"
+          if [[ ! -f "${EVIDENCE_SRC}" ]]; then
+            mkdir -p ~/.ssh
+            echo "$HISTORY_DEPLOY_KEY" > ~/.ssh/history_deploy_key
+            chmod 600 ~/.ssh/history_deploy_key
+            export GIT_SSH_COMMAND="ssh -i ~/.ssh/history_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+            GH_USER_PART="git@"
+            GH_HOST_PART="github.com"
+            rm -rf /tmp/evidence-seed
+            git clone --depth 1 "${GH_USER_PART}${GH_HOST_PART}:runthangsorg/dealsearch.git" /tmp/evidence-seed
+            EVIDENCE_SRC="/tmp/evidence-seed/data/holiday_live_evidence.json"
+          fi
+          # Live-fare evidence produced by the private browser engine: the
+          # engine commits whole-party, exact-date fare observations (with
+          # source_url + observed_at) and the loader re-validates every entry
+          # — basis, exact dates, party, freshness — so anything stale or
+          # wrong-basis just stays on benchmarks.
+          mkdir -p data
+          if [[ -f "${EVIDENCE_SRC}" ]]; then
+            cp "${EVIDENCE_SRC}" data/holiday_live_evidence.json
             # Truthful count: this was labelled "airports" while printing the
             # RECORD count, which overstated coverage many times over (125
             # records covered 14 airports, and only 45 were the priced origin).

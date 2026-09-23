@@ -46,13 +46,39 @@ class RepositoryPolicyTests(unittest.TestCase):
         for name in ("holiday-planner.yml", "july-holiday-planner.yml"):
             workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
             self.assertIn(
-                "cp /tmp/history-seed/data/holiday_live_evidence.json", workflow, name
+                "Seed live-fare evidence from private data repo", workflow, name
+            )
+            self.assertIn(
+                'cp "${EVIDENCE_SRC}" data/holiday_live_evidence.json', workflow, name
             )
             self.assertLess(
                 workflow.index("holiday_live_evidence.json"),
                 workflow.index("Build and optionally deliver"),
                 name,
             )
+            # Evidence must be seedable on its own, so an operator can verify
+            # the private-vault transport with dry_run=true+seed_evidence=true
+            # (read-only, no email) instead of learning a deploy key broke from
+            # a report that had quietly fallen back to benchmarks.
+            self.assertIn("seed_evidence", workflow, name)
+            self.assertIn("inputs.seed_evidence == true", workflow, name)
+
+    def test_live_fare_evidence_is_not_seeded_by_the_history_step(self):
+        # Evidence is CURRENT MARKET DATA; price history is history-memory, and
+        # a dry run must never see prior observations. Merging the two seeds
+        # back into one step would either let a dry run read history (breaking
+        # "a dry run reflects a fresh build") or make the live path
+        # unverifiable without sending an email.
+        for name in ("holiday-planner.yml", "july-holiday-planner.yml"):
+            workflow = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            self.assertNotIn(
+                "cp /tmp/history-seed/data/holiday_live_evidence.json", workflow, name
+            )
+            history_step = workflow.index("Seed price history from private data repo")
+            evidence_step = workflow.index(
+                "Seed live-fare evidence from private data repo"
+            )
+            self.assertLess(history_step, evidence_step, name)
 
     def test_holiday_seed_log_reports_records_not_airports(self):
         # The seed step printed the RECORD count while labelling it
