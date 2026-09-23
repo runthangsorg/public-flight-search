@@ -9,6 +9,8 @@ from .trip_config import (
     DEFAULT_TRIP_DEFINITIONS,
     DEFAULT_HOLIDAY_TRIP_DEFINITION,
     default_trip_definitions,
+    default_holiday_trip_definition,
+    december_holiday_dates,
     rolling_trip_dates,
 )
 from .pairing import pair_outbound_return, combine_legs
@@ -29,6 +31,8 @@ __all__ = [
     "DEFAULT_TRIP_DEFINITIONS",
     "DEFAULT_HOLIDAY_TRIP_DEFINITION",
     "default_trip_definitions",
+    "default_holiday_trip_definition",
+    "december_holiday_dates",
     "rolling_trip_dates",
     "pair_outbound_return",
     "combine_legs",

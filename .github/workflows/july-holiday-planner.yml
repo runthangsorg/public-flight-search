@@ -82,7 +82,10 @@ jobs:
           # so anything stale or wrong-basis just stays on benchmarks.
           if [[ -f /tmp/history-seed/data/holiday_live_evidence.json ]]; then
             cp /tmp/history-seed/data/holiday_live_evidence.json data/holiday_live_evidence.json
-            echo "Seeded live-fare evidence: $(python3 -c "import json;print(len(json.load(open('data/holiday_live_evidence.json')).get('evidence',[])))" 2>/dev/null || echo 0) airports."
+            # Truthful count: this was labelled "airports" while printing the
+            # RECORD count, which overstated coverage many times over (125
+            # records covered 14 airports, and only 45 were the priced origin).
+            echo "Seeded live-fare evidence: $(python3 -c "import json;e=json.load(open('data/holiday_live_evidence.json')).get('evidence',[]);print(len(e),'records across',len({x.get('airport') for x in e}),'airports')" 2>/dev/null || echo 'unreadable')"
           else
             echo "::warning::No holiday_live_evidence.json in private repo; report will run on benchmarks."
           fi

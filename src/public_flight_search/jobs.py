@@ -204,23 +204,44 @@ def run_holiday_planner(
             payload = dec_example.read_text(encoding="utf-8")
 
     config = load_holiday_config(payload)
+    from . import live_verify
+
+    evidence_path = os.environ.get(
+        "HOLIDAY_LIVE_EVIDENCE_PATH", live_verify.DEFAULT_EVIDENCE_PATH
+    )
     # Bounded live flight injection (GHA-safe HTTP only, no browser).
-    live_offers: dict[str, float] = {}
+    live_offers: dict[tuple[str, str], object] = {}
     live_attempted = False
     live_skipped: list[str] = []
     try:
-        from . import live_verify
-
         live_attempted = True
-        evidence_path = os.environ.get(
-            "HOLIDAY_LIVE_EVIDENCE_PATH", live_verify.DEFAULT_EVIDENCE_PATH
-        )
         live_offers = dict(
             live_verify.try_live_flight_offers(config, path=evidence_path)
         )
         live_skipped = live_verify.consume_skip_log()
     except Exception:
         live_offers = {}
+    # CONSUMPTION CONTRACT (2026-09-23): the report prices ONE date pair from
+    # ONE origin for a specific set of (airport, cabin) keys, and the private
+    # hunt has no other way to learn that set. Before this was recorded, 125
+    # harvested records priced 8 December cards: six crawled airports had no
+    # card at all while two card airports (ACE, PFO) were never crawled. The
+    # contract is emitted here and by `evidence-contract` so the next hunt is
+    # aimed from data. Missing keys are what to crawl; unused keys are waste.
+    contract = None
+    gaps: dict[str, list[str]] = {"missing": [], "unused": []}
+    freshness = {
+        "record_count": 0,
+        "newest_observed_at": None,
+        "age_hours": None,
+        "stale": True,
+    }
+    try:
+        contract = live_verify.evidence_consumption_contract(config)
+        gaps = live_verify.evidence_contract_gaps(config, live_offers)
+        freshness = live_verify.evidence_freshness(evidence_path)
+    except Exception:
+        contract, gaps = None, {"missing": [], "unused": []}
     deals = collect_holiday_deals(
         config, max_budget_gbp=config.max_budget_gbp,
         live_flight_offers=live_offers or None,
@@ -308,6 +329,15 @@ def run_holiday_planner(
             )
         ),
         "live_skipped": live_skipped,
+        # The contract, the gap it leaves and how old the cache is. A run that
+        # silently reverts to benchmarks should be visibly a stale-cache run.
+        "live_evidence_contract": contract.as_dict() if contract else {},
+        "live_evidence_missing_keys": gaps["missing"],
+        "live_evidence_unused_keys": gaps["unused"],
+        "live_evidence_record_count": freshness["record_count"],
+        "live_evidence_newest_observed_at": freshness["newest_observed_at"],
+        "live_evidence_age_hours": freshness["age_hours"],
+        "live_evidence_stale": freshness["stale"],
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
         "send_skipped_no_change": (not dry_run) and not send_email,

@@ -30,8 +30,61 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _evidence_contract(arguments: list[str]) -> int:
+    """Print what a report run will look for, so a hunt can be aimed from it.
+
+    The private hunt cannot read this repository's code: it guessed date
+    pairs, origins and airports, and the guesses were mostly unusable. This
+    emits the contract as data — ``--hunt-config`` narrows it to just the
+    overrides a hunt config needs.
+    """
+    config_path = ""
+    if "--config" in arguments:
+        index = arguments.index("--config")
+        if index + 1 < len(arguments):
+            config_path = arguments[index + 1]
+            del arguments[index : index + 2]
+    if set(arguments) - {"--hunt-config"}:
+        raise SystemExit(
+            "only --config and --hunt-config are accepted for evidence-contract"
+        )
+
+    payload = ""
+    if config_path and os.path.exists(config_path):
+        with open(config_path, encoding="utf-8") as handle:
+            payload = handle.read()
+    if not payload:
+        payload = os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON") or os.environ.get(
+            "JULY_HOLIDAY_SEARCH_CONFIG_JSON"
+        ) or ""
+    if not payload:
+        fallback = "examples/dec_holiday_config.json"
+        if os.path.exists(fallback):
+            with open(fallback, encoding="utf-8") as handle:
+                payload = handle.read()
+
+    from .holidays import load_holiday_config
+    from .live_verify import evidence_consumption_contract
+
+    contract = evidence_consumption_contract(load_holiday_config(payload))
+    if contract is None:
+        raise SystemExit("configuration prices no date pair; no hunt to aim")
+    print(
+        json.dumps(
+            contract.hunt_config_overrides()
+            if "--hunt-config" in arguments
+            else contract.as_dict(),
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "evidence-contract":
+        return _evidence_contract(arguments[1:])
     if arguments and arguments[0] in {"flight-digest", "holiday-planner", "july-holiday-planner"}:
         command = arguments.pop(0)
         dry_run = "--dry-run" in arguments

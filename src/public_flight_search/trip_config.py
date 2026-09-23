@@ -209,21 +209,54 @@ def default_trip_definitions(
 #: so a long-lived process never searches a window that has since expired.
 DEFAULT_TRIP_DEFINITIONS = default_trip_definitions()
 
-# Default holiday trip definition for December 2026
-DEFAULT_HOLIDAY_TRIP_DEFINITION = TripDefinition(
-    key=TripBucket.DEC_HOLIDAY_PACKAGES,
-    label="December Holiday Packages: Turkey, Malta, Egypt",
-    bucket=TripBucket.DEC_HOLIDAY_PACKAGES,
-    outbound_origins=("LHR", "LGW", "LTN", "STN"),
-    outbound_destinations=("AYT", "MLA", "CAI"),
-    outbound_dates=("2026-12-20", "2026-12-22", "2026-12-24"),
-    return_origins=("AYT", "MLA", "CAI"),
-    return_destinations=("LHR", "LGW", "LTN", "STN"),
-    return_dates=("2026-12-28", "2026-12-30", "2026-12-31"),
-    passenger_party=PassengerParty(adults=2, children_ages=(23, 16, 20)),
-    cabin_classes=("ECONOMY",),
-    departure_window=("08:00", "18:00"),
-    max_stops=1,
-    max_duration_minutes=720,
-    max_price_per_traveller_gbp=None,
-)
+#: The Christmas window a December holiday plan always describes: out on
+#: 20/22/24 December, back on 28/30/31 December of the same year.
+DECEMBER_HOLIDAY_OUTBOUND_DAYS = (20, 22, 24)
+DECEMBER_HOLIDAY_RETURN_DAYS = (28, 30, 31)
+
+
+def december_holiday_dates(year: int) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    """``(outbound_dates, return_dates)`` for one year's Christmas window."""
+    return (
+        tuple(f"{year}-12-{day:02d}" for day in DECEMBER_HOLIDAY_OUTBOUND_DAYS),
+        tuple(f"{year}-12-{day:02d}" for day in DECEMBER_HOLIDAY_RETURN_DAYS),
+    )
+
+
+def default_holiday_trip_definition(today: date | None = None) -> TripDefinition:
+    """The December package trip window, dated from ``today``.
+
+    WHY this is derived and not literal: this definition previously hardcoded
+    ``2026-12-20``/``2026-12-22``/``2026-12-24``. That is the exact bug class
+    that killed the flight digest on 2026-09-22 — an absolute window is
+    correct on the day it is written and returns nothing forever after it
+    expires. The Christmas shape is fixed; only the year rolls, and it rolls
+    as soon as the first outbound date is no longer in the future, so the
+    window this returns is always entirely ahead of the run date.
+    """
+    reference = today or datetime.now(timezone.utc).date()
+    first_outbound = date(reference.year, 12, min(DECEMBER_HOLIDAY_OUTBOUND_DAYS))
+    year = reference.year if reference < first_outbound else reference.year + 1
+    outbound_dates, return_dates = december_holiday_dates(year)
+    return TripDefinition(
+        key=TripBucket.DEC_HOLIDAY_PACKAGES,
+        label="December Holiday Packages: Turkey, Malta, Egypt",
+        bucket=TripBucket.DEC_HOLIDAY_PACKAGES,
+        outbound_origins=("LHR", "LGW", "LTN", "STN"),
+        outbound_destinations=("AYT", "MLA", "CAI"),
+        outbound_dates=outbound_dates,
+        return_origins=("AYT", "MLA", "CAI"),
+        return_destinations=("LHR", "LGW", "LTN", "STN"),
+        return_dates=return_dates,
+        passenger_party=PassengerParty(adults=2, children_ages=(23, 16, 20)),
+        cabin_classes=("ECONOMY",),
+        departure_window=("08:00", "18:00"),
+        max_stops=1,
+        max_duration_minutes=720,
+        max_price_per_traveller_gbp=None,
+    )
+
+
+#: Dated at import time; prefer ``default_holiday_trip_definition()`` in job
+#: code so a process that outlives December never searches an expired window.
+DEFAULT_HOLIDAY_TRIP_DEFINITION = default_holiday_trip_definition()

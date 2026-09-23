@@ -141,11 +141,13 @@ EVIDENCE_CABINS: frozenset[str] = frozenset(
 )
 
 
-def _target_date_pair(config) -> tuple[str, str]:
+def priced_date_pair(config) -> tuple[str, str]:
     """The exact outbound/return pair the report is actually priced on.
 
-    Must match the pair selection in ``holidays.collect_holiday_deals``:
-    the middle element of the shortlisted date pairs.
+    Single source of truth: ``holidays.collect_holiday_deals`` prices the
+    middle element of the shortlisted date pairs, and so does this. The
+    evidence loader and the hunt contract both derive from here, so the pair
+    can never be stated twice and disagree.
     """
     from .holidays import _date_pairs, _shortlist_pairs
 
@@ -153,6 +155,173 @@ def _target_date_pair(config) -> tuple[str, str]:
     if not pairs:
         return "", ""
     return pairs[len(pairs) // 2]
+
+
+#: Retained private name: the original seam, now an alias of the one
+#: definition above so callers cannot diverge from the report.
+_target_date_pair = priced_date_pair
+
+
+@dataclass(frozen=True)
+class EvidenceContract:
+    """What one report run will actually look for, stated as data.
+
+    The private hunt cannot read the public report's code, so it guessed its
+    date pairs, origins and airports. The guesses were wrong in expensive
+    ways: of 125 harvested records only 8 priced a December card, six crawled
+    airports had no card at all, and two card airports were never crawled.
+
+    This is the machine-readable replacement for that guess — printed by
+    ``python -m public_flight_search evidence-contract`` and recorded in every
+    job summary, so a hunt can be aimed from data instead of from memory.
+    """
+
+    outbound: str
+    return_date: str
+    origin: str
+    travellers: int
+    keys: tuple[tuple[str, str], ...]
+    hunt_date_pairs: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def airports(self) -> tuple[str, ...]:
+        return tuple(sorted({airport for airport, _cabin in self.keys}))
+
+    @property
+    def cabins(self) -> tuple[str, ...]:
+        return tuple(sorted({cabin for _airport, cabin in self.keys}))
+
+    def as_dict(self) -> dict:
+        """Full statement of the contract, for logs and job summaries."""
+        return {
+            "priced_pair": [self.outbound, self.return_date],
+            "origin": self.origin,
+            "travellers": self.travellers,
+            "hunt_date_pairs": [list(pair) for pair in self.hunt_date_pairs],
+            "airports": list(self.airports),
+            "cabins": list(self.cabins),
+            "keys": [f"{airport}/{cabin}" for airport, cabin in self.keys],
+        }
+
+    def hunt_config_overrides(self) -> dict:
+        """The fragment a hunt config needs so every read can be consumed.
+
+        The hunt reuses the report's own config file (same ``party``,
+        ``destinations`` keys), so only the four things it gets wrong today
+        are overridden: which date pairs are priced, which origin is priced,
+        which cabins have cards, and which airports have cards.
+        """
+        return {
+            "origins": [self.origin],
+            "date_pairs": [list(pair) for pair in self.hunt_date_pairs],
+            "cabin_classes": list(self.cabins),
+            "airports": list(self.airports),
+        }
+
+
+def evidence_consumption_contract(config) -> Optional[EvidenceContract]:
+    """The set of ``(airport, cabin)`` keys this run can ever verify.
+
+    Returns ``None`` when the config prices no valid date pair or when no
+    destination has a card, in which case no evidence could be consumed and
+    a hunt would be wasted spend.
+    """
+    from .holidays import card_lookup_keys
+
+    outbound, returning = priced_date_pair(config)
+    if not outbound:
+        return None
+    keys = card_lookup_keys(config)
+    if not keys:
+        return None
+    origins = tuple(getattr(config, "origins", ()) or ())
+    return EvidenceContract(
+        outbound=outbound,
+        return_date=returning,
+        origin=str(origins[0]).strip().upper() if origins else "",
+        travellers=int(getattr(config, "travellers", 0) or 0),
+        keys=keys,
+        hunt_date_pairs=((outbound, returning),),
+    )
+
+
+def _key_label(pair: tuple[str, str]) -> str:
+    """Render an ``(airport, cabin)`` key the way the job summary shows it."""
+    return f"{pair[0]}/{pair[1]}"
+
+
+def evidence_contract_gaps(config, loaded) -> dict[str, list[str]]:
+    """Split loaded evidence into what the report needs and what it can't use.
+
+    ``missing`` is the actionable half: a card that exists and has no live
+    fare — i.e. exactly what the next hunt should crawl. ``unused`` is the
+    waste half: fares harvested for keys no card will ever look up.
+    """
+    contract = evidence_consumption_contract(config)
+    if contract is None:
+        return {"missing": [], "unused": []}
+    wanted = set(contract.keys)
+    have = {
+        (str(airport).strip().upper(), str(cabin).strip().upper())
+        for airport, cabin in loaded
+    }
+    return {
+        "missing": sorted(_key_label(pair) for pair in wanted - have),
+        "unused": sorted(_key_label(pair) for pair in have - wanted),
+    }
+
+
+def evidence_freshness(
+    path: str = DEFAULT_EVIDENCE_PATH, *, now: Optional[str] = None
+) -> dict:
+    """Age of the newest observation in the evidence store.
+
+    The hunt is not automated, so the store lapses between manual runs while
+    ``EVIDENCE_MAX_AGE_HOURS`` (72) silently turns every card back into a
+    benchmark. Reporting the age makes that expiry visible on every run
+    instead of leaving it to be inferred from a wall of skip reasons.
+
+    ``stale`` True means no fresh evidence is available, including when the
+    file is missing or unreadable.
+    """
+    empty = {
+        "record_count": 0,
+        "newest_observed_at": None,
+        "age_hours": None,
+        "stale": True,
+    }
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return empty
+
+    entries = payload.get("evidence", []) if isinstance(payload, dict) else payload
+    if not isinstance(entries, list):
+        return empty
+
+    newest_raw: Optional[str] = None
+    newest_dt: Optional[datetime] = None
+    count = 0
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        count += 1
+        raw = str(item.get("observed_at", "")).strip()
+        observed = _parse_observed_at(raw)
+        if observed is not None and (newest_dt is None or observed > newest_dt):
+            newest_dt, newest_raw = observed, raw
+    if newest_dt is None:
+        return {**empty, "record_count": count}
+
+    now_dt = _parse_observed_at(now or "") or datetime.now(timezone.utc)
+    age_hours = (now_dt - newest_dt).total_seconds() / 3600.0
+    return {
+        "record_count": count,
+        "newest_observed_at": newest_raw,
+        "age_hours": round(age_hours, 3),
+        "stale": age_hours > EVIDENCE_MAX_AGE_HOURS,
+    }
 
 
 #: Skips from the most recent evidence load, surfaced in the job summary

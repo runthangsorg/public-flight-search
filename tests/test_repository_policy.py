@@ -54,6 +54,17 @@ class RepositoryPolicyTests(unittest.TestCase):
                 name,
             )
 
+    def test_holiday_seed_log_reports_records_not_airports(self):
+        # The seed step printed the RECORD count while labelling it
+        # "airports", overstating live coverage many times over: 125 records
+        # covered 14 airports, and only 45 were from the priced origin.
+        for name in ("holiday-planner.yml", "july-holiday-planner.yml"):
+            workflow = (ROOT / ".github" / "workflows" / name).read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("records across", workflow, name)
+            self.assertNotIn("else echo 0) airports.", workflow, name)
+
     def test_readme_does_not_claim_browser_runtime_or_history_provenance(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("browser-backed", readme)

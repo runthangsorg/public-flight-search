@@ -621,6 +621,50 @@ def _shortlist_pairs(pairs: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str
     return (pairs[0], pairs[len(pairs) // 2], pairs[-1])
 
 
+def destination_cabins(
+    config: HolidayConfig, destination: HolidayDestination
+) -> tuple[str, ...]:
+    """Cabins the report prices for one destination.
+
+    Single source of truth for the ``(airport, cabin)`` lookup key that
+    ``collect_holiday_deals`` builds. The live-evidence contract is derived
+    from this function, so a hunt aimed by the contract cannot be aimed at a
+    cabin the report will never price.
+    """
+    return (
+        getattr(destination, "cabin_classes", ())
+        or (
+            getattr(destination, "cabin_class", "")
+            or getattr(config, "cabin_class", "ECONOMY"),
+        )
+    )
+
+
+def card_lookup_keys(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
+    """Every ``(airport, cabin)`` pair the report can ever promote a fare for.
+
+    Deliberately restricted to airports whose resorts survive
+    ``filter_resorts``. A fare harvested for an airport whose resort list is
+    filtered out is loaded by the evidence seam and then never looked up —
+    spend with no possible card. Measured 2026-09-23: the private hunt
+    expended reads on six such airports (AGA, CAI, DOH, FNC, MCT, MLA) while
+    two airports that do carry cards (ACE, PFO) were never hunted, leaving
+    19 of 27 December cards on benchmarks for want of an aimed crawl.
+    """
+    keys: set[tuple[str, str]] = set()
+    for destination in config.destinations:
+        resorts, _dropped = filter_resorts(
+            WINTER_RESORT_CATALOG.get(destination.key.lower(), [])
+        )
+        cabins = destination_cabins(config, destination)
+        for resort in resorts:
+            for cabin in cabins:
+                keys.add(
+                    (str(resort["airport"]).strip().upper(), str(cabin).strip().upper())
+                )
+    return tuple(sorted(keys))
+
+
 @dataclass(frozen=True)
 class PackageDeal:
     resort_name: str
@@ -1572,7 +1616,7 @@ def collect_holiday_deals(
     for dest in config.destinations:
         resorts, dropped = filter_resorts(WINTER_RESORT_CATALOG.get(dest.key.lower(), []))
         filtered_out.extend(dropped)
-        dest_cabins = getattr(dest, "cabin_classes", ()) or (getattr(dest, "cabin_class", "") or getattr(config, "cabin_class", "ECONOMY"),)
+        dest_cabins = destination_cabins(config, dest)
         for cabin in dest_cabins:
             flight_mult = cabin_multipliers.get(cabin.upper(), 1.0)
             for resort in resorts:
