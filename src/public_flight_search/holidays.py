@@ -20,6 +20,20 @@ from .config import (
 )
 from .google_flights import build_google_flights_roundtrip_url
 from .live_verify import LiveFareEvidence
+from .vendors import (
+    DEEP_LINK as VENDOR_DEEP_LINK,
+    DESTINATION_PAGE as VENDOR_DESTINATION_PAGE,
+    PREFILLED_SEARCH as VENDOR_PREFILLED_SEARCH,
+    PRICE_NOT_VERIFIED,
+    build_vendor_links,
+    trip_from_deal,
+)
+from .diy import (
+    DiyComparison,
+    airline_booking_page,
+    build_diy_option,
+    trajectory_label,
+)
 
 
 @dataclass(frozen=True)
@@ -809,6 +823,15 @@ def _classify_deal_price(true_pp: float) -> str:
 #: score takes a hard penalty. Red Sea, Canary and Middle East destinations
 #: (21–26°C) are the ones that should float up for winter searches.
 WINTER_SUN_FLOOR_C: float = 20.0
+
+#: Gmail clips an e-mail over 102 KB, and a clipped card is a card the reader
+#: cannot click. Cards stop being added once the report reaches this many
+#: bytes, so enriching a card can never silently clip the report.
+EMAIL_HTML_BUDGET_BYTES: int = 88_000
+
+#: ...but a budget must never produce a one-card report. This many cards are
+#: always rendered, budget or not.
+MIN_RENDERED_HOTEL_CARDS: int = 5
 
 #: Months in which the trip itself experiences winter (Nov–Mar). The
 #: December-temperature floor exists to stop a cold beach riding a big
@@ -1930,6 +1953,117 @@ DEST_IMAGES: dict[str, str] = {
 }
 
 
+def render_vendor_block(deal: PackageDeal, *, adults: int, rooms: Sequence[int]) -> str:
+    """One link per PACKAGE OPERATOR for this hotel card, each tagged with what
+    its URL actually carries.
+
+    The owner's complaint: the card's prominent buttons were Booking.com
+    searches, so a package-holiday report could not be used to buy a package.
+    Every link here goes to an operator that sells the flight and the room as
+    one purchase, and every one is tagged deep link / prefilled / destination
+    page — claiming a deep link a vendor does not support is how a link starts
+    implying a price. Kept to one line because Gmail clips a long e-mail, and a
+    clipped card helps nobody.
+    """
+    trip = trip_from_deal(deal, adults=adults, rooms=tuple(rooms))
+    links = build_vendor_links(trip)
+    if not links:
+        return ""
+    tags = {
+        VENDOR_DEEP_LINK: "deep link",
+        VENDOR_PREFILLED_SEARCH: "prefilled",
+        VENDOR_DESTINATION_PAGE: "dest. page",
+    }
+    parts = [
+        '<div style="margin:6px 0;font-size:13px;color:#475569;">'
+        '<strong style="color:#0f172a;">Package operators</strong> '
+        '<span style="font-size:11px;color:#94a3b8;">' + str(adults) + ' travellers · '
+        + escape(deal.outbound_date) + '→' + escape(deal.return_date) + ' · '
+        + escape(','.join(deal.origin_airports)) + '</span><br>'
+    ]
+    for i, link in enumerate(links):
+        if i:
+            parts.append('<span style="color:#cbd5e1;"> · </span>')
+        parts.append(
+            '<a href="' + escape(link.url, quote=True)
+            + '" style="color:#2563eb;text-decoration:none;font-weight:600;">'
+            + escape(link.vendor) + ' ↗</a> <span style="font-size:11px;color:#94a3b8;">'
+            + escape(tags.get(link.kind, link.kind)) + '</span>'
+        )
+    parts.append(
+        '<div style="font-size:11px;color:#b45309;">' + escape(PRICE_NOT_VERIFIED)
+        + ' — a link is not a quote.</div></div>'
+    )
+    return ''.join(parts)
+
+
+def render_diy_block(deal: PackageDeal, *, adults: int) -> str:
+    """The same week bought as separate parts, priced from those parts.
+
+    D2D arithmetic: the total is summed from the components on every render, so
+    a live fare replacing a benchmark moves it. No vendor package quote has been
+    observed for this card, so the comparison declares no winner and says so,
+    rather than comparing the report's own benchmark against itself and calling
+    the difference a saving.
+    """
+    option = build_diy_option(
+        flight_total_gbp=deal.flight_price_total_gbp,
+        flight_carrier=deal.live_carrier or deal.airline,
+        flight_url=deal.flight_booking_url,
+        destination_airport=deal.destination_airport,
+        outbound_date=deal.outbound_date,
+        return_date=deal.return_date,
+        adults=adults,
+        hotel_total_gbp=deal.hotel_price_total_gbp,
+        hotel_name=deal.resort_name,
+        hotel_url=deal.hotel_booking_url,
+        nights=deal.nights,
+        uk_ground_gbp=deal.uk_ground_gbp,
+        transfer_gbp=deal.transfer_gbp,
+        cabin_class=deal.cabin_class,
+        flight_confidence=deal.confidence,
+        flight_source_url=deal.source_url,
+        flight_observed_at=deal.live_observed_at,
+        airline_booking_url=airline_booking_page(deal.live_carrier or deal.airline),
+    )
+    comparison = DiyComparison(
+        diy_total_gbp=option.total_gbp,
+        package_total_gbp=None,
+        package_confidence=deal.confidence,
+    )
+    flight, hotel = option.components[0], option.components[1]
+    carrier = escape((deal.live_carrier or deal.airline).split('/')[0].strip())
+    link = 'style="color:#2563eb;text-decoration:none;"'
+    parts = [
+        '<div style="margin:6px 0;font-size:13px;color:#475569;">'
+        '<strong style="color:#0f172a;">Self-create</strong> '
+        '<span style="font-size:11px;color:#94a3b8;">'
+        + escape(trajectory_label(destination_airport=deal.destination_airport,
+                                  carrier=deal.live_carrier or deal.airline))
+        + '</span><br>£' + f'{flight.amount_gbp:,.0f}' + ' flights, ' + carrier + ' '
+    ]
+    if flight.url:
+        parts.append('<a href="' + escape(flight.url, quote=True) + '" ' + link + '>'
+                     + escape(flight.channel) + ' ↗</a>')
+    if flight.dated_search_url:
+        parts.append(' <a href="' + escape(flight.dated_search_url, quote=True)
+                     + '" style="color:#64748b;text-decoration:none;font-size:11px;">dated search ↗</a>')
+    parts.append('<span style="color:#cbd5e1;"> · </span>£' + f'{hotel.amount_gbp:,.0f}'
+                 + ' room, ' + str(deal.nights) + 'n ')
+    if hotel.url:
+        parts.append('<a href="' + escape(hotel.url, quote=True) + '" ' + link + '>'
+                     + escape(hotel.channel) + ' ↗</a>')
+    for extra in option.components[2:]:
+        parts.append('<span style="color:#cbd5e1;"> · </span>£' + f'{extra.amount_gbp:,.0f}'
+                     + ' ' + escape(extra.label.split(',')[0].lower()))
+    parts.append('<br><strong style="color:#0f172a;">= £' + f'{option.total_gbp:,.0f}'
+                 + ' door-to-door</strong> <span style="font-size:11px;color:#94a3b8;">'
+                 + escape(option.confidence) + '</span>'
+                 + '<div style="font-size:11px;color:#b45309;">' + escape(comparison.statement)
+                 + '</div></div>')
+    return ''.join(parts)
+
+
 def render_holiday_report(
     config: HolidayConfig,
     *,
@@ -2072,11 +2206,19 @@ def render_holiday_report(
                 "base": d,
                 "group": [x for x in ordered if x.resort_name == d.resort_name],
             })
-        # Gmail clips emails over 102 KB. Cap rendered cards to top 10 hotels
-        # to keep HTML payload strictly under 70 KB while every cabin deal
-        # stays tracked in history.
-        rendered_hotels = hotels[:10]
-        for entry in rendered_hotels:
+        # Gmail clips emails over 102 KB. Two guards, because the card grew
+        # per-operator links and a self-create block: a hard cap of 10 hotels,
+        # AND a running byte budget that stops adding cards once the payload
+        # reaches EMAIL_HTML_BUDGET_BYTES. The budget is the real guarantee —
+        # a fixed card count silently breaks the moment a card gets richer,
+        # which is exactly how an e-mail ends up clipped mid-link.
+        rendered_hotels: list[dict] = []
+        for entry in hotels[:10]:
+            if len(rendered_hotels) >= MIN_RENDERED_HOTEL_CARDS and sum(
+                len(chunk.encode("utf-8")) for chunk in out
+            ) > EMAIL_HTML_BUDGET_BYTES:
+                break
+            rendered_hotels.append(entry)
             deal = entry["base"]
             stars_str = '★' * deal.star_rating + '☆' * (5 - deal.star_rating)
             live = deal.confidence == 'verified-exact-date'
@@ -2188,30 +2330,28 @@ def render_holiday_report(
                     live_mark = ' · <span style="color:#166534; font-weight:700;">🟢 live observed</span>' if up.confidence == 'verified-exact-date' else ''
                     out.append('<div style="margin-top:4px; color:#475569;">' + badge + ' ' + delta_str + ' → £' + f'{up.total_package_price_gbp:,.0f}' + ' total · ' + escape(up.airline.split('/')[0].strip()) + live_mark + '</div>')
                 out.append('</div>')
-            # Property-targeted actions: book THIS hotel dated, or compare
-            # every vendor's price for it on one card.
-            out.append('<a href="' + escape(deal.booking_deep_url, quote=True) + '" style="background:#2563eb; color:#ffffff; text-decoration:none; padding:12px 22px; border-radius:8px; font-weight:700; font-size:15px; display:inline-block;">Book this hotel, your dates →</a>')
-            out.append(' ') 
-            out.append('<a href="' + escape(deal.compare_url, quote=True) + '" style="' + btn_compare + '">Compare all vendors →</a>')
-            out.append('<div style="margin-top:6px;">')
-            out.append('<a href="' + escape(deal.flight_booking_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none; font-weight:600;">flights only</a>')
+            # PACKAGE VENDORS + SELF-CREATE. The card used to end in four
+            # generic links, two of which were Booking.com searches: a package
+            # report that could not be used to buy a package. One link per
+            # operator, each carrying the real search, then the same week
+            # priced as its separate parts.
+            out.append(render_vendor_block(deal, adults=config.travellers, rooms=config.rooms))
+            out.append(render_diy_block(deal, adults=config.travellers))
+            # ROOM-ONLY metasearch, demoted. These were the card's headline
+            # buttons and they are hotel searches, not package purchases —
+            # which is precisely why the e-mail was useless for buying a
+            # package. They stay because a room price is a useful cross-check
+            # on the self-create total above, and they now say so. The old
+            # "flights only", "Resort direct" and destination-guide links are
+            # gone: the self-create block links the airline and the hotel
+            # itself, and the operator row links the operators.
+            out.append('<div style="margin:4px 0 0;font-size:12px;color:#64748b;">Room only, your dates: ')
+            out.append('<a href="' + escape(deal.booking_deep_url, quote=True) + '" style="color:#2563eb;text-decoration:none;font-weight:600;">Booking.com ↗</a>')
             out.append('<span style="color:#cbd5e1;"> · </span>')
-            out.append('<a href="' + escape(deal.expedia_deep_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none;">Expedia</a>')
+            out.append('<a href="' + escape(deal.expedia_deep_url, quote=True) + '" style="color:#2563eb;text-decoration:none;">Expedia ↗</a>')
             out.append('<span style="color:#cbd5e1;"> · </span>')
-            out.append('<a href="' + escape(deal.hotel_booking_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none;">Resort direct</a>')
-            # Best verified package guide for this destination: easyJet guides
-            # carry live lead-in prices; Jet2 second; hub fallback otherwise.
-            guide_url = EASYJET_DESTINATION_PATHS.get(
-                deal.destination_key.lower(),
-                JET2_DESTINATION_PATHS.get(deal.destination_key.lower(), LOVEHOLIDAYS_HOME),
-            )
-            guide_label = (
-                "easyJet holidays"
-                if deal.destination_key.lower() in EASYJET_DESTINATION_PATHS
-                else ("Jet2holidays" if deal.destination_key.lower() in JET2_DESTINATION_PATHS else "loveholidays")
-            )
-            out.append('<span style="color:#cbd5e1;"> · </span>')
-            out.append('<a href="' + escape(guide_url, quote=True) + '" style="color:#2563eb; font-size:14px; text-decoration:none;">' + guide_label + '</a>')
+            out.append('<a href="' + escape(deal.compare_url, quote=True) + '" style="color:#2563eb;text-decoration:none;">compare room prices ↗</a>')
+            out.append('</div>')
             out.append('</td>')
             out.append('</tr></table>')
 

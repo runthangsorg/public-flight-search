@@ -156,9 +156,10 @@ class HolidayPlannerTests(unittest.TestCase):
         self.assertIn("Biggest Discount vs Summer Peak", html)
         self.assertIn("Top Luxury Within", html)
         self.assertIn("Best Winter Facilities", html)
-        # Property-targeted deep links with exact dates + party, ONE unit.
-        self.assertIn("Book this hotel, your dates", html)
-        self.assertIn("Compare all vendors", html)
+        # Room-only metasearch is still there with exact dates + party, but
+        # demoted and labelled as a room price, not a package purchase.
+        self.assertIn("Room only, your dates", html)
+        self.assertIn("compare room prices", html)
         self.assertIn("ss=Lara+Barut+Collection+Antalya", html)
         self.assertIn("no_rooms=1", html)
         # Strict-mode transparency: removed resorts are listed with reasons.
@@ -169,10 +170,93 @@ class HolidayPlannerTests(unittest.TestCase):
         # the walkable-beach non-negotiable and shown in the transparency list.
         self.assertIn("Vidamar Resort Madeira", html)
         self.assertIn("no genuine walkable private beach", html)
-        # Verify compact size: guaranteed < 70 KB so Gmail (102 KB clip limit)
-        # will never clip it. Budget raised from 45 KB to cover date-encoded
-        # Booking.com / Expedia / Google Hotels buttons on every deal.
-        self.assertLess(len(html.encode("utf-8")), 70_000)
+        # Size is now enforced by a running byte budget in the renderer, not
+        # by a fixed card count: cards stop being added at
+        # EMAIL_HTML_BUDGET_BYTES. Assert against Gmail's real 102 KB clip
+        # limit with the margin one more card would need, so enriching a card
+        # can never clip the report.
+        self.assertLess(len(html.encode("utf-8")), 95_000)
+
+    def test_card_budget_stops_adding_cards_before_gmail_clips(self):
+        # Mechanism, not memory: if the budget is squeezed, the renderer drops
+        # cards rather than shipping an e-mail Gmail will cut in half.
+        import public_flight_search.holidays as hol_mod
+
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        original = hol_mod.EMAIL_HTML_BUDGET_BYTES
+        try:
+            hol_mod.EMAIL_HTML_BUDGET_BYTES = 1
+            html = render_holiday_report(
+                config, generated_at="2026-09-06T12:00:00+00:00", deals=deals
+            )
+        finally:
+            hol_mod.EMAIL_HTML_BUDGET_BYTES = original
+        # Never a one-card report, and never the full ten either.
+        self.assertEqual(html.count("Package operators"), hol_mod.MIN_RENDERED_HOTEL_CARDS)
+        self.assertIn("Showing top 5 hotels", html)
+
+    def _dec_report(self):
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        return config, deals, render_holiday_report(
+            config, generated_at="2026-09-06T12:00:00+00:00", deals=deals
+        )
+
+    def test_cards_carry_one_link_per_package_operator(self):
+        # The complaint: every card ended in the same generic links, and the
+        # two prominent ones were Booking.com searches. A package report has
+        # to link the operators that actually sell packages.
+        _, _, html = self._dec_report()
+        self.assertIn("Package operators", html)
+        self.assertIn("loveholidays.com/holidays/", html)
+        self.assertIn("destination2.co.uk/destinations/", html)
+        # and the operator link carries the real search, not just a brand name
+        self.assertIn("departureAirports=LHR", html)
+        self.assertIn("date=2026-12-22", html)
+
+    def test_operator_links_say_which_are_deep_links_and_which_are_not(self):
+        _, _, html = self._dec_report()
+        self.assertIn("prefilled", html)
+        self.assertIn("dest. page", html)
+        self.assertIn("search link, price not verified", html)
+        self.assertIn("a link is not a quote", html)
+
+    def test_cards_show_a_self_create_breakdown_totalled_from_its_parts(self):
+        config, deals, html = self._dec_report()
+        self.assertIn("Self-create", html)
+        self.assertIn("door-to-door", html)
+        cheapest = sorted(deals, key=lambda d: d.total_package_price_gbp)[0]
+        expected = (
+            cheapest.flight_price_total_gbp
+            + cheapest.hotel_price_total_gbp
+            + cheapest.uk_ground_gbp
+            + cheapest.transfer_gbp
+        )
+        self.assertIn("= £" + f"{expected:,.0f}" + " door-to-door", html)
+        self.assertIn(str(cheapest.nights) + "n", html)
+
+    def test_card_never_claims_a_package_price_it_has_not_observed(self):
+        # No vendor quote was captured, so the card must not declare a winner
+        # by comparing the report's own benchmark against itself.
+        _, _, html = self._dec_report()
+        self.assertIn("package price not verified", html)
+        self.assertNotIn("cheaper than the package", html)
+
+    def test_cards_never_use_the_bare_word_direct(self):
+        # "Direct" means two different things; the mandate is Nonstop /
+        # 1-Stop Connecting for trajectory and Airline-Direct Booking /
+        # OTA Intermediary for channel.
+        _, _, html = self._dec_report()
+        import re
+
+        self.assertIsNone(re.search(r"(?<![-\w])[Dd]irect(?![-\w])", html), "bare 'direct'")
 
     def test_bucket_deals_assigns_three_ranked_buckets(self):
         from public_flight_search.holidays import bucket_deals

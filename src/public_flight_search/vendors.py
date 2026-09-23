@@ -286,3 +286,19 @@ def build_vendor_links(trip: TripQuery) -> tuple[VendorLink, ...]:
         if link is not None:
             links.append(link)
     return tuple(links)
+
+
+def trip_from_deal(deal, *, adults: int, rooms: tuple[int, ...]) -> TripQuery:
+    """The vendor search one :class:`~public_flight_search.holidays.PackageDeal`
+    is asking for. Kept here so the renderer never assembles a query by hand."""
+    return TripQuery(
+        destination_key=deal.destination_key,
+        destination_airport=deal.destination_airport,
+        origin_airports=tuple(deal.origin_airports),
+        outbound_date=deal.outbound_date,
+        return_date=deal.return_date,
+        nights=deal.nights,
+        adults=int(adults),
+        rooms=tuple(rooms),
+        resort_name=deal.resort_name,
+    )

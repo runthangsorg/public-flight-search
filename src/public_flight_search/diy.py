@@ -256,3 +256,43 @@ def build_diy_option(
             )
         )
     return DiyOption(components=tuple(components))
+
+
+#: The airline's OWN booking entry point, for carriers the holiday catalogue
+#: actually names. Landing pages, not dated deep links: a per-airline dated
+#: grammar is recorded separately where one has been verified. An unknown
+#: carrier returns "" so the card falls back to the dated metasearch link
+#: rather than sending the reader to a guessed URL.
+AIRLINE_BOOKING_PAGES: dict[str, str] = {
+    "easyJet": "https://www.easyjet.com/en/",
+    "Jet2": "https://www.jet2.com/",
+    "Ryanair": "https://www.ryanair.com/gb/en",
+    "British Airways": "https://www.britishairways.com/travel/home/public/en_gb/",
+    "TUI": "https://www.tui.co.uk/flight",
+    "Emirates": "https://www.emirates.com/uk/english/",
+    "Qatar Airways": "https://www.qatarairways.com/en-gb/homepage.html",
+    "Oman Air": "https://www.omanair.com/en",
+    "Etihad Airways": "https://www.etihad.com/en-gb",
+    "Turkish Airlines": "https://www.turkishairlines.com/en-gb/",
+    "SunExpress": "https://www.sunexpress.com/en/",
+    "Pegasus": "https://www.flypgs.com/en",
+    "Wizz Air": "https://wizzair.com/en-gb",
+    "Vueling": "https://www.vueling.com/en",
+    "Royal Air Maroc": "https://www.royalairmaroc.com/uk-en",
+    "EgyptAir": "https://www.egyptair.com/en/",
+}
+
+
+def airline_booking_page(carrier: str) -> str:
+    """The airline's own booking page for a carrier string.
+
+    A benchmark carrier is often a SET ("easyJet / Jet2 / Ryanair"): the first
+    name that is a known airline wins, because the card has room for one
+    airline-direct link and the alternatives are reachable from the dated
+    search beside it. An unrecognised name returns "" rather than a guess.
+    """
+    for part in (carrier or "").replace("/", ",").split(","):
+        name = part.strip()
+        if name in AIRLINE_BOOKING_PAGES:
+            return AIRLINE_BOOKING_PAGES[name]
+    return ""
