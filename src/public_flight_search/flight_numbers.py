@@ -3,7 +3,6 @@
 Maps known flight numbers to their correct airport pairs for carriers
 that return city codes instead of airport codes.
 
-Lifted from private muscat_deal_finder_v6.py — no PII.
 """
 
 from __future__ import annotations

@@ -1,6 +1,5 @@
 """Carrier canonicalization — maps airline codes and names to canonical form.
 
-Lifted from private muscat_deal_finder.py with all PII removed.
 Handles multi-carrier strings like "G9 + W9" and IATA codes.
 """
 

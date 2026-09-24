@@ -114,6 +114,15 @@ class RepositoryPolicyTests(unittest.TestCase):
                 str(path.relative_to(ROOT)),
             )
 
+    # Rescued from the 2026-09-22 stash snapshot during reconciliation on
+    # 2026-09-24; it failed on main, which named private source files in four
+    # module docstrings.
+    def test_public_tree_does_not_disclose_private_source_provenance(self):
+        production = [ROOT / "README.md"] + list((ROOT / "src").rglob("*.py"))
+        text = "\n".join(path.read_text(encoding="utf-8") for path in production)
+        self.assertNotIn("Lifted from private", text)
+        self.assertNotIn("muscat_deal_finder", text)
+
 
 if __name__ == "__main__":
     unittest.main()

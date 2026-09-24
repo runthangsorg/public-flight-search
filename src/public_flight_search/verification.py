@@ -7,7 +7,6 @@ Verifies that constructed booking URLs resolve correctly, detecting:
 - Route/destination mismatches
 - Domain safety violations
 
-Lifted from private muscat_deal_finder.py V5 with all PII removed.
 """
 
 from __future__ import annotations

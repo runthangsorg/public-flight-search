@@ -1,6 +1,5 @@
 """Weighted multi-criteria scoring engine for flight options.
 
-Lifted from private flight_intelligence_engine.py with all PII removed.
 Scoring weights, cabin inconvenience, connection penalties, and Pareto
 suppression are preserved exactly.
 """
