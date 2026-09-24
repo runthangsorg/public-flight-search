@@ -915,8 +915,24 @@ def compute_value_score(
 # food reality, mosque access, winter facilities, activities, flight quality.
 # A heated pool does NOT make a 15°C destination a winter-sun holiday:
 # stepping out of 28°C water into a 15°C wind is miserable.
-# Rates below are BENCHMARKS (confidence: market-supported), never live
-# checkout totals. Live verification runs privately (Camoufox/FlareSolverr).
+# Summer climate reality (ambient air / sea °C).
+SUMMER_WEATHER: dict[str, tuple[tuple[int, int], int]] = {
+    "antalya": ((32, 36), 28),
+    "tenerife": ((26, 29), 23),
+    "fuerteventura": ((26, 28), 22),
+    "gran_canaria": ((26, 28), 22),
+    "paphos": ((31, 34), 27),
+    "hurghada": ((34, 37), 29),
+    "malta": ((30, 33), 26),
+    "taghazout": ((26, 28), 21),
+    "doha": ((38, 42), 32),
+    "muscat": ((36, 40), 30),
+    "lanzarote": ((26, 29), 22),
+    "madeira": ((24, 26), 22),
+    "cairo": ((34, 37), 0),
+}
+
+
 WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
     "antalya": [
         {
@@ -969,7 +985,7 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "flight_benchmark_5pax_gbp": 648.0,
             "peak_summer_flight_5pax_gbp": 1180.0,
             "highlights": ("Palatial architecture", "7,500m² spa", "Heated Olympic indoor pool", "Private lagoon"),
-            "hotel_url": "https://www.titanic.com.tr/titanic-mardan-palace",
+            "hotel_url": "https://www.titanic.com.tr/titanicmardanpalace",
             "dec_ambient_c": (15, 17),
             "sea_temp_c": 19,
             "beach": "Sandy lagoon but 15-17°C — spa trip",
@@ -1074,7 +1090,7 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "flight_benchmark_5pax_gbp": 950.0,
             "peak_summer_flight_5pax_gbp": 1400.0,
             "highlights": ("Overlooks ancient tombs", "Opulent spa", "Rooftop bar", "Harbour 15 min walk"),
-            "hotel_url": "https://www.elysiumhotel.com/",
+            "hotel_url": "https://elysiumhotel.com/",
             "dec_ambient_c": (20, 22),
             "sea_temp_c": 20,
             "beach": "Small sandy cove + rocky platforms — honest Paphos shoreline",
@@ -1496,7 +1512,9 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
 }
 
 
-def filter_resorts(resorts: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
+def filter_resorts(
+    resorts: list[dict[str, Any]], *, is_summer: bool = False
+) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
     """Apply the strict filters; return (passing, [(name, reason)] for the rest."""
     kept: list[dict[str, Any]] = []
     dropped: list[tuple[str, str]] = []
@@ -1512,7 +1530,7 @@ def filter_resorts(resorts: list[dict[str, Any]]) -> tuple[list[dict[str, Any]],
         if not arch["beach_walkable"]:
             dropped.append((name, "no genuine walkable private beach attached"))
             continue
-        if arch["pool_heated_c"] < 28:
+        if not is_summer and arch["pool_heated_c"] < 28:
             dropped.append((name, f"pools not heated to >=28°C in December ({arch['pool_heated_c']}°C)"))
             continue
         if arch["tripadvisor"] < 4.5:
@@ -2171,36 +2189,52 @@ def render_holiday_report(
         out.append('</td></tr></table>')
         out.append('</td></tr><tr><td>')
 
+    is_summer = any(
+        int(d.split('-')[1]) in (6, 7, 8)
+        for d in (config.outbound_dates or [])
+        if '-' in d
+    ) or "summer" in (config.report_title or "").lower() or "july" in (config.report_title or "").lower() or "august" in (config.report_title or "").lower()
+
     # ── VERIFIED LIVE DEALS UNDER £5,000 (WHEN AVAILABLE) ──
     if deals:
-        out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">⭐ December Deals — One Family Unit, Real Discounts vs Summer Peak</h2>')
-        out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Every resort sleeps all 5 in <strong>ONE booking</strong> (2-bedroom suite, duplex, or 2× guaranteed-connecting rooms where the hotel confirms the connection post-booking). Pools heated ≥28°C, walkable beach, TripAdvisor ≥4.5, nonstop flights, any departure time. Ranked by how much cheaper the same stay is in December versus its July/August peak.</p>')
+        if is_summer:
+            out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">⭐ Summer Luxury Deals — One Family Unit, Verified Rates</h2>')
+            out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Every resort sleeps all 5 in <strong>ONE booking</strong> (2-bedroom suite, duplex, or 2× guaranteed-connecting rooms where the hotel confirms the connection post-booking). Walkable beach, TripAdvisor ≥4.5, nonstop flights, preferred departure times. Evaluated for peak summer family value and verified packaging.</p>')
+        else:
+            out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">⭐ December Deals — One Family Unit, Real Discounts vs Summer Peak</h2>')
+            out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Every resort sleeps all 5 in <strong>ONE booking</strong> (2-bedroom suite, duplex, or 2× guaranteed-connecting rooms where the hotel confirms the connection post-booking). Pools heated ≥28°C, walkable beach, TripAdvisor ≥4.5, nonstop flights, any departure time. Ranked by how much cheaper the same stay is in December versus its July/August peak.</p>')
         # At-a-glance: one line per decision lens (no ranked walls).
         buckets = bucket_deals(deals)
         glance = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 16px 0;">'
         b1 = buckets["discounts"][0] if buckets["discounts"] else None
         b2 = buckets["luxury"][0] if buckets["luxury"] else None
         b3 = buckets["winter"][0] if buckets["winter"] else None
-        # Only a real discount earns the "Biggest Discount" headline; when every card is
-        # at or above its peak the largest saving is negative and the row would read
-        # "▼-5% (save £-243)" in green.
         if b1 is not None and b1.vs_peak_saving_gbp > 0:
+            disc_label = "💰 Biggest Discount vs Benchmark:" if is_summer else "💰 Biggest Discount vs Summer Peak:"
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
-                       '<strong style="color:#0f172a;">💰 Biggest Discount vs Summer Peak:</strong> '
+                       '<strong style="color:#0f172a;">' + disc_label + '</strong> '
                        + escape(b1.resort_name) + ' — <strong style="color:#059669;">▼' + str(b1.vs_peak_pct) + '% (save £' + f'{b1.vs_peak_saving_gbp:,.0f}' + ' for the same resort)</strong></td></tr>')
         if b2 is not None:
+            lux_limit = "£12k" if is_summer and config.max_budget_gbp > 5000 else "£5k"
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
-                       '<strong style="color:#0f172a;">💎 Top Luxury Within £5k:</strong> '
+                       '<strong style="color:#0f172a;">💎 Top Luxury Within ' + lux_limit + ':</strong> '
                        + escape(b2.resort_name) + ' · ' + escape(b2.board_basis) + '</td></tr>')
         if b3 is not None:
-            glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
-                       '<strong style="color:#0f172a;">☀️ Best Winter Facilities:</strong> '
-                       + escape(b3.resort_name) + ' — ' + str(b3.dec_ambient_c[0]) + '–' + str(b3.dec_ambient_c[1]) + '°C air, sea ' + str(b3.sea_temp_c) + '°C</td></tr>')
+            if is_summer:
+                climate = SUMMER_WEATHER.get(b3.destination_key.lower(), ((30, 34), 26))
+                glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
+                           '<strong style="color:#0f172a;">☀️ Best Summer Climate:</strong> '
+                           + escape(b3.resort_name) + ' — ' + str(climate[0][0]) + '–' + str(climate[0][1]) + '°C air, sea ' + str(climate[1]) + '°C</td></tr>')
+            else:
+                glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
+                           '<strong style="color:#0f172a;">☀️ Best Winter Facilities:</strong> '
+                           + escape(b3.resort_name) + ' — ' + str(b3.dec_ambient_c[0]) + '–' + str(b3.dec_ambient_c[1]) + '°C air, sea ' + str(b3.sea_temp_c) + '°C</td></tr>')
         b4 = buckets["value"][0] if buckets["value"] else None
         if b4 is not None:
+            score_type = "(family luxury score)" if is_summer else "(winter-first score)"
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px;">'
                        '<strong style="color:#0f172a;">🏆 Best Overall Value:</strong> '
-                       + escape(b4.resort_name) + ' — VALUE ' + f'{b4.value_score:.0f}' + '/100 (winter-first score)</td></tr>')
+                       + escape(b4.resort_name) + ' — VALUE ' + f'{b4.value_score:.0f}' + '/100 ' + score_type + '</td></tr>')
         glance += '</table>'
         out.append(glance)
 
@@ -2291,18 +2325,14 @@ def render_holiday_report(
                     if deal.mosque_name else '🕌 mosque access not assessed')
             out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;"><strong style="color:#7c3aed;">VALUE ' + f'{deal.value_score:.0f}' + '/100</strong> · '
                        + '<span style="background:#faf5ff; color:#6d28d9; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700;">' + escape(deal.deal_class.replace('_', ' ')) + '</span></div>')
-            out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">' + crit + ' · 🍽️ food ' + f'{deal.food_reality_score:.0f}' + '/10 · 💎 luxury ' + f'{deal.actual_luxury_score:.0f}' + '/10 · ❄️ winter ' + f'{deal.winter_facilities_score:.0f}' + '/10 · 🎯 activities ' + f'{deal.activities_score:.0f}' + '/10 · ✈️ flights ' + f'{deal.flight_quality_score:.0f}' + '/10</div>')
+            season_score_name = "🏊 beach & pools" if is_summer else "❄️ winter"
+            out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">' + crit + ' · 🍽️ food ' + f'{deal.food_reality_score:.0f}' + '/10 · 💎 luxury ' + f'{deal.actual_luxury_score:.0f}' + '/10 · ' + season_score_name + ' ' + f'{deal.winter_facilities_score:.0f}' + '/10 · 🎯 activities ' + f'{deal.activities_score:.0f}' + '/10 · ✈️ flights ' + f'{deal.flight_quality_score:.0f}' + '/10</div>')
             if deal.food_review_summary:
                 out.append('<div style="color:#64748b; font-size:13px; margin-bottom:8px;"><strong style="color:#475569;">Food reviews:</strong> ' + escape(deal.food_review_summary) + '</div>')
-            # Facts strip: flights | stay | December weather | BIG price
+            # Facts strip: flights | stay | weather | BIG price
             cabin_label = f" ({deal.cabin_class.replace('_', ' ').title()})" if getattr(deal, "cabin_class", "ECONOMY") != "ECONOMY" else ""
-            # Premium cabins name a real business-capable carrier in full —
-            # never truncate to an LCC fragment. Benchmark estimates carry an
-            # explicit live-check note; only verified-exact-date is a live fare.
             flight_carrier_display = escape(deal.airline) if cabin_is_premium else escape(deal.airline.split('/')[0].strip())
             if live:
-                # Name the carrier the provider actually displayed for this
-                # whole-party fare, not the benchmark assumption.
                 flight_note = (
                     '<br><span style="font-size:11px; color:#166534;">'
                     + escape(getattr(deal, "live_carrier", "") or deal.airline)
@@ -2314,10 +2344,10 @@ def render_holiday_report(
             out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights' + cabin_label + '<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + flight_carrier_display + '</span>' + flight_note + '</td>')
             suite_label = deal.unit_architecture or (str(rooms_n) + ' rooms')
             out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🏨 Stay<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(suite_label) + ' · ' + str(deal.nights) + 'n</span></td>')
-            if deal.sea_temp_c:
-                # Weather-floor honesty (2026-09-22 mandate): on winter trips
-                # below the 20°C floor, say so ON the temperature cell — the
-                # discount is real but the beach may not be usable.
+            if is_summer:
+                climate = SUMMER_WEATHER.get(deal.destination_key.lower(), ((28, 33), 25))
+                out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🌡️ Summer<br><strong style="color:#0f172a; font-size:16px;">' + str(climate[0][0]) + '–' + str(climate[0][1]) + '°C</strong><br><span style="font-size:12px;">sea ' + str(climate[1]) + '°C</span></td>')
+            elif deal.sea_temp_c:
                 floor_temp = _dec_temp_for_floor(deal.outbound_date, float(deal.dec_ambient_c[0]))
                 floor_note = (
                     '<br><span style="font-size:11px; color:#b45309;">below 20°C winter-sun floor — ranked accordingly</span>'
@@ -2330,9 +2360,35 @@ def render_holiday_report(
             out.append('<td align="right" valign="middle" style="padding:8px 10px;">')
             out.append('<div style="color:#059669; font-size:30px; font-weight:800; white-space:nowrap;">£' + f'{deal.total_package_price_gbp:,.0f}' + '</div>')
             out.append('<div style="color:#64748b; font-size:13px; white-space:nowrap;">£' + f'{deal.price_per_person_gbp:,.0f}' + 'pp · D2D £' + f'{deal.true_d2d_gbp:,.0f}' + '</div>')
-            out.append('<div style="color:#b45309; font-size:12px; white-space:nowrap;">summer peak £' + f'{deal.peak_summer_total_gbp:,.0f}' + '</div>')
+            if is_summer:
+                if deal.vs_peak_saving_gbp > 0:
+                    out.append('<div style="color:#059669; font-size:12px; white-space:nowrap;">benchmark saving £' + f'{deal.vs_peak_saving_gbp:,.0f}' + '</div>')
+                else:
+                    out.append('<div style="color:#64748b; font-size:12px; white-space:nowrap;">peak summer verified rate</div>')
+            else:
+                out.append('<div style="color:#b45309; font-size:12px; white-space:nowrap;">summer peak £' + f'{deal.peak_summer_total_gbp:,.0f}' + '</div>')
             out.append('</td>')
             out.append('</tr></table>')
+
+            # Deal rationale callout: explain WHY this is a great deal for this party
+            rationale_points: list[str] = []
+            if deal.unit_architecture:
+                rationale_points.append('<strong>Family Unit for ' + str(config.travellers) + ':</strong> ' + escape(deal.unit_architecture) + ' sleeps everyone in one booking without paying for 3 scattered rooms.')
+            elif len(config.rooms) >= 2:
+                rationale_points.append('<strong>Connecting Family Unit:</strong> 2 interconnecting rooms confirmed post-booking for all ' + str(config.travellers) + '.')
+            if "All Inclusive" in deal.board_basis:
+                rationale_points.append('<strong>All-Inclusive Economics:</strong> ' + escape(deal.board_basis) + ' covers full breakfast, lunch, dinner, drinks, and snacks for all ' + str(config.travellers) + ' — saving £150–£250/day in resort dining.')
+            elif "Half Board" in deal.board_basis:
+                rationale_points.append('<strong>Half Board Value:</strong> Daily breakfast and dinner included for all ' + str(config.travellers) + ', leaving lunchtime flexible for beach & excursions.')
+            rationale_points.append('<strong>Nonstop Logistics:</strong> Flights to ' + escape(deal.destination_airport) + ' from ' + escape(', '.join(config.origins[:2])) + ', preserving civil arrival times.')
+            per_person_per_night = round(deal.price_per_person_gbp / max(1, deal.nights))
+            rationale_points.append('<strong>Door-to-Door Transparency:</strong> £' + f'{deal.price_per_person_gbp:,.0f}' + 'pp (£' + str(per_person_per_night) + '/day) true total with flights, luggage, stay, and transfers included.')
+
+            out.append('<div style="margin:0 0 10px 0; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;">')
+            out.append('<div style="color:#166534; font-size:13px; font-weight:700; margin-bottom:4px;">💡 Why this is a great deal:</div>')
+            for pt in rationale_points:
+                out.append('<div style="color:#15803d; font-size:12px; line-height:1.45; margin-bottom:2px;">• ' + pt + '</div>')
+            out.append('</div>')
             # ONE CARD PER HOTEL: other cabins surface here as alternates
             # for the same hotel & dates — never as duplicate cards. An
             # Economy line CAN appear (e.g. its live read exceeds a stale

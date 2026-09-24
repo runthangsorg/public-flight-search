@@ -310,6 +310,64 @@ def build_destination2_link(trip: TripQuery) -> Optional[VendorLink]:
     )
 
 
+JET2_DESTINATION_PATHS: dict[str, str] = {
+    "malta": "https://www.jet2holidays.com/destinations/malta",
+    "antalya": "https://www.jet2holidays.com/destinations/turkey",
+    "taghazout": "https://www.jet2holidays.com/destinations/morocco",
+    "hurghada": "https://www.jet2holidays.com/destinations/egypt/hurghada",
+    "tenerife": "https://www.jet2holidays.com/destinations/canary-islands/tenerife",
+    "madeira": "https://www.jet2holidays.com/destinations/portugal/madeira",
+    "lanzarote": "https://www.jet2holidays.com/destinations/canary-islands/lanzarote",
+    "fuerteventura": "https://www.jet2holidays.com/destinations/canary-islands/fuerteventura",
+    "gran_canaria": "https://www.jet2holidays.com/destinations/canary-islands/gran-canaria",
+    "paphos": "https://www.jet2holidays.com/destinations/cyprus",
+}
+
+
+EASYJET_DESTINATION_PATHS: dict[str, str] = {
+    "malta": "https://www.easyjet.com/en/holidays/malta",
+    "antalya": "https://www.easyjet.com/en/holidays/turkey/antalya",
+    "cairo": "https://www.easyjet.com/en/holidays/egypt/cairo",
+    "taghazout": "https://www.easyjet.com/en/holidays/morocco/agadir",
+    "hurghada": "https://www.easyjet.com/en/holidays/egypt/hurghada",
+    "tenerife": "https://www.easyjet.com/en/holidays/spain/tenerife",
+    "madeira": "https://www.easyjet.com/en/holidays/portugal/madeira",
+    "lanzarote": "https://www.easyjet.com/en/holidays/spain/lanzarote",
+    "fuerteventura": "https://www.easyjet.com/en/holidays/spain/fuerteventura",
+    "gran_canaria": "https://www.easyjet.com/en/holidays/spain/gran-canaria",
+}
+
+
+def build_jet2_link(trip: TripQuery) -> Optional[VendorLink]:
+    """Jet2holidays' destination page where it operates."""
+    url = JET2_DESTINATION_PATHS.get(trip.destination_key.lower())
+    if not url:
+        return None
+    return VendorLink(
+        vendor="Jet2holidays",
+        url=url,
+        kind=DESTINATION_PAGE,
+        carried=("destination",),
+        note="Jet2holidays destination page; enter the exact dates and party on its search widget",
+        example_url=url,
+    )
+
+
+def build_easyjet_link(trip: TripQuery) -> Optional[VendorLink]:
+    """easyJet holidays' destination page where it operates."""
+    url = EASYJET_DESTINATION_PATHS.get(trip.destination_key.lower())
+    if not url:
+        return None
+    return VendorLink(
+        vendor="easyJet holidays",
+        url=url,
+        kind=DESTINATION_PAGE,
+        carried=("destination",),
+        note="easyJet holidays destination page; enter the exact dates and party on its search widget",
+        example_url=url,
+    )
+
+
 def build_vendor_links(trip: TripQuery) -> tuple[VendorLink, ...]:
     """Every package vendor's entry point for one hotel card.
 
@@ -317,7 +375,7 @@ def build_vendor_links(trip: TripQuery) -> tuple[VendorLink, ...]:
     linked to a homepage or a 404.
     """
     links: list[VendorLink] = [build_loveholidays_link(trip)]
-    for builder in (build_destination2_link,):
+    for builder in (build_destination2_link, build_jet2_link, build_easyjet_link):
         link = builder(trip)
         if link is not None:
             links.append(link)

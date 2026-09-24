@@ -662,5 +662,24 @@ class PeakDiscountBadgeTests(unittest.TestCase):
         self.assertIn("no summer-peak discount", html)
 
 
+class SummerReportEnrichmentTests(unittest.TestCase):
+    def test_summer_report_renders_summer_weather_and_deal_rationale(self):
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = list(collect_holiday_deals(config))
+        self.assertTrue(deals)
+        html = render_holiday_report(config, generated_at="2026-09-24T00:00:00+00:00", deals=deals)
+        self.assertIn("🌡️ Summer", html)
+        self.assertIn("💡 Why this is a great deal:", html)
+        self.assertIn("Family Unit for 5:", html)
+        self.assertIn("Door-to-Door Transparency:", html)
+        self.assertIn("Jet2holidays", html)
+        self.assertIn("easyJet holidays", html)
+        self.assertIn("Love Holidays", html)
+        self.assertLessEqual(len(html.encode("utf-8")), hol.EMAIL_HTML_BUDGET_BYTES)
+
+
 if __name__ == "__main__":
     unittest.main()

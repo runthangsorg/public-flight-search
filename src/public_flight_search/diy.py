@@ -64,6 +64,7 @@ _AIRLINE_HOSTS = (
     "etihad.com", "turkishairlines.com", "sunexpress.com", "flypgs.com",
     "wizzair.com", "airarabia.com", "flydubai.com", "vueling.com",
     "iberia.com", "aegeanair.com", "royalairmaroc.com", "egyptair.com",
+    "austrian.com", "lufthansa.com", "swiss.com",
 )
 
 
@@ -280,6 +281,9 @@ AIRLINE_BOOKING_PAGES: dict[str, str] = {
     "Vueling": "https://www.vueling.com/en",
     "Royal Air Maroc": "https://www.royalairmaroc.com/uk-en",
     "EgyptAir": "https://www.egyptair.com/en/",
+    "Austrian": "https://www.austrian.com/gb/en/homepage",
+    "Lufthansa": "https://www.lufthansa.com/gb/en/homepage",
+    "SWISS": "https://www.swiss.com/gb/en/homepage",
 }
 
 
