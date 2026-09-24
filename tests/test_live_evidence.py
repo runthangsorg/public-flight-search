@@ -185,8 +185,8 @@ class TestEvidenceFileLoader(unittest.TestCase):
     Every rejection here is a fabrication class that must never return."""
 
     def setUp(self):
-        import json
         import tempfile
+        from datetime import datetime, timezone
 
         self.config = load_holiday_config(CONFIG_JSON)
         self.outbound, self.return_date = _target_date_pair(self.config)
@@ -194,6 +194,13 @@ class TestEvidenceFileLoader(unittest.TestCase):
             (self.outbound, self.return_date), ("2026-12-22", "2026-12-30")
         )
         self.stale = "2026-09-01T00:00:00+00:00"
+        # The age reference is pinned, never the wall clock: these fixtures use
+        # literal observed_at values, and measuring them against `now()` made
+        # every one a time bomb that went stale 72h after it was written. The
+        # loader takes `now` for exactly this; pin it so the assertions test
+        # the rejection RULES (party, origin, dates, staleness) and not the
+        # calendar.
+        self.now = datetime(2026, 9, 21, 12, 0, tzinfo=timezone.utc)
         self._tmpdir = tempfile.TemporaryDirectory()
 
     def tearDown(self):
@@ -226,7 +233,7 @@ class TestEvidenceFileLoader(unittest.TestCase):
 
     def test_valid_entry_is_accepted_and_promotes_the_deal(self):
         path = self._write([self._rec(total_gbp=1234.5, carrier="Ajet")])
-        offers = try_live_flight_offers(self.config, path=path)
+        offers = try_live_flight_offers(self.config, path=path, now=self.now)
         self.assertEqual(set(offers), {("AYT", "ECONOMY")})
         deals = {
             d.resort_name: d
@@ -247,7 +254,7 @@ class TestEvidenceFileLoader(unittest.TestCase):
 
     def test_per_person_basis_is_rejected_not_multiplied(self):
         path = self._write([self._rec(basis="per_person_one_way", total_gbp=200.0)])
-        offers = try_live_flight_offers(self.config, path=path)
+        offers = try_live_flight_offers(self.config, path=path, now=self.now)
         self.assertEqual(dict(offers), {})
         self.assertIn("whole-party", consume_skip_log()[0])
 
@@ -259,12 +266,16 @@ class TestEvidenceFileLoader(unittest.TestCase):
                 )
             ]
         )
-        self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
+        self.assertEqual(
+            dict(try_live_flight_offers(self.config, path=path, now=self.now)), {}
+        )
         self.assertIn("do not match", consume_skip_log()[0])
 
     def test_wrong_party_size_is_rejected(self):
         path = self._write([self._rec(travellers=2)])
-        self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
+        self.assertEqual(
+            dict(try_live_flight_offers(self.config, path=path, now=self.now)), {}
+        )
         self.assertIn("party", consume_skip_log()[0])
 
     def test_wrong_origin_is_rejected(self):
@@ -272,33 +283,45 @@ class TestEvidenceFileLoader(unittest.TestCase):
         # a different question, and the report's UK ground cost is origin-
         # specific — so origin must match too.
         path = self._write([self._rec(origin="LGW")])
-        self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
+        self.assertEqual(
+            dict(try_live_flight_offers(self.config, path=path, now=self.now)), {}
+        )
         self.assertIn("origin", consume_skip_log()[0])
 
     def test_stale_observation_is_rejected(self):
         path = self._write([self._rec(observed_at=self.stale)])
-        self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
+        self.assertEqual(
+            dict(try_live_flight_offers(self.config, path=path, now=self.now)), {}
+        )
         self.assertIn("stale", consume_skip_log()[0])
 
     def test_future_observation_is_rejected(self):
         path = self._write([self._rec(observed_at="2030-01-01T00:00:00+00:00")])
-        self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
+        self.assertEqual(
+            dict(try_live_flight_offers(self.config, path=path, now=self.now)), {}
+        )
         self.assertIn("future", consume_skip_log()[0])
 
     def test_missing_source_url_is_rejected(self):
         path = self._write([self._rec(source_url="not-a-url")])
-        self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
+        self.assertEqual(
+            dict(try_live_flight_offers(self.config, path=path, now=self.now)), {}
+        )
         self.assertIn("source_url", consume_skip_log()[0])
 
     def test_bad_total_is_rejected(self):
         path = self._write([self._rec(total_gbp=-5)])
-        self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
+        self.assertEqual(
+            dict(try_live_flight_offers(self.config, path=path, now=self.now)), {}
+        )
 
     def test_missing_file_returns_empty_without_error(self):
         import os
 
         path = os.path.join(self._tmpdir.name, "absent.json")
-        self.assertEqual(dict(try_live_flight_offers(self.config, path=path)), {})
+        self.assertEqual(
+            dict(try_live_flight_offers(self.config, path=path, now=self.now)), {}
+        )
 
     def test_freshest_observation_wins_per_airport(self):
         path = self._write(
@@ -307,7 +330,7 @@ class TestEvidenceFileLoader(unittest.TestCase):
                 self._rec(total_gbp=2222.0, observed_at="2026-09-21T00:00:00+00:00"),
             ]
         )
-        offers = try_live_flight_offers(self.config, path=path)
+        offers = try_live_flight_offers(self.config, path=path, now=self.now)
         self.assertEqual(offers[("AYT", "ECONOMY")].total_gbp, 2222.0)
         consume_skip_log()
 
@@ -323,7 +346,7 @@ class TestEvidenceFileLoader(unittest.TestCase):
                 )
             ]
         )
-        offers = try_live_flight_offers(self.config, path=path)
+        offers = try_live_flight_offers(self.config, path=path, now=self.now)
         self.assertEqual(set(offers), {("AYT", "BUSINESS")})
         self.assertEqual(offers[("AYT", "BUSINESS")].total_gbp, 3150.0)
 

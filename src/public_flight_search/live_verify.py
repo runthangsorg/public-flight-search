@@ -538,6 +538,7 @@ def try_live_flight_offers(
     *,
     max_searches: int = 12,
     path: str = DEFAULT_EVIDENCE_PATH,
+    now: Optional[datetime] = None,
 ) -> Mapping[str, LiveFareEvidence]:
     """Return promotable live fare evidence keyed by (airport, cabin).
 
@@ -550,10 +551,16 @@ def try_live_flight_offers(
     With neither, returns an empty mapping: a deliberate, documented
     outcome — deals stay on benchmarks, never on a derived figure.
     ``max_searches`` is retained for signature compatibility and unused.
+
+    ``now`` is the age reference, forwarded to the loader so a caller (a test,
+    or a run pinned to the evidence export's own instant) can measure staleness
+    against a fixed clock instead of the wall clock. Without it a literal
+    ``observed_at`` fixture is a time bomb that goes off once it crosses
+    ``EVIDENCE_MAX_AGE_HOURS``.
     """
     del max_searches
     import os
 
     if not _live_enabled() and not os.path.exists(path):
         return {}
-    return load_live_flight_evidence(config, path=path)
+    return load_live_flight_evidence(config, path=path, now=now)
