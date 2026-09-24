@@ -1,3 +1,4 @@
+import dataclasses
 import json
 from pathlib import Path
 import unittest
@@ -600,6 +601,65 @@ class EmailPresentationTests(unittest.TestCase):
         self.assertEqual(_dec_temp_for_floor("2026-12-22", 15.0), 15.0)
         self.assertEqual(_dec_temp_for_floor("2026-11-15", 15.0), 15.0)
         self.assertEqual(_dec_temp_for_floor("2027-03-01", 15.0), 15.0)  # Mar = winter trip
+
+
+class PeakDiscountBadgeTests(unittest.TestCase):
+    """A chip that reads as a saving must be one.
+
+    The 2026-09-24 July report carried, on the same card, a green
+    "▼-5% vs summer peak · save £-243" and the "summer peak £5,260" that
+    contradicted it (total £5,544). A negative ``vs_peak_saving_gbp`` means the
+    card is ABOVE its peak, so it can never render as a discount.
+    """
+
+    class _Deal:
+        def __init__(self, peak, total):
+            self.peak_summer_total_gbp = peak
+            self.total_package_price_gbp = total
+
+        vs_peak_saving_gbp = hol.PackageDeal.vs_peak_saving_gbp
+        vs_peak_pct = hol.PackageDeal.vs_peak_pct
+
+    def test_a_real_discount_keeps_the_green_saving_chip(self):
+        badge = hol.peak_discount_badge(self._Deal(peak=6860.0, total=3985.0))
+        self.assertIn("vs summer peak", badge)
+        self.assertIn("save £2,875", badge)
+        self.assertIn("#16a34a", badge)  # the green discount chip
+
+    def test_a_card_above_its_peak_is_never_badged_as_a_saving(self):
+        badge = hol.peak_discount_badge(self._Deal(peak=5260.0, total=5544.0))
+        self.assertNotIn("save £-", badge)
+        self.assertNotIn("▼-", badge)
+        self.assertNotIn("#16a34a", badge)
+        self.assertIn("£284 above it", badge)
+
+    def test_a_card_at_its_peak_says_so_plainly(self):
+        badge = hol.peak_discount_badge(self._Deal(peak=5000.0, total=5000.0))
+        self.assertIn("at its summer peak — no discount", badge)
+        self.assertNotIn("#16a34a", badge)
+
+    def test_the_report_never_prints_a_negative_saving(self):
+        """End to end on the real July config, with the case the live send hit.
+
+        The offline collector never produces a negative card, which is why the
+        2026-09-24 send did: a live-verified fare lifted Concorde and Lara Barut
+        ABOVE their modelled peaks. So the card is forced here rather than hoped
+        for, and the rendered e-mail must carry no signed-negative saving.
+        """
+        root = Path(__file__).parents[1]
+        config = load_holiday_config(
+            (root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
+        )
+        deals = list(collect_holiday_deals(config))
+        self.assertTrue(deals, "the July config must produce deals for this test to mean anything")
+        dear = dataclasses.replace(
+            deals[0], peak_summer_total_gbp=round(deals[0].total_package_price_gbp * 0.95, 2)
+        )
+        self.assertLess(dear.vs_peak_saving_gbp, 0)
+        html = render_holiday_report(config, generated_at="2026-09-24T00:00:00+00:00", deals=[dear])
+        self.assertNotIn("save £-", html)
+        self.assertNotIn("▼-", html)
+        self.assertIn("no summer-peak discount", html)
 
 
 if __name__ == "__main__":

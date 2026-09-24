@@ -1953,6 +1953,29 @@ DEST_IMAGES: dict[str, str] = {
 }
 
 
+def peak_discount_badge(deal) -> str:
+    """The "▼x% vs summer peak · save £y" chip, or an honest one when there is none.
+
+    The 2026-09-24 July report badged a card that was DEARER than its own summer peak
+    with a green "▼-5% vs summer peak · save £-243", two cells away from the
+    "summer peak £5,260" that contradicted it. ``vs_peak_saving_gbp`` is negative when the
+    card is above its peak, so a chip that reads as a saving must be conditioned on the
+    sign: when there is no discount it says so, in the same place, at the same size.
+    """
+    saving = float(deal.vs_peak_saving_gbp or 0.0)
+    pct = float(deal.vs_peak_pct or 0.0)
+    style = "padding:3px 10px; border-radius:9999px; font-size:13px;"
+    if saving > 0 and pct > 0:
+        return ('<span style="background:#16a34a; color:#ffffff; ' + style
+                + ' font-weight:800;">▼' + f"{pct:g}" + '% vs summer peak · save £'
+                + f'{saving:,.0f}' + '</span>')
+    label = "at its summer peak — no discount" if abs(saving) < 0.5 else (
+        "no summer-peak discount — £" + f'{abs(saving):,.0f}' + " above it"
+    )
+    return ('<span style="background:#f1f5f9; color:#475569; ' + style
+            + ' font-weight:700;">' + escape(label) + '</span>')
+
+
 def render_vendor_block(deal: PackageDeal, *, adults: int, rooms: Sequence[int]) -> str:
     """One link per PACKAGE OPERATOR for this hotel card, each tagged with what
     its URL actually carries.
@@ -2158,7 +2181,10 @@ def render_holiday_report(
         b1 = buckets["discounts"][0] if buckets["discounts"] else None
         b2 = buckets["luxury"][0] if buckets["luxury"] else None
         b3 = buckets["winter"][0] if buckets["winter"] else None
-        if b1 is not None:
+        # Only a real discount earns the "Biggest Discount" headline; when every card is
+        # at or above its peak the largest saving is negative and the row would read
+        # "▼-5% (save £-243)" in green.
+        if b1 is not None and b1.vs_peak_saving_gbp > 0:
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
                        '<strong style="color:#0f172a;">💰 Biggest Discount vs Summer Peak:</strong> '
                        + escape(b1.resort_name) + ' — <strong style="color:#059669;">▼' + str(b1.vs_peak_pct) + '% (save £' + f'{b1.vs_peak_saving_gbp:,.0f}' + ' for the same resort)</strong></td></tr>')
@@ -2251,7 +2277,7 @@ def render_holiday_report(
                 except (TypeError, ValueError):
                     observed_day = ""
                 out.append('<span style="color:#166534; font-size:11px;">observed ' + escape(observed_day) + ' · </span><a href="' + escape(deal.source_url, quote=True) + '" style="color:#166534; font-size:11px;">fare source ↗</a>')
-            out.append('<span style="background:#16a34a; color:#ffffff; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:800;">▼' + str(deal.vs_peak_pct) + '% vs summer peak · save £' + f'{deal.vs_peak_saving_gbp:,.0f}' + '</span>')
+            out.append(peak_discount_badge(deal))
             history_chip = chip_by_resort.get(deal.resort_name, '')
             if history_chip:
                 out.append(' ' + history_chip)
