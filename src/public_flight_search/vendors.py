@@ -43,12 +43,17 @@ homepage, which is where these parameter names come from:
         &masterId=2233&departureAirports=&rooms=2&nights=7&source=srp
 
     So ``date``, ``departureAirports``, ``rooms``, ``nights``, ``flexibility``,
-    ``sort`` and ``dateType`` are loveholidays' own parameter names. The
-    destination is an opaque ``destinationIds`` integer that cannot be derived,
-    so the destination is anchored by the vendor's own SEO destination page
-    instead and the search parameters are appended. ``rooms`` is
-    adults-per-room, comma-separated per room: the widget's default "1 Room /
-    2 Adults" is emitted as ``rooms=2``.
+    ``sort`` and ``dateType`` are loveholidays' own parameter names. ``rooms``
+    is adults-per-room, comma-separated per room: the widget's default
+    "1 Room / 2 Adults" is emitted as ``rooms=2``.
+
+    ``destinationIds`` is opaque, but it is NOT underivable: each destination
+    page publishes its own id in the search link it renders, so the reader is
+    sent to the site's own dated search instead of a country landing page that
+    ignores the parameters (read 2026-09-24; Turkey's own next-page link is
+    ``/holidays/?destinationIds=1036&flexibility=0&nights=7&rooms=2&…``).
+    Where a destination publishes no id, the older destination-page link is
+    used rather than inventing one.
 
     NOT MACHINE-VERIFIED: loveholidays' results pages are DataDome-protected
     (``blocked_reason: datadome-challenge`` on every render of ``/holidays/``
@@ -177,45 +182,76 @@ LOVEHOLIDAYS_DESTINATION_SLUGS: dict[str, str] = {
 }
 
 
+#: Destination ids loveholidays publishes IN ITS OWN SEARCH LINKS on each of
+#: the destination pages above (read 2026-09-24). Its results pages are
+#: DataDome-protected, so this is the one way to express the destination without
+#: guessing: the link is the site's own next-page link, plus the dates and party.
+#: Spain published a comma-separated list (mainland plus the island groups) and
+#: it is used verbatim rather than truncated to one id. Keyed by the slug above,
+#: so a slug with no published id keeps the destination-page link.
+LOVEHOLIDAYS_DESTINATION_IDS: dict[str, str] = {
+    "turkey-holidays.html": "1036",
+    "spain-holidays.html": "987,391,474",
+    "cyprus-holidays.html": "526",
+    "egypt-holidays.html": "219",
+    "malta-holidays.html": "897",
+    "portugal-holidays.html": "917",
+    "cape-verde-islands-holidays.html": "215",
+}
+
+
 def build_loveholidays_link(trip: TripQuery) -> VendorLink:
-    """Love Holidays destination page with its own search grammar appended.
+    """Love Holidays' own dated search, or its destination page where it publishes no id.
 
     Example (Tenerife, 2026-12-22 → 2026-12-30, LGW, 2+2+1)::
 
-        https://www.loveholidays.com/holidays/spain-holidays.html
-            ?date=2026-12-22&nights=8&rooms=2%2C2%2C1&departureAirports=LGW
+        https://www.loveholidays.com/holidays/?destinationIds=987%2C391%2C474
+            &date=2026-12-22&nights=8&rooms=2%2C2%2C1&departureAirports=LGW
             &dateType=absolute&flexibility=0&sort=PRICE
     """
-    query = urlencode(
-        {
-            "date": trip.outbound_date,
-            "nights": trip.nights,
-            "rooms": trip.rooms_param,
-            "departureAirports": trip.origins_param,
-            "dateType": "absolute",
-            "flexibility": 0,
-            "sort": "PRICE",
-        }
-    )
     slug = LOVEHOLIDAYS_DESTINATION_SLUGS.get(trip.destination_key.lower())
-    base = LOVEHOLIDAYS_SEARCH + slug if slug else LOVEHOLIDAYS_SEARCH
-    note = (
-        "dates, nights, party and departure airports are in loveholidays' own "
-        "query grammar; its results page is bot-protected, so parameter "
-        "honouring could not be machine-verified"
-    )
-    if not slug:
+    destination_ids = LOVEHOLIDAYS_DESTINATION_IDS.get(slug) if slug else None
+    params: dict[str, object] = {
+        "date": trip.outbound_date,
+        "nights": trip.nights,
+        "rooms": trip.rooms_param,
+        "departureAirports": trip.origins_param,
+        "dateType": "absolute",
+        "flexibility": 0,
+        "sort": "PRICE",
+    }
+    if destination_ids:
+        # The site's own search endpoint, with the destination as the site
+        # itself expresses it.
+        params = {"destinationIds": destination_ids, **params}
+        base = LOVEHOLIDAYS_SEARCH
+        note = (
+            "the destination is loveholidays' own destinationIds, read from the search "
+            "link its destination page publishes, and the dates, nights, party and "
+            "departure airports are in its own query grammar; its results page is "
+            "bot-protected, so parameter honouring could not be machine-verified"
+        )
+        carried = ("destination", "outbound date", "nights", "party", "departure airports")
+    elif slug:
+        base = LOVEHOLIDAYS_SEARCH + slug
+        note = (
+            "loveholidays publishes no destination id for this region, so this is its "
+            "destination page with the search appended; pick the destination there"
+        )
+        carried = ("outbound date", "nights", "party", "departure airports")
+    else:
+        base = LOVEHOLIDAYS_SEARCH
         note = (
             "loveholidays publishes no destination page for this region, so the "
             "search carries dates, nights, party and airports only — pick the "
             "destination in its search box"
         )
+        carried = ("outbound date", "nights", "party", "departure airports")
     return VendorLink(
         vendor="Love Holidays",
-        url=base + "?" + query,
+        url=base + "?" + urlencode(params),
         kind=PREFILLED_SEARCH,
-        carried=("outbound date", "nights", "party", "departure airports")
-        + (("destination",) if slug else ()),
+        carried=carried,
         note=note,
         example_url=(
             "https://www.loveholidays.com/holidays/?destinationIds=1101"

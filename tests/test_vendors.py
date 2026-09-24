@@ -35,10 +35,30 @@ class VendorLinkGrammarTests(unittest.TestCase):
         self.assertEqual(query["dateType"], ["absolute"])
         self.assertIn("loveholidays.com", urlparse(link.url).hostname or "")
 
-    def test_loveholidays_uses_a_published_destination_page(self):
-        link = V.build_loveholidays_link(fixture_trip())
-        self.assertIn("spain-holidays.html", link.url)
+    def test_loveholidays_uses_the_destination_id_it_publishes(self):
+        # The slug alone landed the reader on a country landing page that did not
+        # run the search (owner, 2026-09-24: the operator links "are broken").
+        # Each destination page publishes its own destinationIds in the search
+        # link it renders, so the link is built from that, not from the slug.
+        link = V.build_loveholidays_link(fixture_trip())  # tenerife → spain
+        query = parse_qs(urlparse(link.url).query)
+        self.assertEqual(query["destinationIds"], ["987,391,474"])
+        self.assertEqual(urlparse(link.url).path, "/holidays/")
         self.assertIn("destination", link.carried)
+
+    def test_every_published_slug_has_its_observed_destination_id(self):
+        # A slug without an id would silently fall back to the country page that
+        # does not search. Pin the ids read on 2026-09-24 so one cannot slip in.
+        for slug in V.LOVEHOLIDAYS_DESTINATION_SLUGS.values():
+            self.assertIn(slug, V.LOVEHOLIDAYS_DESTINATION_IDS, slug)
+        self.assertEqual(V.LOVEHOLIDAYS_DESTINATION_IDS["cyprus-holidays.html"], "526")
+        self.assertEqual(V.LOVEHOLIDAYS_DESTINATION_IDS["turkey-holidays.html"], "1036")
+
+    def test_a_destination_with_no_published_id_still_says_so(self):
+        link = V.build_loveholidays_link(fixture_trip(destination_key="muscat"))
+        self.assertNotIn("destinationIds", link.url)
+        self.assertNotIn("destination", link.carried)
+        self.assertIn("destination", link.note)
 
     def test_loveholidays_without_a_published_slug_says_so(self):
         # Oman has no loveholidays destination page we observed. Guessing a
