@@ -5,7 +5,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from public_flight_search.jobs import FlightCollectionError, run_flight_digest, run_holiday_planner
+from public_flight_search.jobs import (
+    FlightCollectionError,
+    config_season,
+    run_flight_digest,
+    run_holiday_planner,
+)
 
 
 class HolidayJobTests(unittest.TestCase):
@@ -262,3 +267,126 @@ class FlightJobTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HolidaySeasonGuardTests(unittest.TestCase):
+    """A July run must never email the December holiday, however it got the config.
+
+    The two planners are separate schedules with separate secrets, and the engine reads the
+    GENERIC `HOLIDAY_SEARCH_CONFIG_JSON` before `JULY_HOLIDAY_SEARCH_CONFIG_JSON`. Nothing in a
+    July run knew it was a July run, so one env binding was all that stood between the owner
+    and a December report on the July schedule - a valid report about the right dates and the
+    wrong trip, with only `config_source` in a log line to say so.
+    """
+
+    def setUp(self):
+        self.root = Path(__file__).parents[1]
+        self.dec = (self.root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
+        self.july = (self.root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
+
+    def test_the_season_is_derived_from_the_title_and_the_departure_dates(self):
+        from public_flight_search.holidays import load_holiday_config
+
+        self.assertEqual(config_season(load_holiday_config(self.dec)), "december")
+        self.assertEqual(config_season(load_holiday_config(self.july)), "july")
+
+    def test_a_conflicting_title_and_dates_is_not_a_season_we_vouch_for(self):
+        from public_flight_search.holidays import load_holiday_config
+
+        payload = json.loads(self.dec)
+        payload["report_title"] = "July Summer Holiday Packages"
+        payload["outbound_dates"] = ["2026-12-20"]     # says July, prices December
+        self.assertEqual(config_season(load_holiday_config(json.dumps(payload))), "unknown")
+
+    def _run(self, payload, *, expect, force_send):
+        send = self._patch_smtp()
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HOLIDAY_SEARCH_CONFIG_JSON": payload,
+                "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "h.jsonl"),
+            }
+            with patch.dict(os.environ, env, clear=True):
+                result = run_holiday_planner(dry_run=False, force_send=force_send,
+                                             expect_season=expect)
+        return result, send
+
+    def _patch_smtp(self):
+        sender = patch("public_flight_search.jobs.send_html")
+        mock_send = sender.start()
+        self.addCleanup(sender.stop)
+        return mock_send
+
+    def test_the_december_secret_on_the_july_schedule_sends_nothing(self):
+        result, send = self._run(self.dec, expect="july", force_send=False)
+        self.assertEqual(result["config_season"], "december")
+        self.assertTrue(result["config_season_mismatch"])
+        self.assertFalse(result["email_sent"])
+        self.assertIn("july planner", result["email_skipped_reason"])
+        send.assert_not_called()
+
+    def test_even_a_forced_send_cannot_push_the_wrong_holiday_out(self):
+        """`force_send` overrides the anti-spam cooldown, never the season check: the report is
+        not stale, it is a different trip."""
+        result, send = self._run(self.dec, expect="july", force_send=True)
+        self.assertFalse(result["email_sent"])
+        send.assert_not_called()
+
+    def test_the_july_secret_on_the_december_schedule_sends_nothing(self):
+        result, send = self._run(self.july, expect="december", force_send=True)
+        self.assertEqual(result["config_season"], "july")
+        self.assertTrue(result["config_season_mismatch"])
+        self.assertFalse(result["email_sent"])
+        send.assert_not_called()
+
+    def test_the_matching_season_still_sends(self):
+        result, send = self._run(self.july, expect="july", force_send=True)
+        self.assertEqual(result["config_season"], "july")
+        self.assertFalse(result["config_season_mismatch"])
+        self.assertEqual(result["email_skipped_reason"], "")
+        self.assertTrue(result["email_sent"])
+        send.assert_called_once()
+
+    def test_an_unknown_season_is_reported_rather_than_assumed(self):
+        """A config naming one season and pricing another must not be silently pushed out as
+        either; it is not a season we can vouch for, so it is named as unknown."""
+        payload = json.loads(self.dec)
+        payload["report_title"] = "July Summer Holiday Packages"
+        send = self._patch_smtp()
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HOLIDAY_SEARCH_CONFIG_JSON": json.dumps(payload),
+                "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "h.jsonl"),
+            }
+            with patch.dict(os.environ, env, clear=True):
+                result = run_holiday_planner(dry_run=False, force_send=True, expect_season="july")
+        self.assertEqual(result["config_season"], "unknown")
+        self.assertFalse(result["config_season_mismatch"])
+        self.assertTrue(result["email_sent"])
+
+
+class HolidayStepSummaryTests(unittest.TestCase):
+    """`config_source` lives in the log. The run page is where a wrong config gets noticed."""
+
+    def _run(self, env):
+        with patch.dict(os.environ, env, clear=True):
+            return run_holiday_planner(dry_run=True)
+
+    def test_the_summary_names_the_config_season_and_live_coverage(self):
+        root = Path(__file__).parents[1]
+        payload = (root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "summary.md"
+            self._run({
+                "JULY_HOLIDAY_SEARCH_CONFIG_JSON": payload,
+                "GITHUB_STEP_SUMMARY": str(summary),
+            })
+            text = summary.read_text(encoding="utf-8")
+        self.assertIn("### Holiday planner run", text)
+        self.assertIn("env:JULY_HOLIDAY_SEARCH_CONFIG_JSON", text)
+        self.assertIn("| Season this config prices | july |", text)
+
+    def test_no_step_summary_file_is_not_an_error(self):
+        root = Path(__file__).parents[1]
+        payload = (root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
+        result = self._run({"JULY_HOLIDAY_SEARCH_CONFIG_JSON": payload})
+        self.assertEqual(result["config_season"], "july")

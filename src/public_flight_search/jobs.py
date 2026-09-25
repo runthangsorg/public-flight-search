@@ -201,11 +201,67 @@ def _live_evidence_counts(live_offers) -> dict[str, int]:
     }
 
 
+def config_season(config) -> str:
+    """Which holiday a config prices: ``"july"``, ``"december"`` or ``"unknown"``.
+
+    The two planners are separate schedules with separate secrets, and the engine reads
+    ``HOLIDAY_SEARCH_CONFIG_JSON`` BEFORE ``JULY_HOLIDAY_SEARCH_CONFIG_JSON``. Nothing in a
+    July run therefore knew it was a July run: handing it the December secret produced a
+    perfectly valid December report, emailed on the July schedule, with only ``config_source``
+    in a log line to say so. The season is derived from the signals the history-file choice
+    already used - the report title and the departure dates - so the two can never disagree.
+    """
+    title = str(getattr(config, "report_title", "") or "").lower()
+    dates = [str(day) for day in (getattr(config, "outbound_dates", ()) or ())]
+    july = "july" in title or any("-07-" in day for day in dates)
+    december = "december" in title or any("-12-" in day for day in dates)
+    if july and not december:
+        return "july"
+    if december and not july:
+        return "december"
+    # A name-and-date conflict is not a season we can vouch for: say so rather than pick.
+    return "unknown"
+
+
+def _write_step_summary(result: dict) -> None:
+    """Put the four facts that change what was emailed onto the run page.
+
+    ``config_source`` lives in the result JSON, which lives in the log, so a run priced by
+    the wrong config or with no live fares was invisible to anyone who did not go digging.
+    GitHub provides the file this writes to; anywhere else this is a no-op.
+    """
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    season = result.get("config_season") or "unknown"
+    mismatch = bool(result.get("config_season_mismatch"))
+    rows = [
+        ("Config used", result.get("config_source") or "(none)"),
+        ("Season this config prices", season + ("  ⚠️ MISMATCH" if mismatch else "")),
+        ("Deals / destinations", f"{result.get('deal_count', 0)} / {result.get('destination_count', 0)}"),
+        ("Live fares used",
+         f"{result.get('live_flight_airports', 0)} airports "
+         f"(stale cache: {result.get('stale_flight_airports', 0)}, "
+         f"aged out: {result.get('live_evidence_age_hours')}h)"),
+        ("Email sent", "yes" if result.get("email_sent") else
+         f"no ({result.get('email_skipped_reason') or result.get('email_cooldown_reason') or 'no change'})"),
+    ]
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write("### Holiday planner run\n\n| Field | Value |\n|---|---|\n")
+            for key, value in rows:
+                handle.write(f"| {key} | {value} |\n")
+            handle.write("\n")
+    except OSError:
+        return
+
+
 def run_holiday_planner(
     *,
     dry_run: bool,
     force_send: bool = False,
     config_path: str = "",
+    expect_season: str = "",
 ) -> dict[str, int | bool]:
     # WHICH CONFIG THIS RUN USED belongs in the result, not in an operator's
     # guess. Five shapes reach this function — an explicit --config path, two
@@ -318,7 +374,19 @@ def run_holiday_planner(
     # job runs, so trends, chips and the change digest describe real
     # movement instead of 'first time tracked'. Dry runs ignore memory
     # entirely (a dry run must reflect a fresh build, never prior state).
-    is_july = "july" in config.report_title.lower() or any("-07-" in d for d in config.outbound_dates)
+    season = config_season(config)
+    # REFUSE TO SEND THE WRONG HOLIDAY. A mismatch here means the operator's own secret was not
+    # the one in force (the generic name wins over the July one) or a --config path pointed at
+    # the other season. Either way the report is real, about the right dates, and about the
+    # wrong trip - so it does not go out, and the reason is in the result rather than inferred.
+    season_mismatch = bool(expect_season) and season not in (expect_season, "unknown")
+    season_mismatch_reason = (
+        f"this is the {expect_season} planner but the config prices {season} ({config_source})"
+        if season_mismatch else ""
+    )
+    if season_mismatch_reason:
+        print(f"refusing to send: {season_mismatch_reason}", file=sys.stderr)
+    is_july = season == "july"
     default_history_name = "july_holiday_price_history.jsonl" if is_july else "holiday_price_history.jsonl"
     history_path = Path(
         os.environ.get("HOLIDAY_HISTORY_PATH", f"data/{default_history_name}")
@@ -378,6 +446,10 @@ def run_holiday_planner(
         print(f"email suppressed by cooldown: {cooldown_reason}")
     default_subject = "July Summer Luxury Holiday Watch" if is_july else "December Holiday Package Watch"
     subject = os.environ.get("HOLIDAY_EMAIL_SUBJECT") or default_subject
+    if season_mismatch:
+        # Last, so it outranks every other send decision: a forced send is still the wrong
+        # holiday, and the cooldown is not the reason it was suppressed.
+        send_email = False
     if send_email:
         send_html(subject, html)
     date_combination_count = len(_date_pairs(config))
@@ -385,6 +457,11 @@ def run_holiday_planner(
         # Which config priced this report. A fallback or a legacy env name
         # here means the operator's own secret is not the one in force.
         "config_source": config_source,
+        # Which holiday that config actually prices, so a July run cannot quietly report on
+        # December without saying so.
+        "config_season": season,
+        "config_season_mismatch": season_mismatch,
+        "email_skipped_reason": season_mismatch_reason,
         "destination_count": len(config.destinations),
         "date_combination_count": date_combination_count,
         # Exact rendered-link count: Jet2 is omitted where it has no product.
@@ -423,4 +500,5 @@ def run_holiday_planner(
         "email_cooldown_reason": cooldown_reason,
     }
     print(json.dumps(result, sort_keys=True))
+    _write_step_summary(result)
     return result

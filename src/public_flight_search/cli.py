@@ -112,9 +112,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         elif command == "july-holiday-planner":
             if not config_path and not os.environ.get("JULY_HOLIDAY_SEARCH_CONFIG_JSON") and not os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON"):
                 config_path = "examples/july_holiday_config.json"
-            run_holiday_planner(dry_run=dry_run, force_send=force_send, config_path=config_path)
+            # This command IS the July planner, so a config that prices December is a mistake
+            # and never a report: the engine reads the generic secret first, so the wrong
+            # secret is one env binding away.
+            run_holiday_planner(dry_run=dry_run, force_send=force_send, config_path=config_path,
+                                expect_season="july")
         else:
-            run_holiday_planner(dry_run=dry_run, force_send=force_send, config_path=config_path)
+            run_holiday_planner(dry_run=dry_run, force_send=force_send, config_path=config_path,
+                                expect_season="december")
         return 0
     args = build_parser().parse_args(arguments)
     if not 1 <= args.max_results <= 100:
