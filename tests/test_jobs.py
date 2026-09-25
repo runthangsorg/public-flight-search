@@ -200,7 +200,10 @@ class HolidayConfigSourceTests(unittest.TestCase):
 class FlightJobTests(unittest.TestCase):
     def test_empty_provider_scan_fails_closed_without_email(self):
         root = Path(__file__).parents[1]
-        payload = (root / "examples" / "sept_config.json").read_text(
+        # Any real flight-digest payload will do; the December example is the one that is
+        # still a supported trip (the September Muscat/UAE configs were deleted with the
+        # job on 2026-09-25).
+        payload = (root / "examples" / "dec_config.json").read_text(
             encoding="utf-8"
         )
 
@@ -215,7 +218,7 @@ class FlightJobTests(unittest.TestCase):
 
     def test_paired_flight_digest_generates_itineraries(self):
         root = Path(__file__).parents[1]
-        payload = (root / "examples" / "sept_config.json").read_text(
+        payload = (root / "examples" / "dec_config.json").read_text(
             encoding="utf-8"
         )
         from public_flight_search.engine import FlightOffer
