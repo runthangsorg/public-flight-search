@@ -129,9 +129,18 @@ jobs:
             echo "::warning::No holiday_live_evidence.json in private repo; report will run on benchmarks."
           fi
       - name: Build and optionally deliver
+        # JULY-SPECIFIC KNOBS ONLY. The generic HOLIDAY_SEARCH_CONFIG_JSON and
+        # HOLIDAY_EMAIL_SUBJECT secrets belong to the December planner, and the
+        # engine reads the generic config name BEFORE the July one
+        # (jobs.run_holiday_planner). Binding it here — and this step used to
+        # fill it from the JULY_HOLIDAY_* secret, a name that does not exist,
+        # so it always resolved empty — meant a July run would have been priced
+        # by the December holiday the moment anyone set that generic secret.
+        # With no July-specific config the run prices the committed
+        # examples/july_holiday_config.json, and the job now reports which of
+        # the two it used in `config_source`.
         env:
           JULY_HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.JULY_HOLIDAY_SEARCH_CONFIG_JSON }}
-          HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.JULY_HOLIDAY_SEARCH_CONFIG_JSON }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -149,8 +158,9 @@ jobs:
             FORCE_FLAG="--force-send"
           fi
           CONFIG_ARG=""
-          if [[ -z "${JULY_HOLIDAY_SEARCH_CONFIG_JSON:-}" && -z "${HOLIDAY_SEARCH_CONFIG_JSON:-}" ]]; then
+          if [[ -z "${JULY_HOLIDAY_SEARCH_CONFIG_JSON:-}" ]]; then
             CONFIG_ARG="--config examples/july_holiday_config.json"
+            echo "::notice::no JULY_HOLIDAY_SEARCH_CONFIG_JSON secret; pricing the committed examples/july_holiday_config.json"
           fi
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_DRY_RUN}" == "true" ]]; then
             python -m public_flight_search july-holiday-planner --dry-run ${CONFIG_ARG}

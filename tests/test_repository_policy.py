@@ -40,6 +40,35 @@ class RepositoryPolicyTests(unittest.TestCase):
         self.assertLess(holiday.index("Run safety tests"), holiday.index("HOLIDAY_SEARCH_CONFIG_JSON"))
         self.assertLess(july.index("Run safety tests"), july.index("JULY_HOLIDAY_SEARCH_CONFIG_JSON"))
 
+    def test_july_planner_is_never_priced_by_the_december_config_secret(self):
+        """The two holiday planners must not share one config secret.
+
+        `jobs.run_holiday_planner` reads HOLIDAY_SEARCH_CONFIG_JSON before
+        JULY_HOLIDAY_SEARCH_CONFIG_JSON, and the generic secret belongs to the
+        December planner. The July workflow also bound that generic name —
+        filled from a JULY_HOLIDAY_* secret that does not exist, so it always
+        resolved to empty and hid the trap: the day anyone created the generic
+        secret, the July report would have been priced by the December holiday,
+        sent with `email_sent: true`, and nothing in the run would have said so.
+
+        Verified against the live repo on 2026-09-25: the run that looked
+        wrong was in fact pricing the committed July config correctly, and
+        reporting `config_source` is what makes that checkable from now on.
+        """
+        july = (ROOT / ".github/workflows" / "july-holiday-planner.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("secrets.HOLIDAY_SEARCH_CONFIG_JSON", july)
+        self.assertNotIn("secrets.HOLIDAY_EMAIL_SUBJECT", july)
+        self.assertIn("secrets.JULY_HOLIDAY_SEARCH_CONFIG_JSON", july)
+        # Two-sided: December keeps its own generic secret.
+        december = (ROOT / ".github/workflows" / "holiday-planner.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("secrets.HOLIDAY_SEARCH_CONFIG_JSON", december)
+        # And the fallback is announced in the run summary rather than silent.
+        self.assertIn("::notice::", july)
+
     def test_holiday_planners_seed_live_fare_evidence_before_build(self):
         # A planner that builds without the live-evidence seed silently
         # degrades every card to benchmarks; pin the seed in both planners.

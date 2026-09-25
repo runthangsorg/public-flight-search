@@ -198,25 +198,50 @@ def run_holiday_planner(
     force_send: bool = False,
     config_path: str = "",
 ) -> dict[str, int | bool]:
+    # WHICH CONFIG THIS RUN USED belongs in the result, not in an operator's
+    # guess. Five shapes reach this function — an explicit --config path, two
+    # env secrets, an env path, then a committed fallback file — and they
+    # price different holidays. On 2026-09-24 the July workflow bound an
+    # empty env var of a name that does not exist over the real secret, so
+    # the scheduled run silently priced the committed fallback: a valid
+    # report, about the right dates, emailed, with nothing in the summary to
+    # say which config produced it.
     payload = ""
-    if config_path and os.path.exists(config_path):
+    config_source = ""
+    if config_path:
+        # An explicit path that does not exist is operator error, never a
+        # reason to fall through to a different holiday. `evidence-contract`
+        # already fails fast on this exact mistake (a misspelt July path
+        # printed a valid December contract and exited 0); the job had the
+        # same hole one layer down.
+        if not os.path.exists(config_path):
+            raise SystemExit(f"--config path does not exist: {config_path}")
         with open(config_path, encoding="utf-8") as handle:
             payload = handle.read()
+        if payload:
+            config_source = f"config-path:{config_path}"
     if not payload:
-        payload = (
-            os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON")
-            or os.environ.get("JULY_HOLIDAY_SEARCH_CONFIG_JSON")
-            or ""
-        )
+        for env_name in (
+            "HOLIDAY_SEARCH_CONFIG_JSON",
+            "JULY_HOLIDAY_SEARCH_CONFIG_JSON",
+        ):
+            if os.environ.get(env_name):
+                payload = os.environ[env_name]
+                config_source = f"env:{env_name}"
+                break
     if not payload and os.environ.get("HOLIDAY_CONFIG_PATH"):
         cpath = os.environ["HOLIDAY_CONFIG_PATH"]
         if os.path.exists(cpath):
             with open(cpath, encoding="utf-8") as handle:
                 payload = handle.read()
+            if payload:
+                config_source = f"env:HOLIDAY_CONFIG_PATH={cpath}"
     if not payload:
         dec_example = Path(__file__).parents[2] / "examples" / "dec_holiday_config.json"
         if dec_example.exists():
             payload = dec_example.read_text(encoding="utf-8")
+            if payload:
+                config_source = f"fallback-file:{dec_example.name}"
 
     config = load_holiday_config(payload)
     from . import live_verify
@@ -348,6 +373,9 @@ def run_holiday_planner(
         send_html(subject, html)
     date_combination_count = len(_date_pairs(config))
     result = {
+        # Which config priced this report. A fallback or a legacy env name
+        # here means the operator's own secret is not the one in force.
+        "config_source": config_source,
         "destination_count": len(config.destinations),
         "date_combination_count": date_combination_count,
         # Exact rendered-link count: Jet2 is omitted where it has no product.

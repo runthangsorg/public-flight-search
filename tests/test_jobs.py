@@ -127,6 +127,76 @@ class HolidayJobTests(unittest.TestCase):
         self.assertEqual(send.call_count, 2)  # first + forced; rapid suppressed
 
 
+class HolidayConfigSourceTests(unittest.TestCase):
+    """Which config a run used must be readable from its result.
+
+    Three shapes reach run_holiday_planner — an explicit --config path, one
+    of two env secrets, then a committed fallback file — and they price
+    different holidays. On 2026-09-24 the July workflow bound an empty env
+    var of the wrong name over the real secret, so the scheduled run priced
+    the committed fallback: a valid report about the right dates, sent with
+    `email_sent: true`, and nothing in the summary said which config made it.
+    """
+
+    def setUp(self):
+        self.root = Path(__file__).parents[1]
+        self.payload = (self.root / "examples" / "dec_holiday_config.json").read_text(
+            encoding="utf-8"
+        )
+
+    def _run(self, env):
+        with patch.dict(os.environ, env, clear=True):
+            return run_holiday_planner(dry_run=True)
+
+    def test_names_the_env_secret_that_was_used(self):
+        result = self._run({"HOLIDAY_SEARCH_CONFIG_JSON": self.payload})
+        self.assertEqual(result["config_source"], "env:HOLIDAY_SEARCH_CONFIG_JSON")
+
+    def test_names_the_legacy_env_secret_that_was_used(self):
+        result = self._run({"JULY_HOLIDAY_SEARCH_CONFIG_JSON": self.payload})
+        self.assertEqual(
+            result["config_source"], "env:JULY_HOLIDAY_SEARCH_CONFIG_JSON"
+        )
+
+    def test_the_preferred_secret_wins_over_the_legacy_one(self):
+        result = self._run(
+            {
+                "HOLIDAY_SEARCH_CONFIG_JSON": self.payload,
+                "JULY_HOLIDAY_SEARCH_CONFIG_JSON": "not-json-and-not-used",
+            }
+        )
+        self.assertEqual(result["config_source"], "env:HOLIDAY_SEARCH_CONFIG_JSON")
+
+    def test_names_an_explicit_config_path(self):
+        explicit = self.root / "examples" / "dec_holiday_config.json"
+        with patch.dict(os.environ, {}, clear=True):
+            result = run_holiday_planner(dry_run=True, config_path=str(explicit))
+        self.assertTrue(result["config_source"].startswith("config-path:"))
+        self.assertTrue(
+            result["config_source"].endswith("examples/dec_holiday_config.json")
+        )
+
+    def test_names_the_committed_fallback_file(self):
+        result = self._run({})
+        self.assertEqual(
+            result["config_source"], "fallback-file:dec_holiday_config.json"
+        )
+
+    def test_explicit_config_path_that_does_not_exist_fails_loudly(self):
+        """A typo'd --config must never fall through to a different holiday.
+
+        `evidence-contract` already fails fast on this exact mistake (a
+        misspelt July path printed a valid December contract and exited 0).
+        The job had the same hole, one layer down.
+        """
+        with patch.dict(os.environ, {"HOLIDAY_SEARCH_CONFIG_JSON": self.payload}, clear=True):
+            with self.assertRaises(SystemExit) as ctx:
+                run_holiday_planner(
+                    dry_run=True, config_path="examples/july_holday_config.json"
+                )
+        self.assertIn("july_holday_config.json", str(ctx.exception))
+
+
 class FlightJobTests(unittest.TestCase):
     def test_empty_provider_scan_fails_closed_without_email(self):
         root = Path(__file__).parents[1]
