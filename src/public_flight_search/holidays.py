@@ -1713,14 +1713,21 @@ def collect_holiday_deals(
                     if live_flight_offers
                     else None
                 )
+                # TWO questions, deliberately not one. ``evidence_used``: may
+                # this fare price the card? ``live_used``: may it be rendered as
+                # live? An aged observation answers yes to the first and no to
+                # the second, so it prices the card carrying a ``stale-cache``
+                # label (``evidence.confidence``) instead of being discarded
+                # back to a benchmark.
+                evidence_used = bool(evidence is not None and evidence.usable)
                 live_used = bool(evidence is not None and evidence.promotable)
-                if live_used and evidence is not None:
+                if evidence_used and evidence is not None:
                     flight_cost = evidence.total_gbp
                     if evidence.carrier:
                         display_airline = evidence.carrier
                 flight_basis = (
                     evidence.basis
-                    if (live_used and evidence is not None)
+                    if (evidence_used and evidence is not None)
                     else ("benchmark_supplied" if cabin.upper() == "ECONOMY" else f"benchmark_supplied_{cabin.lower()}")
                 )
 
@@ -1779,24 +1786,31 @@ def collect_holiday_deals(
                             dec_ambient_c=resort.get("dec_ambient_c", (0, 0)),
                             sea_temp_c=resort.get("sea_temp_c", 0),
                             beach=resort.get("beach", ""),
+                            # The label carries the age: "verified-exact-date"
+                            # when fresh, "stale-cache" when aged. Never a bare
+                            # "verified-exact-date" on an observation too old to
+                            # be one.
                             confidence=(
-                                "verified-exact-date"
-                                if live_used
+                                evidence.confidence
+                                if (evidence_used and evidence is not None)
                                 else resort.get("confidence", "market-supported")
                             ),
+                            # An aged fare shows its source and observed date too:
+                            # the auditability mandate applies to a "this was
+                            # observed on <date>" claim as much as to a live one.
                             source_url=(
                                 evidence.source_url
-                                if (live_used and evidence is not None)
+                                if (evidence_used and evidence is not None)
                                 else resort.get("hotel_url", "")
                             ),
                             live_carrier=(
                                 evidence.carrier
-                                if (live_used and evidence is not None)
+                                if (evidence_used and evidence is not None)
                                 else ""
                             ),
                             live_observed_at=(
                                 evidence.observed_at
-                                if (live_used and evidence is not None)
+                                if (evidence_used and evidence is not None)
                                 else ""
                             ),
                             peak_summer_total_gbp=peak_total,
@@ -2282,6 +2296,11 @@ def render_holiday_report(
             deal = entry["base"]
             stars_str = '★' * deal.star_rating + '☆' * (5 - deal.star_rating)
             live = deal.confidence == 'verified-exact-date'
+            # A third state, because two were not enough to be honest: an
+            # observed fare that is too old to call live is neither LIVE
+            # VERIFIED nor a BENCHMARK PRICE, and labelling it as either tells
+            # the reader something untrue.
+            stale = deal.confidence == 'stale-cache'
             under = 5000.0 - deal.total_package_price_gbp
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate; border-spacing:0; margin:0 0 14px 0; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">')
             out.append('<tr>')
@@ -2292,16 +2311,22 @@ def render_holiday_report(
             cabin_badge = ""
             cabin_is_premium = getattr(deal, "cabin_class", "ECONOMY") in ("BUSINESS", "FIRST", "PREMIUM_ECONOMY")
             if getattr(deal, "cabin_class", "") == "BUSINESS":
-                cabin_badge = '<span style="background:#fdf2f8; color:#9d174d; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">💼 Business Class' + ('' if live else ' (estimate)') + '</span> '
+                cabin_badge = '<span style="background:#fdf2f8; color:#9d174d; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">💼 Business Class' + ('' if (live or stale) else ' (estimate)') + '</span> '
             elif getattr(deal, "cabin_class", "") == "PREMIUM_ECONOMY":
-                cabin_badge = '<span style="background:#f0fdfa; color:#0f766e; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">✨ Premium Economy' + ('' if live else ' (estimate)') + '</span> '
+                cabin_badge = '<span style="background:#f0fdfa; color:#0f766e; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">✨ Premium Economy' + ('' if (live or stale) else ' (estimate)') + '</span> '
             elif getattr(deal, "cabin_class", "") == "FIRST":
-                cabin_badge = '<span style="background:#fdf2f8; color:#9d174d; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">🥇 First Class' + ('' if live else ' (estimate)') + '</span> '
+                cabin_badge = '<span style="background:#fdf2f8; color:#9d174d; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">🥇 First Class' + ('' if (live or stale) else ' (estimate)') + '</span> '
             out.append('<div style="margin:5px 0 7px;">')
             out.append(cabin_badge)
             out.append('<span style="background:#eff6ff; color:#1d4ed8; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + escape(deal.board_basis) + '</span> ')
-            out.append('<span style="background:' + ('#dcfce7' if live else '#fef3c7') + '; color:' + ('#166534' if live else '#92400e') + '; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + ('🟢 LIVE VERIFIED' if live else '🟡 BENCHMARK PRICE') + '</span> ')
-            if live and getattr(deal, "live_observed_at", ""):
+            if live:
+                chip_bg, chip_fg, chip_text = '#dcfce7', '#166534', '🟢 LIVE VERIFIED'
+            elif stale:
+                chip_bg, chip_fg, chip_text = '#ffedd5', '#9a3412', '🟠 OBSERVED, NOT LIVE'
+            else:
+                chip_bg, chip_fg, chip_text = '#fef3c7', '#92400e', '🟡 BENCHMARK PRICE'
+            out.append('<span style="background:' + chip_bg + '; color:' + chip_fg + '; padding:3px 10px; border-radius:9999px; font-size:13px; font-weight:700;">' + chip_text + '</span> ')
+            if (live or stale) and getattr(deal, "live_observed_at", ""):
                 # AUDITABLE, not decorative: the chip must state WHEN the fare
                 # was observed and LINK to the page the amount was read from.
                 # A bare "LIVE" label is exactly the unverifiable claim the
@@ -2409,7 +2434,15 @@ def render_holiday_report(
                     delta = up.total_package_price_gbp - deal.total_package_price_gbp
                     badge = upgrade_badges.get(up.cabin_class, up.cabin_class)
                     delta_str = '+£' + f'{delta:,.0f}' if delta >= 0 else '−£' + f'{abs(delta):,.0f}'
-                    live_mark = ' · <span style="color:#166534; font-weight:700;">🟢 live observed</span>' if up.confidence == 'verified-exact-date' else ''
+                    if up.confidence == 'verified-exact-date':
+                        live_mark = ' · <span style="color:#166534; font-weight:700;">🟢 live observed</span>'
+                    elif up.confidence == 'stale-cache':
+                        # These rows carry the fare too, so an aged one has to say
+                        # so here as well: a reader cannot tell an observation
+                        # from a benchmark by the number alone.
+                        live_mark = ' · <span style="color:#9a3412; font-weight:700;">🟠 observed earlier, not live</span>'
+                    else:
+                        live_mark = ''
                     out.append('<div style="margin-top:4px; color:#475569;">' + badge + ' ' + delta_str + ' → £' + f'{up.total_package_price_gbp:,.0f}' + ' total · ' + escape(up.airline.split('/')[0].strip()) + live_mark + '</div>')
                 out.append('</div>')
             # PACKAGE VENDORS + SELF-CREATE. The card used to end in four

@@ -180,15 +180,24 @@ def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
 
 
 def _live_evidence_counts(live_offers) -> dict[str, int]:
-    """Distinct airports and cabins among the promotable live fares.
+    """Distinct airports and cabins among the fares, split by liveness.
 
     The mapping is keyed by ``(airport, cabin)``, so its length counts keys:
     three cabins priced for AYT alone would have been reported as three
     "airports", the same mislabel the workflow seed log carried.
+
+    ``live_*`` counts only fares that may be labelled live. An aged exact-date
+    fare is still consumed (it prices the card and is labelled ``stale-cache``),
+    so counting it as live coverage would overstate precisely what this module
+    exists to keep honest. It gets its own count instead.
     """
+    live = [key for key, ev in live_offers.items() if getattr(ev, "promotable", False)]
+    stale = [key for key, ev in live_offers.items() if getattr(ev, "stale", False)]
     return {
-        "live_flight_airports": len({str(airport) for airport, _ in live_offers}),
-        "live_flight_cabins": len({str(cabin) for _, cabin in live_offers}),
+        "live_flight_airports": len({str(airport) for airport, _ in live}),
+        "live_flight_cabins": len({str(cabin) for _, cabin in live}),
+        "stale_flight_fares": len(stale),
+        "stale_flight_airports": len({str(airport) for airport, _ in stale}),
     }
 
 

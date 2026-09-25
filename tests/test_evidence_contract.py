@@ -563,26 +563,63 @@ class TestReportableCabinsAreOneSet(unittest.TestCase):
 class TestLiveEvidenceCountsAreLabelledHonestly(unittest.TestCase):
     """``live_flight_airports`` must count airports, not keys."""
 
+    @staticmethod
+    def _evidence(airport: str, cabin: str, *, stale: bool = False):
+        from public_flight_search.live_verify import LiveFareEvidence
+
+        return LiveFareEvidence(
+            airport=airport,
+            total_gbp=1000.0,
+            basis="whole_party_return_total",
+            source_url="https://example.invalid/search",
+            observed_at="2026-09-21T00:00:00+00:00",
+            cabin_class=cabin,
+            stale=stale,
+        )
+
     def test_one_airport_with_three_cabins_is_one_airport(self):
         from public_flight_search.jobs import _live_evidence_counts
 
         counts = _live_evidence_counts(
             {
-                ("AYT", "ECONOMY"): object(),
-                ("AYT", "PREMIUM_ECONOMY"): object(),
-                ("AYT", "BUSINESS"): object(),
+                ("AYT", "ECONOMY"): self._evidence("AYT", "ECONOMY"),
+                ("AYT", "PREMIUM_ECONOMY"): self._evidence("AYT", "PREMIUM_ECONOMY"),
+                ("AYT", "BUSINESS"): self._evidence("AYT", "BUSINESS"),
             }
         )
         # Before: len(mapping) == 3, so one airport reported as three.
         self.assertEqual(counts["live_flight_airports"], 1)
         self.assertEqual(counts["live_flight_cabins"], 3)
+        self.assertEqual(counts["stale_flight_fares"], 0)
+
+    def test_a_stale_fare_is_never_counted_as_live_coverage(self):
+        """``live_flight_*`` has to keep meaning live. An aged fare is consumed —
+        it prices the card — so counting it here would overstate live coverage,
+        which is the class of claim this module exists to keep honest."""
+        from public_flight_search.jobs import _live_evidence_counts
+
+        counts = _live_evidence_counts(
+            {
+                ("AYT", "ECONOMY"): self._evidence("AYT", "ECONOMY"),
+                ("LPA", "ECONOMY"): self._evidence("LPA", "ECONOMY", stale=True),
+            }
+        )
+        self.assertEqual(counts["live_flight_airports"], 1)
+        self.assertEqual(counts["live_flight_cabins"], 1)
+        self.assertEqual(counts["stale_flight_fares"], 1)
+        self.assertEqual(counts["stale_flight_airports"], 1)
 
     def test_empty_evidence_counts_zero(self):
         from public_flight_search.jobs import _live_evidence_counts
 
         self.assertEqual(
             _live_evidence_counts({}),
-            {"live_flight_airports": 0, "live_flight_cabins": 0},
+            {
+                "live_flight_airports": 0,
+                "live_flight_cabins": 0,
+                "stale_flight_fares": 0,
+                "stale_flight_airports": 0,
+            },
         )
 
 

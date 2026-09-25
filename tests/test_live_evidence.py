@@ -288,12 +288,117 @@ class TestEvidenceFileLoader(unittest.TestCase):
         )
         self.assertIn("origin", consume_skip_log()[0])
 
-    def test_stale_observation_is_rejected(self):
+    def test_stale_observation_is_kept_but_never_labelled_live(self):
+        """The 2026-09-25 correction. A whole-party exact-date fare observed four
+        days ago is real evidence for the exact dates and party this report
+        prices; it is merely not current. Dropping it reverted the whole report
+        to typical-price benchmarks the moment the 72h bound passed, and did so
+        silently. It now prices the card and carries the age in its label.
+
+        The two proposals that must NOT be reintroduced: labelling it
+        ``verified-exact-date`` (a stale observation claiming to be live), and
+        widening ``EVIDENCE_MAX_AGE_HOURS`` so the drop stops happening while
+        the label still lies.
+        """
         path = self._write([self._rec(observed_at=self.stale)])
+        offers = try_live_flight_offers(self.config, path=path, now=self.now)
+        self.assertEqual(set(offers), {("AYT", "ECONOMY")})
+        evidence = offers[("AYT", "ECONOMY")]
+        self.assertTrue(evidence.stale)
+        self.assertTrue(evidence.usable)
+        self.assertFalse(evidence.promotable)
+        self.assertEqual(evidence.confidence, "stale-cache")
+        # The fare still prices the card, and the card says what it is.
+        deals = {
+            d.resort_name: d
+            for d in collect_holiday_deals(
+                self.config, live_flight_offers=offers
+            )
+        }
+        stale_deals = [d for d in deals.values() if d.confidence == "stale-cache"]
+        self.assertTrue(stale_deals, "the aged fare must still price a card")
+        deal = stale_deals[0]
+        self.assertNotEqual(deal.confidence, "verified-exact-date")
+        self.assertEqual(deal.flight_price_total_gbp, 2000.0)
+        self.assertEqual(deal.flight_price_basis, "whole_party_return_total")
+        self.assertEqual(deal.live_observed_at, self.stale)
+        self.assertTrue(deal.source_url.startswith("https://"))
+        # A cheap but load-bearing consequence: nothing in the report may carry
+        # the live label off this run's evidence.
         self.assertEqual(
-            dict(try_live_flight_offers(self.config, path=path, now=self.now)), {}
+            [d for d in deals.values() if d.confidence == "verified-exact-date"], []
         )
-        self.assertIn("stale", consume_skip_log()[0])
+
+    def test_the_card_says_observed_not_live_and_never_live_verified(self):
+        """The label is the whole point of keeping an aged fare: if the card still
+        reads 🟢 LIVE VERIFIED then nothing improved. Render the real report with
+        the real stale evidence and check the chip."""
+        from public_flight_search.holidays import (
+            collect_holiday_deals,
+            render_holiday_report,
+        )
+
+        path = self._write([self._rec(observed_at=self.stale)])
+        offers = try_live_flight_offers(self.config, path=path, now=self.now)
+        deals = collect_holiday_deals(self.config, live_flight_offers=offers)
+        html = render_holiday_report(
+            self.config, generated_at="2026-09-25T13:00:00Z", deals=deals
+        )
+        # The Economy card is not this fixture's headline (the report leads with
+        # the cheapest cabin, and the premium benchmark is cheaper than the real
+        # Economy fare), so the aged figure surfaces in the alternate-cabins row.
+        # Either way it must never read live.
+        self.assertIn("🟠 observed earlier, not live", html)
+        self.assertNotIn("🟢 live observed", html)
+        self.assertNotIn("🟢 LIVE VERIFIED", html)
+
+    def test_a_stale_headline_fare_says_observed_not_live(self):
+        """Same rule where the aged fare IS the headline: the card chip itself."""
+        from public_flight_search.holidays import (
+            collect_holiday_deals,
+            render_holiday_report,
+        )
+
+        path = self._write([self._rec(observed_at=self.stale)])
+        offers = try_live_flight_offers(self.config, path=path, now=self.now)
+        stale_deal = next(
+            d
+            for d in collect_holiday_deals(self.config, live_flight_offers=offers)
+            if d.confidence == "stale-cache"
+        )
+        html = render_holiday_report(
+            self.config, generated_at="2026-09-25T13:00:00Z", deals=[stale_deal]
+        )
+        self.assertIn("🟠 OBSERVED, NOT LIVE", html)
+        self.assertNotIn("🟢 LIVE VERIFIED", html)
+        self.assertNotIn("🟡 BENCHMARK PRICE", html)
+        # AUDITABLE, not decorative: when it was observed and where it came from.
+        self.assertIn("observed 2026-09-01", html)
+        self.assertIn("fare source", html)
+
+    def test_an_ancient_observation_is_dropped_outright(self):
+        """Past the stale-cache ceiling it is not evidence of anything, so it must
+        not stand in for a current price. 30 days is the ceiling."""
+        from public_flight_search.live_verify import (
+            EVIDENCE_STALE_CACHE_MAX_AGE_HOURS,
+        )
+
+        with self.subTest("just inside the ceiling is kept"):
+            path = self._write(
+                [self._rec(observed_at="2026-08-22T12:00:00+00:00")]
+            )
+            offers = try_live_flight_offers(self.config, path=path, now=self.now)
+            self.assertTrue(offers[("AYT", "ECONOMY")].stale)
+        with self.subTest("past the ceiling is dropped"):
+            path = self._write(
+                [self._rec(observed_at="2026-08-01T12:00:00+00:00")]
+            )
+            self.assertEqual(
+                dict(try_live_flight_offers(self.config, path=path, now=self.now)),
+                {},
+            )
+            self.assertIn("expired", consume_skip_log()[0])
+        self.assertEqual(EVIDENCE_STALE_CACHE_MAX_AGE_HOURS, 24 * 30)
 
     def test_future_observation_is_rejected(self):
         path = self._write([self._rec(observed_at="2030-01-01T00:00:00+00:00")])

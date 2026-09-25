@@ -99,11 +99,37 @@ class LiveFareEvidence:
     note: str = ""
     carrier: str = ""
     cabin_class: str = "ECONOMY"
+    #: True when the observation is older than ``EVIDENCE_MAX_AGE_HOURS``.
+    stale: bool = False
 
     @property
     def promotable(self) -> bool:
         """True only when this may label a deal ``verified-exact-date``."""
+        return (
+            self.basis in WHOLE_PARTY_BASES
+            and self.exact_date_match
+            and not self.stale
+        )
+
+    @property
+    def usable(self) -> bool:
+        """True when this may price a card at all, fresh or aged.
+
+        Age decides the *label*, not whether the number is worth showing. An
+        aged whole-party exact-date fare for the dates and party this report
+        prices is real evidence that is merely not current; a benchmark is a
+        typical price for nobody in particular. Dropping the aged record is what
+        made a Friday observation revert the following Monday's report to
+        benchmarks with nothing in the output to say it had happened.
+        """
         return self.basis in WHOLE_PARTY_BASES and self.exact_date_match
+
+    @property
+    def confidence(self) -> str:
+        """The provenance label this evidence earns, as the card renders it."""
+        if self.promotable:
+            return "verified-exact-date"
+        return "stale-cache" if self.usable else "market-supported"
 
     @property
     def is_non_promotable_basis(self) -> bool:
@@ -130,8 +156,15 @@ def live_evidence_unavailable_reason() -> str:
     )
 
 
-#: Evidence older than this is treated as stale cache, never as live.
+#: Evidence older than this is stale cache: it may still be shown, but it may
+#: never be labelled live.
 EVIDENCE_MAX_AGE_HOURS = 72
+
+#: The ceiling beyond which an aged observation is no longer evidence of
+#: anything and is discarded outright. A fare read two months ago prices nothing
+#: today, so it must not stand in for one. Between ``EVIDENCE_MAX_AGE_HOURS`` and
+#: here a record is kept and labelled ``stale-cache``; past here it is dropped.
+EVIDENCE_STALE_CACHE_MAX_AGE_HOURS = 24 * 30
 
 #: Where the workflow lands the private engine's evidence file.
 DEFAULT_EVIDENCE_PATH = "data/holiday_live_evidence.json"
@@ -399,8 +432,11 @@ def load_live_flight_evidence(
       exactly;
     * the hunt's party size matches ``config.travellers`` (a whole-party
       total is only valid for the party it was quoted for);
-    * the observation is younger than ``EVIDENCE_MAX_AGE_HOURS`` — older
-      observations are stale cache, not live;
+    * the observation is younger than ``EVIDENCE_STALE_CACHE_MAX_AGE_HOURS``;
+      between ``EVIDENCE_MAX_AGE_HOURS`` (72) and that ceiling it is still
+      consumed, but labelled ``stale-cache`` instead of
+      ``verified-exact-date`` — an aged exact-date fare is worth showing, it
+      just may not claim to be live;
     * ``source_url`` is a real http(s) URL and ``total_gbp`` is a positive
       finite number.
 
@@ -467,9 +503,25 @@ def load_live_flight_evidence(
         if age_hours < 0:
             _warn_skip(airport, "observed_at is in the future")
             continue
-        if age_hours > EVIDENCE_MAX_AGE_HOURS:
-            _warn_skip(airport, f"stale: observed {age_hours:.0f}h ago (max {EVIDENCE_MAX_AGE_HOURS}h)")
+        if age_hours > EVIDENCE_STALE_CACHE_MAX_AGE_HOURS:
+            _warn_skip(
+                airport,
+                f"expired: observed {age_hours:.0f}h ago "
+                f"(max {EVIDENCE_STALE_CACHE_MAX_AGE_HOURS}h)",
+            )
             continue
+        # An aged record is KEPT, not skipped, and carries its age into the
+        # label. It is a real whole-party exact-date observation for the exact
+        # dates and party this report prices, so it prices the card; calling it
+        # live is what must not happen. ``usable`` prices it, ``promotable``
+        # decides the label, and the two are deliberately different questions.
+        stale = age_hours > EVIDENCE_MAX_AGE_HOURS
+        if stale:
+            print(
+                f"live-evidence: {airport} is stale cache (observed "
+                f"{age_hours:.0f}h ago); using it, labelled stale-cache",
+                file=sys.stderr,
+            )
         exact_dates = item.get("exact_dates") or {}
         if (
             str(exact_dates.get("outbound", "")).strip() != target_outbound
@@ -521,6 +573,7 @@ def load_live_flight_evidence(
             ),
             carrier=str(item.get("carrier", "")).strip(),
             cabin_class=entry_cabin,
+            stale=stale,
         )
         # Key by (airport, cabin): the report renders ECONOMY, PREMIUM_ECONOMY
         # and BUSINESS cards for the same airport, and an ECONOMY fare must
@@ -540,7 +593,11 @@ def try_live_flight_offers(
     path: str = DEFAULT_EVIDENCE_PATH,
     now: Optional[datetime] = None,
 ) -> Mapping[str, LiveFareEvidence]:
-    """Return promotable live fare evidence keyed by (airport, cabin).
+    """Return usable fare evidence keyed by (airport, cabin).
+
+    "Usable" includes an aged observation, which is returned with
+    ``stale=True`` and a ``stale-cache`` label rather than being dropped; only
+    ``promotable`` evidence may be rendered as live.
 
     Two activation paths, both explicit operator actions:
 
