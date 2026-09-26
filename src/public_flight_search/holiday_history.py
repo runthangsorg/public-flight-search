@@ -101,6 +101,17 @@ def append_history(
                     "nights": getattr(d, "nights", 0),
                     "unit_architecture": str(getattr(d, "unit_architecture", "")),
                     "cabin_class": str(getattr(d, "cabin_class", "ECONOMY")),
+                    # Board basis, transfers and the flight-price basis are
+                    # what separate a REAL reduction from a lower total that
+                    # only reflects fewer nights, a cheaper board, a
+                    # downgraded cabin or a dropped transfer. Recorded here
+                    # so holiday_compare can classify like-for-like; a row
+                    # written before this field existed reads as unknown and
+                    # is never used to claim a downgrade.
+                    "board_basis": str(getattr(d, "board_basis", "")),
+                    "transfer_gbp": float(getattr(d, "transfer_gbp", 0.0) or 0.0),
+                    "uk_ground_gbp": float(getattr(d, "uk_ground_gbp", 0.0) or 0.0),
+                    "flight_price_basis": str(getattr(d, "flight_price_basis", "")),
                     "total_package_price_gbp": total,
                     "price_per_person_gbp": float(getattr(d, "price_per_person_gbp", 0.0)),
                     "flight_price_total_gbp": float(getattr(d, "flight_price_total_gbp", 0.0)),
@@ -109,6 +120,11 @@ def append_history(
                     "confidence": str(getattr(d, "confidence", "")),
                     # "verified-exact-date" confidence IS the codebase's
                     # signal for live evidence (see holidays.py live_used).
+                    # An AGED live observation is labelled ``stale-cache``,
+                    # not ``verified-exact-date``, so it is not live_used —
+                    # which is exactly the signal the comparator needs to tell
+                    # a real live fare apart from a benchmark wearing a
+                    # similar-looking total.
                     "live_used": str(getattr(d, "confidence", "")) == "verified-exact-date",
                     "value_score": float(getattr(d, "value_score", 0.0) or 0.0),
                     "rank_value": int(getattr(d, "rank_value", 0) or 0),

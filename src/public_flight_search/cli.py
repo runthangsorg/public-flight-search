@@ -90,10 +90,67 @@ def _evidence_contract(arguments: list[str]) -> int:
     return 0
 
 
+def _holiday_compare(arguments: list[str]) -> int:
+    """Classify history movements into real drops vs misleading ones.
+
+    Pure analysis over the append-only history file — no network, no
+    browser, no email. Prints Markdown by default (the four tables), or the
+    machine-readable JSON with ``--format json``.
+    """
+    from .holiday_compare import (
+        _default_history_path,
+        build_callouts,
+        build_report,
+        load_observations,
+        render_json,
+        render_markdown,
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="holiday-compare",
+        description=(
+            "Compare the current holiday prices against history and label each "
+            "movement as a real drop, a cheaper comparable, or a misleading one."
+        ),
+    )
+    parser.add_argument("--history", default="", help="JSONL price history file.")
+    parser.add_argument(
+        "--format", choices=["markdown", "json"], default="markdown"
+    )
+    parser.add_argument("--out", default="", help="Write the report here instead of stdout.")
+    args = parser.parse_args(arguments)
+
+    from pathlib import Path
+
+    path = Path(args.history) if args.history else _default_history_path()
+    # A missing file is operator error, never "no price movement": an empty
+    # report reads as "every tracked resort is flat", which would hide a
+    # typo'd path. Fail fast and name the path instead.
+    if not path.exists():
+        raise SystemExit(f"history file not found: {path}")
+    observations = load_observations(path)
+    report = build_report(observations, history_path=str(path))
+    callouts = build_callouts(report)
+    rendered = (
+        render_json(report, callouts)
+        if args.format == "json"
+        else render_markdown(report, callouts)
+    )
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(rendered, encoding="utf-8")
+    else:
+        print(rendered)
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if arguments and arguments[0] == "evidence-contract":
         return _evidence_contract(arguments[1:])
+    if arguments and arguments[0] == "holiday-compare":
+        return _holiday_compare(arguments[1:])
     if arguments and arguments[0] in {"flight-digest", "holiday-planner", "july-holiday-planner"}:
         command = arguments.pop(0)
         dry_run = "--dry-run" in arguments

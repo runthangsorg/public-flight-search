@@ -115,6 +115,29 @@ class AppendHistoryTests(unittest.TestCase):
             self.assertEqual(appended, 1)
             self.assertEqual(len(read_history(path=path)), 2)
 
+    def test_board_basis_and_transfer_are_persisted(self):
+        """The comparator needs board/transfer to tell a real reduction from a
+        downgrade; the row must carry them. A legacy deal without the
+        attributes must still append (defaults, never a crash)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "history.jsonl"
+            rich = _deal(3000.0)
+            rich.board_basis = "All Inclusive"
+            rich.transfer_gbp = 45.0
+            rich.uk_ground_gbp = 16.5
+            rich.flight_price_basis = "whole_party_return_total"
+            append_history([rich], path=path)
+            legacy = _deal(4000.0)  # no board_basis/transfer attributes
+            legacy.outbound_date = "2026-12-23"
+            legacy.return_date = "2026-12-31"
+            append_history([legacy], path=path)
+            rows = {r["outbound_date"]: r for r in read_history(path=path)}
+            self.assertEqual(rows["2026-12-22"]["board_basis"], "All Inclusive")
+            self.assertEqual(rows["2026-12-22"]["transfer_gbp"], 45.0)
+            self.assertEqual(rows["2026-12-22"]["flight_price_basis"], "whole_party_return_total")
+            self.assertEqual(rows["2026-12-23"]["board_basis"], "")
+            self.assertEqual(rows["2026-12-23"]["flight_price_basis"], "")
+
     def test_non_finite_price_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "history.jsonl"
