@@ -5,11 +5,9 @@ standard GitHub-hosted runners in a public repository. Personal routes, dates,
 party details, recipients and mail credentials are never committed: production
 jobs receive them through encrypted GitHub Actions secrets.
 
-The engine has three boundaries:
+The engine has three workflows:
 
 - `ci.yml` runs synthetic tests on pushes and pull requests without secrets.
-- `flight-digest.yml` performs bounded Google Flights results-page searches on
-  schedule or manual dispatch.
 - `holiday-planner.yml` runs the December package-holiday deal engine:
   benchmark-priced resorts with real discount intelligence versus each
   resort's summer-peak price, the recovered winter-tracker value model
@@ -18,6 +16,29 @@ The engine has three boundaries:
   honesty caps), per-person deal classification, property-targeted
   Booking.com / Google Hotels / Expedia deep links with exact dates and
   party, per-deal price history with trend chips, and direct SMTP delivery.
+- `july-holiday-planner.yml` runs the same engine for the July 2027 trip,
+  pricing the committed `examples/july_holiday_config.json` unless a
+  `JULY_HOLIDAY_SEARCH_CONFIG_JSON` secret exists.
+
+The September Muscat/UAE flight digest workflow was deleted on 2026-09-28;
+its trips had expired.
+
+## Cabin rule and the Far East watch
+
+Owner rule, 2026-09-28: Business class only when the flight is over 8 hours
+from London, otherwise Economy; never premium economy. The cabin is derived in
+code (`src/public_flight_search/cabin.py`) from each destination's
+`flight_hours`: the nonstop block time, or the fastest standard one-stop
+journey where no nonstop exists. 8.0 hours exactly is Economy. A config's own
+`cabin_class` / `cabin_classes` fields are legacy: still validated, never
+priced.
+
+Far East destinations are listed first in both example configs and lead the
+report as a destination watch. No Far East resort has a verified one-unit
+family suite in the catalogue yet, so each row is priced from a Business fare
+and a family-suite night that are labelled **benchmark, unverified** until live
+whole-party evidence exists, with dated Google Flights, Booking.com and Google
+Hotels searches.
 
 Emails are change-driven, not scheduled spam: before building, the job seeds
 prior price history from the private data repo and computes a change digest
@@ -65,42 +86,32 @@ PYTHONPATH=src python -m public_flight_search \
   --source examples/offers.json --max-results 2
 ```
 
-For a runtime-configured local dry run:
-
-```bash
-python -m pip install -e .
-FLIGHT_SEARCH_CONFIG_JSON='{...}' \
-  python -m public_flight_search flight-digest --dry-run
-```
-
 Dry runs print structural counts only. They do not print the private
 configuration, report body or recipient.
 
 ## Runtime configuration
 
-`FLIGHT_SEARCH_CONFIG_JSON` accepts a `report_title` and 1–20 search objects.
-Each search defines a generic key/label, origin and destination airport lists,
-ISO dates, traveller count, cabin, departure time window, stop/duration limits
-and an optional per-traveller ceiling.
-
 `HOLIDAY_SEARCH_CONFIG_JSON` accepts a report title, party/room occupancy,
 origin airports, outbound/return ISO date lists, a preferred departure window,
-and destination labels/airport lists.
+a budget, and 1–24 destinations, each with a key, label, airport list,
+`flight_hours` and a `flight_hours_source` citation. A destination without
+`flight_hours` loads only if its key has a built-in value in `cabin.py`.
 
-The public workflow expects these encrypted secret names:
+The holiday workflows expect these encrypted secret names:
 
-- `FLIGHT_SEARCH_CONFIG_JSON`
-- `HOLIDAY_SEARCH_CONFIG_JSON`
+- `HOLIDAY_SEARCH_CONFIG_JSON` (December), optionally
+  `JULY_HOLIDAY_SEARCH_CONFIG_JSON` (July)
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`
 - `REPORT_RECIPIENT`
-- `FLIGHT_EMAIL_SUBJECT`, `HOLIDAY_EMAIL_SUBJECT`
+- `HOLIDAY_EMAIL_SUBJECT`, optionally `JULY_HOLIDAY_EMAIL_SUBJECT`
+- `HISTORY_DEPLOY_KEY`
 
 Schedules are controlled by non-secret booleans:
 
-- `ENABLE_FLIGHT_DIGEST`
 - `ENABLE_HOLIDAY_PLANNER`
+- `ENABLE_JULY_HOLIDAY_PLANNER`
 
-Keep both false until a manual dry run passes and a separately approved live
+Keep them false until a manual dry run passes and a separately approved live
 email has been inspected.
 
 ## Security model

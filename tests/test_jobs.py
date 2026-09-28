@@ -6,9 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from public_flight_search.jobs import (
-    FlightCollectionError,
     config_season,
-    run_flight_digest,
     run_holiday_planner,
 )
 
@@ -21,12 +19,13 @@ class HolidayJobTests(unittest.TestCase):
         )
         with patch.dict(os.environ, {"HOLIDAY_SEARCH_CONFIG_JSON": payload}):
             result = run_holiday_planner(dry_run=True)
-        self.assertEqual(result["destination_count"], 14)
+        self.assertEqual(result["destination_count"], 20)
         self.assertEqual(result["date_combination_count"], 9)
         # 10 destinations x 9 pairs x 10 providers (6 package + 4 dynamic)
         # + 4 destinations (cairo/muscat/doha/cape_verde, no Jet2 product)
-        # x 9 pairs x 9.
-        self.assertEqual(result["provider_entry_count"], 1224)
+        # x 9 pairs x 9
+        # + 6 Far East destinations (no Jet2 product) x 9 pairs x 9.
+        self.assertEqual(result["provider_entry_count"], 1224 + 486)
         self.assertFalse(result["email_sent"])
 
     def _patch_smtp(self):
@@ -200,69 +199,6 @@ class HolidayConfigSourceTests(unittest.TestCase):
                     dry_run=True, config_path="examples/july_holday_config.json"
                 )
         self.assertIn("july_holday_config.json", str(ctx.exception))
-
-
-class FlightJobTests(unittest.TestCase):
-    def test_empty_provider_scan_fails_closed_without_email(self):
-        root = Path(__file__).parents[1]
-        # Any real flight-digest payload will do; the December example is the one that is
-        # still a supported trip (the September Muscat/UAE configs were deleted with the
-        # job on 2026-09-25).
-        payload = (root / "examples" / "dec_config.json").read_text(
-            encoding="utf-8"
-        )
-
-        async def empty_scan(_searches):
-            return {}
-
-        with patch.dict(os.environ, {"FLIGHT_SEARCH_CONFIG_JSON": payload}), patch(
-            "public_flight_search.jobs.search_google_flights", empty_scan
-        ):
-            with self.assertRaises(FlightCollectionError):
-                run_flight_digest(dry_run=False)
-
-    def test_paired_flight_digest_generates_itineraries(self):
-        root = Path(__file__).parents[1]
-        payload = (root / "examples" / "dec_config.json").read_text(
-            encoding="utf-8"
-        )
-        from public_flight_search.engine import FlightOffer
-        from public_flight_search.config import build_search_plan
-        from public_flight_search.trip_config import DEFAULT_TRIP_DEFINITIONS
-
-        plan = build_search_plan(DEFAULT_TRIP_DEFINITIONS)
-        outbound_key = [p.key for p in plan if "_OUTBOUND_" in p.key][0]
-        return_key = [p.key for p in plan if "_RETURN_" in p.key][0]
-
-        async def paired_scan(_searches):
-            return {
-                outbound_key: [
-                    FlightOffer(
-                        origin="LHR", destination="MCT", departure="2026-09-15T09:00:00",
-                        arrival="2026-09-15T19:00:00", price=350, currency="GBP",
-                        stops=0, duration_minutes=420, provider="Google Flights",
-                        airline="Oman Air", booking_url="https://google.com/test1",
-                        price_per_traveller=350, review_status="results_page_only"
-                    )
-                ],
-                return_key: [
-                    FlightOffer(
-                        origin="MCT", destination="LHR", departure="2026-09-22T10:00:00",
-                        arrival="2026-09-22T18:00:00", price=320, currency="GBP",
-                        stops=0, duration_minutes=420, provider="Google Flights",
-                        airline="Oman Air", booking_url="https://google.com/test2",
-                        price_per_traveller=320, review_status="results_page_only"
-                    )
-                ]
-            }
-
-        with patch.dict(os.environ, {"FLIGHT_SEARCH_CONFIG_JSON": payload}), patch(
-            "public_flight_search.jobs.search_google_flights", paired_scan
-        ):
-            result = run_flight_digest(dry_run=True)
-            self.assertEqual(result["itinerary_count"], 1)
-            self.assertEqual(result["search_count"], 6)
-            self.assertFalse(result["email_sent"])
 
 
 if __name__ == "__main__":

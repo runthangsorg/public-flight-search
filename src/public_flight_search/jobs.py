@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 import json
 import logging
@@ -11,9 +10,14 @@ from pathlib import Path
 import sys
 from typing import Optional
 
-from .config import load_flight_config, build_search_plan
-from .google_flights import build_google_flights_url, search_google_flights
-from .holidays import _date_pairs, collect_holiday_deals, count_provider_entries, load_holiday_config, render_holiday_report
+from .holidays import (
+    _date_pairs,
+    collect_holiday_deals,
+    count_provider_entries,
+    far_east_watch_rows,
+    load_holiday_config,
+    render_holiday_report,
+)
 from .holiday_history import (
     append_history,
     build_change_digest,
@@ -24,14 +28,6 @@ from .holiday_history import (
     summarize_trends,
 )
 from .mailer import send_html
-from .report import render_flight_report
-from .trip_config import (
-    DEFAULT_HOLIDAY_TRIP_DEFINITION,
-    TripDefinition,
-    TripBucket,
-    default_trip_definitions,
-)
-from .pairing import pair_outbound_return, combine_legs
 
 
 def _live_evidence_default_path() -> str:
@@ -39,144 +35,9 @@ def _live_evidence_default_path() -> str:
     from .live_verify import DEFAULT_EVIDENCE_PATH
 
     return DEFAULT_EVIDENCE_PATH
-from .pareto import rank_bucket_sections
-
-
-class FlightCollectionError(RuntimeError):
-    """Prevent an empty fare collection from becoming a misleading email."""
 
 
 logger = logging.getLogger(__name__)
-
-
-def run_flight_digest(*, dry_run: bool) -> dict[str, int | bool]:
-    """Run September UAE flight digest with multi-city pairing."""
-    config = load_flight_config(os.environ.get("FLIGHT_SEARCH_CONFIG_JSON", ""))
-
-    # Derive the travel window from the run date. Absolute literals are
-    # correct only until they expire, after which every search returns no
-    # cards and the digest reports a misleading empty-collection failure
-    # (that is how it died on 2026-09-22).
-    trip_definitions = default_trip_definitions()
-
-    # Build search plan from trip definitions
-    search_plan = build_search_plan(trip_definitions)
-
-    # Search the same provider-neutral plan that is later paired and grouped.
-    # The runtime config remains the report/fallback boundary; FlightSearch is
-    # deliberately not given a synthetic ``bucket`` attribute.
-    raw_offers = asyncio.run(search_google_flights(search_plan))
-
-    request_metadata = {}
-    for trip in trip_definitions:
-        for request in trip.build_search_plan():
-            request_metadata[request.key] = (trip.bucket, request.key)
-
-    # Organize raw offers by trip bucket, direction, cabin
-    offers_by_bucket = {}
-    for request in search_plan:
-        bucket, _ = request_metadata[request.key]
-        direction = "OUTBOUND" if "_OUTBOUND_" in request.key else "RETURN"
-        cabin = request.cabin_class
-        offers_by_bucket.setdefault(bucket, {}).setdefault(direction, {})[cabin] = []
-
-    # Map raw offers to the search plan
-    for request in search_plan:
-        bucket, _ = request_metadata[request.key]
-        direction = "OUTBOUND" if "_OUTBOUND_" in request.key else "RETURN"
-        cabin = request.cabin_class
-
-        # Search results are already grouped by this request key.  The HTTP
-        # adapter returns FlightOffer dataclasses, while pairing consumes
-        # mappings; normalize at this boundary and derive direction from the
-        # request rather than requiring a non-existent offer field.
-        for offer in raw_offers.get(request.key, ()):
-            normalized = (
-                offer.to_public_dict()
-                if hasattr(offer, "to_public_dict")
-                else dict(offer)
-            )
-
-            # Normalize offer for pairing
-            normalized["bucket"] = bucket
-            normalized["direction"] = direction
-            normalized["cabin_class"] = cabin
-            offers_by_bucket[bucket][direction][cabin].append(normalized)
-
-    # Pair outbound + return legs for each trip bucket
-    final_offers = {}
-    for trip in trip_definitions:
-        bucket = trip.key
-        trip_offers = []
-
-        for cabin in trip.cabin_classes:
-            outbound = offers_by_bucket.get(bucket, {}).get("OUTBOUND", {}).get(cabin, [])
-            return_leg = offers_by_bucket.get(bucket, {}).get("RETURN", {}).get(cabin, [])
-
-            if not outbound or not return_leg:
-                continue
-
-            paired = pair_outbound_return(trip, outbound, return_leg)
-
-            # Add trip metadata and combine legs
-            for paired in paired:
-                paired["bucket"] = bucket
-                paired["trip_key"] = trip.key
-                paired["trip_label"] = trip.label
-                paired["cabin_class"] = cabin
-                trip_offers.append(paired)
-
-        # Apply Pareto suppression and ranking
-        if trip_offers:
-            sections = rank_bucket_sections(trip_offers)
-            final_offers[bucket] = sections["overall"]
-
-    if not any(final_offers.values()):
-        print(json.dumps({
-            "email_sent": False,
-            "itinerary_count": 0,
-            "search_count": len(config.searches),
-            "status": "collection_failed",
-        }, sort_keys=True))
-        raise FlightCollectionError("no live paired fare evidence was collected; email suppressed")
-
-    # Build Google Flights links from the actual search plan
-    google_links: dict[str, dict[str, str]] = {}
-    for request in search_plan:
-        for origin in request.origins:
-            for dest in request.destinations:
-                for day in request.dates:
-                    key = f"{origin}_{dest}_{day}"
-                    google_links[key] = {
-                        "url": build_google_flights_url(
-                            origin=origin,
-                            destination=dest,
-                            date=day,
-                            travellers=request.travellers,
-                            cabin_class=request.cabin_class,
-                        ),
-                        "label": f"{origin}→{dest} {day}",
-                    }
-
-    # Render report with multi-city support
-    html = render_flight_report(
-        config,
-        final_offers,
-        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        trip_definitions=trip_definitions,
-    )
-
-    if not dry_run:
-        send_html(os.environ.get("FLIGHT_EMAIL_SUBJECT", "Flight deal digest"), html)
-
-    result = {
-        "search_count": len(config.searches),
-        "trip_count": len(trip_definitions),
-        "itinerary_count": sum(len(v) for v in final_offers.values()),
-        "email_sent": not dry_run,
-    }
-    print(json.dumps(result, sort_keys=True))
-    return result
 
 
 def _live_evidence_counts(live_offers) -> dict[str, int]:
@@ -467,6 +328,8 @@ def run_holiday_planner(
         # Exact rendered-link count: Jet2 is omitted where it has no product.
         "provider_entry_count": count_provider_entries(config),
         "deal_count": len(deals),
+        # Far East destination watches (benchmark, unverified) leading the report.
+        "far_east_watch_count": len(far_east_watch_rows(config)),
         # (airport, cabin) keys, not airports: three cabins with fares for
         # AYT alone is ONE airport, and the label has to mean what it says.
         **_live_evidence_counts(live_offers),

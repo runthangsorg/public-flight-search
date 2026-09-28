@@ -10,7 +10,7 @@ from typing import Optional, Sequence
 
 from .engine import SearchCriteria, search_offers
 from .io import load_json_source
-from .jobs import run_flight_digest, run_holiday_planner
+from .jobs import run_holiday_planner
 
 
 def _codes(value: str) -> frozenset[str]:
@@ -151,7 +151,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return _evidence_contract(arguments[1:])
     if arguments and arguments[0] == "holiday-compare":
         return _holiday_compare(arguments[1:])
-    if arguments and arguments[0] in {"flight-digest", "holiday-planner", "july-holiday-planner"}:
+    if arguments and arguments[0] in {"holiday-planner", "july-holiday-planner"}:
         command = arguments.pop(0)
         dry_run = "--dry-run" in arguments
         force_send = "--force-send" in arguments
@@ -164,9 +164,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         allowed_flags = {"--dry-run", "--force-send"}
         if set(arguments) - allowed_flags:
             raise SystemExit("only --dry-run, --force-send, and --config are accepted for production jobs")
-        if command == "flight-digest":
-            run_flight_digest(dry_run=dry_run)
-        elif command == "july-holiday-planner":
+        if command == "july-holiday-planner":
             if not config_path and not os.environ.get("JULY_HOLIDAY_SEARCH_CONFIG_JSON") and not os.environ.get("HOLIDAY_SEARCH_CONFIG_JSON"):
                 config_path = "examples/july_holiday_config.json"
             # This command IS the July planner, so a config that prices December is a mistake

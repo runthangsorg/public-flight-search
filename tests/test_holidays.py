@@ -20,7 +20,7 @@ class HolidayPlannerTests(unittest.TestCase):
                     "outbound_dates": ["2030-12-18", "2030-12-20"],
                     "return_dates": ["2031-01-01", "2031-01-03"],
                     "destinations": [
-                        {"key": "sample", "label": "Sample coast", "airports": ["BBB"]}
+                        {"key": "sample", "label": "Sample coast", "airports": ["BBB"], "flight_hours": 4.0}
                     ],
                 }
             )
@@ -85,7 +85,19 @@ class HolidayPlannerTests(unittest.TestCase):
                 "fuerteventura",
                 "gran_canaria",
                 "paphos",
+                # Far East, added 2026-09-28 (owner preference) and listed
+                # first; no existing destination was dropped to make room.
+                "phuket",
+                "krabi",
+                "langkawi",
+                "penang",
+                "singapore",
+                "phu_quoc",
             },
+        )
+        self.assertEqual(
+            [item.key for item in config.destinations[:6]],
+            ["phuket", "krabi", "langkawi", "penang", "singapore", "phu_quoc"],
         )
 
     def test_rejects_ai_content_in_holiday_report_title(self):
@@ -106,7 +118,7 @@ class HolidayPlannerTests(unittest.TestCase):
                             "outbound_dates": ["2030-12-18"],
                             "return_dates": ["2030-12-28"],
                             "destinations": [
-                                {"key": "test", "label": "Test", "airports": ["BBB"]}
+                                {"key": "test", "label": "Test", "airports": ["BBB"], "flight_hours": 4.0}
                             ],
                         }
                     )
@@ -123,7 +135,7 @@ class HolidayPlannerTests(unittest.TestCase):
                     "outbound_dates": ["2030-12-18"],
                     "return_dates": ["2030-12-28"],
                     "destinations": [
-                        {"key": "test", "label": "Test", "airports": ["BBB"]}
+                        {"key": "test", "label": "Test", "airports": ["BBB"], "flight_hours": 4.0}
                     ],
                 }
             )
@@ -364,18 +376,23 @@ class HolidayPlannerTests(unittest.TestCase):
         july_path = root / "examples" / "july_holiday_config.json"
         self.assertTrue(july_path.exists())
         config = load_holiday_config(july_path.read_text(encoding="utf-8"))
-        self.assertEqual(config.cabin_class, "BUSINESS")
+        # 2026-09-28 rule: the July cards are all 4-5 h hops, so they price
+        # ECONOMY; the long-haul Far East destinations are the Business ones.
+        self.assertEqual(config.cabin_classes, ("BUSINESS", "ECONOMY"))
         self.assertEqual(config.max_budget_gbp, 12000.0)
         self.assertEqual(config.travellers, 5)
 
         deals = collect_holiday_deals(config)
         self.assertTrue(deals)
         for deal in deals:
-            self.assertIn(deal.cabin_class, {"BUSINESS", "PREMIUM_ECONOMY"})
+            self.assertEqual(deal.cabin_class, "ECONOMY")
             self.assertLessEqual(deal.total_package_price_gbp, 12000.0)
 
         html = render_holiday_report(config, generated_at="2026-07-01T10:00:00+00:00", deals=deals)
-        self.assertIn("Business Class", html)
+        self.assertNotIn("Premium Economy", html)
+        # Business appears only in the Far East watch, which leads the report.
+        self.assertIn("Far East first", html)
+        self.assertLess(html.index("Far East first"), html.index("Summer Luxury Deals"))
 
     def test_invalid_cabin_class_rejected(self):
         payload = {
@@ -493,17 +510,40 @@ class EmailPresentationTests(unittest.TestCase):
 
     def test_one_card_per_hotel_with_upgrade_addons(self):
         """2026-09-22 mandate: never list the same hotel twice. The cheapest
-        cabin is the baseline card; premium cabins appear once inside it as
-        optional add-ons with the exact delta."""
+        cabin is the baseline card; other cabins appear once inside it as
+        options with the exact delta.
+
+        Since the 2026-09-28 cabin rule the shipped configs price ONE cabin
+        per destination, so a real run never produces a second cabin. The
+        renderer's guard is still exercised with a synthetic second-cabin
+        copy of a real deal, because the one-card rule must hold whatever
+        feeds it.
+        """
+        import dataclasses
+
         root = Path(__file__).parents[1]
         config = load_holiday_config(
             (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8")
         )
-        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        real = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        real_names = [d.resort_name for d in real]
+        self.assertEqual(len(real_names), len(set(real_names)), "one cabin per hotel under the rule")
+        self.assertEqual({d.cabin_class for d in real}, {"ECONOMY"})
+        real_html = render_holiday_report(config, generated_at="2026-09-22T10:00:00+00:00", deals=real)
+        self.assertNotIn("Other cabin options for the same hotel", real_html)
+
+        base = real[0]
+        alternate = dataclasses.replace(
+            base,
+            cabin_class="BUSINESS",
+            flight_price_total_gbp=round(base.flight_price_total_gbp * 2.5, 2),
+            total_package_price_gbp=round(base.total_package_price_gbp + base.flight_price_total_gbp * 1.5, 2),
+        )
+        deals = tuple(real) + (alternate,)
         html = render_holiday_report(config, generated_at="2026-09-22T10:00:00+00:00", deals=deals)
         names = [d.resort_name for d in deals]
         dupes = {n for n in names if names.count(n) > 1}
-        self.assertTrue(dupes, "test premise: at least one hotel priced in multiple cabins")
+        self.assertEqual(dupes, {base.resort_name})
         from html import escape
         for name in dupes:
             # & in names is entity-escaped in HTML. A hotel may be absent

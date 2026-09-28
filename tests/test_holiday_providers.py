@@ -287,7 +287,7 @@ class HolidayReportDateConsistencyTests(unittest.TestCase):
             "origins": ["LHR"],
             "outbound_dates": ["2026-12-20"],
             "return_dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
-            "destinations": [{"key": "test", "label": "Test", "airports": ["BBB"]}],
+            "destinations": [{"key": "test", "label": "Test", "airports": ["BBB"], "flight_hours": 4.0}],
         }))
         html = render_holiday_report(config, generated_at="2026-08-31T10:00:00+00:00")
         self.assertIn("2026-12-28", html)
@@ -302,7 +302,7 @@ class HolidayReportDateConsistencyTests(unittest.TestCase):
             "origins": ["LHR"],
             "outbound_dates": ["2026-12-20"],
             "return_dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
-            "destinations": [{"key": "test", "label": "Test", "airports": ["BBB"]}],
+            "destinations": [{"key": "test", "label": "Test", "airports": ["BBB"], "flight_hours": 4.0}],
         }))
         html = render_holiday_report(config, generated_at="2026-08-31T10:00:00+00:00")
         self.assertIn("2026-12-28", html)

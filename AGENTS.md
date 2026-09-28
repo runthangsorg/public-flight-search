@@ -20,9 +20,11 @@ may hold only generic booleans and operating limits.
 
 ## What this repo is for
 
-Recurring GitHub-hosted compute for paired flight digests and the December package-holiday finder, on free standard runners
-(flight-digest.yml, holiday-planner.yml). Keep it that way: no self-hosted runners, no
-credentials in the repo, no personalised output committed.
+Recurring GitHub-hosted compute for the December and July package-holiday planners, on free
+standard runners (holiday-planner.yml, july-holiday-planner.yml). Keep it that way: no self-hosted
+runners, no credentials in the repo, no personalised output committed. The paired flight digest
+(flight-digest.yml) was deleted on 2026-09-28 at the owner's instruction — do not reintroduce it
+without an owner decision.
 
 ## External actions default to preview
 

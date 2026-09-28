@@ -183,14 +183,19 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         for live in ("ACE", "AYT", "FUE", "HRG", "LPA", "PFO", "TFS"):
             self.assertIn(live, contract.airports, live)
 
-    def test_july_contract_is_business_led_on_the_priced_pair(self):
+    def test_july_contract_follows_the_cabin_rule_on_the_priced_pair(self):
+        # Until 2026-09-28 the July example priced these four short hops in
+        # Business. Under the owner's rule (Business only over 8 hours) every
+        # card-bearing July airport is 4-5 h from London, so the hunt is aimed
+        # at Economy only. The Far East July destinations have no resort
+        # cards, so they add no airports to the contract.
         contract = evidence_consumption_contract(_load(JULY_CONFIG))
         self.assertEqual(
             (contract.outbound, contract.return_date),
             ("2027-07-20", "2027-07-27"),
         )
         self.assertEqual(set(contract.airports), {"AYT", "HRG", "PFO", "TFS"})
-        self.assertEqual({cabin for _, cabin in contract.keys}, {"BUSINESS"})
+        self.assertEqual({cabin for _, cabin in contract.keys}, {"ECONOMY"})
 
     def test_contract_serializes_for_the_hunt(self):
         contract = evidence_consumption_contract(_load(JULY_CONFIG))
@@ -199,7 +204,8 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
             payload["hunt_date_pairs"], [["2027-07-20", "2027-07-27"]]
         )
         self.assertEqual(payload["origin"], "LHR")
-        self.assertIn("AYT/BUSINESS", payload["keys"])
+        self.assertIn("AYT/ECONOMY", payload["keys"])
+        self.assertNotIn("AYT/BUSINESS", payload["keys"])
         # The hunt reuses the report's own config, so only the four things it
         # currently gets wrong are overridden.
         self.assertEqual(
@@ -243,7 +249,12 @@ class TestContractGaps(unittest.TestCase):
         gaps = evidence_contract_gaps(config, loaded)
         self.assertNotIn("AYT/ECONOMY", gaps["missing"])
         self.assertIn("ACE/ECONOMY", gaps["missing"])
-        self.assertIn("PFO/BUSINESS", gaps["missing"])
+        self.assertIn("PFO/ECONOMY", gaps["missing"])
+        # No December card airport is over 8 hours away, so nothing may ask
+        # the hunt for a Business (or premium economy) fare.
+        self.assertEqual(
+            [k for k in gaps["missing"] if not k.endswith("/ECONOMY")], []
+        )
 
     def test_evidence_for_an_airport_with_no_card_is_reported_unused(self):
         config = _load(DEC_CONFIG)
@@ -515,10 +526,13 @@ class TestReportableCabinsAreOneSet(unittest.TestCase):
                 cabins = {cabin for _, cabin in contract.keys}
                 self.assertLessEqual(cabins, EVIDENCE_CABINS)
 
-    def test_a_first_class_config_contract_is_loadable(self):
-        # The exact divergence the set-unification prevents: with FIRST in the
-        # config, the contract asks for a FIRST fare — and the loader used to
-        # answer "cabin 'FIRST' is not a reportable cabin" forever.
+    def test_a_legacy_first_class_config_contract_is_loadable(self):
+        # The divergence the set-unification prevents: the contract must never
+        # ask for a cabin the evidence loader refuses. Since 2026-09-28 a
+        # config's cabin fields are legacy — the cabin is derived from flight
+        # hours — so a config that still says FIRST loads, its contract asks
+        # for the derived cabin (Antalya, 4h30: ECONOMY), and evidence for
+        # that cabin loads.
         config = load_holiday_config(
             SYNTHETIC.replace(
                 '"destinations": [',
@@ -526,7 +540,7 @@ class TestReportableCabinsAreOneSet(unittest.TestCase):
             )
         )
         contract = evidence_consumption_contract(config)
-        self.assertEqual({cabin for _, cabin in contract.keys}, {"FIRST"})
+        self.assertEqual({cabin for _, cabin in contract.keys}, {"ECONOMY"})
 
         observed = "2026-09-23T00:00:00+00:00"
         with tempfile.NamedTemporaryFile(
@@ -537,9 +551,9 @@ class TestReportableCabinsAreOneSet(unittest.TestCase):
                     "evidence": [
                         {
                             "airport": "AYT",
-                            "cabin_class": "FIRST",
+                            "cabin_class": "ECONOMY",
                             "basis": "whole_party_return_total",
-                            "total_gbp": 9000.0,
+                            "total_gbp": 2000.0,
                             "source_url": "https://example.invalid/hunt",
                             "observed_at": observed,
                             "travellers": contract.travellers,
@@ -557,7 +571,7 @@ class TestReportableCabinsAreOneSet(unittest.TestCase):
         loaded = load_live_flight_evidence(
             config, path=path, now=datetime.fromisoformat(observed)
         )
-        self.assertIn(("AYT", "FIRST"), loaded)
+        self.assertIn(("AYT", "ECONOMY"), loaded)
 
 
 class TestLiveEvidenceCountsAreLabelledHonestly(unittest.TestCase):

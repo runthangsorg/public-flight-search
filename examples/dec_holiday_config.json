@@ -1,5 +1,5 @@
 {
-  "report_title": "December Holiday Packages: Under-5k Luxury Watch",
+  "report_title": "December Holiday Packages: Far East First, Winter Sun Watch",
   "party": {
     "travellers": 5,
     "rooms": [
@@ -8,12 +8,6 @@
       1
     ]
   },
-  "cabin_class": "ECONOMY",
-  "cabin_classes": [
-    "ECONOMY",
-    "PREMIUM_ECONOMY",
-    "BUSINESS"
-  ],
   "max_budget_gbp": 5000,
   "departure_window": [
     "06:00",
@@ -37,102 +31,184 @@
   ],
   "destinations": [
     {
+      "key": "phuket",
+      "label": "Phuket, Thailand (Andaman beaches, 30-32C and dry in December)",
+      "airports": [
+        "HKT"
+      ],
+      "flight_hours": 12.17,
+      "flight_hours_source": "Virgin Atlantic LHR-HKT seasonal nonstop from 2026-10-18, scheduled 12h10 (flightconnections.com/flights-from-lhr-to-hkt, checked 2026-09-28)"
+    },
+    {
+      "key": "krabi",
+      "label": "Krabi & Ao Nang, Thailand (limestone-coast beaches, 31-32C and dry in December)",
+      "airports": [
+        "KBV"
+      ],
+      "flight_hours": 14.5,
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK: LHR-BKK nonstop ~11h45 + connection + BKK-KBV ~1h20, about 14h30 (estimate from published schedules, not live-checked)"
+    },
+    {
+      "key": "langkawi",
+      "label": "Langkawi, Malaysia (island beach resorts, 31-32C in December)",
+      "airports": [
+        "LGK"
+      ],
+      "flight_hours": 15.5,
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via KUL: LHR-KUL nonstop ~13h + connection + KUL-LGK ~1h, about 15h30 (estimate from published schedules, not live-checked)"
+    },
+    {
+      "key": "penang",
+      "label": "Penang & Batu Ferringhi, Malaysia (heritage + beach, 31C in December)",
+      "airports": [
+        "PEN"
+      ],
+      "flight_hours": 15.5,
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via KUL: LHR-KUL nonstop ~13h + connection + KUL-PEN ~1h, about 15h30 (estimate from published schedules, not live-checked)"
+    },
+    {
+      "key": "singapore",
+      "label": "Singapore & Sentosa (city-resort base, 30-31C, monsoon showers in December)",
+      "airports": [
+        "SIN"
+      ],
+      "flight_hours": 13.0,
+      "flight_hours_source": "BA / Singapore Airlines LHR-SIN nonstop, scheduled block about 13h (published schedules, not re-checked live on 2026-09-28)"
+    },
+    {
+      "key": "phu_quoc",
+      "label": "Phu Quoc, Vietnam (island beaches, 30-31C, dry season from December)",
+      "airports": [
+        "PQC"
+      ],
+      "flight_hours": 15.0,
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK or SGN: London leg ~11h45-12h45 + connection + ~1h-1h30, about 15h (estimate from published schedules, not live-checked)"
+    },
+    {
       "key": "antalya",
       "label": "Antalya Riviera, Turkey (Ultra All Inclusive resorts)",
       "airports": [
         "AYT"
-      ]
+      ],
+      "flight_hours": 4.5,
+      "flight_hours_source": "BA / SunExpress LHR/LGW/STN-AYT nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "malta",
-      "label": "Valletta, Malta (heritage city break \u2014 15\u00b0C, no beach weather)",
+      "label": "Valletta, Malta (heritage city break — 15°C, no beach weather)",
       "airports": [
         "MLA"
-      ]
+      ],
+      "flight_hours": 3.25,
+      "flight_hours_source": "BA / Air Malta LHR/LGW-MLA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "taghazout",
-      "label": "Taghazout Bay, Morocco (surf coast, 23\u00b0C winter sun)",
+      "label": "Taghazout Bay, Morocco (surf coast, 23°C winter sun)",
       "airports": [
         "AGA"
-      ]
+      ],
+      "flight_hours": 3.75,
+      "flight_hours_source": "BA / easyJet LGW-AGA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "hurghada",
-      "label": "Hurghada & Red Sea, Egypt (25\u00b0C warmth, all inclusive)",
+      "label": "Hurghada & Red Sea, Egypt (25°C warmth, all inclusive)",
       "airports": [
         "HRG"
-      ]
+      ],
+      "flight_hours": 5.25,
+      "flight_hours_source": "easyJet / TUI LGW/LTN-HRG nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "cairo",
-      "label": "Cairo & Giza, Egypt (pyramids & Nile \u2014 cultural, no beach)",
+      "label": "Cairo & Giza, Egypt (pyramids & Nile — cultural, no beach)",
       "airports": [
         "CAI"
-      ]
+      ],
+      "flight_hours": 5.0,
+      "flight_hours_source": "BA / EgyptAir LHR-CAI nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "muscat",
-      "label": "Muscat, Oman (26\u00b0C+ tropical coast)",
+      "label": "Muscat, Oman (26°C+ tropical coast)",
       "airports": [
         "MCT"
-      ]
+      ],
+      "flight_hours": 7.33,
+      "flight_hours_source": "Oman Air LHR-MCT nonstop, typical scheduled block 7h10-7h20 (flightsfrom.com/LHR-MCT and flightconnections.com, checked 2026-09-28); some schedule periods list up to ~8h10, so this is the one destination near the line"
     },
     {
       "key": "doha",
-      "label": "Doha, Qatar (private-beach resorts, 24\u00b0C)",
+      "label": "Doha, Qatar (private-beach resorts, 24°C)",
       "airports": [
         "DOH"
-      ]
+      ],
+      "flight_hours": 6.75,
+      "flight_hours_source": "Qatar Airways / BA LHR-DOH nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "tenerife",
-      "label": "Tenerife, Canary Islands (22\u201324\u00b0C eternal spring)",
+      "label": "Tenerife, Canary Islands (22–24°C eternal spring)",
       "airports": [
         "TFS"
-      ]
+      ],
+      "flight_hours": 4.5,
+      "flight_hours_source": "BA / easyJet LHR/LGW-TFS nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "madeira",
-      "label": "Funchal, Madeira (levada hiking \u2014 volcanic island, no sand)",
+      "label": "Funchal, Madeira (levada hiking — volcanic island, no sand)",
       "airports": [
         "FNC"
-      ]
+      ],
+      "flight_hours": 3.75,
+      "flight_hours_source": "BA / easyJet LHR/LGW-FNC nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "lanzarote",
-      "label": "Playa Blanca, Lanzarote (21\u201323\u00b0C, family beach resort)",
+      "label": "Playa Blanca, Lanzarote (21–23°C, family beach resort)",
       "airports": [
         "ACE"
-      ]
+      ],
+      "flight_hours": 4.0,
+      "flight_hours_source": "BA / easyJet LGW-ACE nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "cape_verde",
-      "label": "Sal Island, Cape Verde (26\u00b0C+ tropical beach)",
+      "label": "Sal Island, Cape Verde (26°C+ tropical beach)",
       "airports": [
         "SID"
-      ]
+      ],
+      "flight_hours": 6.0,
+      "flight_hours_source": "TUI / BA LGW-SID nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "fuerteventura",
-      "label": "Caleta de Fuste & Corralejo, Fuerteventura (21-23\u00b0C winter sun)",
+      "label": "Caleta de Fuste & Corralejo, Fuerteventura (21-23°C winter sun)",
       "airports": [
         "FUE"
-      ]
+      ],
+      "flight_hours": 4.25,
+      "flight_hours_source": "BA / easyJet LGW-FUE nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "gran_canaria",
-      "label": "Meloneras & Playa del Ingl\u00e9s, Gran Canaria (22-24\u00b0C winter sun)",
+      "label": "Meloneras & Playa del Inglés, Gran Canaria (22-24°C winter sun)",
       "airports": [
         "LPA"
-      ]
+      ],
+      "flight_hours": 4.5,
+      "flight_hours_source": "BA / easyJet LHR/LGW-LPA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "paphos",
-      "label": "Paphos, Cyprus (harbour + archaeology, 20-22\u00b0C)",
+      "label": "Paphos, Cyprus (harbour + archaeology, 20-22°C)",
       "airports": [
         "PFO"
-      ]
+      ],
+      "flight_hours": 4.75,
+      "flight_hours_source": "BA / easyJet LHR/LGW-PFO nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     }
   ]
 }

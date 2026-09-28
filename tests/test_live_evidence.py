@@ -27,9 +27,8 @@ CONFIG_JSON = """
   "departure_window": ["06:00", "23:59"],
   "outbound_dates": ["2026-12-22"],
   "return_dates": ["2026-12-30"],
-  "cabin_classes": ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS"],
   "destinations": [
-    {"key": "antalya", "label": "Antalya", "airports": ["AYT"]}
+    {"key": "antalya", "label": "Antalya", "airports": ["AYT"], "flight_hours": 4.5}
   ]
 }
 """
@@ -125,9 +124,19 @@ class TestDealLabelling(unittest.TestCase):
 
     def test_business_card_prices_only_from_business_evidence(self):
         # The 2026-09-22 cabin-seam fix: an ECONOMY fare must never price (or
-        # LIVE-verify) the Business card of the same airport.
-        economy_only = self._deals(
-            {("AYT", "ECONOMY"): _evidence("whole_party_return_total", 1234.56)}
+        # LIVE-verify) the Business card of the same airport. Since the
+        # 2026-09-28 rule the cabin follows flight hours, so this fixture gives
+        # Antalya a SYNTHETIC 9 h flight time to make its cards Business: the
+        # seam, not the geography, is under test (the catalogue has no resort
+        # beyond 8 h yet).
+        long_haul = load_holiday_config(
+            CONFIG_JSON.replace('"flight_hours": 4.5', '"flight_hours": 9.0')
+        )
+        economy_only = collect_holiday_deals(
+            long_haul,
+            live_flight_offers={
+                ("AYT", "ECONOMY"): _evidence("whole_party_return_total", 1234.56)
+            },
         )
         business = [
             d
@@ -138,13 +147,16 @@ class TestDealLabelling(unittest.TestCase):
         for deal in business:
             self.assertNotEqual(deal.confidence, "verified-exact-date")
 
-        both = self._deals(
-            {
+        self.assertEqual({d.cabin_class for d in economy_only}, {"BUSINESS"})
+
+        both = collect_holiday_deals(
+            long_haul,
+            live_flight_offers={
                 ("AYT", "ECONOMY"): _evidence("whole_party_return_total", 1234.56),
                 ("AYT", "BUSINESS"): _evidence(
                     "whole_party_return_total", 3100.0, cabin="BUSINESS"
                 ),
-            }
+            },
         )
         business_promoted = [
             d for d in both if d.cabin_class == "BUSINESS" and d.confidence == "verified-exact-date"
@@ -344,11 +356,11 @@ class TestEvidenceFileLoader(unittest.TestCase):
         html = render_holiday_report(
             self.config, generated_at="2026-09-25T13:00:00Z", deals=deals
         )
-        # The Economy card is not this fixture's headline (the report leads with
-        # the cheapest cabin, and the premium benchmark is cheaper than the real
-        # Economy fare), so the aged figure surfaces in the alternate-cabins row.
-        # Either way it must never read live.
-        self.assertIn("🟠 observed earlier, not live", html)
+        # Under the 2026-09-28 rule each destination prices ONE cabin, so the
+        # aged fare lands on the card itself rather than an alternate-cabins
+        # row: the card chip must say observed-not-live, and nothing anywhere
+        # may claim live.
+        self.assertIn("🟠 OBSERVED, NOT LIVE", html)
         self.assertNotIn("🟢 live observed", html)
         self.assertNotIn("🟢 LIVE VERIFIED", html)
 
@@ -440,8 +452,8 @@ class TestEvidenceFileLoader(unittest.TestCase):
         consume_skip_log()
 
     def test_business_entry_is_accepted_and_keyed_separately(self):
-        # July's report is BUSINESS-led: a whole-party business fare must
-        # survive the loader and land on the BUSINESS key.
+        # The loader keys evidence by cabin: a whole-party Business fare must
+        # survive it and land on the BUSINESS key, never on ECONOMY.
         path = self._write(
             [
                 self._rec(

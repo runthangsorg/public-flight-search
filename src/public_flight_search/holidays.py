@@ -9,6 +9,7 @@ import json
 from typing import Any, Mapping, Optional, Sequence
 from urllib.parse import urlencode
 
+from .cabin import cabin_for_flight_hours, destination_cabin, resolve_flight_hours
 from .config import (
     REPORT_CABINS,
     ConfigError,
@@ -41,6 +42,11 @@ class HolidayDestination:
     key: str
     label: str
     airports: tuple[str, ...]
+    # London flight hours (nonstop block time, or the fastest one-stop
+    # through journey where no nonstop exists). The cabin is DERIVED from it
+    # by cabin.py; cabin_class below stores that derived answer.
+    flight_hours: Optional[float] = None
+    flight_hours_source: str = ""
     cabin_class: str = "ECONOMY"
     cabin_classes: tuple[str, ...] = ()
 
@@ -110,6 +116,17 @@ HOLIDAY_SEARCH_QUERIES: dict[str, str] = {
     "fuerteventura": "Caleta de Fuste, Fuerteventura",
     "gran_canaria": "Maspalomas, Gran Canaria",
     "paphos": "Paphos, Cyprus",
+    # Far East watch (2026-09-28)
+    "phuket": "Phuket, Thailand",
+    "krabi": "Ao Nang, Krabi, Thailand",
+    "langkawi": "Langkawi, Malaysia",
+    "penang": "Batu Ferringhi, Penang, Malaysia",
+    "singapore": "Sentosa, Singapore",
+    "phu_quoc": "Phu Quoc, Vietnam",
+    "bali": "Nusa Dua, Bali, Indonesia",
+    "da_nang": "Da Nang, Vietnam",
+    "kota_kinabalu": "Kota Kinabalu, Sabah, Malaysia",
+    "japan": "Tokyo, Japan",
 }
 
 # Destination airport per holiday key (for Google Flights parametric links).
@@ -119,7 +136,47 @@ HOLIDAY_AIRPORTS: dict[str, str] = {
     "doha": "DOH", "tenerife": "TFS", "madeira": "FNC",
     "lanzarote": "ACE", "cape_verde": "SID",
     "fuerteventura": "FUE", "gran_canaria": "LPA", "paphos": "PFO",
+    "phuket": "HKT", "krabi": "KBV", "langkawi": "LGK", "penang": "PEN",
+    "singapore": "SIN", "phu_quoc": "PQC", "bali": "DPS", "da_nang": "DAD",
+    "kota_kinabalu": "BKI", "japan": "HND",
 }
+
+#: Far East watch (owner preference, 2026-09-28): long-haul destinations
+#: ranked FIRST in the report. None has a resort in the catalogue with a
+#: verified one-unit family suite, so each is a DESTINATION watch, not a
+#: hotel card, and every figure here is a benchmark, unverified: an
+#: editorial estimate of a peak-season Business return fare per person and
+#: a 5-star family-suite night, never an observed or quoted price. They are
+#: here to rank and to size the budget question, and are replaced the day a
+#: live whole-party observation exists. ``months`` is the season each is
+#: listed for; outside it the row says so and shows no price.
+FAR_EAST_WATCH: dict[str, dict[str, Any]] = {
+    "phuket": {"months": (11, 12, 1, 2, 3), "business_pp_gbp": 3900, "suite_night_gbp": 520,
+               "routing": "Virgin Atlantic nonstop (seasonal from 18 Oct 2026)",
+               "climate": "30-32°C, dry season, sea 28°C"},
+    "krabi": {"months": (11, 12, 1, 2, 3), "business_pp_gbp": 3700, "suite_night_gbp": 420,
+              "routing": "1 stop via Bangkok", "climate": "31-32°C, dry season"},
+    "langkawi": {"months": (11, 12, 1, 2, 3), "business_pp_gbp": 3100, "suite_night_gbp": 480,
+                 "routing": "1 stop via Kuala Lumpur", "climate": "31-32°C, dry season begins"},
+    "penang": {"months": (12, 1, 2, 3), "business_pp_gbp": 3100, "suite_night_gbp": 300,
+               "routing": "1 stop via Kuala Lumpur", "climate": "31°C, occasional showers"},
+    "singapore": {"months": (11, 12, 1, 2, 3, 6, 7, 8), "business_pp_gbp": 4100, "suite_night_gbp": 650,
+                  "routing": "BA / Singapore Airlines nonstop", "climate": "30-31°C, monsoon showers"},
+    "phu_quoc": {"months": (11, 12, 1, 2, 3), "business_pp_gbp": 3200, "suite_night_gbp": 420,
+                 "routing": "1 stop via Bangkok or Ho Chi Minh City", "climate": "30-31°C, dry season"},
+    "bali": {"months": (5, 6, 7, 8, 9), "business_pp_gbp": 3900, "suite_night_gbp": 450,
+             "routing": "1 stop via Singapore", "climate": "27-30°C, dry season"},
+    "da_nang": {"months": (5, 6, 7, 8), "business_pp_gbp": 3300, "suite_night_gbp": 350,
+                "routing": "1 stop via Bangkok, Hanoi or Ho Chi Minh City",
+                "climate": "33-35°C, dry season; Hoi An 30 min"},
+    "kota_kinabalu": {"months": (5, 6, 7, 8, 9), "business_pp_gbp": 3300, "suite_night_gbp": 320,
+                      "routing": "1 stop via Kuala Lumpur", "climate": "31-32°C, drier west coast"},
+    "japan": {"months": (7, 8), "business_pp_gbp": 5200, "suite_night_gbp": 700,
+              "routing": "BA / JAL / ANA nonstop", "climate": "30-33°C, humid; rainy season usually over by mid-July"},
+}
+
+#: The exact label every Far East watch figure carries.
+FAR_EAST_PRICE_LABEL = "benchmark, unverified"
 
 # easyJet holidays destination guides, verified live (muscat/doha 404: not
 # served by easyJet holidays -> hub fallback in build_easyjet_url).
@@ -516,6 +573,11 @@ def count_provider_entries(config: HolidayConfig) -> int:
     )
 
 
+#: Upper bound on destinations per config (bounded engine: every destination
+#: multiplies provider links and evidence keys).
+MAX_DESTINATIONS = 24
+
+
 def load_holiday_config(payload: str) -> HolidayConfig:
     try:
         raw = json.loads(payload)
@@ -542,20 +604,23 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     # Shared with the live-evidence loader and the renderer via config.py, so
     # "the report can price this cabin" is one definition, not three.
     valid_cabins = REPORT_CABINS
-    root_cabin = str(raw.get("cabin_class", "ECONOMY")).upper()
-    if root_cabin not in valid_cabins:
-        raise ConfigError(f"unsupported cabin_class: {root_cabin}")
 
-    root_cabins_raw = raw.get("cabin_classes")
-    if root_cabins_raw is not None:
-        if not isinstance(root_cabins_raw, list) or not root_cabins_raw:
-            raise ConfigError("cabin_classes must be a non-empty list")
-        root_cabins = tuple(str(c).upper() for c in root_cabins_raw)
-        for c in root_cabins:
-            if c not in valid_cabins:
-                raise ConfigError(f"unsupported cabin_class in cabin_classes: {c}")
-    else:
-        root_cabins = (root_cabin,)
+    def _checked_cabins(value: Any, field: str) -> None:
+        # Cabin fields are LEGACY since the 2026-09-28 rule: the cabin is
+        # derived from flight hours (cabin.py) and these values are never
+        # priced. They are still validated so a typo fails loudly, and still
+        # accepted so a pre-rule config (the live December secret was loaded
+        # from the old example, which named PREMIUM_ECONOMY) keeps loading.
+        values = value if isinstance(value, list) else [value]
+        if isinstance(value, list) and not value:
+            raise ConfigError(f"{field} must be a non-empty list")
+        for cabin in values:
+            if str(cabin).upper() not in valid_cabins:
+                raise ConfigError(f"unsupported {field}: {str(cabin).upper()}")
+
+    for field in ("cabin_class", "cabin_classes"):
+        if field in raw:
+            _checked_cabins(raw[field], field)
 
     max_budget_raw = raw.get("max_budget_gbp", 5000.0)
     try:
@@ -566,40 +631,51 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         raise ConfigError("max_budget_gbp must be a positive number")
 
     destination_raw = raw.get("destinations")
-    dest_allowed = {"key", "label", "airports", "cabin_class", "cabin_classes"}
-    if not isinstance(destination_raw, list) or not 1 <= len(destination_raw) <= 16:
-        raise ConfigError("destinations must contain 1-16 entries")
+    dest_allowed = {
+        "key", "label", "airports", "cabin_class", "cabin_classes",
+        "flight_hours", "flight_hours_source",
+    }
+    # 24, not 16: the Far East additions of 2026-09-28 took the December
+    # watch to 20 destinations without dropping any existing one.
+    if not isinstance(destination_raw, list) or not 1 <= len(destination_raw) <= MAX_DESTINATIONS:
+        raise ConfigError(f"destinations must contain 1-{MAX_DESTINATIONS} entries")
     destinations = []
     for item in destination_raw:
         if not isinstance(item, dict) or set(item) - dest_allowed:
             continue
-        dest_cabins_raw = item.get("cabin_classes")
-        if dest_cabins_raw is not None:
-            if not isinstance(dest_cabins_raw, list) or not dest_cabins_raw:
-                raise ConfigError("destination cabin_classes must be a non-empty list")
-            dest_cabins = tuple(str(c).upper() for c in dest_cabins_raw)
-            for c in dest_cabins:
-                if c not in valid_cabins:
-                    raise ConfigError(f"unsupported destination cabin_class in cabin_classes: {c}")
-            effective_dest_cabin = dest_cabins[0]
-        else:
-            dest_cabin = str(item.get("cabin_class", root_cabin)).upper()
-            if dest_cabin not in valid_cabins:
-                raise ConfigError(f"unsupported destination cabin_class: {dest_cabin}")
-            dest_cabins = (dest_cabin,) if "cabin_class" in item else root_cabins
-            effective_dest_cabin = dest_cabin
-
+        key = _text(item.get("key"), "destination key", 48)
+        for field in ("cabin_class", "cabin_classes"):
+            if field in item:
+                _checked_cabins(item[field], f"destination {field}")
+        hours_raw = item.get("flight_hours")
+        if hours_raw is not None and (
+            isinstance(hours_raw, bool) or not isinstance(hours_raw, (int, float))
+        ):
+            raise ConfigError(f"destination '{key}' flight_hours must be a number")
+        hours = resolve_flight_hours(key, hours_raw)
+        try:
+            derived = cabin_for_flight_hours(hours)
+        except ValueError as exc:
+            raise ConfigError(
+                f"destination '{key}' needs flight_hours (London block time in "
+                f"hours): there is no built-in value to derive its cabin from ({exc})"
+            ) from exc
         destinations.append(
             HolidayDestination(
-                key=_text(item.get("key"), "destination key", 48),
+                key=key,
                 label=_text(item.get("label"), "destination label"),
                 airports=_airports(item.get("airports"), "destination airports"),
-                cabin_class=effective_dest_cabin,
-                cabin_classes=dest_cabins,
+                flight_hours=hours,
+                flight_hours_source=str(item.get("flight_hours_source", "")),
+                # The DERIVED cabin, never the config's: every consumer
+                # (report, evidence contract, provider links) reads the rule.
+                cabin_class=derived,
+                cabin_classes=(derived,),
             )
         )
     if len(destinations) != len(destination_raw):
         raise ConfigError("a destination contains unknown fields")
+    derived_cabins = tuple(dict.fromkeys(d.cabin_class for d in destinations))
     outbound_dates = _dates(raw.get("outbound_dates"), "outbound_dates")
     return_dates = _dates(raw.get("return_dates"), "return_dates")
     valid_pairs = tuple(
@@ -623,8 +699,9 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         outbound_dates=outbound_dates,
         return_dates=return_dates,
         destinations=tuple(destinations),
-        cabin_class=root_cabin,
-        cabin_classes=root_cabins,
+        # Summary of what the report prices, derived per destination.
+        cabin_class="ECONOMY" if "ECONOMY" in derived_cabins else derived_cabins[0],
+        cabin_classes=derived_cabins,
         max_budget_gbp=max_budget,
     )
 
@@ -654,14 +731,13 @@ def destination_cabins(
     ``collect_holiday_deals`` builds. The live-evidence contract is derived
     from this function, so a hunt aimed by the contract cannot be aimed at a
     cabin the report will never price.
+
+    Since the 2026-09-28 rule the answer is DERIVED, one cabin per
+    destination: BUSINESS only when the destination's London flight time is
+    over 8 hours, else ECONOMY, and never premium economy (``cabin.py``).
+    A config's own cabin fields are legacy and never consulted here.
     """
-    return (
-        getattr(destination, "cabin_classes", ())
-        or (
-            getattr(destination, "cabin_class", "")
-            or getattr(config, "cabin_class", "ECONOMY"),
-        )
-    )
+    return (destination_cabin(destination),)
 
 
 def resort_catalog() -> dict[str, list[dict[str, Any]]]:
@@ -2119,6 +2195,124 @@ def render_diy_block(deal: PackageDeal, *, adults: int) -> str:
     return ''.join(parts)
 
 
+def _hours_text(hours: Optional[float]) -> str:
+    if hours is None:
+        return "?"
+    whole = int(hours)
+    minutes = int(round((hours - whole) * 60))
+    if minutes == 60:
+        whole, minutes = whole + 1, 0
+    return f"{whole}h{minutes:02d}"
+
+
+def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
+    """The Far East watch for this config, in config order (they lead it).
+
+    One row per configured destination that has a ``FAR_EAST_WATCH`` entry.
+    Priced from the watch benchmarks for the same target date pair the cards
+    use; a destination listed outside its season carries no price.
+    """
+    pairs = _date_pairs(config)
+    shortlist = _shortlist_pairs(pairs)
+    if not shortlist:
+        return []
+    outbound, returning = shortlist[len(shortlist) // 2]
+    nights = (
+        datetime.strptime(returning, "%Y-%m-%d") - datetime.strptime(outbound, "%Y-%m-%d")
+    ).days
+    month = int(outbound[5:7])
+    unit_rooms = 1 if len(config.rooms) >= 3 else len(config.rooms)
+    rows: list[dict[str, Any]] = []
+    for dest in config.destinations:
+        watch = FAR_EAST_WATCH.get(dest.key.lower())
+        if watch is None:
+            continue
+        cabin = destination_cabin(dest)
+        in_season = month in watch["months"]
+        total = None
+        if in_season:
+            total = float(
+                watch["business_pp_gbp"] * config.travellers + watch["suite_night_gbp"] * nights
+            )
+        rows.append({
+            "key": dest.key,
+            "label": dest.label,
+            "airport": HOLIDAY_AIRPORTS.get(dest.key.lower(), dest.airports[0]),
+            "flight_hours": dest.flight_hours,
+            "flight_hours_source": dest.flight_hours_source,
+            "cabin": cabin,
+            "routing": watch["routing"],
+            "climate": watch["climate"],
+            "in_season": in_season,
+            "outbound": outbound,
+            "return": returning,
+            "nights": nights,
+            "fare_pp_gbp": float(watch["business_pp_gbp"]),
+            "suite_night_gbp": float(watch["suite_night_gbp"]),
+            "indicative_total_gbp": total,
+            "over_budget_gbp": (
+                round(total - config.max_budget_gbp, 2)
+                if total is not None and total > config.max_budget_gbp
+                else 0.0
+            ),
+            "price_basis": FAR_EAST_PRICE_LABEL,
+            "flights_url": build_google_flights_holiday_url(
+                destination=dest.key, origin_airports=config.origins,
+                departure_date=outbound, return_date=returning,
+                adults=config.travellers, cabin_class=cabin,
+            ),
+            "booking_url": build_booking_com_url(
+                destination=dest.key, departure_date=outbound,
+                return_date=returning, adults=config.travellers, rooms=unit_rooms,
+            ),
+            "hotels_url": build_google_hotels_url(
+                destination=dest.key, departure_date=outbound,
+                return_date=returning, adults=config.travellers, rooms=unit_rooms,
+            ),
+        })
+    return rows
+
+
+def render_far_east_watch(config: HolidayConfig) -> str:
+    """Compact HTML block for the Far East watch; empty when none configured."""
+    rows = far_east_watch_rows(config)
+    if not rows:
+        return ""
+    link = "color:#2563eb;text-decoration:none;font-weight:600;"
+    out = [
+        '<h2 style="margin:6px 0 4px 0; color:#0f172a; font-size:22px; font-weight:800;">'
+        '🌏 Far East first — long haul, Business (over 8 h from London)</h2>',
+        '<p style="margin:0 0 8px 0; color:#475569; font-size:13px;">Every figure in this block is '
+        '<strong>' + FAR_EAST_PRICE_LABEL + '</strong>: an estimate of a peak-season Business fare '
+        'and a 5-star family-suite night, not an observed or quoted price. No Far East resort has a '
+        'verified one-unit family suite in the catalogue yet, so these are destination watches, not '
+        'hotel cards. Cabin rule: Business only when the flight is over 8 hours, otherwise Economy.</p>',
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
+        'background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 18px 0;">',
+    ]
+    for row in rows:
+        out.append('<tr><td style="padding:9px 12px; border-bottom:1px solid #f1f5f9; font-size:13px; color:#475569;">')
+        out.append('<strong style="color:#0f172a; font-size:14px;">' + escape(row["label"]) + '</strong><br>')
+        out.append('✈ ' + escape(_hours_text(row["flight_hours"])) + ' · ' + escape(row["routing"])
+                   + ' · <strong>' + escape(row["cabin"].title()) + '</strong> · ' + escape(row["climate"]))
+        if row["in_season"] and row["indicative_total_gbp"] is not None:
+            out.append('<br>≈ £' + f'{row["fare_pp_gbp"]:,.0f}' + 'pp Business + suite ≈ £'
+                       + f'{row["suite_night_gbp"]:,.0f}' + '/night → <strong style="color:#0f172a;">≈ £'
+                       + f'{row["indicative_total_gbp"]:,.0f}' + '</strong> for ' + str(config.travellers)
+                       + ', ' + str(row["nights"]) + ' nights — <em>' + FAR_EAST_PRICE_LABEL + '</em>')
+            if row["over_budget_gbp"] > 0:
+                out.append(' · <span style="color:#b45309;">£' + f'{row["over_budget_gbp"]:,.0f}'
+                           + ' over the £' + f'{config.max_budget_gbp:,.0f}' + ' budget</span>')
+        else:
+            out.append('<br><span style="color:#b45309;">Outside its season for these dates — no price shown.</span>')
+        out.append('<br><a href="' + escape(row["flights_url"], quote=True) + '" style="' + link + '">Google Flights (' + escape(row["cabin"].title()) + ') ↗</a>'
+                   + ' · <a href="' + escape(row["booking_url"], quote=True) + '" style="' + link + '">Booking.com ↗</a>'
+                   + ' · <a href="' + escape(row["hotels_url"], quote=True) + '" style="' + link + '">Google Hotels ↗</a>')
+        out.append('</td></tr>')
+    out.append('</table>')
+    return ''.join(out)
+
+
 def render_holiday_report(
     config: HolidayConfig,
     *,
@@ -2208,6 +2402,11 @@ def render_holiday_report(
         for d in (config.outbound_dates or [])
         if '-' in d
     ) or "summer" in (config.report_title or "").lower() or "july" in (config.report_title or "").lower() or "august" in (config.report_title or "").lower()
+
+    # ── FAR EAST FIRST (owner preference, 2026-09-28) ──
+    far_east = render_far_east_watch(config)
+    if far_east:
+        out.append(far_east)
 
     # ── VERIFIED LIVE DEALS UNDER £5,000 (WHEN AVAILABLE) ──
     if deals:

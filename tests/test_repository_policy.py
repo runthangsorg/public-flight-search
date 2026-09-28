@@ -26,17 +26,23 @@ class RepositoryPolicyTests(unittest.TestCase):
 
         ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertNotIn("schedule:", ci)
-        for name in ("flight-digest.yml", "holiday-planner.yml", "july-holiday-planner.yml"):
+        # The September flight digest was DELETED on 2026-09-28 (owner
+        # instruction; it had been disabled since 2026-09-25). Its absence is
+        # part of the policy: no digest workflow may reappear unreviewed.
+        self.assertFalse(
+            (ROOT / ".github/workflows/flight-digest.yml").exists(),
+            "flight-digest.yml was deleted 2026-09-28; reintroducing it needs "
+            "an owner decision and the FLIGHT_SEARCH_CONFIG_JSON secret back",
+        )
+        self.assertNotIn("FLIGHT_SEARCH_CONFIG_JSON", workflows)
+        for name in ("holiday-planner.yml", "july-holiday-planner.yml"):
             production = (ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
             self.assertNotIn("pull_request:", production)
             self.assertNotIn("push:", production)
             self.assertIn("default: true", production)
 
-        flight = (ROOT / ".github/workflows/flight-digest.yml").read_text(encoding="utf-8")
         holiday = (ROOT / ".github/workflows/holiday-planner.yml").read_text(encoding="utf-8")
         july = (ROOT / ".github/workflows/july-holiday-planner.yml").read_text(encoding="utf-8")
-        self.assertNotIn("HOLIDAY_SEARCH_CONFIG_JSON", flight)
-        self.assertLess(flight.index("Run safety tests"), flight.index("FLIGHT_SEARCH_CONFIG_JSON"))
         self.assertLess(holiday.index("Run safety tests"), holiday.index("HOLIDAY_SEARCH_CONFIG_JSON"))
         self.assertLess(july.index("Run safety tests"), july.index("JULY_HOLIDAY_SEARCH_CONFIG_JSON"))
 

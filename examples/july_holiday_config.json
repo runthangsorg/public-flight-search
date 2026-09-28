@@ -8,11 +8,6 @@
       1
     ]
   },
-  "cabin_class": "BUSINESS",
-  "cabin_classes": [
-    "BUSINESS",
-    "PREMIUM_ECONOMY"
-  ],
   "max_budget_gbp": 12000,
   "departure_window": [
     "06:00",
@@ -36,12 +31,50 @@
   ],
   "destinations": [
     {
+      "key": "bali",
+      "label": "Bali, Indonesia (Nusa Dua / Seminyak beaches, 27-30C and dry in July)",
+      "airports": [
+        "DPS"
+      ],
+      "flight_hours": 17.25,
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via SIN: LHR-SIN nonstop ~13h + connection + SIN-DPS ~2h45, about 17h15 (estimate from published schedules, not live-checked)"
+    },
+    {
+      "key": "da_nang",
+      "label": "Da Nang & Hoi An, Vietnam (dry-season beaches + heritage town, 33-35C in July)",
+      "airports": [
+        "DAD"
+      ],
+      "flight_hours": 15.0,
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK, HAN or SGN: London leg ~11h45-12h45 + connection + ~1h15-1h45, about 15h (estimate from published schedules, not live-checked)"
+    },
+    {
+      "key": "kota_kinabalu",
+      "label": "Kota Kinabalu, Sabah, Malaysia (Borneo beach resorts, 31-32C in July)",
+      "airports": [
+        "BKI"
+      ],
+      "flight_hours": 17.0,
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via KUL: LHR-KUL nonstop ~13h + connection + KUL-BKI ~2h30, about 17h (estimate from published schedules, not live-checked)"
+    },
+    {
+      "key": "japan",
+      "label": "Tokyo & Hakone, Japan (city + hot springs; 30-33C and humid, rainy season usually over by mid-July)",
+      "airports": [
+        "HND",
+        "NRT"
+      ],
+      "flight_hours": 14.25,
+      "flight_hours_source": "BA / JAL / ANA LHR-HND nonstop, scheduled block about 14h-14h30 on the routing that avoids Russian airspace (published schedules, not re-checked live on 2026-09-28)"
+    },
+    {
       "key": "antalya",
       "label": "Antalya Riviera, Turkey (Ultra All Inclusive resorts)",
       "airports": [
         "AYT"
       ],
-      "cabin_class": "BUSINESS"
+      "flight_hours": 4.5,
+      "flight_hours_source": "BA / SunExpress LHR/LGW/STN-AYT nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "tenerife",
@@ -49,7 +82,8 @@
       "airports": [
         "TFS"
       ],
-      "cabin_class": "BUSINESS"
+      "flight_hours": 4.5,
+      "flight_hours_source": "BA / easyJet LHR/LGW-TFS nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "malta",
@@ -57,7 +91,8 @@
       "airports": [
         "MLA"
       ],
-      "cabin_class": "PREMIUM_ECONOMY"
+      "flight_hours": 3.25,
+      "flight_hours_source": "BA / Air Malta LHR/LGW-MLA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "paphos",
@@ -65,7 +100,8 @@
       "airports": [
         "PFO"
       ],
-      "cabin_class": "BUSINESS"
+      "flight_hours": 4.75,
+      "flight_hours_source": "BA / easyJet LHR/LGW-PFO nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "taghazout",
@@ -73,7 +109,8 @@
       "airports": [
         "AGA"
       ],
-      "cabin_class": "PREMIUM_ECONOMY"
+      "flight_hours": 3.75,
+      "flight_hours_source": "BA / easyJet LGW-AGA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "hurghada",
@@ -81,7 +118,8 @@
       "airports": [
         "HRG"
       ],
-      "cabin_class": "BUSINESS"
+      "flight_hours": 5.25,
+      "flight_hours_source": "easyJet / TUI LGW/LTN-HRG nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "doha",
@@ -89,7 +127,8 @@
       "airports": [
         "DOH"
       ],
-      "cabin_class": "BUSINESS"
+      "flight_hours": 6.75,
+      "flight_hours_source": "Qatar Airways / BA LHR-DOH nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "muscat",
@@ -97,7 +136,8 @@
       "airports": [
         "MCT"
       ],
-      "cabin_class": "BUSINESS"
+      "flight_hours": 7.33,
+      "flight_hours_source": "Oman Air LHR-MCT nonstop, typical scheduled block 7h10-7h20 (flightsfrom.com/LHR-MCT and flightconnections.com, checked 2026-09-28); some schedule periods list up to ~8h10, so this is the one destination near the line"
     }
   ]
 }
