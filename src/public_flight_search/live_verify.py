@@ -295,14 +295,22 @@ class EvidenceContract:
         }
 
     def hunt_config_overrides(self) -> dict:
-        """The fragment a hunt config needs so every read can be consumed.
+        """A self-contained config the private hunt can run as-is.
 
-        The hunt reuses the report's own config file (same ``party``,
-        ``destinations`` keys), so only the four things it gets wrong today
-        are overridden: which date pairs are priced, which origins are
-        priced, which cabins have cards, and which airports have cards.
+        ``python -m live --config <file>`` reads ``party.travellers`` and
+        ``destinations[].airports`` and nothing else from the payload, so a
+        fragment carrying only the four overrides built zero routes — a hunt
+        aimed from it did no work at all. This therefore includes both:
+        travellers (the evidence loader skips a fare whose party size does
+        not match) and one destination entry per contracted airport, which
+        is the narrower set the report has cards for.
         """
         return {
+            "party": {"travellers": int(self.travellers)},
+            "destinations": [
+                {"airports": [airport], "label": airport}
+                for airport in self.airports
+            ],
             "origins": list(self.origins or ((self.origin,) if self.origin else ())),
             "date_pairs": [list(pair) for pair in self.hunt_date_pairs],
             "cabin_classes": list(self.cabins),

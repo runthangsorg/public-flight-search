@@ -248,11 +248,19 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
         self.assertIn("AYT/ECONOMY", payload["keys"])
         self.assertNotIn("AYT/BUSINESS", payload["keys"])
-        # The hunt reuses the report's own config, so only the four things it
-        # currently gets wrong are overridden.
+        # Self-contained: everything `python -m live --config` reads, plus
+        # the four things the hunt gets wrong if it is handed the report's
+        # own config (which pairs/origins/cabins/airports are priced).
         self.assertEqual(
             set(contract.hunt_config_overrides()),
-            {"origins", "date_pairs", "cabin_classes", "airports"},
+            {
+                "party",
+                "destinations",
+                "origins",
+                "date_pairs",
+                "cabin_classes",
+                "airports",
+            },
         )
 
 
@@ -373,6 +381,42 @@ class TestEvidenceContractCommand(unittest.TestCase):
         )
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
         self.assertEqual(payload["airports"], ["AYT", "HRG", "PFO", "TFS"])
+
+    def test_hunt_config_drives_the_hunt_on_its_own(self):
+        # Regression: the fragment carried only origins/date_pairs/cabins/
+        # airports, so `python -m live --config <file>` built ZERO routes —
+        # the private hunt reads party.travellers and destinations[].airports
+        # and nothing else, so aiming it from the CLI output did no work at
+        # all. Everything the reader touches has to be in the emitted file.
+        import contextlib
+        import io
+
+        from public_flight_search.cli import main
+
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = main(
+                [
+                    "evidence-contract",
+                    "--config",
+                    str(DEC_CONFIG),
+                    "--hunt-config",
+                ]
+            )
+        self.assertEqual(code, 0)
+        payload = json.loads(buffer.getvalue())
+        # A party size the evidence loader will accept, not the reader's
+        # default of 1 traveller (which every fare would then be dropped for).
+        self.assertEqual(payload["party"], {"travellers": 5})
+        # One entry per contracted airport: load_routes uses airports[0], so a
+        # multi-airport entry would silently hunt only its first airport.
+        entries = payload["destinations"]
+        self.assertTrue(entries)
+        self.assertTrue(all(len(entry["airports"]) == 1 for entry in entries))
+        self.assertEqual(
+            {entry["airports"][0] for entry in entries},
+            set(payload["airports"]),
+        )
 
     def test_cli_rejects_unknown_flags(self):
         from public_flight_search.cli import main
