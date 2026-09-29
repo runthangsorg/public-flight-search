@@ -43,9 +43,13 @@ logger = logging.getLogger(__name__)
 def _live_evidence_counts(live_offers) -> dict[str, int]:
     """Distinct airports and cabins among the fares, split by liveness.
 
-    The mapping is keyed by ``(airport, cabin)``, so its length counts keys:
-    three cabins priced for AYT alone would have been reported as three
-    "airports", the same mislabel the workflow seed log carried.
+    Keys are read positionally: the loader keys entries by
+    ``(airport, cabin, outbound, return, origin)`` so one run can hold a
+    fare per date pair and origin, while callers still hand in plain
+    ``(airport, cabin)`` maps. Both are read here, and both count airports
+    by AIRPORT — three cabins priced for AYT alone would otherwise have been
+    reported as three "airports", the same mislabel the workflow seed log
+    carried.
 
     ``live_*`` counts only fares that may be labelled live. An aged exact-date
     fare is still consumed (it prices the card and is labelled ``stale-cache``),
@@ -55,10 +59,10 @@ def _live_evidence_counts(live_offers) -> dict[str, int]:
     live = [key for key, ev in live_offers.items() if getattr(ev, "promotable", False)]
     stale = [key for key, ev in live_offers.items() if getattr(ev, "stale", False)]
     return {
-        "live_flight_airports": len({str(airport) for airport, _ in live}),
-        "live_flight_cabins": len({str(cabin) for _, cabin in live}),
+        "live_flight_airports": len({str(key[0]) for key in live}),
+        "live_flight_cabins": len({str(key[1]) for key in live}),
         "stale_flight_fares": len(stale),
-        "stale_flight_airports": len({str(airport) for airport, _ in stale}),
+        "stale_flight_airports": len({str(key[0]) for key in stale}),
     }
 
 
@@ -176,7 +180,7 @@ def run_holiday_planner(
         "HOLIDAY_LIVE_EVIDENCE_PATH", live_verify.DEFAULT_EVIDENCE_PATH
     )
     # Bounded live flight injection (GHA-safe HTTP only, no browser).
-    live_offers: dict[tuple[str, str], object] = {}
+    live_offers: dict[tuple[str, ...], object] = {}
     live_attempted = False
     live_skipped: list[str] = []
     during_live_error: Optional[str] = None

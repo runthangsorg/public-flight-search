@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from html import escape
 import json
+import sys
 from typing import Any, Mapping, Optional, Sequence
 from urllib.parse import urlencode
 
@@ -20,7 +21,7 @@ from .config import (
     _window,
 )
 from .google_flights import build_google_flights_roundtrip_url
-from .live_verify import LiveFareEvidence
+from .live_verify import LiveFareEvidence, evidence_for, priced_date_pair
 from .vendors import (
     DEEP_LINK as VENDOR_DEEP_LINK,
     DESTINATION_PAGE as VENDOR_DESTINATION_PAGE,
@@ -64,6 +65,12 @@ class HolidayConfig:
     cabin_class: str = "ECONOMY"
     cabin_classes: tuple[str, ...] = ()
     max_budget_gbp: float = 5000.0
+    #: Stay lengths the report will price. A date pair outside the band is
+    #: never a candidate: with a 7x7 December grid a 2-night trip is the
+    #: cheapest total on every resort, so "cheapest of all pairs" would be a
+    #: report about short trips, not about the holiday being planned.
+    min_nights: int = 6
+    max_nights: int = 10
 
 
 # ---------------------------------------------------------------------------
@@ -577,6 +584,11 @@ def count_provider_entries(config: HolidayConfig) -> int:
 #: multiplies provider links and evidence keys).
 MAX_DESTINATIONS = 24
 
+#: Upper bound on valid date combinations. ``_dates`` already caps each list
+#: at 8 dates, so 8x8 is the widest grid the schema can express; the old cap
+#: of 24 rejected the owner's 7x7 December window (49 combinations) outright.
+MAX_DATE_COMBINATIONS = 64
+
 
 def load_holiday_config(payload: str) -> HolidayConfig:
     try:
@@ -587,6 +599,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         "report_title", "party", "departure_window", "origins",
         "outbound_dates", "return_dates", "destinations",
         "cabin_class", "cabin_classes", "max_budget_gbp",
+        "min_nights", "max_nights",
     }
     if not isinstance(raw, dict) or set(raw) - allowed:
         raise ConfigError("holiday configuration contains unknown fields")
@@ -629,6 +642,22 @@ def load_holiday_config(payload: str) -> HolidayConfig:
             raise ValueError
     except (ValueError, TypeError):
         raise ConfigError("max_budget_gbp must be a positive number")
+
+    def _nights_bound(value: Any, field: str) -> int:
+        if isinstance(value, bool):
+            raise ConfigError(f"{field} must be a whole number of nights")
+        try:
+            nights = int(value)
+        except (TypeError, ValueError):
+            raise ConfigError(f"{field} must be a whole number of nights")
+        if not 1 <= nights <= 60:
+            raise ConfigError(f"{field} must be between 1 and 60 nights")
+        return nights
+
+    min_nights = _nights_bound(raw.get("min_nights", 6), "min_nights")
+    max_nights = _nights_bound(raw.get("max_nights", 10), "max_nights")
+    if min_nights > max_nights:
+        raise ConfigError("min_nights must not exceed max_nights")
 
     destination_raw = raw.get("destinations")
     dest_allowed = {
@@ -686,8 +715,10 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     )
     if not valid_pairs:
         raise ConfigError("at least one return date must be after an outbound date")
-    if len(valid_pairs) > 24:
-        raise ConfigError("holiday configuration exceeds 24 valid date combinations")
+    if len(valid_pairs) > MAX_DATE_COMBINATIONS:
+        raise ConfigError(
+            f"holiday configuration exceeds {MAX_DATE_COMBINATIONS} valid date combinations"
+        )
     return HolidayConfig(
         report_title=_validate_report_title(
             _text(raw.get("report_title", "Holiday package watch"), "report_title")
@@ -703,6 +734,8 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         cabin_class="ECONOMY" if "ECONOMY" in derived_cabins else derived_cabins[0],
         cabin_classes=derived_cabins,
         max_budget_gbp=max_budget,
+        min_nights=min_nights,
+        max_nights=max_nights,
     )
 
 
@@ -720,6 +753,56 @@ def _shortlist_pairs(pairs: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str
     if len(pairs) <= 3:
         return pairs
     return (pairs[0], pairs[len(pairs) // 2], pairs[-1])
+
+
+def nights_between(pair: tuple[str, str]) -> int:
+    """Nights in one (outbound, return) pair."""
+    outbound, returning = pair
+    return (
+        datetime.strptime(returning, "%Y-%m-%d")
+        - datetime.strptime(outbound, "%Y-%m-%d")
+    ).days
+
+
+def priceable_date_pairs(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
+    """The date pairs this run will actually price.
+
+    Every configured pair whose stay length sits in ``min_nights``..``max_nights``.
+    The collector prices each of them and reports the cheapest, so this is the
+    set that decides what the reader is shown; the evidence loader and the hunt
+    contract must agree with it or browser reads are spent on dates nothing
+    prices.
+
+    A band that matches nothing is a misconfiguration, not a quiet market: it
+    falls back to every valid pair (and says so on stderr) rather than
+    returning an empty set and taking the whole report down to zero deals.
+    """
+    pairs = _date_pairs(config)
+    low, high = int(config.min_nights), int(config.max_nights)
+    priced = tuple(pair for pair in pairs if low <= nights_between(pair) <= high)
+    if priced:
+        return priced
+    print(
+        f"holiday: no date pair is {low}-{high} nights; pricing all "
+        f"{len(pairs)} configured pairs instead",
+        file=sys.stderr,
+    )
+    return pairs
+
+
+def pricing_order(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
+    """Priceable pairs, with the report's headline pair tried first.
+
+    The headline pair (the shortlist middle, the pair the evidence contract
+    states) is what a benchmark-only run has always displayed. Putting it
+    first makes ties resolve to it, so widening the search does not silently
+    rewrite every card's dates to the earliest pair in the window.
+    """
+    pairs = priceable_date_pairs(config)
+    headline = priced_date_pair(config)
+    if headline in pairs:
+        return (headline,) + tuple(pair for pair in pairs if pair != headline)
+    return pairs
 
 
 def destination_cabins(
@@ -859,6 +942,10 @@ class PackageDeal:
     # run (1 = best). Gives history a stable, score-derived ordinal so trend
     # deltas read "rose/fell in value rank", never just raw price wobble.
     rank_value: int = 0
+    # The departure airport THIS quote was priced from. Configs list several
+    # origins; a benchmark only ever prices the first, while an observed fare
+    # may win from any of them, so the card has to say which one won.
+    origin: str = ""
 
     @property
     def vs_peak_saving_gbp(self) -> float:
@@ -1738,8 +1825,8 @@ def collect_holiday_deals(
     never labelled "under budget" while breaching the ceiling."""
     if max_budget_gbp is None:
         max_budget_gbp = getattr(config, "max_budget_gbp", 5000.0)
-    pairs = _date_pairs(config)
-    shortlist = _shortlist_pairs(pairs)
+    pairs = pricing_order(config)
+    headline = priced_date_pair(config)
     deals: list[PackageDeal] = []
     filtered_out: list[tuple[str, str]] = []
     rooms_count = len(config.rooms)
@@ -1748,20 +1835,83 @@ def collect_holiday_deals(
     # 3 separate rooms. One premium unit prices FAR below 3 rooms.
     strict_unit = len(config.rooms) >= 3
 
-    target_outbound, target_return = (
-        shortlist[len(shortlist) // 2] if shortlist else ("2026-12-22", "2026-12-30")
-    )
-    dep_dt = datetime.strptime(target_outbound, "%Y-%m-%d")
-    ret_dt = datetime.strptime(target_return, "%Y-%m-%d")
-    nights = (ret_dt - dep_dt).days
-    uk_ground = UK_GROUND_RETURN_GBP.get(config.origins[0], 16.50)
-
     cabin_multipliers = {
         "ECONOMY": 1.0,
         "PREMIUM_ECONOMY": 1.6,
         "BUSINESS": 2.5,
         "FIRST": 4.5,
     }
+
+    def _best_option(resort, cabin, flight_mult, arch) -> Optional[dict]:
+        """Cheapest (date pair, departure origin) for one resort that clears
+        BOTH ceilings, or None when no combination does.
+
+        This is the whole of the "wider search": every priceable pair and
+        every configured origin is evaluated instead of one middle pair from
+        ``origins[0]``, and the reader sees the winner with its own dates,
+        origin, nights and ground cost. Two rules keep the widening honest:
+
+        * a benchmark may only price a departure from ``origins[0]`` — flight
+          benchmarks carry no origin, so claiming a cheaper LGW departure
+          from an LHR benchmark would be a fabricated origin;
+        * a tie resolves to the first candidate evaluated, and ``pairs`` /
+          ``config.origins`` lead with the headline pair and the declared
+          origin, so a benchmark-only run still displays the pair the
+          evidence contract states.
+        """
+        best: Optional[dict] = None
+        for outbound, returning in pairs:
+            nights = nights_between((outbound, returning))
+            hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
+            peak_hotel = round(arch["suite_peak_nightly_gbp"] * nights, 2)
+            for origin_index, origin in enumerate(config.origins):
+                # Live evidence must be a WHOLE-PARTY, exact-date amount for
+                # THIS pair, THIS origin and THIS cabin, or it prices nothing.
+                evidence = evidence_for(
+                    live_flight_offers,
+                    resort["airport"],
+                    cabin.upper(),
+                    outbound,
+                    returning,
+                    origin,
+                    headline=headline,
+                )
+                evidence_used = bool(evidence is not None and evidence.usable)
+                if origin_index and not evidence_used:
+                    continue
+                flight_cost = (
+                    evidence.total_gbp
+                    if evidence_used
+                    else round(resort["flight_benchmark_5pax_gbp"] * flight_mult, 2)
+                )
+                transfer = float(resort.get("transfer_gbp", 30.0))
+                uk_ground = UK_GROUND_RETURN_GBP.get(origin, 16.50)
+                total_pkg = round(flight_cost + hotel_cost, 2)
+                true_d2d = round(total_pkg + uk_ground + transfer, 2)
+                # STRICT: both measures must clear the ceiling.
+                if not (total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp):
+                    continue
+                option = {
+                    "outbound": outbound,
+                    "return": returning,
+                    "nights": nights,
+                    "origin": origin,
+                    "uk_ground": uk_ground,
+                    "transfer": transfer,
+                    "flight_cost": flight_cost,
+                    "hotel_cost": hotel_cost,
+                    "total_pkg": total_pkg,
+                    "true_d2d": true_d2d,
+                    "peak_hotel": peak_hotel,
+                    "evidence": evidence,
+                    "evidence_used": evidence_used,
+                }
+                if best is None or (option["total_pkg"], option["true_d2d"]) < (
+                    best["total_pkg"],
+                    best["true_d2d"],
+                ):
+                    best = option
+        return best
 
     for dest in config.destinations:
         resorts, dropped = filter_resorts(WINTER_RESORT_CATALOG.get(dest.key.lower(), []))
@@ -1771,62 +1921,59 @@ def collect_holiday_deals(
             flight_mult = cabin_multipliers.get(cabin.upper(), 1.0)
             for resort in resorts:
                 airport = resort["airport"]
-                flight_cost = round(resort["flight_benchmark_5pax_gbp"] * flight_mult, 2)
-                # Luxury cabin displays a carrier that actually sells that cabin.
-                # Never present SunExpress/Ryanair/easyJet/Jet2 as "Business".
-                display_airline = cabin_carrier(
-                    airport=airport, cabin=cabin, economy_carrier=resort["airline"]
-                )
-                # Live evidence must be a WHOLE-PARTY, exact-date amount to be
-                # used at all. A per-person figure is never multiplied up into
-                # a party total: deriving one and stamping it verified was the
-                # bug this guard exists to make unrepeatable. The lookup is
-                # CABIN-aware: an Economy fare must never price (or verify) a
-                # Business card — the cards' multipliers exist precisely
-                # because the cabins cost different amounts.
-                evidence = (
-                    live_flight_offers.get((airport, cabin.upper()))
-                    if live_flight_offers
-                    else None
-                )
-                # TWO questions, deliberately not one. ``evidence_used``: may
-                # this fare price the card? ``live_used``: may it be rendered as
-                # live? An aged observation answers yes to the first and no to
-                # the second, so it prices the card carrying a ``stale-cache``
-                # label (``evidence.confidence``) instead of being discarded
-                # back to a benchmark.
-                evidence_used = bool(evidence is not None and evidence.usable)
-                live_used = bool(evidence is not None and evidence.promotable)
-                if evidence_used and evidence is not None:
-                    flight_cost = evidence.total_gbp
-                    if evidence.carrier:
-                        display_airline = evidence.carrier
-                flight_basis = (
-                    evidence.basis
-                    if (evidence_used and evidence is not None)
-                    else ("benchmark_supplied" if cabin.upper() == "ECONOMY" else f"benchmark_supplied_{cabin.lower()}")
-                )
-
                 # ONE family unit pricing (strict mandate) with suite premium.
                 arch = SUITE_ARCHITECTURE[resort["name"]]
-                hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
-                total_pkg = round(flight_cost + hotel_cost, 2)
-                price_pp = round(total_pkg / travellers, 2)
-                transfer = float(resort.get("transfer_gbp", 30.0))
-                true_d2d = round(total_pkg + uk_ground + transfer, 2)
-                # REAL discount baseline: the SAME suite, same nights/party, at
-                # the resort's summer peak (Jul/Aug school-holiday highs), in the
-                # SAME cabin so a Business December total is compared against a
-                # Business peak total — never against an Economy peak.
-                peak_hotel = round(arch["suite_peak_nightly_gbp"] * nights, 2)
-                peak_flight = round(resort["peak_summer_flight_5pax_gbp"] * flight_mult, 2)
-                peak_total = round(peak_flight + peak_hotel, 2)
-                # STRICT: both measures must clear the ceiling.
-                under_budget = total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
-
-                if under_budget:
+                option = _best_option(resort, cabin, flight_mult, arch)
+                # None means every date pair and every origin breached BOTH
+                # ceilings: the resort is dropped exactly as a single-pair run
+                # dropped it, rather than being shown over budget.
+                if option is not None:
+                    target_outbound = option["outbound"]
+                    target_return = option["return"]
+                    nights = option["nights"]
+                    uk_ground = option["uk_ground"]
+                    transfer = option["transfer"]
+                    flight_cost = option["flight_cost"]
+                    hotel_cost = option["hotel_cost"]
+                    total_pkg = option["total_pkg"]
+                    true_d2d = option["true_d2d"]
+                    peak_hotel = option["peak_hotel"]
+                    departure_origin = option["origin"]
+                    evidence = option["evidence"]
+                    evidence_used = option["evidence_used"]
+                    price_pp = round(total_pkg / travellers, 2)
+                    # REAL discount baseline: the SAME suite, same nights/party,
+                    # at the resort's summer peak (Jul/Aug school-holiday highs),
+                    # in the SAME cabin so a Business December total is compared
+                    # against a Business peak total — never an Economy peak.
+                    peak_flight = round(resort["peak_summer_flight_5pax_gbp"] * flight_mult, 2)
+                    peak_total = round(peak_flight + peak_hotel, 2)
+                    # Luxury cabin displays a carrier that actually sells that cabin.
+                    # Never present SunExpress/Ryanair/easyJet/Jet2 as "Business".
+                    display_airline = cabin_carrier(
+                        airport=airport, cabin=cabin, economy_carrier=resort["airline"]
+                    )
+                    # Live evidence must be a WHOLE-PARTY, exact-date amount to be
+                    # used at all. A per-person figure is never multiplied up into
+                    # a party total: deriving one and stamping it verified was the
+                    # bug this guard exists to make unrepeatable. The lookup is
+                    # CABIN-aware: an Economy fare must never price (or verify) a
+                    # Business card — the cards' multipliers exist precisely
+                    # because the cabins cost different amounts. Two questions,
+                    # deliberately not one: ``evidence_used`` may price the card,
+                    # ``evidence.promotable`` decides the label, so an aged
+                    # observation prices it as ``stale-cache`` instead of being
+                    # discarded back to a benchmark.
+                    if evidence_used and evidence is not None:
+                        if evidence.carrier:
+                            display_airline = evidence.carrier
+                    flight_basis = (
+                        evidence.basis
+                        if (evidence_used and evidence is not None)
+                        else ("benchmark_supplied" if cabin.upper() == "ECONOMY" else f"benchmark_supplied_{cabin.lower()}")
+                    )
                     flight_link = build_google_flights_roundtrip_url(
-                        origin=config.origins[0],
+                        origin=departure_origin,
                         destination=airport,
                         outbound_date=target_outbound,
                         return_date=target_return,
@@ -1845,6 +1992,7 @@ def collect_holiday_deals(
                             nights=nights,
                             airline=display_airline,
                             origin_airports=config.origins,
+                            origin=departure_origin,
                             destination_airport=airport,
                             flight_price_total_gbp=flight_cost,
                             flight_price_basis=flight_basis,
@@ -2324,6 +2472,9 @@ def render_holiday_report(
     out: list[str] = []
     pairs = _date_pairs(config)
     shortlist = _shortlist_pairs(pairs)
+    # Every pair in the stay band: what the collector actually prices, and
+    # therefore what a reader can expect a deal's dates to come from.
+    priced_pairs = priceable_date_pairs(config)
     room_occupancy = " + ".join(str(value) for value in config.rooms)
     provider_labels = {
         "loveholidays": "loveholidays",
@@ -2365,7 +2516,15 @@ def render_holiday_report(
     out.append(str(len(config.destinations)))
     out.append(' destinations · ')
     out.append(str(len(pairs)))
-    out.append(' valid date combinations</p>')
+    out.append(' date combinations · ')
+    out.append(str(len(priced_pairs)))
+    out.append(
+        ' priced ('
+        + str(config.min_nights)
+        + '–'
+        + str(config.max_nights)
+        + ' nights)</p>'
+    )
     out.append('</td></tr>')
     out.append('<tr><td style="padding:0 0 18px 0;">')
     out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">')
@@ -2733,7 +2892,7 @@ def render_holiday_report(
             out.append('</td></tr>')
             out.append('<tr><td colspan="2" style="padding:4px 10px 10px;">')
             out.append('<div style="margin-bottom:4px;"><span style="color:#94a3b8; font-size:12px;">')
-            out.append(escape(', '.join(outbound + '→' + returning for outbound, returning in pairs)))
+            out.append(escape(', '.join(outbound + '→' + returning for outbound, returning in priced_pairs)))
             out.append('</span></div><div>')
             for name in _PACKAGE_KEYS:
                 url = urls.get(name)

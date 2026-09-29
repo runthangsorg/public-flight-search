@@ -222,17 +222,43 @@ class HolidayPlannerTests(unittest.TestCase):
             config, generated_at="2026-09-06T12:00:00+00:00", deals=deals
         )
 
+    def test_header_states_how_many_pairs_were_priced_and_in_which_band(self):
+        # A reader must be able to see that the report priced the whole
+        # 6-10 night window, not just one hand-picked pair, and a manual
+        # "enter any listed pair" list must only offer pairs we priced.
+        from public_flight_search.holidays import _date_pairs, priceable_date_pairs
+
+        config, _, html = self._dec_report()
+        all_pairs = _date_pairs(config)
+        priced = priceable_date_pairs(config)
+        self.assertIn(
+            f"{len(all_pairs)} date combinations · "
+            f"{len(priced)} priced ({config.min_nights}–{config.max_nights} nights)",
+            html,
+        )
+        for outbound, returning in all_pairs:
+            if (outbound, returning) in priced:
+                continue
+            self.assertNotIn(
+                f"{outbound}→{returning}",
+                html,
+                "an unpriced pair must not be offered for manual entry",
+            )
+
     def test_cards_carry_one_link_per_package_operator(self):
         # The complaint: every card ended in the same generic links, and the
         # two prominent ones were Booking.com searches. A package report has
         # to link the operators that actually sell packages.
-        _, _, html = self._dec_report()
+        _, deals, html = self._dec_report()
         self.assertIn("Package operators", html)
         self.assertIn("loveholidays.com/holidays/", html)
         self.assertIn("destination2.co.uk/destinations/", html)
-        # and the operator link carries the real search, not just a brand name
+        # and the operator link carries the real search, not just a brand
+        # name: this card's own departure airport and departure date, whatever
+        # pair the collector priced.
+        cheapest = sorted(deals, key=lambda d: d.total_package_price_gbp)[0]
         self.assertIn("departureAirports=LHR", html)
-        self.assertIn("date=2026-12-22", html)
+        self.assertIn(f"date={cheapest.outbound_date}", html)
 
     def test_operator_links_say_which_are_deep_links_and_which_are_not(self):
         _, _, html = self._dec_report()

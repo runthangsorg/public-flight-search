@@ -33,11 +33,12 @@ from public_flight_search.holidays import (
     _shortlist_pairs,
     collect_holiday_deals,
     load_holiday_config,
+    priceable_date_pairs,
 )
 from public_flight_search.live_verify import (
     _target_date_pair,
-    evidence_consumption_contract,
     evidence_contract_gaps,
+    evidence_consumption_contract,
     evidence_freshness,
     load_live_flight_evidence,
 )
@@ -80,6 +81,24 @@ def _load(path: Path):
     return load_holiday_config(path.read_text(encoding="utf-8"))
 
 
+def _airport_cabins(loaded) -> set[tuple[str, str]]:
+    """The (airport, cabin) half of every loader key.
+
+    The loader keys entries by (airport, cabin, outbound, return, origin) so
+    one run can hold a fare per priced date pair and origin; the contract is
+    about airports and cabins, so that is the half asserted on here.
+    """
+    return {tuple(key[:2]) for key in loaded}
+
+
+def _fare(loaded, key: tuple[str, str]):
+    """The single fare loaded for one (airport, cabin), whatever pair it carries."""
+    for loaded_key, evidence in loaded.items():
+        if tuple(loaded_key[:2]) == key:
+            return evidence
+    raise AssertionError(f"no evidence loaded for {key}: {sorted(loaded)}")
+
+
 class TestPricedPairIsTheSingleSourceOfTruth(unittest.TestCase):
     def test_contract_priced_pair_is_the_shortlist_middle(self):
         config = load_holiday_config(SYNTHETIC)
@@ -119,6 +138,14 @@ class TestContractMatchesCollectorExactly(unittest.TestCase):
             return handle.name
 
     def _verified_keys(self, config) -> set[tuple[str, str]]:
+        """Keys the collector verifies when EVERY priced pair carries a fare.
+
+        The collector prices every pair in the config's nights band and takes
+        the cheapest, so evidence on one pair only verifies a card while a
+        cheaper unobserved pair wins. A hunt that covers the priced pairs —
+        which is what the contract now asks for — verifies exactly the keys
+        in it, and this asserts that end to end.
+        """
         contract = evidence_consumption_contract(config)
         path = self._write_evidence(
             [
@@ -131,12 +158,10 @@ class TestContractMatchesCollectorExactly(unittest.TestCase):
                     "observed_at": OBSERVED_AT,
                     "travellers": contract.travellers,
                     "origin": contract.origin,
-                    "exact_dates": {
-                        "outbound": contract.outbound,
-                        "return": contract.return_date,
-                    },
+                    "exact_dates": {"outbound": outbound, "return": returning},
                 }
                 for airport, cabin in contract.keys
+                for outbound, returning in priceable_date_pairs(config)
             ]
         )
         loaded = load_live_flight_evidence(
@@ -163,15 +188,26 @@ class TestContractMatchesCollectorExactly(unittest.TestCase):
 
 
 class TestRealConfigContractsAreGolden(unittest.TestCase):
-    def test_december_prices_the_middle_pair_from_lhr(self):
+    def test_december_prices_the_headline_pair_from_lhr(self):
         contract = evidence_consumption_contract(_load(DEC_CONFIG))
         self.assertEqual(
             (contract.outbound, contract.return_date),
-            ("2026-12-22", "2026-12-30"),
+            ("2026-12-20", "2026-12-28"),
         )
         self.assertEqual(contract.origin, "LHR")
         self.assertEqual(contract.travellers, 5)
-        self.assertEqual(list(contract.hunt_date_pairs), [("2026-12-22", "2026-12-30")])
+        # The hunt is aimed at the whole shortlist, not just the headline
+        # pair: the collector prices every priceable pair, so crawling one
+        # pair wastes the reads the other two would have paid for.
+        self.assertEqual(
+            list(contract.hunt_date_pairs),
+            [
+                ("2026-12-17", "2026-12-25"),
+                ("2026-12-20", "2026-12-28"),
+                ("2026-12-23", "2026-12-31"),
+            ],
+        )
+        self.assertEqual(contract.origins, ("LHR", "LGW", "LTN", "STN"))
 
     def test_december_contract_lists_only_airports_that_have_cards(self):
         contract = evidence_consumption_contract(_load(DEC_CONFIG))
@@ -201,9 +237,15 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         contract = evidence_consumption_contract(_load(JULY_CONFIG))
         payload = contract.as_dict()
         self.assertEqual(
-            payload["hunt_date_pairs"], [["2027-07-20", "2027-07-27"]]
+            payload["hunt_date_pairs"],
+            [
+                ["2027-07-17", "2027-07-24"],
+                ["2027-07-20", "2027-07-27"],
+                ["2027-07-24", "2027-07-31"],
+            ],
         )
         self.assertEqual(payload["origin"], "LHR")
+        self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
         self.assertIn("AYT/ECONOMY", payload["keys"])
         self.assertNotIn("AYT/BUSINESS", payload["keys"])
         # The hunt reuses the report's own config, so only the four things it
@@ -321,8 +363,15 @@ class TestEvidenceContractCommand(unittest.TestCase):
             )
         self.assertEqual(code, 0)
         payload = json.loads(buffer.getvalue())
-        self.assertEqual(payload["date_pairs"], [["2027-07-20", "2027-07-27"]])
-        self.assertEqual(payload["origins"], ["LHR"])
+        self.assertEqual(
+            payload["date_pairs"],
+            [
+                ["2027-07-17", "2027-07-24"],
+                ["2027-07-20", "2027-07-27"],
+                ["2027-07-24", "2027-07-31"],
+            ],
+        )
+        self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
         self.assertEqual(payload["airports"], ["AYT", "HRG", "PFO", "TFS"])
 
     def test_cli_rejects_unknown_flags(self):
@@ -443,7 +492,7 @@ class TestAgeReferenceIsInjectedNotGuessed(unittest.TestCase):
         loaded = load_live_flight_evidence(
             config, path=path, now=datetime.fromisoformat(observed)
         )
-        self.assertIn(("AYT", "ECONOMY"), loaded)
+        self.assertIn(("AYT", "ECONOMY"), _airport_cabins(loaded))
 
     def test_a_fixed_fixture_stays_valid_years_later(self):
         # The equivalence fixture must not depend on the day it runs.
@@ -453,7 +502,7 @@ class TestAgeReferenceIsInjectedNotGuessed(unittest.TestCase):
         loaded = load_live_flight_evidence(
             config, path=path, now=datetime.fromisoformat(observed)
         )
-        self.assertEqual(set(loaded), {("AYT", "ECONOMY")})
+        self.assertEqual(_airport_cabins(loaded), {("AYT", "ECONOMY")})
 
 
 class TestFutureDatedEvidenceIsConsistent(unittest.TestCase):
@@ -571,7 +620,7 @@ class TestReportableCabinsAreOneSet(unittest.TestCase):
         loaded = load_live_flight_evidence(
             config, path=path, now=datetime.fromisoformat(observed)
         )
-        self.assertIn(("AYT", "ECONOMY"), loaded)
+        self.assertIn(("AYT", "ECONOMY"), _airport_cabins(loaded))
 
 
 class TestLiveEvidenceCountsAreLabelledHonestly(unittest.TestCase):

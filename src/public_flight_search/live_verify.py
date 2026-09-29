@@ -180,12 +180,17 @@ EVIDENCE_CABINS: frozenset[str] = REPORT_CABINS
 
 
 def priced_date_pair(config) -> tuple[str, str]:
-    """The exact outbound/return pair the report is actually priced on.
+    """The pair the report is HEADLINE-priced on: the shortlist's middle.
 
-    Single source of truth: ``holidays.collect_holiday_deals`` prices the
-    middle element of the shortlisted date pairs, and so does this. The
-    evidence loader and the hunt contract both derive from here, so the pair
-    can never be stated twice and disagree.
+    Single source of truth. ``holidays.collect_holiday_deals`` prices every
+    pair inside the config's nights band and resolves ties to this one, so a
+    benchmark-only run still displays these dates; the evidence loader and
+    the hunt contract both derive it from here, so the pair can never be
+    stated twice and disagree.
+
+    ``hunt_date_pairs`` is deliberately WIDER than this (the whole shortlist):
+    a hunt that only ever crawls the headline pair wastes two thirds of its
+    reads the moment the report prices more than one pair.
     """
     from .holidays import _date_pairs, _shortlist_pairs
 
@@ -198,6 +203,45 @@ def priced_date_pair(config) -> tuple[str, str]:
 #: Retained private name: the original seam, now an alias of the one
 #: definition above so callers cannot diverge from the report.
 _target_date_pair = priced_date_pair
+
+
+def evidence_for(
+    mapping,
+    airport: str,
+    cabin: str,
+    outbound: str,
+    returning: str,
+    origin: str,
+    *,
+    headline: tuple[str, str] = ("", ""),
+) -> Optional[LiveFareEvidence]:
+    """The fare this run may price one card with, or None.
+
+    Two mapping shapes reach here, and they are NOT interchangeable:
+
+    * the loader's output is keyed
+      ``(airport, cabin, outbound, return, origin)``, so a fare observed for
+      17→25 out of LGW may only price a card that shows 17→25 out of LGW;
+    * a caller-supplied mapping keyed ``(airport, cabin)`` (tests, scripts)
+      carries no dates and no origin at all. Such a mapping has always meant
+      "the pair this report is priced on", so it is trusted for the headline
+      pair only. Trusting it for every pair a widened run now prices would
+      let one observation stand in for dates nobody observed — the exact
+      fabrication this module exists to prevent.
+    """
+    if not mapping:
+        return None
+    if outbound and returning:
+        try:
+            return mapping[(airport, cabin, outbound, returning, origin)]
+        except (KeyError, TypeError):
+            pass
+    if headline and (outbound, returning) == tuple(headline):
+        try:
+            return mapping[(airport, cabin)]
+        except (KeyError, TypeError):
+            return None
+    return None
 
 
 @dataclass(frozen=True)
@@ -220,6 +264,10 @@ class EvidenceContract:
     travellers: int
     keys: tuple[tuple[str, str], ...]
     hunt_date_pairs: tuple[tuple[str, str], ...] = ()
+    #: Every departure airport the report prices from, in config order. The
+    #: hunt needs all of them: a fare observed from LGW is a different fare
+    #: from the LHR one, and the collector will price whichever is cheaper.
+    origins: tuple[str, ...] = ()
     #: Which resort catalogue produced ``keys``. Surprising enough to state:
     #: the July report prices from a constant named WINTER_RESORT_CATALOG.
     catalog: str = ""
@@ -237,6 +285,7 @@ class EvidenceContract:
         return {
             "priced_pair": [self.outbound, self.return_date],
             "origin": self.origin,
+            "origins": list(self.origins or ((self.origin,) if self.origin else ())),
             "travellers": self.travellers,
             "hunt_date_pairs": [list(pair) for pair in self.hunt_date_pairs],
             "airports": list(self.airports),
@@ -250,11 +299,11 @@ class EvidenceContract:
 
         The hunt reuses the report's own config file (same ``party``,
         ``destinations`` keys), so only the four things it gets wrong today
-        are overridden: which date pairs are priced, which origin is priced,
-        which cabins have cards, and which airports have cards.
+        are overridden: which date pairs are priced, which origins are
+        priced, which cabins have cards, and which airports have cards.
         """
         return {
-            "origins": [self.origin],
+            "origins": list(self.origins or ((self.origin,) if self.origin else ())),
             "date_pairs": [list(pair) for pair in self.hunt_date_pairs],
             "cabin_classes": list(self.cabins),
             "airports": list(self.airports),
@@ -268,7 +317,12 @@ def evidence_consumption_contract(config) -> Optional[EvidenceContract]:
     destination has a card, in which case no evidence could be consumed and
     a hunt would be wasted spend.
     """
-    from .holidays import RESORT_CATALOG_NAME, card_lookup_keys
+    from .holidays import (
+        RESORT_CATALOG_NAME,
+        _date_pairs,
+        _shortlist_pairs,
+        card_lookup_keys,
+    )
 
     outbound, returning = priced_date_pair(config)
     if not outbound:
@@ -276,14 +330,16 @@ def evidence_consumption_contract(config) -> Optional[EvidenceContract]:
     keys = card_lookup_keys(config)
     if not keys:
         return None
-    origins = tuple(getattr(config, "origins", ()) or ())
+    origins = tuple(str(value).strip().upper() for value in (getattr(config, "origins", ()) or ()) if str(value).strip())
+    hunt_pairs = _shortlist_pairs(_date_pairs(config)) or ((outbound, returning),)
     return EvidenceContract(
         outbound=outbound,
         return_date=returning,
-        origin=str(origins[0]).strip().upper() if origins else "",
+        origin=origins[0] if origins else "",
         travellers=int(getattr(config, "travellers", 0) or 0),
         keys=keys,
-        hunt_date_pairs=((outbound, returning),),
+        hunt_date_pairs=hunt_pairs,
+        origins=origins,
         catalog=RESORT_CATALOG_NAME,
     )
 
@@ -304,9 +360,12 @@ def evidence_contract_gaps(config, loaded) -> dict[str, list[str]]:
     if contract is None:
         return {"missing": [], "unused": []}
     wanted = set(contract.keys)
+    # Positional, not an unpack: the loader keys entries by (airport, cabin,
+    # outbound, return, origin) so one key can hold several date pairs, while
+    # callers also hand in plain (airport, cabin) maps. Both are read here.
     have = {
-        (str(airport).strip().upper(), str(cabin).strip().upper())
-        for airport, cabin in loaded
+        (str(key[0]).strip().upper(), str(key[1]).strip().upper())
+        for key in loaded
     }
     return {
         "missing": sorted(_key_label(pair) for pair in wanted - have),
@@ -428,8 +487,10 @@ def load_live_flight_evidence(
     * ``basis`` is a whole-party basis (per-person amounts are never
       multiplied up — that was the fabrication this module exists to
       prevent);
-    * the hunt's outbound/return dates match the report's priced pair
-      exactly;
+    * the hunt's outbound/return dates are one of the pairs this run
+      prices (``min_nights``..``max_nights``), and its origin is one of the
+      configured origins — a fare is evidence for ITS dates and ITS
+      departure airport, and nothing else;
     * the hunt's party size matches ``config.travellers`` (a whole-party
       total is only valid for the party it was quoted for);
     * the observation is younger than ``EVIDENCE_STALE_CACHE_MAX_AGE_HOURS``;
@@ -439,6 +500,10 @@ def load_live_flight_evidence(
       just may not claim to be live;
     * ``source_url`` is a real http(s) URL and ``total_gbp`` is a positive
       finite number.
+
+    Entries are returned keyed
+    ``(airport, cabin, outbound, return, origin)`` so a run pricing 18 date
+    pairs keeps each observation attached to the dates it was read for.
 
     Anything else is skipped with a reason on stderr. A missing or
     unreadable file returns an empty mapping (stay on benchmarks) — never
@@ -452,9 +517,19 @@ def load_live_flight_evidence(
     now_dt = now or datetime.now(timezone.utc)
     if now_dt.tzinfo is None:
         now_dt = now_dt.replace(tzinfo=timezone.utc)
-    target_outbound, target_return = _target_date_pair(config)
-    if not target_outbound:
+    if not _target_date_pair(config)[0]:
         return {}
+    from .holidays import priceable_date_pairs
+
+    priced_pairs = set(priceable_date_pairs(config))
+    if not priced_pairs:
+        return {}
+    configured_origins = tuple(
+        str(value).strip().upper()
+        for value in (getattr(config, "origins", ()) or ())
+        if str(value).strip()
+    ) or ("",)
+    report_origin = configured_origins[0]
 
     try:
         with open(path, encoding="utf-8") as handle:
@@ -523,14 +598,19 @@ def load_live_flight_evidence(
                 file=sys.stderr,
             )
         exact_dates = item.get("exact_dates") or {}
-        if (
-            str(exact_dates.get("outbound", "")).strip() != target_outbound
-            or str(exact_dates.get("return", "")).strip() != target_return
-        ):
+        record_pair = (
+            str(exact_dates.get("outbound", "")).strip(),
+            str(exact_dates.get("return", "")).strip(),
+        )
+        if record_pair not in priced_pairs:
+            sample = ", ".join(
+                f"{outbound}→{returning}"
+                for outbound, returning in sorted(priced_pairs)[:3]
+            )
             _warn_skip(
                 airport,
-                f"dates {exact_dates.get('outbound')}…{exact_dates.get('return')} "
-                f"do not match the priced pair {target_outbound}…{target_return}",
+                f"dates {record_pair[0]}…{record_pair[1]} do not match a priced "
+                f"pair ({len(priced_pairs)} priced, e.g. {sample})",
             )
             continue
         try:
@@ -543,11 +623,16 @@ def load_live_flight_evidence(
             continue
         # Origin must match too: a whole-party fare read from a different
         # departure airport answers a different question (and the report's
-        # UK ground cost is origin-specific).
-        entry_origin = str(item.get("origin", "")).strip().upper()
-        report_origin = str(getattr(config, "origins", [""])[0]).strip().upper()
-        if entry_origin and entry_origin != report_origin:
-            _warn_skip(airport, f"origin {entry_origin} != report origin {report_origin}")
+        # UK ground cost is origin-specific). A record with no origin was
+        # hunted for the report's own departure airport — that is what it
+        # has always meant, and what it still means here.
+        entry_origin = str(item.get("origin", "")).strip().upper() or report_origin
+        if entry_origin not in configured_origins:
+            _warn_skip(
+                airport,
+                f"origin {entry_origin} is not a configured origin "
+                f"({', '.join(value for value in configured_origins if value)})",
+            )
             continue
 
         entry_cabin = str(item.get("cabin_class", "ECONOMY")).strip().upper()
@@ -575,11 +660,14 @@ def load_live_flight_evidence(
             cabin_class=entry_cabin,
             stale=stale,
         )
-        # Key by (airport, cabin): the report renders ECONOMY, PREMIUM_ECONOMY
-        # and BUSINESS cards for the same airport, and an ECONOMY fare must
-        # never price (let alone LIVE-verify) a Business card. Freshness
-        # tie-break is now within a cabin, not within an airport.
-        key = (airport, entry_cabin)
+        # Keyed by (airport, cabin, outbound, return, origin). The cabin
+        # component is the 2026-09-22 seam — an ECONOMY fare must never price
+        # (let alone LIVE-verify) a Business card — and the date/origin
+        # components are the widened-search seam: one run prices every
+        # pair in the nights band from every configured origin, so an
+        # observation may only stand for the dates and airport it was read
+        # at. Freshness is the tie-break WITHIN one such key.
+        key = (airport, entry_cabin, record_pair[0], record_pair[1], entry_origin)
         existing = evidence.get(key)
         if existing is None or observed > _parse_observed_at(existing.observed_at):
             evidence[key] = entry

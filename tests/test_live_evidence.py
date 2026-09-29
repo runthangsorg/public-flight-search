@@ -34,6 +34,24 @@ CONFIG_JSON = """
 """
 
 
+def _airport_cabins(offers) -> set[tuple[str, str]]:
+    """The (airport, cabin) half of every loader key.
+
+    The loader keys entries by (airport, cabin, outbound, return, origin) so
+    one run can hold a fare per priced date pair and origin; these tests
+    assert on the airport/cabin half, which is the part they are about.
+    """
+    return {tuple(key[:2]) for key in offers}
+
+
+def _fare(offers, key: tuple[str, str]):
+    """The single fare loaded for one (airport, cabin), whatever pair it carries."""
+    for loaded_key, evidence in offers.items():
+        if tuple(loaded_key[:2]) == key:
+            return evidence
+    raise AssertionError(f"no evidence loaded for {key}: {sorted(offers)}")
+
+
 def _evidence(basis: str, total: float, *, exact: bool = True, cabin: str = "ECONOMY") -> LiveFareEvidence:
     return LiveFareEvidence(
         airport="AYT",
@@ -246,7 +264,7 @@ class TestEvidenceFileLoader(unittest.TestCase):
     def test_valid_entry_is_accepted_and_promotes_the_deal(self):
         path = self._write([self._rec(total_gbp=1234.5, carrier="Ajet")])
         offers = try_live_flight_offers(self.config, path=path, now=self.now)
-        self.assertEqual(set(offers), {("AYT", "ECONOMY")})
+        self.assertEqual(_airport_cabins(offers), {("AYT", "ECONOMY")})
         deals = {
             d.resort_name: d
             for d in collect_holiday_deals(
@@ -314,8 +332,8 @@ class TestEvidenceFileLoader(unittest.TestCase):
         """
         path = self._write([self._rec(observed_at=self.stale)])
         offers = try_live_flight_offers(self.config, path=path, now=self.now)
-        self.assertEqual(set(offers), {("AYT", "ECONOMY")})
-        evidence = offers[("AYT", "ECONOMY")]
+        self.assertEqual(_airport_cabins(offers), {("AYT", "ECONOMY")})
+        evidence = _fare(offers, ("AYT", "ECONOMY"))
         self.assertTrue(evidence.stale)
         self.assertTrue(evidence.usable)
         self.assertFalse(evidence.promotable)
@@ -400,7 +418,7 @@ class TestEvidenceFileLoader(unittest.TestCase):
                 [self._rec(observed_at="2026-08-22T12:00:00+00:00")]
             )
             offers = try_live_flight_offers(self.config, path=path, now=self.now)
-            self.assertTrue(offers[("AYT", "ECONOMY")].stale)
+            self.assertTrue(_fare(offers, ("AYT", "ECONOMY")).stale)
         with self.subTest("past the ceiling is dropped"):
             path = self._write(
                 [self._rec(observed_at="2026-08-01T12:00:00+00:00")]
@@ -448,7 +466,7 @@ class TestEvidenceFileLoader(unittest.TestCase):
             ]
         )
         offers = try_live_flight_offers(self.config, path=path, now=self.now)
-        self.assertEqual(offers[("AYT", "ECONOMY")].total_gbp, 2222.0)
+        self.assertEqual(_fare(offers, ("AYT", "ECONOMY")).total_gbp, 2222.0)
         consume_skip_log()
 
     def test_business_entry_is_accepted_and_keyed_separately(self):
@@ -464,8 +482,8 @@ class TestEvidenceFileLoader(unittest.TestCase):
             ]
         )
         offers = try_live_flight_offers(self.config, path=path, now=self.now)
-        self.assertEqual(set(offers), {("AYT", "BUSINESS")})
-        self.assertEqual(offers[("AYT", "BUSINESS")].total_gbp, 3150.0)
+        self.assertEqual(_airport_cabins(offers), {("AYT", "BUSINESS")})
+        self.assertEqual(_fare(offers, ("AYT", "BUSINESS")).total_gbp, 3150.0)
 
 
 if __name__ == "__main__":  # pragma: no cover
