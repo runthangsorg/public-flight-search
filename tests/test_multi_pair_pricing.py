@@ -141,10 +141,17 @@ class TestNightsBandIsConfigurable(unittest.TestCase):
             )
 
     def test_the_shipped_configs_state_their_band(self):
-        for path in (DEC_CONFIG, JULY_CONFIG):
+        # December is pinned to exactly 8 nights: the flight benchmark is the
+        # same on every date, so a 6-10 night band would always hand the
+        # cheapest total to the SHORTEST stay and every card would show
+        # 19 Dec instead of the owner's 20 Dec headline. July keeps the band.
+        expected = {DEC_CONFIG: (8, 8), JULY_CONFIG: (6, 10)}
+        for path, band in expected.items():
             with self.subTest(config=path.name):
                 config = _load(path.read_text(encoding="utf-8"))
-                self.assertEqual((config.min_nights, config.max_nights), (6, 10))
+                self.assertEqual(
+                    (config.min_nights, config.max_nights), band
+                )
 
 
 class TestTheDecemberWindowIsWideAndInsideTheBand(unittest.TestCase):
@@ -163,6 +170,21 @@ class TestTheDecemberWindowIsWideAndInsideTheBand(unittest.TestCase):
             with self.subTest(pair=pair):
                 self.assertGreaterEqual(nights_between(pair), config.min_nights)
                 self.assertLessEqual(nights_between(pair), config.max_nights)
+
+    def test_every_december_card_shows_the_eight_night_headline(self):
+        # Pinning min=max=8 exists for one reason: benchmarks cost the same
+        # on every date, so with a band the shortest stay won every card and
+        # the report showed 19 Dec instead of the owner's 20 Dec +/- 3.
+        # Ties now resolve to the headline pair.
+        config = _load(DEC_CONFIG.read_text(encoding="utf-8"))
+        deals = collect_holiday_deals(config, max_budget_gbp=10**9)
+        self.assertTrue(deals)
+        for deal in deals:
+            with self.subTest(resort=deal.resort_name):
+                self.assertEqual(
+                    (deal.outbound_date, deal.return_date, deal.nights),
+                    ("2026-12-20", "2026-12-28", 8),
+                )
 
     def test_the_headline_pair_is_still_twenty_december(self):
         # 20 Dec +/- 3 days, eight nights: the pair the evidence contract

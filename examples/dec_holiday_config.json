@@ -9,8 +9,8 @@
     ]
   },
   "max_budget_gbp": 5000,
-  "min_nights": 6,
-  "max_nights": 10,
+  "min_nights": 8,
+  "max_nights": 8,
   "departure_window": [
     "06:00",
     "23:59"
