@@ -399,11 +399,13 @@ class HolidayPlannerTests(unittest.TestCase):
 
     def test_cabin_class_and_budget_support(self):
         root = Path(__file__).parents[1]
-        july_path = root / "examples" / "july_holiday_config.json"
+        july_path = root / "tests" / "fixtures" / "july_short_haul_config.json"
         self.assertTrue(july_path.exists())
         config = load_holiday_config(july_path.read_text(encoding="utf-8"))
-        # 2026-09-28 rule: the July cards are all 4-5 h hops, so they price
-        # ECONOMY; the long-haul Far East destinations are the Business ones.
+        # A July config that yields deals (the short-haul fixture: the live
+        # July example became long-haul on 2026-09-29 and may price nothing
+        # under its public budget). 2026-09-28 rule: these cards are all 4-5 h
+        # hops, so they price ECONOMY; the Far East watch keys are Business.
         self.assertEqual(config.cabin_classes, ("BUSINESS", "ECONOMY"))
         self.assertEqual(config.max_budget_gbp, 12000.0)
         self.assertEqual(config.travellers, 5)
@@ -440,7 +442,7 @@ class HolidayPlannerTests(unittest.TestCase):
         from public_flight_search import holidays as hol
 
         root = Path(__file__).parents[1]
-        july_path = root / "examples" / "july_holiday_config.json"
+        july_path = root / "tests" / "fixtures" / "july_short_haul_config.json"
         config = load_holiday_config(july_path.read_text(encoding="utf-8"))
         deals = collect_holiday_deals(config)
         self.assertTrue(deals)
@@ -654,7 +656,7 @@ class EmailPresentationTests(unittest.TestCase):
         # departure, so collect() must pass dec_avg_temp_c=None for them.
         root = Path(__file__).parents[1]
         july_config = load_holiday_config(
-            (root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
+            (root / "tests" / "fixtures" / "july_short_haul_config.json").read_text(encoding="utf-8")
         )
         july_deals = collect_holiday_deals(july_config)
         self.assertTrue(july_deals)
@@ -705,7 +707,7 @@ class PeakDiscountBadgeTests(unittest.TestCase):
         self.assertNotIn("#16a34a", badge)
 
     def test_the_report_never_prints_a_negative_saving(self):
-        """End to end on the real July config, with the case the live send hit.
+        """End to end on a July config, with the case the live send hit.
 
         The offline collector never produces a negative card, which is why the
         2026-09-24 send did: a live-verified fare lifted Concorde and Lara Barut
@@ -714,7 +716,7 @@ class PeakDiscountBadgeTests(unittest.TestCase):
         """
         root = Path(__file__).parents[1]
         config = load_holiday_config(
-            (root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
+            (root / "tests" / "fixtures" / "july_short_haul_config.json").read_text(encoding="utf-8")
         )
         deals = list(collect_holiday_deals(config))
         self.assertTrue(deals, "the July config must produce deals for this test to mean anything")
@@ -732,7 +734,7 @@ class SummerReportEnrichmentTests(unittest.TestCase):
     def test_summer_report_renders_summer_weather_and_deal_rationale(self):
         root = Path(__file__).parents[1]
         config = load_holiday_config(
-            (root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
+            (root / "tests" / "fixtures" / "july_short_haul_config.json").read_text(encoding="utf-8")
         )
         deals = list(collect_holiday_deals(config))
         self.assertTrue(deals)

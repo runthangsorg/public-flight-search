@@ -34,11 +34,28 @@ journey where no nonstop exists. 8.0 hours exactly is Economy. A config's own
 priced.
 
 Far East destinations are listed first in both example configs and lead the
-report as a destination watch. No Far East resort has a verified one-unit
-family suite in the catalogue yet, so each row is priced from a Business fare
-and a family-suite night that are labelled **benchmark, unverified** until live
-whole-party evidence exists, with dated Google Flights, Booking.com and Google
-Hotels searches.
+report. A destination with no resort in the catalogue is a destination watch:
+its row is priced from a Business fare and a family-suite night that are
+labelled **benchmark, unverified** until live whole-party evidence exists, with
+dated Google Flights, Booking.com and Google Hotels searches.
+
+## July: long-haul, Lombok and Thailand
+
+Owner direction, 2026-09-29: nothing within 6 hours of London; Lombok and
+Thailand mostly; no Singapore or Malaysia. The July report therefore prices
+`SUMMER_RESORT_CATALOG` (in `holidays.py`): resorts in Lombok, on the Gulf of
+Thailand (Koh Samui, Koh Phangan — the drier coast in July) and one on the
+Andaman coast (Khao Lak, flagged as monsoon season). A summer trip selects it
+in `resort_catalog(config)`, layered over the winter catalogue; a December trip
+never sees it, so the December cards and hunt contract are unchanged.
+
+Each summer resort's room rate was read from the hotel's own booking engine or
+Google Hotels for the whole party (source and date beside every entry), and is
+labelled `estimate` where July 2027 was not yet on sale. Flight benchmarks are
+observed whole-party Economy fares; the Business figure is the engine's 2.5x
+estimate until a live Business fare replaces it. A long-haul resort that is over
+budget is listed with its cheapest price instead of silently dropped, and the
+report names every resort whose TripAdvisor rating could not be checked.
 
 Emails are change-driven, not scheduled spam: before building, the job seeds
 prior price history from the private data repo and computes a change digest

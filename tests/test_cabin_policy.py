@@ -41,7 +41,10 @@ PRE_RULE_DESTINATIONS = {
     "gran_canaria", "paphos",
 }
 FAR_EAST_DECEMBER = ["phuket", "krabi", "langkawi", "penang", "singapore", "phu_quoc"]
-FAR_EAST_JULY = ["bali", "da_nang", "kota_kinabalu", "japan"]
+#: July since 2026-09-29: Lombok and Thailand lead (resort cards, no watch
+#: row), then the watch destinations. Kota Kinabalu left with Malaysia.
+LONG_HAUL_JULY = ["lombok", "koh_samui", "koh_phangan", "khao_lak", "bali", "da_nang", "japan"]
+FAR_EAST_JULY = ["bali", "da_nang", "japan"]
 
 
 def _payload(destinations, **root):
@@ -166,7 +169,7 @@ class CommittedConfigTests(unittest.TestCase):
         self.assertLessEqual(PRE_RULE_DESTINATIONS, dec_keys, "no December destination was dropped")
 
     def test_far_east_is_added_ranked_first_and_prices_business(self):
-        for path, expected in ((DEC, FAR_EAST_DECEMBER), (JULY, FAR_EAST_JULY)):
+        for path, expected in ((DEC, FAR_EAST_DECEMBER), (JULY, LONG_HAUL_JULY)):
             config = load_holiday_config(path.read_text(encoding="utf-8"))
             keys = [d.key for d in config.destinations]
             self.assertEqual(keys[: len(expected)], expected, path.name)
@@ -195,7 +198,11 @@ class CommittedConfigTests(unittest.TestCase):
             html = render_holiday_report(config, generated_at="2026-09-28T12:00:00+00:00", deals=deals)
             with self.subTest(config=path.name):
                 start = html.index("Far East first")
-                first_card = html.index("One Family Unit")
+                # The next section: the cards, or (a long-haul July priced out
+                # by its public budget) the over-budget list.
+                ends = [i for i in (html.find("One Family Unit"), html.find("Long-haul resorts priced over")) if i >= 0]
+                self.assertTrue(ends, "neither cards nor an over-budget list follow the watch")
+                first_card = min(ends)
                 self.assertLess(start, first_card)
                 block = html[start:first_card]
                 self.assertIn(FAR_EAST_PRICE_LABEL, block)

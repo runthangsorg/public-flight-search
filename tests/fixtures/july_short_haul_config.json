@@ -1,5 +1,5 @@
 {
-  "report_title": "July Summer Holiday Packages: Family Luxury Watch",
+  "report_title": "July Summer Holiday Packages: Short-Haul Test Fixture",
   "party": {
     "travellers": 5,
     "rooms": [
@@ -33,42 +33,6 @@
   ],
   "destinations": [
     {
-      "key": "lombok",
-      "label": "Lombok, Indonesia (Kuta Mandalika beaches; dry season, 19-30°C in July)",
-      "airports": [
-        "LOP"
-      ],
-      "flight_hours": 24.0,
-      "flight_hours_source": "No London nonstop and no Business cabin into Lombok. Fastest 1-stop listed on Google Flights for LHR 20 Jul 2027 (read 2026-09-29): Singapore Airlines + Scoot via SIN, 24h with an 8h connection; 2-stop Qatar Airways + Garuda via DOH and CGK, 22h55"
-    },
-    {
-      "key": "koh_samui",
-      "label": "Koh Samui, Thailand (Gulf side: the drier coast in July, 25-32°C)",
-      "airports": [
-        "USM"
-      ],
-      "flight_hours": 14.92,
-      "flight_hours_source": "No London nonstop. Fastest protected 1-stop listed on Google Flights for LHR 20 Jul 2027 (read 2026-09-29): EVA Air + Bangkok Airways via BKK, 14h55; BA + Bangkok Airways via SIN, 16h50"
-    },
-    {
-      "key": "koh_phangan",
-      "label": "Koh Phangan, Thailand (Gulf side, by boat from Samui; 25-32°C in July)",
-      "airports": [
-        "USM"
-      ],
-      "flight_hours": 14.92,
-      "flight_hours_source": "No airport on Koh Phangan: fly to Koh Samui (USM; fastest protected 1-stop on Google Flights for LHR 20 Jul 2027, read 2026-09-29, EVA Air + Bangkok Airways via BKK, 14h55), then the resort speedboat, about 40 min"
-    },
-    {
-      "key": "khao_lak",
-      "label": "Khao Lak, Thailand (Andaman side: SW MONSOON in July, 466 mm of rain; 25-32°C)",
-      "airports": [
-        "HKT"
-      ],
-      "flight_hours": 14.5,
-      "flight_hours_source": "No nonstop listed for 20 Jul 2027. Fastest 1-stop on Google Flights for LHR-HKT (read 2026-09-29): THAI via BKK, 14h30; Etihad via AUH, 14h35. Then about 1h40 by road from Phuket airport"
-    },
-    {
       "key": "bali",
       "label": "Bali, Indonesia (Nusa Dua / Seminyak beaches, 27-30C and dry in July)",
       "airports": [
@@ -95,6 +59,60 @@
       ],
       "flight_hours": 14.25,
       "flight_hours_source": "BA / JAL / ANA LHR-HND nonstop, scheduled block about 14h-14h30 on the routing that avoids Russian airspace (published schedules, not re-checked live on 2026-09-28)"
+    },
+    {
+      "key": "antalya",
+      "label": "Antalya Riviera, Turkey (Ultra All Inclusive resorts)",
+      "airports": [
+        "AYT"
+      ],
+      "flight_hours": 4.5,
+      "flight_hours_source": "BA / SunExpress LHR/LGW/STN-AYT nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+    },
+    {
+      "key": "tenerife",
+      "label": "Tenerife, Canary Islands (luxury resort suite)",
+      "airports": [
+        "TFS"
+      ],
+      "flight_hours": 4.5,
+      "flight_hours_source": "BA / easyJet LHR/LGW-TFS nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+    },
+    {
+      "key": "malta",
+      "label": "Valletta, Malta (heritage coastal break)",
+      "airports": [
+        "MLA"
+      ],
+      "flight_hours": 3.25,
+      "flight_hours_source": "BA / Air Malta LHR/LGW-MLA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+    },
+    {
+      "key": "paphos",
+      "label": "Paphos, Cyprus (harbour + 5-star Mediterranean)",
+      "airports": [
+        "PFO"
+      ],
+      "flight_hours": 4.75,
+      "flight_hours_source": "BA / easyJet LHR/LGW-PFO nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+    },
+    {
+      "key": "taghazout",
+      "label": "Taghazout Bay, Morocco (Fairmont coastal)",
+      "airports": [
+        "AGA"
+      ],
+      "flight_hours": 3.75,
+      "flight_hours_source": "BA / easyJet LGW-AGA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+    },
+    {
+      "key": "hurghada",
+      "label": "Hurghada & Red Sea, Egypt (Steigenberger luxury)",
+      "airports": [
+        "HRG"
+      ],
+      "flight_hours": 5.25,
+      "flight_hours_source": "easyJet / TUI LGW/LTN-HRG nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
     },
     {
       "key": "doha",

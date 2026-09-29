@@ -268,8 +268,8 @@ class EvidenceContract:
     #: hunt needs all of them: a fare observed from LGW is a different fare
     #: from the LHR one, and the collector will price whichever is cheaper.
     origins: tuple[str, ...] = ()
-    #: Which resort catalogue produced ``keys``. Surprising enough to state:
-    #: the July report prices from a constant named WINTER_RESORT_CATALOG.
+    #: Which resort catalogue produced ``keys``: WINTER_RESORT_CATALOG for a
+    #: winter trip, SUMMER_RESORT_CATALOG layered over it for a summer one.
     catalog: str = ""
 
     @property
@@ -326,10 +326,10 @@ def evidence_consumption_contract(config) -> Optional[EvidenceContract]:
     a hunt would be wasted spend.
     """
     from .holidays import (
-        RESORT_CATALOG_NAME,
         _date_pairs,
         _shortlist_pairs,
         card_lookup_keys,
+        resort_catalog_name,
     )
 
     outbound, returning = priced_date_pair(config)
@@ -348,7 +348,7 @@ def evidence_consumption_contract(config) -> Optional[EvidenceContract]:
         keys=keys,
         hunt_date_pairs=hunt_pairs,
         origins=origins,
-        catalog=RESORT_CATALOG_NAME,
+        catalog=resort_catalog_name(config),
     )
 
 

@@ -62,6 +62,12 @@ DEFAULT_FLIGHT_HOURS_LHR: dict[str, float] = {
     "penang": 15.5,          # via KUL
     "kota_kinabalu": 17.0,   # via KUL
     "bali": 17.25,           # via SIN
+    # July long-haul beach keys: fastest protected one-stop journey Google
+    # Flights listed for LHR 20 Jul 2027 (read 2026-09-29).
+    "khao_lak": 14.5,        # HKT via BKK (THAI 14h30); then ~1h40 by road
+    "koh_samui": 14.92,      # USM via BKK (EVA Air + Bangkok Airways 14h55)
+    "koh_phangan": 14.92,    # USM as above, then the resort boat (~40 min)
+    "lombok": 24.0,          # LOP via SIN (Singapore Airlines + Scoot, 24h)
 }
 
 

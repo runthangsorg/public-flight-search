@@ -220,18 +220,19 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
             self.assertIn(live, contract.airports, live)
 
     def test_july_contract_follows_the_cabin_rule_on_the_priced_pair(self):
-        # Until 2026-09-28 the July example priced these four short hops in
-        # Business. Under the owner's rule (Business only over 8 hours) every
-        # card-bearing July airport is 4-5 h from London, so the hunt is aimed
-        # at Economy only. The Far East July destinations have no resort
-        # cards, so they add no airports to the contract.
+        # Since 2026-09-29 the July example is long-haul only (owner: nothing
+        # within 6 hours; Lombok and Thailand). Every card-bearing July
+        # airport is over 8 hours from London, so under the cabin rule the
+        # hunt is aimed at Business only. The Far East watch keys (Bali, Da
+        # Nang, Japan) and Doha/Muscat have no resort cards, so they add no
+        # airports to the contract.
         contract = evidence_consumption_contract(_load(JULY_CONFIG))
         self.assertEqual(
             (contract.outbound, contract.return_date),
             ("2027-07-20", "2027-07-27"),
         )
-        self.assertEqual(set(contract.airports), {"AYT", "HRG", "PFO", "TFS"})
-        self.assertEqual({cabin for _, cabin in contract.keys}, {"ECONOMY"})
+        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM"})
+        self.assertEqual({cabin for _, cabin in contract.keys}, {"BUSINESS"})
 
     def test_contract_serializes_for_the_hunt(self):
         contract = evidence_consumption_contract(_load(JULY_CONFIG))
@@ -246,8 +247,8 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         )
         self.assertEqual(payload["origin"], "LHR")
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
-        self.assertIn("AYT/ECONOMY", payload["keys"])
-        self.assertNotIn("AYT/BUSINESS", payload["keys"])
+        self.assertIn("USM/BUSINESS", payload["keys"])
+        self.assertNotIn("USM/ECONOMY", payload["keys"])
         # Self-contained: everything `python -m live --config` reads, plus
         # the four things the hunt gets wrong if it is handed the report's
         # own config (which pairs/origins/cabins/airports are priced).
@@ -380,7 +381,7 @@ class TestEvidenceContractCommand(unittest.TestCase):
             ],
         )
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
-        self.assertEqual(payload["airports"], ["AYT", "HRG", "PFO", "TFS"])
+        self.assertEqual(payload["airports"], ["HKT", "LOP", "USM"])
 
     def test_hunt_config_drives_the_hunt_on_its_own(self):
         # Regression: the fragment carried only origins/date_pairs/cabins/
@@ -456,16 +457,22 @@ class TestEvidenceContractCommand(unittest.TestCase):
 
 class TestCatalogProvenance(unittest.TestCase):
     def test_contract_states_which_catalogue_produced_its_keys(self):
-        # The July report prices from a constant named WINTER_RESORT_CATALOG.
-        # That is surprising enough that the contract states it rather than
-        # leaving a hunt to infer it.
-        from public_flight_search.holidays import RESORT_CATALOG_NAME
+        # December prices WINTER_RESORT_CATALOG; July prices the summer
+        # catalogue layered over it. The contract says which, so a hunt never
+        # has to infer the list its target airports came from.
+        from public_flight_search.holidays import (
+            RESORT_CATALOG_NAME,
+            SUMMER_RESORT_CATALOG_NAME,
+        )
 
-        for path in (DEC_CONFIG, JULY_CONFIG):
+        for path, expected in (
+            (DEC_CONFIG, RESORT_CATALOG_NAME),
+            (JULY_CONFIG, SUMMER_RESORT_CATALOG_NAME),
+        ):
             with self.subTest(config=path.name):
                 contract = evidence_consumption_contract(_load(path))
-                self.assertEqual(contract.catalog, RESORT_CATALOG_NAME)
-                self.assertEqual(contract.as_dict()["catalog"], RESORT_CATALOG_NAME)
+                self.assertEqual(contract.catalog, expected)
+                self.assertEqual(contract.as_dict()["catalog"], expected)
 
     def test_keys_come_from_the_catalogue_the_collector_reads(self):
         # Destinations with no catalogue entry have no card in either season,
@@ -476,14 +483,26 @@ class TestCatalogProvenance(unittest.TestCase):
             resort_catalog,
         )
 
+        july = _load(JULY_CONFIG)
+        december = _load(DEC_CONFIG)
         self.assertIs(resort_catalog(), WINTER_RESORT_CATALOG)
+        self.assertIs(resort_catalog(december), WINTER_RESORT_CATALOG)
         for absent in ("malta", "taghazout", "doha", "muscat"):
             self.assertNotIn(absent, resort_catalog(), absent)
+            self.assertNotIn(absent, resort_catalog(july), absent)
 
-        contract = evidence_consumption_contract(_load(JULY_CONFIG))
-        self.assertEqual(set(contract.airports), {"AYT", "HRG", "PFO", "TFS"})
+        contract = evidence_consumption_contract(july)
+        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM"})
         for dead in ("MLA", "DOH", "MCT", "AGA"):
             self.assertNotIn(dead, contract.airports, dead)
+
+    def test_december_never_hunts_a_summer_resort_airport(self):
+        # The December config lists phuket and krabi; if the July Thai
+        # resorts shared a catalogue with December, its hunt would be aimed at
+        # USM/HKT and its cards priced at July rates.
+        contract = evidence_consumption_contract(_load(DEC_CONFIG))
+        for summer_only in ("USM", "LOP", "HKT"):
+            self.assertNotIn(summer_only, contract.airports, summer_only)
 
 
 class TestAgeReferenceIsInjectedNotGuessed(unittest.TestCase):

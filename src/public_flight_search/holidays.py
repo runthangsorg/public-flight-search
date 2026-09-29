@@ -134,6 +134,11 @@ HOLIDAY_SEARCH_QUERIES: dict[str, str] = {
     "da_nang": "Da Nang, Vietnam",
     "kota_kinabalu": "Kota Kinabalu, Sabah, Malaysia",
     "japan": "Tokyo, Japan",
+    # July long-haul beach catalogue (2026-09-29)
+    "lombok": "Kuta Mandalika, Lombok, Indonesia",
+    "koh_samui": "Koh Samui, Thailand",
+    "koh_phangan": "Koh Phangan, Thailand",
+    "khao_lak": "Khao Lak, Thailand",
 }
 
 # Destination airport per holiday key (for Google Flights parametric links).
@@ -146,12 +151,16 @@ HOLIDAY_AIRPORTS: dict[str, str] = {
     "phuket": "HKT", "krabi": "KBV", "langkawi": "LGK", "penang": "PEN",
     "singapore": "SIN", "phu_quoc": "PQC", "bali": "DPS", "da_nang": "DAD",
     "kota_kinabalu": "BKI", "japan": "HND",
+    # Koh Phangan has no airport: USM, then the resort's boat (about 40 min).
+    # Khao Lak is served from HKT (about 1h40 by road).
+    "lombok": "LOP", "koh_samui": "USM", "koh_phangan": "USM", "khao_lak": "HKT",
 }
 
 #: Far East watch (owner preference, 2026-09-28): long-haul destinations
-#: ranked FIRST in the report. None has a resort in the catalogue with a
-#: verified one-unit family suite, so each is a DESTINATION watch, not a
-#: hotel card, and every figure here is a benchmark, unverified: an
+#: ranked FIRST in the report. None of these keys has a resort in either
+#: catalogue, so each is a DESTINATION watch, not a hotel card (the July
+#: Lombok and Thailand keys have resorts in ``SUMMER_RESORT_CATALOG`` and
+#: are deliberately absent here), and every figure here is a benchmark, unverified: an
 #: editorial estimate of a peak-season Business return fare per person and
 #: a 5-star family-suite night, never an observed or quoted price. They are
 #: here to rank and to size the budget question, and are replaced the day a
@@ -823,26 +832,58 @@ def destination_cabins(
     return (destination_cabin(destination),)
 
 
-def resort_catalog() -> dict[str, list[dict[str, Any]]]:
-    """The single resort catalogue the report prices resorts from.
+#: Outbound months that make a trip a summer trip. The renderer used this test
+#: inline (plus the title words below) long before the catalogue became
+#: seasonal; it is one predicate now so the catalogue, the strict filters, the
+#: evidence contract and the page can never disagree about the season.
+SUMMER_TRIP_MONTHS: frozenset[int] = frozenset({6, 7, 8})
+_SUMMER_TITLE_WORDS: tuple[str, ...] = ("summer", "july", "august")
 
-    There is exactly one catalogue, and its name is historical rather than
-    seasonal: the **July** report prices from a constant called
-    ``WINTER_RESORT_CATALOG``. Destinations absent from it (malta,
-    taghazout, doha, muscat) therefore have no card in any report, which is
-    why ``card_lookup_keys`` excludes their airports and why a hunt that
-    crawls MLA/DOH/MCT is spending on keys nothing can ever consume.
 
-    Selecting a catalogue by trip season would be a pricing change, not a
-    naming one: the same curated resorts are sold in both seasons today, so
-    this is left as one catalogue and recorded in the contract instead.
+def is_summer_trip(config: Any) -> bool:
+    """True for a June-August departure, or a report titled summer/July/August."""
+    for day in getattr(config, "outbound_dates", ()) or ():
+        parts = str(day).split("-")
+        if len(parts) >= 2 and parts[1].isdigit() and int(parts[1]) in SUMMER_TRIP_MONTHS:
+            return True
+    title = str(getattr(config, "report_title", "") or "").lower()
+    return any(word in title for word in _SUMMER_TITLE_WORDS)
+
+
+def resort_catalog(config: Any = None) -> dict[str, list[dict[str, Any]]]:
+    """The resort catalogue a report prices resorts from.
+
+    A winter (or unspecified) trip prices ``WINTER_RESORT_CATALOG``, exactly as
+    every report did before 2026-09-29. A summer trip prices
+    ``SUMMER_RESORT_CATALOG`` layered over it: the long-haul July beach resorts
+    (Lombok, the Gulf of Thailand, Khao Lak) whose rates were read for July,
+    plus the winter entries unchanged, so a July config that still names a
+    short-haul key prices it as before. The two catalogues share no key
+    (tested), so layering never overwrites a winter resort.
+
+    Why the split exists: a single catalogue meant the December planner, whose
+    config lists ``phuket`` and ``krabi``, would have priced July-rate Thai
+    resorts in December and aimed its hunt at their airports. Destinations
+    absent from the selected catalogue (doha, muscat, the Far East watch keys)
+    have no card, which is why ``card_lookup_keys`` excludes their airports.
     """
+    if config is not None and is_summer_trip(config):
+        return _SUMMER_TRIP_CATALOG
     return WINTER_RESORT_CATALOG
 
 
-#: Name reported as the contract's provenance so a hunt can see which list
-#: produced its target airports.
+#: Name reported as the contract's provenance for a winter trip. Kept as a
+#: constant for callers that predate the seasonal split.
 RESORT_CATALOG_NAME = "WINTER_RESORT_CATALOG"
+#: ...and for a summer trip, which prices the summer entries over the winter ones.
+SUMMER_RESORT_CATALOG_NAME = "SUMMER_RESORT_CATALOG+WINTER_RESORT_CATALOG"
+
+
+def resort_catalog_name(config: Any = None) -> str:
+    """Which catalogue ``resort_catalog(config)`` returned, for the contract."""
+    if config is not None and is_summer_trip(config):
+        return SUMMER_RESORT_CATALOG_NAME
+    return RESORT_CATALOG_NAME
 
 
 def card_lookup_keys(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
@@ -856,11 +897,15 @@ def card_lookup_keys(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
     two airports that do carry cards (ACE, PFO) were never hunted, leaving
     19 of 27 December cards on benchmarks for want of an aimed crawl.
     """
-    catalog = resort_catalog()
+    catalog = resort_catalog(config)
+    summer = is_summer_trip(config)
     keys: set[tuple[str, str]] = set()
     for destination in config.destinations:
+        # Same catalogue AND same season as collect_holiday_deals: a summer
+        # resort with an unheated pool survives there, so it must here too or
+        # the hunt is never aimed at a card the report prices.
         resorts, _dropped = filter_resorts(
-            catalog.get(destination.key.lower(), [])
+            catalog.get(destination.key.lower(), []), is_summer=summer
         )
         cabins = destination_cabins(config, destination)
         for resort in resorts:
@@ -946,6 +991,10 @@ class PackageDeal:
     # origins; a benchmark only ever prices the first, while an observed fare
     # may win from any of them, so the card has to say which one won.
     origin: str = ""
+    # How the flight gets there when there is no London nonstop (e.g. "1 stop
+    # via Bangkok"). Empty means a nonstop route, which is what the card's
+    # rationale claims only when this is empty.
+    routing: str = ""
 
     @property
     def vs_peak_saving_gbp(self) -> float:
@@ -1093,6 +1142,14 @@ SUMMER_WEATHER: dict[str, tuple[tuple[int, int], int]] = {
     "lanzarote": ((26, 29), 22),
     "madeira": ((24, 26), 22),
     "cairo": ((34, 37), 0),
+    # July long-haul keys (2026-09-29). Air is the WMO 1991-2020 July mean
+    # daily minimum-maximum (via Wikipedia climate tables); sea is the July
+    # average from seatemperature.org. Koh Phangan uses the Ko Samui station
+    # (about 15 km away) and Khao Lak the Takua Pa station and Phuket sea.
+    "lombok": ((19, 30), 27),        # Mataram 19.4-29.7°C, 77 mm; sea 26.9°C
+    "koh_samui": ((25, 32), 30),     # Ko Samui 25.1-32.3°C, 117 mm; sea 29.7°C
+    "koh_phangan": ((25, 32), 30),   # Ko Samui station
+    "khao_lak": ((25, 32), 30),      # Takua Pa 24.6-31.5°C but 466 mm / 19.7 rain days: SW monsoon
 }
 
 
@@ -1454,6 +1511,265 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
 }
 
 
+# ── JULY LONG-HAUL BEACH CATALOGUE (owner direction 2026-09-29: "include
+# lombok and thailand mostly", nothing within 6 hours, no Singapore/Malaysia).
+#
+# Every figure below was READ on 2026-09-29 from the source named beside it;
+# nothing is interpolated. Rules the entries follow:
+#
+# * Room rates are the whole-unit price for the party of 5 read from the
+#   hotel's own booking engine (Accor ALL, IHG) or Google Hotels, converted at
+#   the ECB reference rates of 2026-09-29 (EUR/GBP 0.85718, EUR/THB 38.056,
+#   EUR/IDR 20350.09). Where 20-27 Jul 2027 was on sale the rate is for those
+#   dates ("market-supported"); where it was not yet on sale, the nearest
+#   open week (29 Jun-6 Jul 2027) is used and the entry says "estimate".
+# * July IS the season being priced, so the "peak" fields repeat the July
+#   rate: no discount against a peak is claimed for any of these resorts.
+# * Flight benchmarks are whole-party (5 adult) ECONOMY returns for 20-27 Jul
+#   2027 from LHR read on Google Flights; the report's Business figure is the
+#   engine's usual 2.5x of that, labelled an estimate, until a live Business
+#   fare replaces it. Observed Business fares are recorded in the source text.
+# * TripAdvisor could not be read (DataDome wall; its public summary shows only
+#   a whole-number "4 of 5"), so no entry claims the >=4.5 gate: the
+#   architecture rows carry ``tripadvisor: None`` and the report says so.
+# * ``dec_ambient_c`` is (0, 0): these resorts are not assessed for December
+#   and are only ever priced for summer trips (``resort_catalog``).
+_LOP_FLIGHT = {
+    "airport": "LOP",
+    "airline": "Etihad + Garuda Indonesia (2 stops) / Singapore Airlines + Scoot (1 stop)",
+    # Google Flights, LHR-LOP 20-27 Jul 2027, 5 adults, Economy, read
+    # 2026-09-29: cheapest protected itinerary GBP 4,990 (Etihad + Garuda via
+    # AUH and CGK); the 1-stop Singapore Airlines + Scoot itinerary showed
+    # "Price unavailable". A Business search returned "No Business Class
+    # flights found": there is no Business cabin into Lombok at all.
+    "flight_benchmark_5pax_gbp": 4990.0,
+    "peak_summer_flight_5pax_gbp": 4990.0,
+    "routing": ("no London nonstop and no Business cabin into Lombok: 1 stop via Singapore "
+                "(Singapore Airlines + Scoot, about 24h) or 2 stops via the Gulf and Jakarta"),
+}
+_USM_FLIGHT = {
+    "airport": "USM",
+    "airline": "British Airways + Bangkok Airways (1 stop via Singapore)",
+    # Google Flights, LHR-USM 20-27 Jul 2027, 5 adults, read 2026-09-29:
+    # Economy GBP 6,190 (BA + Bangkok Airways via SIN, the only listed
+    # itinerary). Business: GBP 29,389 for that itinerary all-Business;
+    # protected Business-long-haul + Economy-hop itineraries from GBP 13,340
+    # (Etihad + Bangkok Airways, 2 stops) and GBP 21,105 (EVA Air + Bangkok
+    # Airways, 1 stop via BKK, 14h55).
+    "flight_benchmark_5pax_gbp": 6190.0,
+    "peak_summer_flight_5pax_gbp": 6190.0,
+    "routing": ("no London nonstop: 1 stop via Bangkok (EVA Air / THAI + Bangkok Airways, "
+                "about 14h05-14h55) or Singapore (BA + Bangkok Airways, 16h50)"),
+}
+_HKT_FLIGHT = {
+    "airport": "HKT",
+    "airline": "Qatar Airways + British Airways (via Doha) / THAI (via Bangkok)",
+    # Google Flights, LHR-HKT 20-27 Jul 2027, 5 adults, read 2026-09-29:
+    # Economy from GBP 4,695 (Qatar Airways + BA via DOH); Business from
+    # GBP 12,107 (Etihad via AUH). No nonstop was listed for these dates.
+    "flight_benchmark_5pax_gbp": 4695.0,
+    "peak_summer_flight_5pax_gbp": 4695.0,
+    "routing": ("no nonstop on these dates: 1 stop via Bangkok (THAI, 14h30), Abu Dhabi "
+                "(Etihad) or Doha (Qatar Airways), then about 1h40 by road"),
+}
+
+SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
+    "lombok": [
+        {
+            "name": "Pullman Lombok Merujani Mandalika Beach Resort",
+            "destination_label": "Kuta Mandalika, Lombok, Indonesia",
+            "stars": 5,  # Accor ALL listing: "Resort Hotel 5"
+            "board": "Bed & Breakfast",
+            # Accor ALL booking engine, 5 adults, Two-Bedroom Garden Villa,
+            # 29 Jun-6 Jul 2027: EUR 5,882.81 public rate, 7 nights, breakfast
+            # and taxes included (= GBP 5,042.63). 20-27 Jul not yet on sale.
+            "base_nightly_room_rate_gbp": 720.38,
+            "peak_summer_nightly_room_rate_gbp": 720.38,
+            **_LOP_FLIGHT,
+            "highlights": (
+                "Beachfront resort on Kuta Mandalika bay",
+                "2-bedroom villa with private pool, 386 m², 6 guests max",
+                "Two restaurants and a swim-up bar",
+                "Google rating 4.8 (2.3k reviews); TripAdvisor ≥4.5 not verified",
+            ),
+            "hotel_url": "https://pullman.accor.com/en/hotels/central-lombok/A1K2.html",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,
+            "beach": "Resort's own beachfront on Kuta Mandalika bay, 20 min from LOP airport",
+            # Estimate: two airport counter taxis at IDR 150,000 each way (top of
+            # the IDR 100-150k counter fare to Kuta in a Lombok airport guide).
+            "transfer_gbp": 25.27,
+            "confidence": "estimate",
+        },
+        {
+            "name": "Novotel Lombok Resort & Villas",
+            "destination_label": "Kuta Mandalika, Lombok, Indonesia",
+            "stars": 4,  # Accor ALL listing: "Resort Hotel 4"
+            "board": "Room only",
+            # Accor ALL booking engine, 29 Jun-6 Jul 2027, 7 nights, taxes
+            # included: Ocean View Family Villa, two bedrooms (3 adults)
+            # EUR 2,114.34 + Superior King room (2 adults) EUR 680.54 =
+            # EUR 2,794.88 (= GBP 2,395.72). 20-27 Jul not yet on sale.
+            "base_nightly_room_rate_gbp": 342.25,
+            "peak_summer_nightly_room_rate_gbp": 342.25,
+            **_LOP_FLIGHT,
+            "highlights": (
+                "Family resort in traditional Sasak style",
+                "Free daily activities and an on-site dive centre",
+                "Google rating 4.5 (3.9k reviews); TripAdvisor ≥4.5 not verified",
+            ),
+            "hotel_url": "https://www.novotellombok.com/rooms-villas/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,
+            "beach": "On Mandalika's Putri Nyale beach, 19 km from LOP airport",
+            "transfer_gbp": 25.27,  # estimate, as for the Pullman above
+            "confidence": "estimate",
+        },
+    ],
+    "koh_samui": [
+        {
+            "name": "Garrya Tongsai Bay Samui",
+            "destination_label": "Koh Samui, Thailand (Gulf side)",
+            "stars": 5,  # Accor ALL listing: "Resort Hotel 5"
+            "board": "Bed & Breakfast",
+            # Accor ALL booking engine, 20-27 Jul 2027, 7 nights, breakfast and
+            # taxes included: Beachfront Suite (3 adults) EUR 2,937.84 +
+            # Beachfront Suite (2 adults) EUR 2,388.14 = EUR 5,325.98
+            # (= GBP 4,565.32). Rooms take 3 adults at most.
+            "base_nightly_room_rate_gbp": 652.19,
+            "peak_summer_nightly_room_rate_gbp": 652.19,
+            **_USM_FLIGHT,
+            "highlights": (
+                "Private bay with its own beach front, 28 acres",
+                "Two Beachfront Suites, 72 m² each, sea view",
+                "Google rating 4.8 (1.0k reviews); TripAdvisor ≥4.5 not verified",
+            ),
+            "hotel_url": "https://www.garrya.com/en/destinations/samui",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 30,
+            "beach": "Private Tongsai Bay beach, north-east Samui — Gulf side, the drier coast in July",
+            # Estimate: THB 800 each way (top of a Samui guide's THB 400-800
+            # airport taxi range).
+            "transfer_gbp": 36.04,
+            "confidence": "market-supported",
+        },
+        {
+            "name": "Banyan Tree Samui",
+            "destination_label": "Koh Samui, Thailand (Gulf side)",
+            "stars": 5,  # Accor ALL listing: "Hotel 5"
+            "board": "Bed & Breakfast",
+            # Accor ALL booking engine, 5 adults, Family Horizon Hillcrest Pool
+            # Villa (5 guests max, 169 m²), 29 Jun-6 Jul 2027: EUR 9,899.30,
+            # 7 nights, breakfast and taxes included (= GBP 8,485.48).
+            # 20-27 Jul not yet on sale.
+            "base_nightly_room_rate_gbp": 1212.21,
+            "peak_summer_nightly_room_rate_gbp": 1212.21,
+            **_USM_FLIGHT,
+            "highlights": (
+                "All-pool-villa resort on a private cove in Lamai Bay",
+                "Family villa with private pool for up to 5",
+                "Spa and wellbeing centre; resort speedboat",
+                "Guest rating not read; TripAdvisor ≥4.5 not verified",
+            ),
+            "hotel_url": "https://www.banyantree.com/thailand/samui",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 30,
+            "beach": "Private cove beach in Lamai Bay — hillside villas, a walk or buggy down",
+            "transfer_gbp": 36.04,  # estimate, as for Garrya above
+            "confidence": "estimate",
+        },
+        {
+            "name": "Kimpton Kitalay Samui",
+            "destination_label": "Koh Samui, Thailand (Gulf side)",
+            "stars": 5,  # Google Hotels: "5-star hotel"
+            "board": "Room only",
+            # IHG booking engine, 20-27 Jul 2027, 4 adults per room: 1 King
+            # 1 Bedroom Suite Resort View THB 36,718 per night incl. taxes
+            # (public rate). 5 adults exceed every room's capacity, so two
+            # suites: THB 73,436 per night (= GBP 1,654.09). The Two Bedroom
+            # Villa Kitalay was not offered for these dates.
+            "base_nightly_room_rate_gbp": 1654.09,
+            "peak_summer_nightly_room_rate_gbp": 1654.09,
+            **_USM_FLIGHT,
+            "highlights": (
+                "Beachfront on Choeng Mon; six outdoor pools",
+                "JUNIO kids' club",
+                "Google rating 4.7 (1.3k reviews); IHG reviews 4.5; TripAdvisor ≥4.5 not verified",
+            ),
+            "hotel_url": "https://www.kimptonkitalaysamui.com/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 30,
+            "beach": "Choeng Mon beachfront, north-east Samui — Gulf side, the drier coast in July",
+            "transfer_gbp": 36.04,  # estimate, as for Garrya above
+            "confidence": "market-supported",
+        },
+    ],
+    "koh_phangan": [
+        {
+            "name": "Anantara Rasananda Koh Phangan Villas",
+            "destination_label": "Koh Phangan, Thailand (Gulf side)",
+            "stars": 5,  # Google Hotels: "5-star hotel"
+            "board": "Room only",
+            # Google Hotels, 20-27 Jul 2027, 5 guests: GBP 1,193 per night,
+            # the listing's cheapest option for 5 (it does not name the unit).
+            "base_nightly_room_rate_gbp": 1193.0,
+            "peak_summer_nightly_room_rate_gbp": 1193.0,
+            **_USM_FLIGHT,
+            "routing": _USM_FLIGHT["routing"] + ", then the resort's speedboat from Samui (about 40 min)",
+            "highlights": (
+                "2-bedroom pool villa: 220 m², up to 6 adults, plunge pool",
+                "Scheduled resort speedboat from Samui, about 40 min",
+                "Google rating 4.7 (1.3k reviews); TripAdvisor ≥4.5 not verified",
+            ),
+            "hotel_url": "https://www.anantara.com/en/rasananda-koh-phangan",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 30,
+            "beach": "Thong Nai Pan Noi bay, north-east Koh Phangan — Gulf side, the drier coast in July",
+            # Hotel price list (1 Nov 2024): scheduled speedboat THB 4,000++ per
+            # person return, car from USM to the pier included; ++ taken as
+            # 10% service + 7% VAT: 5 x 4,000 x 1.177 = THB 23,540.
+            "transfer_gbp": 530.22,
+            "confidence": "market-supported",
+        },
+    ],
+    "khao_lak": [
+        {
+            "name": "Pullman Khao Lak Resort",
+            "destination_label": "Khao Lak, Thailand (Andaman side — MONSOON in July)",
+            "stars": 5,  # Accor ALL listing: "Resort Hotel 5"
+            "board": "Room only",
+            # Accor ALL booking engine, 20-27 Jul 2027, 7 nights, taxes
+            # included: Family Suite (5 guests max; 3 adults) EUR 779.75 +
+            # Deluxe Room (2 adults) EUR 304.50 = EUR 1,084.25 (= GBP 929.40).
+            "base_nightly_room_rate_gbp": 132.77,
+            "peak_summer_nightly_room_rate_gbp": 132.77,
+            **_HKT_FLIGHT,
+            "highlights": (
+                "Kids' club, two pools, two restaurants",
+                "Family Suite for up to 5 (62 m²) plus a Deluxe Room",
+                "Google rating 4.5 (2.2k reviews); Accor reviews 4.5/5; TripAdvisor ≥4.5 not verified",
+            ),
+            "hotel_url": "https://www.pullmankhaolakresort.com/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 30,
+            "beach": ("Bang Muang white-sand beach — but July is the SW monsoon on the Andaman "
+                      "coast (Takua Pa: 466 mm over 19.7 rain days, WMO normals); check the sea "
+                      "before swimming"),
+            # Estimate: private car HKT-Khao Lak from THB 1,700 per way for 1-8
+            # people (a Khao Lak airport-transfer operator's price list).
+            "transfer_gbp": 76.58,
+            "confidence": "market-supported",
+        },
+    ],
+}
+
+#: The summer view: summer entries over the winter ones (no shared key).
+_SUMMER_TRIP_CATALOG: dict[str, list[dict[str, Any]]] = {
+    **WINTER_RESORT_CATALOG,
+    **SUMMER_RESORT_CATALOG,
+}
+
+
 # Recovered criteria registry (0-10 curated benchmarks per resort, from the
 # winter-tracker contract): luxury, food reality, mosque access, winter
 # facilities, activities, flight quality — plus the mosque facts and the
@@ -1672,6 +1988,62 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
         "pool_heated_c": 28, "tripadvisor": 4.4,
         "nonstop_from": ("LGW", "STN"),
     },
+    # ── JULY LONG-HAUL (SUMMER_RESORT_CATALOG), read 2026-09-29. The unit is
+    # the one priced in the catalogue entry; where no single unit takes 5
+    # adults the unit is two rooms on one booking (``rooms_in_unit: 2``), NOT a
+    # guaranteed connecting pair. ``pool_heated_c`` 0 = not assessed: the
+    # >=28°C heated-pool rule is a December rule and these resorts are only
+    # priced for summer trips. ``tripadvisor`` None = could not be read, and
+    # the report says the >=4.5 gate was not applied.
+    "Pullman Lombok Merujani Mandalika Beach Resort": {
+        "suite_type": "Two-Bedroom Garden Villa, private pool (6 guests max)",
+        "suite_nightly_gbp": 720.38, "suite_peak_nightly_gbp": 720.38,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "Novotel Lombok Resort & Villas": {
+        "suite_type": "Ocean View Family Villa (2 bedrooms, 3 adults) + Superior room (2 adults) — 2 rooms",
+        "suite_nightly_gbp": 342.25, "suite_peak_nightly_gbp": 342.25,
+        "rooms_in_unit": 2,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "Garrya Tongsai Bay Samui": {
+        "suite_type": "2× Beachfront Suite (3 + 2 adults) — 2 rooms",
+        "suite_nightly_gbp": 652.19, "suite_peak_nightly_gbp": 652.19,
+        "rooms_in_unit": 2,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "Banyan Tree Samui": {
+        "suite_type": "Family Horizon Hillcrest Pool Villa (5 guests max)",
+        "suite_nightly_gbp": 1212.21, "suite_peak_nightly_gbp": 1212.21,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "Kimpton Kitalay Samui": {
+        "suite_type": "2× One-Bedroom Suite, resort view (4 guests max each) — 2 rooms",
+        "suite_nightly_gbp": 1654.09, "suite_peak_nightly_gbp": 1654.09,
+        "rooms_in_unit": 2,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "Anantara Rasananda Koh Phangan Villas": {
+        # The price is Google Hotels' cheapest option for 5 guests; the
+        # listing does not name the unit. The two-bedroom pool villa (up to 6
+        # adults) is the likely fit, not a confirmed one.
+        "suite_type": "Cheapest option for 5 on Google Hotels (unit not shown; 2-bedroom pool villa likely)",
+        "suite_nightly_gbp": 1193.0, "suite_peak_nightly_gbp": 1193.0,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "Pullman Khao Lak Resort": {
+        "suite_type": "Family Suite (3 adults, 5 guests max) + Deluxe Room (2 adults) — 2 rooms",
+        "suite_nightly_gbp": 132.77, "suite_peak_nightly_gbp": 132.77,
+        "rooms_in_unit": 2,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
 }
 
 
@@ -1696,11 +2068,21 @@ def filter_resorts(
         if not is_summer and arch["pool_heated_c"] < 28:
             dropped.append((name, f"pools not heated to >=28°C in December ({arch['pool_heated_c']}°C)"))
             continue
-        if arch["tripadvisor"] < 4.5:
+        # None = the rating could not be read. The gate is then NOT applied
+        # (the resort is kept), and the report names every such resort in its
+        # transparency block: keeping it silently would claim a check that was
+        # never made, dropping it would hide a destination the owner asked for.
+        if arch["tripadvisor"] is not None and arch["tripadvisor"] < 4.5:
             dropped.append((name, f"TripAdvisor {arch['tripadvisor']} < 4.5"))
             continue
         kept.append(resort)
     return kept, dropped
+
+
+def tripadvisor_unverified(resort_name: str) -> bool:
+    """True when a resort's TripAdvisor rating could not be read."""
+    arch = SUITE_ARCHITECTURE.get(resort_name)
+    return arch is not None and arch.get("tripadvisor") is None
 
 
 # UK ground transit from Watford Junction (return, whole party share).
@@ -1746,6 +2128,11 @@ BUSINESS_CARRIER_BY_AIRPORT: dict[str, str] = {
     "SID": "TUI / British Airways (best available premium cabin)",
     "MCT": "Oman Air Business / British Airways Club World",
     "DOH": "Qatar Airways Business / British Airways Club World",
+    # July long-haul (Google Flights, 20-27 Jul 2027, read 2026-09-29).
+    "HKT": "Etihad / Qatar Airways / THAI Business (1 stop)",
+    "USM": "British Airways Club World + Bangkok Airways (1 stop via SIN); or EVA Air / Etihad Business with an Economy hop",
+    "LOP": ("Business on the long sector only — no Business cabin into Lombok "
+            "(Scoot / Garuda Economy on the final leg; unpriced combination)"),
 }
 
 PREMIUM_CARRIER_BY_AIRPORT: dict[str, str] = {
@@ -1842,9 +2229,14 @@ def collect_holiday_deals(
         "FIRST": 4.5,
     }
 
-    def _best_option(resort, cabin, flight_mult, arch) -> Optional[dict]:
+    def _best_option(resort, cabin, flight_mult, arch, *, enforce_budget: bool = True) -> Optional[dict]:
         """Cheapest (date pair, departure origin) for one resort that clears
         BOTH ceilings, or None when no combination does.
+
+        ``enforce_budget=False`` answers the second question the report asks
+        of a resort that failed the first: what would its cheapest option have
+        cost? It is used only to state an over-budget resort's price, never to
+        make a card.
 
         This is the whole of the "wider search": every priceable pair and
         every configured origin is evaluated instead of one middle pair from
@@ -1889,7 +2281,9 @@ def collect_holiday_deals(
                 total_pkg = round(flight_cost + hotel_cost, 2)
                 true_d2d = round(total_pkg + uk_ground + transfer, 2)
                 # STRICT: both measures must clear the ceiling.
-                if not (total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp):
+                if enforce_budget and not (
+                    total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
+                ):
                     continue
                 option = {
                     "outbound": outbound,
@@ -1913,8 +2307,15 @@ def collect_holiday_deals(
                     best = option
         return best
 
+    # The same catalogue and season card_lookup_keys uses, so the hunt contract
+    # and the cards can never be built from two different resort lists.
+    catalog = resort_catalog(config)
+    summer = is_summer_trip(config)
+    over_budget: list[dict[str, Any]] = []
     for dest in config.destinations:
-        resorts, dropped = filter_resorts(WINTER_RESORT_CATALOG.get(dest.key.lower(), []))
+        resorts, dropped = filter_resorts(
+            catalog.get(dest.key.lower(), []), is_summer=summer
+        )
         filtered_out.extend(dropped)
         dest_cabins = destination_cabins(config, dest)
         for cabin in dest_cabins:
@@ -1925,8 +2326,42 @@ def collect_holiday_deals(
                 arch = SUITE_ARCHITECTURE[resort["name"]]
                 option = _best_option(resort, cabin, flight_mult, arch)
                 # None means every date pair and every origin breached BOTH
-                # ceilings: the resort is dropped exactly as a single-pair run
-                # dropped it, rather than being shown over budget.
+                # ceilings: no card, exactly as before. A LONG-HAUL (Business)
+                # resort is still stated, with its cheapest price, in the
+                # report's over-budget list: those are the destinations the
+                # owner asked to see (Lombok, Thailand), and in Business for
+                # five they are the ones most likely to be priced out entirely.
+                # Silently dropping them made the destination vanish. Short-haul
+                # resorts keep the old behaviour.
+                if option is None and cabin.upper() == "BUSINESS":
+                    cheapest = _best_option(
+                        resort, cabin, flight_mult, arch, enforce_budget=False
+                    )
+                    if cheapest is not None:
+                        evidence = cheapest["evidence"]
+                        over_budget.append({
+                            "resort_name": resort["name"],
+                            "destination_key": dest.key,
+                            "destination_label": resort["destination_label"],
+                            "airport": airport,
+                            "cabin": cabin.upper(),
+                            "outbound": cheapest["outbound"],
+                            "return": cheapest["return"],
+                            "nights": cheapest["nights"],
+                            "origin": cheapest["origin"],
+                            "flight_cost": cheapest["flight_cost"],
+                            "hotel_cost": cheapest["hotel_cost"],
+                            "total_pkg": cheapest["total_pkg"],
+                            "true_d2d": cheapest["true_d2d"],
+                            "flight_confidence": (
+                                evidence.confidence
+                                if (cheapest["evidence_used"] and evidence is not None)
+                                else "benchmark"
+                            ),
+                            "hotel_confidence": resort.get("confidence", "market-supported"),
+                            "unit": arch["suite_type"],
+                            "max_budget_gbp": float(max_budget_gbp),
+                        })
                 if option is not None:
                     target_outbound = option["outbound"]
                     target_return = option["return"]
@@ -1993,6 +2428,7 @@ def collect_holiday_deals(
                             airline=display_airline,
                             origin_airports=config.origins,
                             origin=departure_origin,
+                            routing=str(resort.get("routing", "")),
                             destination_airport=airport,
                             flight_price_total_gbp=flight_cost,
                             flight_price_basis=flight_basis,
@@ -2014,10 +2450,17 @@ def collect_holiday_deals(
                             # when fresh, "stale-cache" when aged. Never a bare
                             # "verified-exact-date" on an observation too old to
                             # be one.
+                            # A Business card with no live fare is priced from the
+                            # economy benchmark x2.5: that total is an estimate,
+                            # whatever the provenance of the room rate beside it.
                             confidence=(
                                 evidence.confidence
                                 if (evidence_used and evidence is not None)
-                                else resort.get("confidence", "market-supported")
+                                else (
+                                    "estimate"
+                                    if cabin.upper() != "ECONOMY"
+                                    else resort.get("confidence", "market-supported")
+                                )
                             ),
                             # An aged fare shows its source and observed date too:
                             # the auditability mandate applies to a "this was
@@ -2085,14 +2528,23 @@ def collect_holiday_deals(
     # caller via module-level export for the renderer; the function returns
     # deals only (signature stability for tests/CLI), so stash on the tuple's
     # companion attribute pattern: a module global consumed by the renderer.
-    global LAST_FILTERED_OUT
+    global LAST_FILTERED_OUT, LAST_OVER_BUDGET
     LAST_FILTERED_OUT = tuple(filtered_out)
+    LAST_OVER_BUDGET = tuple(
+        sorted(over_budget, key=lambda row: (row["total_pkg"], row["resort_name"]))
+    )
     return tuple(deals)
 
 
 #: Resorts filtered out by the strict parameters in the last collect run,
 #: with human-readable reasons (rendered in the email's transparency note).
 LAST_FILTERED_OUT: tuple[tuple[str, str], ...] = ()
+
+#: Long-haul (Business) resorts the last collect run priced but could not card
+#: because their cheapest option breached the budget, cheapest first. Rendered
+#: as the report's over-budget list so a priced-out destination is stated, not
+#: silently absent.
+LAST_OVER_BUDGET: tuple[dict[str, Any], ...] = ()
 
 
 BOARD_LUXURY_WEIGHT: dict[str, int] = {
@@ -2432,8 +2884,8 @@ def render_far_east_watch(config: HolidayConfig) -> str:
         '🌏 Far East first — long haul, Business (over 8 h from London)</h2>',
         '<p style="margin:0 0 8px 0; color:#475569; font-size:13px;">Every figure in this block is '
         '<strong>' + FAR_EAST_PRICE_LABEL + '</strong>: an estimate of a peak-season Business fare '
-        'and a 5-star family-suite night, not an observed or quoted price. No Far East resort has a '
-        'verified one-unit family suite in the catalogue yet, so these are destination watches, not '
+        'and a 5-star family-suite night, not an observed or quoted price. These destinations have no '
+        'resort in the catalogue, so they are destination watches, not '
         'hotel cards. Cabin rule: Business only when the flight is over 8 hours, otherwise Economy.</p>',
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
         'background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 18px 0;">',
@@ -2457,6 +2909,66 @@ def render_far_east_watch(config: HolidayConfig) -> str:
                    + ' · <a href="' + escape(row["booking_url"], quote=True) + '" style="' + link + '">Booking.com ↗</a>'
                    + ' · <a href="' + escape(row["hotels_url"], quote=True) + '" style="' + link + '">Google Hotels ↗</a>')
         out.append('</td></tr>')
+    out.append('</table>')
+    return ''.join(out)
+
+
+def render_gate_not_applied(resort_names: Sequence[str]) -> str:
+    """Name every shown resort whose TripAdvisor >=4.5 gate could not be applied."""
+    return (
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
+        'background:#fffbeb; border:1px solid #fde68a; border-radius:8px; margin:0 0 18px 0;">'
+        '<tr><td style="padding:12px 16px; color:#78350f; font-size:14px; line-height:1.6;">'
+        '<strong>🔍 Rule not applied — TripAdvisor ≥4.5:</strong> the rating could not be read for '
+        + escape(', '.join(resort_names))
+        + '. TripAdvisor blocks automated reads and its public summary shows only a rounded whole '
+        'number, so these resorts are shown without that check. Look each one up before booking.'
+        '</td></tr></table>'
+    )
+
+
+_FLIGHT_BASIS_WORDS = {
+    "verified-exact-date": "live fare",
+    "stale-cache": "observed fare, not live",
+    "benchmark": "benchmark estimate",
+}
+_HOTEL_BASIS_WORDS = {
+    "market-supported": "rate read for these dates",
+    "estimate": "rate estimate from the nearest dates on sale",
+}
+
+
+def render_over_budget(rows: Sequence[Mapping[str, Any]], *, travellers: int) -> str:
+    """Long-haul resorts priced but over the budget, cheapest first, with bases."""
+    if not rows:
+        return ""
+    budget = float(rows[0].get("max_budget_gbp", 0.0))
+    out = [
+        '<h2 style="margin:6px 0 4px 0; color:#0f172a; font-size:20px; font-weight:800;">'
+        '💷 Long-haul resorts priced over the £' + f'{budget:,.0f}' + ' budget</h2>',
+        '<p style="margin:0 0 8px 0; color:#475569; font-size:13px;">Each resort\'s cheapest option '
+        'for ' + str(travellers) + ' across the configured dates and airports. Not cards: nothing here '
+        'fits the budget. Flights are Business on the long sector (over 8 hours).</p>',
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
+        'background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 18px 0;">',
+    ]
+    for row in rows:
+        over = max(float(row["true_d2d"]) - budget, 0.0)
+        flight_words = _FLIGHT_BASIS_WORDS.get(str(row.get("flight_confidence")), "benchmark estimate")
+        hotel_words = _HOTEL_BASIS_WORDS.get(str(row.get("hotel_confidence")), "rate estimate")
+        out.append(
+            '<tr><td style="padding:8px 12px; border-bottom:1px solid #f1f5f9; font-size:13px; color:#475569;">'
+            '<strong style="color:#0f172a;">' + escape(str(row["resort_name"])) + '</strong> · '
+            + escape(str(row["destination_label"])) + ' (' + escape(str(row["airport"])) + ')<br>'
+            '<strong style="color:#0f172a;">£' + f'{float(row["total_pkg"]):,.0f}' + '</strong> package · £'
+            + f'{float(row["true_d2d"]):,.0f}' + ' door to door · <span style="color:#b45309;">£'
+            + f'{over:,.0f}' + ' over</span> · ' + escape(str(row["outbound"])) + '→' + escape(str(row["return"]))
+            + ', ' + str(row["nights"]) + ' nights from ' + escape(str(row["origin"])) + '<br>'
+            'flights £' + f'{float(row["flight_cost"]):,.0f}' + ' ' + escape(str(row["cabin"]).title())
+            + ' (' + escape(flight_words) + ') · stay £' + f'{float(row["hotel_cost"]):,.0f}' + ', '
+            + escape(str(row["unit"])) + ' (' + escape(hotel_words) + ')'
+            '</td></tr>'
+        )
     out.append('</table>')
     return ''.join(out)
 
@@ -2556,22 +3068,40 @@ def render_holiday_report(
         out.append('</td></tr></table>')
         out.append('</td></tr><tr><td>')
 
-    is_summer = any(
-        int(d.split('-')[1]) in (6, 7, 8)
-        for d in (config.outbound_dates or [])
-        if '-' in d
-    ) or "summer" in (config.report_title or "").lower() or "july" in (config.report_title or "").lower() or "august" in (config.report_title or "").lower()
+    # Rows of the last collect that belong to THIS config: the module global
+    # outlives the call that set it, and a stale row must never leak into
+    # another report.
+    config_keys = {d.key.lower() for d in config.destinations}
+    over_budget_rows = [
+        row for row in LAST_OVER_BUDGET
+        if str(row.get("destination_key", "")).lower() in config_keys
+    ]
+
+    # ── A RULE THAT COULD NOT BE APPLIED IS STATED, NOT IMPLIED ──
+    gate_open = sorted(
+        {d.resort_name for d in deals if tripadvisor_unverified(d.resort_name)}
+        | {row["resort_name"] for row in over_budget_rows if tripadvisor_unverified(row["resort_name"])}
+    )
+    if gate_open:
+        out.append(render_gate_not_applied(gate_open))
+        out.append('</td></tr><tr><td>')
+
+    is_summer = is_summer_trip(config)
 
     # ── FAR EAST FIRST (owner preference, 2026-09-28) ──
     far_east = render_far_east_watch(config)
     if far_east:
         out.append(far_east)
 
+    # ── LONG-HAUL RESORTS PRICED OVER THE BUDGET: stated, never silently dropped ──
+    if over_budget_rows:
+        out.append(render_over_budget(over_budget_rows, travellers=config.travellers))
+
     # ── VERIFIED LIVE DEALS UNDER £5,000 (WHEN AVAILABLE) ──
     if deals:
         if is_summer:
-            out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">⭐ Summer Luxury Deals — One Family Unit, Verified Rates</h2>')
-            out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Every resort sleeps all 5 in <strong>ONE booking</strong> (2-bedroom suite, duplex, or 2× guaranteed-connecting rooms where the hotel confirms the connection post-booking). Walkable beach, TripAdvisor ≥4.5, nonstop flights, preferred departure times. Evaluated for peak summer family value and verified packaging.</p>')
+            out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">⭐ Summer Luxury Deals — One Family Unit</h2>')
+            out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Every resort sleeps all 5 in <strong>ONE booking</strong>: a 2-bedroom villa or suite or, where no single unit takes 5 adults, two rooms on the same booking (not a guaranteed connecting pair) — each card names its unit. Walkable beach at the resort. Flight routing, guest rating and the price basis of every figure are stated on each card; long-haul flights are Business on the long sector.</p>')
         else:
             out.append('<h2 style="margin:22px 0 4px 0; color:#0f172a; font-size:24px; font-weight:800;">⭐ December Deals — One Family Unit, Real Discounts vs Summer Peak</h2>')
             out.append('<p style="margin:0 0 10px 0; color:#475569; font-size:15px;">Every resort sleeps all 5 in <strong>ONE booking</strong> (2-bedroom suite, duplex, or 2× guaranteed-connecting rooms where the hotel confirms the connection post-booking). Pools heated ≥28°C, walkable beach, TripAdvisor ≥4.5, nonstop flights, any departure time. Ranked by how much cheaper the same stay is in December versus its July/August peak.</p>')
@@ -2587,7 +3117,7 @@ def render_holiday_report(
                        '<strong style="color:#0f172a;">' + disc_label + '</strong> '
                        + escape(b1.resort_name) + ' — <strong style="color:#059669;">▼' + str(b1.vs_peak_pct) + '% (save £' + f'{b1.vs_peak_saving_gbp:,.0f}' + ' for the same resort)</strong></td></tr>')
         if b2 is not None:
-            lux_limit = "£12k" if is_summer and config.max_budget_gbp > 5000 else "£5k"
+            lux_limit = "£" + f"{config.max_budget_gbp / 1000:g}" + "k"
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
                        '<strong style="color:#0f172a;">💎 Top Luxury Within ' + lux_limit + ':</strong> '
                        + escape(b2.resort_name) + ' · ' + escape(b2.board_basis) + '</td></tr>')
@@ -2709,7 +3239,12 @@ def render_holiday_report(
             out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;"><strong style="color:#7c3aed;">VALUE ' + f'{deal.value_score:.0f}' + '/100</strong> · '
                        + '<span style="background:#faf5ff; color:#6d28d9; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700;">' + escape(deal.deal_class.replace('_', ' ')) + '</span></div>')
             season_score_name = "🏊 beach & pools" if is_summer else "❄️ winter"
-            out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">' + crit + ' · 🍽️ food ' + f'{deal.food_reality_score:.0f}' + '/10 · 💎 luxury ' + f'{deal.actual_luxury_score:.0f}' + '/10 · ' + season_score_name + ' ' + f'{deal.winter_facilities_score:.0f}' + '/10 · 🎯 activities ' + f'{deal.activities_score:.0f}' + '/10 · ✈️ flights ' + f'{deal.flight_quality_score:.0f}' + '/10</div>')
+            if deal.resort_name not in RESORT_CRITERIA:
+                # No curated scores exist for this resort: the numbers below
+                # would be the neutral 5/10 defaults, so they are not printed.
+                out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">' + crit + ' · criteria scores not assessed for this resort</div>')
+            else:
+                out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">' + crit + ' · 🍽️ food ' + f'{deal.food_reality_score:.0f}' + '/10 · 💎 luxury ' + f'{deal.actual_luxury_score:.0f}' + '/10 · ' + season_score_name + ' ' + f'{deal.winter_facilities_score:.0f}' + '/10 · 🎯 activities ' + f'{deal.activities_score:.0f}' + '/10 · ✈️ flights ' + f'{deal.flight_quality_score:.0f}' + '/10</div>')
             if deal.food_review_summary:
                 out.append('<div style="color:#64748b; font-size:13px; margin-bottom:8px;"><strong style="color:#475569;">Food reviews:</strong> ' + escape(deal.food_review_summary) + '</div>')
             # Facts strip: flights | stay | weather | BIG price
@@ -2747,7 +3282,7 @@ def render_holiday_report(
                 if deal.vs_peak_saving_gbp > 0:
                     out.append('<div style="color:#059669; font-size:12px; white-space:nowrap;">benchmark saving £' + f'{deal.vs_peak_saving_gbp:,.0f}' + '</div>')
                 else:
-                    out.append('<div style="color:#64748b; font-size:12px; white-space:nowrap;">peak summer verified rate</div>')
+                    out.append('<div style="color:#64748b; font-size:12px; white-space:nowrap;">summer rate — no peak discount claimed</div>')
             else:
                 out.append('<div style="color:#b45309; font-size:12px; white-space:nowrap;">summer peak £' + f'{deal.peak_summer_total_gbp:,.0f}' + '</div>')
             out.append('</td>')
@@ -2763,7 +3298,12 @@ def render_holiday_report(
                 rationale_points.append('<strong>All-Inclusive Economics:</strong> ' + escape(deal.board_basis) + ' covers full breakfast, lunch, dinner, drinks, and snacks for all ' + str(config.travellers) + ' — saving £150–£250/day in resort dining.')
             elif "Half Board" in deal.board_basis:
                 rationale_points.append('<strong>Half Board Value:</strong> Daily breakfast and dinner included for all ' + str(config.travellers) + ', leaving lunchtime flexible for beach & excursions.')
-            rationale_points.append('<strong>Nonstop Logistics:</strong> Flights to ' + escape(deal.destination_airport) + ' from ' + escape(', '.join(config.origins[:2])) + ', preserving civil arrival times.')
+            if deal.routing:
+                # A long-haul route with no London nonstop: say how it goes,
+                # never "Nonstop Logistics".
+                rationale_points.append('<strong>Routing:</strong> ' + escape(deal.routing) + '.')
+            else:
+                rationale_points.append('<strong>Nonstop Logistics:</strong> Flights to ' + escape(deal.destination_airport) + ' from ' + escape(', '.join(config.origins[:2])) + ', preserving civil arrival times.')
             per_person_per_night = round(deal.price_per_person_gbp / max(1, deal.nights))
             rationale_points.append('<strong>Door-to-Door Transparency:</strong> £' + f'{deal.price_per_person_gbp:,.0f}' + 'pp (£' + str(per_person_per_night) + '/day) true total with flights, luggage, stay, and transfers included.')
 
