@@ -2075,6 +2075,40 @@ STOPOVER_HUBS: dict[str, dict[str, Any]] = {
             "confidence": "estimate",
         },
     },
+    "AUH": {
+        "label": "Abu Dhabi",
+        "nights_each_way": 2,
+        "hotel": {
+            "name": "Novotel Abu Dhabi Al Bustan",
+            "hotel_url": "https://all.accor.com/hotel/6533/index.en.shtml",
+            "board": "Bed & Breakfast",
+            "unit": "3 × Superior Twin Room (2 + 2 + 1 adults)",
+            # "SAVER RATE - BREAKFAST INCLUDED" (public rate, non-refundable):
+            # 18-20 Jul 2027 EUR 209.95 + EUR 209.95 + EUR 180.29; 27-29 Jul
+            # 2027 identical. Four nights (3 rooms) EUR 1,200.38 = GBP
+            # 1,028.94, GBP 257.24 a night.
+            "nightly_gbp": 257.24,
+            "source": "Accor ALL booking engine (hotel 6533), 18-20 and 27-29 Jul 2027, public rate, read 2026-09-30",
+            "confidence": "market-supported",
+        },
+    },
+    "DXB": {
+        "label": "Dubai",
+        "nights_each_way": 2,
+        "hotel": {
+            "name": "Novotel Deira Creekside Dubai",
+            "hotel_url": "https://all.accor.com/hotel/6482/index.en.shtml",
+            "board": "Bed & Breakfast",
+            "unit": "3 × Superior Room with 2 single beds (2 + 2 + 1 adults)",
+            # "EARLY BIRD OFFER - BED & BREAKFAST" (public rate, non-refundable):
+            # 18-20 Jul 2027 EUR 172.45 + EUR 172.45 + EUR 148.92; 27-29 Jul
+            # 2027 EUR 179.86 + EUR 179.86 + EUR 156.33. Four nights (3 rooms)
+            # EUR 1,009.87 = GBP 865.64, GBP 216.41 a night.
+            "nightly_gbp": 216.41,
+            "source": "Accor ALL booking engine (hotel 6482), 18-20 and 27-29 Jul 2027, public rate, read 2026-09-30",
+            "confidence": "market-supported",
+        },
+    },
 }
 
 #: The "price this yourself" link list on a card with no read stopover fare

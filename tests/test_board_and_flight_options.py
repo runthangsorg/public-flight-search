@@ -159,8 +159,11 @@ class IslandBoardTests(unittest.TestCase):
 
 
 class StopoverHotelTests(unittest.TestCase):
-    def test_hubs_are_doha_and_muscat_with_breakfast(self):
-        self.assertEqual(set(STOPOVER_HUBS), {"DOH", "MCT"})
+    def test_hubs_include_doha_and_muscat_with_breakfast(self):
+        # Doha and Muscat are the two hubs the unpriced "price this yourself"
+        # link shows (STOPOVER_LINK_HUBS); STOPOVER_HUBS may hold more hubs
+        # than that (Abu Dhabi, Dubai, added 2026-09-30) for the priced path.
+        self.assertTrue({"DOH", "MCT"}.issubset(set(STOPOVER_HUBS)))
         for hub, info in STOPOVER_HUBS.items():
             with self.subTest(hub=hub):
                 self.assertIn(board_code(info["hotel"]["board"]), BREAKFAST_BASES)
