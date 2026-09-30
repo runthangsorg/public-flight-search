@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 import json
 import sys
@@ -1052,7 +1052,14 @@ WINTER_SUN_FLOOR_C: float = 20.0
 #: Gmail clips an e-mail over 102 KB, and a clipped card is a card the reader
 #: cannot click. Cards stop being added once the report reaches this many
 #: bytes, so enriching a card can never silently clip the report.
-EMAIL_HTML_BUDGET_BYTES: int = 88_000
+#:
+#: Raised 88_000 -> 96_000 on 2026-09-30 (owner decision): the report gained a
+#: per-hub Economy-stopover pricing link on every long-haul card that has no read
+#: fare, and at 88 KB the December report was already full, so a card was being
+#: dropped. The renderer stops before appending a card once it is over budget, so
+#: the finished e-mail lands about one card above this: 96 KB keeps the whole
+#: report under the 100 KB guard and inside Gmail's 102 KB clip.
+EMAIL_HTML_BUDGET_BYTES: int = 96_000
 
 #: ...but a budget must never produce a one-card report. This many cards are
 #: always rendered, budget or not.
@@ -2126,6 +2133,31 @@ def stopover_fares_for(hub: str, airport: str, season: str) -> tuple[dict[str, A
         fare for fare in STOPOVER_FARES.get((hub, str(airport).upper()), ())
         if str(fare.get("season", "summer")).strip().lower() == wanted
     )
+
+
+def _shift_date(day: str, delta_days: int) -> str:
+    """`day` (YYYY-MM-DD) shifted by `delta_days`; returned unchanged if unparseable."""
+    try:
+        return (datetime.strptime(str(day), "%Y-%m-%d") + timedelta(days=delta_days)).strftime("%Y-%m-%d")
+    except (TypeError, ValueError):
+        return str(day)
+
+
+def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,
+                        *, origin: str = "LHR", travellers: int = 5) -> str:
+    """Multi-city search URL for a two-night stopover in `hub` each way.
+
+    A card that has no read whole-party stopover fare for its dates can still
+    offer the itinerary for pricing with one click: the reader prices it and the
+    report never invents a number it did not read.
+    """
+    legs = (
+        (origin, hub, _shift_date(outbound, -2)),
+        (hub, airport, outbound),
+        (airport, hub, returning),
+        (hub, origin, _shift_date(returning, 2)),
+    )
+    return build_google_flights_legs_url(legs, travellers=travellers, cabin_class="ECONOMY")
 
 
 # Recovered criteria registry (0-10 curated benchmarks per resort, from the
@@ -3577,8 +3609,16 @@ def _option_title(option: Mapping[str, Any]) -> str:
             + " each way")
 
 
-def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: int) -> str:
-    """(a) Business, (b) Economy, (c) Economy with a stopover: each a total for the party."""
+def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: int,
+                          dates: Optional[tuple[str, str]] = None, airport: str = "",
+                          origin: str = "") -> str:
+    """(a) Business, (b) Economy, (c) Economy with a stopover: each a total for the party.
+
+    When a card has no read stopover fare, the (c) line still offers the
+    multi-city itinerary for every hub as a search link (hotel named), so the
+    option is available at every destination in every season without a price
+    being invented.
+    """
     out = [
         '<div style="margin:0 0 10px 0; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; color:#334155;">'
         '<strong style="color:#0f172a;">✈ Flight options for ' + str(travellers)
@@ -3605,8 +3645,32 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
                      + '" style="color:#2563eb;text-decoration:none;">multi-city search ↗</a>')
         out.append(line)
     if not has_stopover:
-        out.append('<br>(c) Economy + 2 nights Doha or Muscat each way: not priced for these dates '
-                   '(no multi-city fare was read).')
+        offered = False
+        if dates and airport:
+            card_outbound, card_return = dates
+            lines = []
+            for hub, info in STOPOVER_HUBS.items():
+                try:
+                    url = stopover_search_url(
+                        hub, str(airport).upper(), str(card_outbound), str(card_return),
+                        origin=str(origin or "LHR"), travellers=travellers)
+                except Exception:
+                    continue
+                board = BOARD_LABELS.get(board_code(info["hotel"]["board"]), str(info["hotel"]["board"]))
+                lines.append(
+                    '<br>&nbsp;&nbsp;• ' + escape(str(info["label"])) + ' — '
+                    + escape(str(info["hotel"]["name"])) + ' (' + escape(board) + ')'
+                    + ' · <a href="' + escape(url, quote=True)
+                    + '" style="color:#2563eb;text-decoration:none;">price this multi-city itinerary ↗</a>')
+            if lines:
+                offered = True
+                out.append('<br>(c) Economy + 2 nights in a Gulf hub each way, hotel included: no '
+                           'whole-party fare was read for these dates, so nothing is priced here. '
+                           'One click to price it:')
+                out.extend(lines)
+        if not offered:
+            out.append('<br>(c) Economy + 2 nights Doha or Muscat each way: not priced for these dates '
+                       '(no multi-city fare was read).')
     out.append('</div>')
     return ''.join(out)
 
@@ -3676,7 +3740,10 @@ def render_over_budget(rows: Sequence[Mapping[str, Any]], *, travellers: int) ->
             + ' (' + escape(flight_words) + ') · stay £' + f'{float(row["hotel_cost"]):,.0f}' + ', '
             + escape(str(row["unit"])) + ' (' + escape(hotel_words) + ')'
             + render_board_line(row)
-            + (render_flight_options(row["flight_options"], travellers=travellers) if row.get("flight_options") else '')
+            + (render_flight_options(row["flight_options"], travellers=travellers,
+                                     dates=(row["outbound"], row["return"]),
+                                     airport=row["airport"], origin=row["origin"])
+               if row.get("flight_options") else '')
             + '</td></tr>'
         )
     out.append('</table>')
@@ -4003,7 +4070,10 @@ def render_holiday_report(
             # Board basis on every hotel line; long-haul flight options side by side.
             out.append(render_board_line(deal))
             if deal.flight_options:
-                out.append(render_flight_options(deal.flight_options, travellers=config.travellers))
+                out.append(render_flight_options(
+                    deal.flight_options, travellers=config.travellers,
+                    dates=(deal.outbound_date, deal.return_date),
+                    airport=deal.destination_airport, origin=deal.origin))
             # Deal rationale callout: explain WHY this is a great deal for this party
             rationale_points: list[str] = []
             if deal.unit_architecture:

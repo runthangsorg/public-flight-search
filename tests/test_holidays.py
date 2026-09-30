@@ -191,8 +191,10 @@ class HolidayPlannerTests(unittest.TestCase):
         # by a fixed card count: cards stop being added at
         # EMAIL_HTML_BUDGET_BYTES. Assert against Gmail's real 102 KB clip
         # limit with the margin one more card would need, so enriching a card
-        # can never clip the report.
-        self.assertLess(len(html.encode("utf-8")), 95_000)
+        # can never clip the report. Raised 95_000 -> 100_000 on 2026-09-30
+        # (owner decision) for the per-hub Economy-stopover pricing links; still
+        # 2 KB inside Gmail's 102 KB clip.
+        self.assertLess(len(html.encode("utf-8")), 100_000)
 
     def test_card_budget_stops_adding_cards_before_gmail_clips(self):
         # Mechanism, not memory: if the budget is squeezed, the renderer drops

@@ -193,6 +193,19 @@ class StopoverSeasonTests(unittest.TestCase):
                 with self.subTest(resort=deal.resort_name):
                     self.assertNotEqual(option.get("kind"), "stopover")
 
+    def test_a_card_with_no_read_fare_offers_the_hub_itinerary_to_price(self):
+        december = load_holiday_config(DEC.read_text(encoding="utf-8"))
+        html = render_holiday_report(december, generated_at="2026-09-30T00:00:00+00:00",
+                                     deals=collect_holiday_deals(december))
+        # No invented price: the block says nothing is priced and links the
+        # multi-city itinerary per hub, naming the hub hotel the owner would stay in.
+        self.assertIn("One click to price it:", html)
+        self.assertIn("price this multi-city itinerary", html)
+        self.assertIn("Rixos Gulf Hotel Doha", html)
+        self.assertIn("Mövenpick Hotel and Apartments Ghala Muscat", html)
+        # And the whole report still fits the e-mail budget (Gmail clips at 102 KB).
+        self.assertLess(len(html.encode("utf-8")), 102_000)
+
 
 def _july_uncapped():
     config = load_holiday_config(JULY.read_text(encoding="utf-8"))
