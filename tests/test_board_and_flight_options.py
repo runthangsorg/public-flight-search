@@ -266,7 +266,7 @@ class FlightOptionTests(unittest.TestCase):
                 self.assertEqual(deal.cabin_class, "BUSINESS")
                 self.assertEqual(deal.total_package_price_gbp, deal.flight_options[0]["total_pkg"])
                 if deal.destination_key in thai:
-                    self.assertIn("stopover", kinds, "Thailand cards carry a Doha/Muscat stopover option")
+                    self.assertIn("stopover", kinds, "Thailand cards carry at least one Gulf-hub stopover option")
 
     def test_each_option_total_adds_up(self):
         for deal in collect_holiday_deals(_july_uncapped()):
