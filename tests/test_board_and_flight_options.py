@@ -32,6 +32,7 @@ from public_flight_search.holidays import (
     BREAKFAST_BASES,
     ISLAND_RULE_KEYS,
     STOPOVER_HUBS,
+    STOPOVER_LINK_HUBS,
     board_code,
     collect_holiday_deals,
     filter_resorts,
@@ -205,6 +206,40 @@ class StopoverSeasonTests(unittest.TestCase):
         self.assertIn("Mövenpick Hotel and Apartments Ghala Muscat", html)
         # And the whole report still fits the e-mail budget (Gmail clips at 102 KB).
         self.assertLess(len(html.encode("utf-8")), 102_000)
+
+    def test_every_link_hub_is_a_real_stopover_hub(self):
+        self.assertTrue(STOPOVER_LINK_HUBS)
+        self.assertTrue(set(STOPOVER_LINK_HUBS).issubset(set(STOPOVER_HUBS)))
+
+    def test_adding_a_stopover_hub_does_not_grow_the_unpriced_link_list(self):
+        # STOPOVER_HUBS can gain hubs for the *priced* path (a real fare read)
+        # without inflating the "price this yourself" link list on every
+        # long-haul card with no read fare — that list is capped to
+        # STOPOVER_LINK_HUBS, because each line costs ~400 bytes and the
+        # December report (no priced fares yet, so every long-haul card hits
+        # this link path) already sits close to the Gmail 102 KB clip.
+        december = load_holiday_config(DEC.read_text(encoding="utf-8"))
+        baseline_html = render_holiday_report(
+            december, generated_at="2026-09-30T00:00:00+00:00", deals=collect_holiday_deals(december)
+        )
+        baseline_lines = baseline_html.count("price this multi-city itinerary")
+        hol.STOPOVER_HUBS["TEST_EXTRA_HUB"] = {
+            "label": "Test Hub",
+            "nights_each_way": 2,
+            "hotel": {
+                "name": "Test Hub Hotel", "hotel_url": "https://example.invalid/test-hub",
+                "board": "Bed & Breakfast", "unit": "Test Room",
+                "nightly_gbp": 100.0, "source": "test", "confidence": "estimate",
+            },
+        }
+        try:
+            grown_html = render_holiday_report(
+                december, generated_at="2026-09-30T00:00:00+00:00", deals=collect_holiday_deals(december)
+            )
+        finally:
+            del hol.STOPOVER_HUBS["TEST_EXTRA_HUB"]
+        self.assertEqual(grown_html.count("price this multi-city itinerary"), baseline_lines)
+        self.assertNotIn("Test Hub Hotel", grown_html)
 
 
 def _july_uncapped():

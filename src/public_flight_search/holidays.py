@@ -2077,6 +2077,15 @@ STOPOVER_HUBS: dict[str, dict[str, Any]] = {
     },
 }
 
+#: The "price this yourself" link list on a card with no read stopover fare
+#: (render_flight_options) is capped to this fixed set, not every hub in
+#: STOPOVER_HUBS: each line costs ~400 bytes and the December report — which
+#: has no priced fares yet and so renders every long-haul card through this
+#: link path — sits within ~3 KB of the Gmail 102 KB clip already. A hub added
+#: to STOPOVER_HUBS for the *priced* path (stopover_fares_for, gated on an
+#: actual STOPOVER_READS entry) costs nothing here until it has a real fare.
+STOPOVER_LINK_HUBS: tuple[str, ...] = ("DOH", "MCT")
+
 #: Stopover itineraries whose whole-trip Economy price for five was read on
 #: Google Flights (multi-city: London - hub on outbound-2, hub - beach on the
 #: outbound date, beach - hub on the return date, hub - London on return+2).
@@ -3649,7 +3658,8 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
         if dates and airport:
             card_outbound, card_return = dates
             lines = []
-            for hub, info in STOPOVER_HUBS.items():
+            for hub in STOPOVER_LINK_HUBS:
+                info = STOPOVER_HUBS[hub]
                 try:
                     url = stopover_search_url(
                         hub, str(airport).upper(), str(card_outbound), str(card_return),
