@@ -168,6 +168,32 @@ class StopoverHotelTests(unittest.TestCase):
                 self.assertTrue(info["hotel"]["source"])
 
 
+class StopoverSeasonTests(unittest.TestCase):
+    """Owner direction 2026-09-30: Economy-with-stopover is wanted in every
+    season, not just July. The fare is therefore season-scoped — a July read
+    and a December read coexist, and neither can leak into the other's card."""
+
+    def test_every_read_fare_declares_the_season_it_was_read_for(self):
+        for key, fares in hol.STOPOVER_FARES.items():
+            for fare in fares:
+                with self.subTest(key=key):
+                    self.assertIn(
+                        str(fare.get("season", "")).strip().lower(), {"summer", "winter"}
+                    )
+
+    def test_a_fare_answers_only_for_its_own_season(self):
+        # The July reads exist; they must never surface on a December card.
+        self.assertTrue(hol.stopover_fares_for("DOH", "HKT", "summer"))
+        self.assertEqual(hol.stopover_fares_for("DOH", "HKT", "winter"), ())
+
+    def test_december_cards_gain_no_stopover_from_the_july_reads(self):
+        december = load_holiday_config(DEC.read_text(encoding="utf-8"))
+        for deal in collect_holiday_deals(december):
+            for option in deal.flight_options:
+                with self.subTest(resort=deal.resort_name):
+                    self.assertNotEqual(option.get("kind"), "stopover")
+
+
 def _july_uncapped():
     config = load_holiday_config(JULY.read_text(encoding="utf-8"))
     return dataclasses.replace(config, max_budget_gbp=UNCAPPED_GBP)

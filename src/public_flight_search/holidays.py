@@ -2098,6 +2098,9 @@ def _stopover_fares() -> dict[tuple[str, str], tuple[dict[str, Any], ...]]:
             "total_gbp": total,
             "carrier": carrier,
             "observed_at": observed,
+            # A read is for one season; December reads can be added beside these
+            # July ones without either leaking into the other planner.
+            "season": "summer",
             "source_url": build_google_flights_legs_url(legs, travellers=5, cabin_class="ECONOMY"),
         })
     return {key: tuple(value) for key, value in fares.items()}
@@ -2106,6 +2109,23 @@ def _stopover_fares() -> dict[tuple[str, str], tuple[dict[str, Any], ...]]:
 #: No itinerary was listed for Doha - Lombok or Muscat - Zanzibar; those
 #: cards say so rather than inventing a fare.
 STOPOVER_FARES: dict[tuple[str, str], tuple[dict[str, Any], ...]] = _stopover_fares()
+
+
+def stopover_fares_for(hub: str, airport: str, season: str) -> tuple[dict[str, Any], ...]:
+    """Stopover fares for one ``(hub, airport)`` in one season.
+
+    The option is season-scoped so a July read and a December read coexist
+    without one leaking into the other's planner: a fare carries the season it
+    was read for, and only that season's planner sees it. Every destination
+    can now carry an Economy-with-stopover option in EITHER season; today only
+    the July reads exist, so a December card still honestly says a stopover was
+    not priced for its dates rather than reusing a July fare.
+    """
+    wanted = (season or "").strip().lower() or "winter"
+    return tuple(
+        fare for fare in STOPOVER_FARES.get((hub, str(airport).upper()), ())
+        if str(fare.get("season", "summer")).strip().lower() == wanted
+    )
 
 
 # Recovered criteria registry (0-10 curated benchmarks per resort, from the
@@ -2842,9 +2862,13 @@ def collect_holiday_deals(
         if economy is not None:
             rows.append(_option_row("economy", "ECONOMY", economy,
                                     _evidence_words(economy, "economy fare read (benchmark)")))
-        if summer:
+        # Economy-with-stopover is offered in every season now, not just summer:
+        # the fare itself is season-scoped (stopover_fares_for), so a July read
+        # never surfaces on a December card and vice versa.
+        stopover_season = "summer" if summer else "winter"
+        if stopover_season:  # both seasons now; a fare only answers for its own
             for hub, info in STOPOVER_HUBS.items():
-                for fare in STOPOVER_FARES.get((hub, str(resort["airport"]).upper()), ()):
+                for fare in stopover_fares_for(hub, str(resort["airport"]).upper(), stopover_season):
                     pair = tuple(fare["pair"])
                     if pair not in priced_pairs_set:
                         continue
