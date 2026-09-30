@@ -1,11 +1,17 @@
 """Cabin policy: BUSINESS only when the flight is over 8 hours from London.
 
-Owner rule (2026-09-28): no premium economy anywhere, and BUSINESS only for a
-flight OVER 8 hours from London; everything else is ECONOMY. The boundary is
-derived in code (``cabin.py``) from each destination's ``flight_hours``, so a
-config can no longer price a four-hour hop in Business, as the July 2027
-example did. Pinned boundary: 7.9 h -> ECONOMY, 8.1 h -> BUSINESS, and 8.0 h
-exactly is not OVER eight hours, so ECONOMY.
+Owner rule (2026-09-28): no premium economy as a DESTINATION'S HEADLINE cabin,
+and BUSINESS only for a flight OVER 8 hours from London; everything else is
+ECONOMY. The boundary is derived in code (``cabin.py``) from each
+destination's ``flight_hours``, so a config can no longer price a four-hour
+hop in Business, as the July 2027 example did. Pinned boundary: 7.9 h ->
+ECONOMY, 8.1 h -> BUSINESS, and 8.0 h exactly is not OVER eight hours, so
+ECONOMY.
+
+Owner direction 2026-09-30: Premium Economy IS now shown as a reader-visible
+comparison row in the per-card "Flight options" breakdown (business/economy/
+premium-economy/stopover, side by side) — that is a different thing from the
+headline cabin this rule governs, and does not reopen it.
 """
 
 import json
@@ -190,6 +196,14 @@ class CommittedConfigTests(unittest.TestCase):
                     self.assertEqual(row["cabin"], "BUSINESS")
                     self.assertIn("tfs=", row["flights_url"])  # dated Google Flights search
                     self.assertGreater(row["indicative_total_gbp"], 0)
+                    # Owner direction 2026-09-30: Economy and Premium Economy shown
+                    # alongside Business here too, derived from the one read
+                    # benchmark via the same ratios _flight_options uses — never a
+                    # second invented benchmark.
+                    self.assertGreater(row["economy_total_gbp"], 0)
+                    self.assertLess(row["economy_total_gbp"], row["indicative_total_gbp"])
+                    self.assertGreater(row["premium_economy_total_gbp"], row["economy_total_gbp"])
+                    self.assertLess(row["premium_economy_total_gbp"], row["indicative_total_gbp"])
 
     def test_report_leads_with_the_far_east_and_never_calls_it_live(self):
         for path in (DEC, JULY):
@@ -207,7 +221,12 @@ class CommittedConfigTests(unittest.TestCase):
                 block = html[start:first_card]
                 self.assertIn(FAR_EAST_PRICE_LABEL, block)
                 self.assertNotIn("LIVE VERIFIED", block)
-                self.assertNotIn("Premium Economy", html)
+                # Never a live/verified claim, and never a SECOND headline
+                # cabin (destination_cabin's Business/Economy split, owner
+                # rule 2026-09-28, is untouched) — but Economy and Premium
+                # Economy DO appear now, as derived comparison figures
+                # (owner direction 2026-09-30), same as _flight_options.
+                self.assertIn("Premium Economy", block)
 
     def test_watch_table_covers_only_long_haul_keys(self):
         for key in FAR_EAST_WATCH:

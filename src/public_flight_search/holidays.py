@@ -2208,7 +2208,8 @@ def _shift_date(day: str, delta_days: int) -> str:
 
 
 def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,
-                        *, origin: str = "LHR", travellers: int = 5) -> str:
+                        *, origin: str = "LHR", travellers: int = 5,
+                        cabin_class: str = "ECONOMY") -> str:
     """Multi-city search URL for a two-night stopover in `hub` each way.
 
     A card that has no read whole-party stopover fare for its dates can still
@@ -2221,7 +2222,7 @@ def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,
         (airport, hub, returning),
         (hub, origin, _shift_date(returning, 2)),
     )
-    return build_google_flights_legs_url(legs, travellers=travellers, cabin_class="ECONOMY")
+    return build_google_flights_legs_url(legs, travellers=travellers, cabin_class=cabin_class)
 
 
 # Recovered criteria registry (0-10 curated benchmarks per resort, from the
@@ -2949,8 +2950,9 @@ def collect_holiday_deals(
         return fallback
 
     def _flight_options(resort, arch, business: dict) -> tuple[dict, ...]:
-        """(a) Business, (b) Economy on the same route, (c) Economy with a
-        Doha/Muscat stopover each way: every one a whole-party total."""
+        """(a) Business, (b) Economy, (b2) Premium Economy on the same route,
+        (c) Economy and (c2) Premium Economy with a Gulf stopover each way:
+        every one a whole-party total."""
         rows = [_option_row("business", "BUSINESS", business,
                             _evidence_words(business, "estimate: economy fare x2.5"))]
         economy = _best_option(resort, "ECONOMY", 1.0, arch, enforce_budget=False,
@@ -2958,6 +2960,14 @@ def collect_holiday_deals(
         if economy is not None:
             rows.append(_option_row("economy", "ECONOMY", economy,
                                     _evidence_words(economy, "economy fare read (benchmark)")))
+        # Live evidence is already read for PREMIUM_ECONOMY (evidence_consumption_contract
+        # requests it per destination) and was previously discarded as an "unused key" —
+        # this is the same _best_option seam Economy uses, just a different cabin/multiplier.
+        premium_economy = _best_option(resort, "PREMIUM_ECONOMY", 1.6, arch, enforce_budget=False,
+                                       prefer_evidence=True)
+        if premium_economy is not None:
+            rows.append(_option_row("premium_economy", "PREMIUM_ECONOMY", premium_economy,
+                                    _evidence_words(premium_economy, "estimate: economy fare x1.6")))
         # Economy-with-stopover is offered in every season now, not just summer:
         # the fare itself is season-scoped (stopover_fares_for), so a July read
         # never surfaces on a December card and vice versa.
@@ -3001,6 +3011,48 @@ def collect_holiday_deals(
                         "source_url": fare["source_url"],
                         "hub_hotel_confidence": info["hotel"].get("confidence", ""),
                         "within_budget": _within(total_pkg, true_d2d),
+                    })
+                    # No Premium Economy multi-city fare has been read for any hub yet
+                    # (_STOPOVER_READS is Economy-only) — estimated the same way the
+                    # headline Business figure is when nothing was read: the read
+                    # Economy stopover flight cost x1.6, hotel costs unchanged (a room
+                    # rate does not move with cabin). Labelled "estimate" throughout,
+                    # never presented as a fare that was actually read.
+                    pe_flight_cost = round(float(fare["total_gbp"]) * 1.6, 2)
+                    pe_total_pkg = round(pe_flight_cost + hotel_cost + stop_hotel, 2)
+                    pe_true_d2d = round(pe_total_pkg + uk_ground + transfer, 2)
+                    try:
+                        pe_source_url = stopover_search_url(
+                            hub, str(resort["airport"]).upper(), pair[0], pair[1],
+                            origin=fare["origin"], travellers=travellers,
+                            cabin_class="PREMIUM_ECONOMY")
+                    except Exception:
+                        pe_source_url = ""
+                    rows.append({
+                        "kind": "stopover_premium_economy",
+                        "cabin": "PREMIUM_ECONOMY",
+                        "hub": hub,
+                        "hub_label": info["label"],
+                        "hub_hotel": info["hotel"]["name"],
+                        "hub_board": info["hotel"]["board"],
+                        "legs": tuple(tuple(leg) for leg in fare["legs"]),
+                        "carrier": fare["carrier"],
+                        "outbound": pair[0],
+                        "return": pair[1],
+                        "nights": nights,
+                        "origin": fare["origin"],
+                        "flight_cost": pe_flight_cost,
+                        "hotel_cost": hotel_cost,
+                        "stopover_hotel_cost": stop_hotel,
+                        "stopover_nights": stop_nights,
+                        "uk_ground": uk_ground,
+                        "transfer": transfer,
+                        "total_pkg": pe_total_pkg,
+                        "true_d2d": pe_true_d2d,
+                        "flight_basis": "estimate: economy stopover fare x1.6",
+                        "source_url": pe_source_url,
+                        "hub_hotel_confidence": info["hotel"].get("confidence", ""),
+                        "within_budget": _within(pe_total_pkg, pe_true_d2d),
                     })
         return tuple(rows)
 
@@ -3563,11 +3615,21 @@ def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
             continue
         cabin = destination_cabin(dest)
         in_season = month in watch["months"]
+        # Same cabin ratios _flight_options uses (business = economy x2.5,
+        # premium_economy = economy x1.6): the watch has only ONE read
+        # benchmark (business_pp_gbp), so economy and premium economy are
+        # derived from it, never a second invented benchmark.
+        business_pp = float(watch["business_pp_gbp"])
+        economy_pp = business_pp / 2.5
+        premium_economy_pp = economy_pp * 1.6
         total = None
+        economy_total = None
+        premium_economy_total = None
         if in_season:
-            total = float(
-                watch["business_pp_gbp"] * config.travellers + watch["suite_night_gbp"] * nights
-            )
+            suite = watch["suite_night_gbp"] * nights
+            total = float(business_pp * config.travellers + suite)
+            economy_total = float(economy_pp * config.travellers + suite)
+            premium_economy_total = float(premium_economy_pp * config.travellers + suite)
         rows.append({
             "key": dest.key,
             "label": dest.label,
@@ -3581,9 +3643,13 @@ def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
             "outbound": outbound,
             "return": returning,
             "nights": nights,
-            "fare_pp_gbp": float(watch["business_pp_gbp"]),
+            "fare_pp_gbp": business_pp,
+            "economy_pp_gbp": economy_pp,
+            "premium_economy_pp_gbp": premium_economy_pp,
             "suite_night_gbp": float(watch["suite_night_gbp"]),
             "indicative_total_gbp": total,
+            "economy_total_gbp": economy_total,
+            "premium_economy_total_gbp": premium_economy_total,
             "over_budget_gbp": (
                 round(total - config.max_budget_gbp, 2)
                 if total is not None and total > config.max_budget_gbp
@@ -3637,6 +3703,8 @@ def render_far_east_watch(config: HolidayConfig) -> str:
             if row["over_budget_gbp"] > 0:
                 out.append(' · <span style="color:#b45309;">£' + f'{row["over_budget_gbp"]:,.0f}'
                            + ' over the £' + f'{config.max_budget_gbp:,.0f}' + ' budget</span>')
+            out.append('<br>&nbsp;&nbsp;also ≈ £' + f'{row["economy_total_gbp"]:,.0f}' + ' Economy · ≈ £'
+                       + f'{row["premium_economy_total_gbp"]:,.0f}' + ' Premium Economy — same suite, same basis')
         else:
             out.append('<br><span style="color:#b45309;">Outside its season for these dates — no price shown.</span>')
         out.append('<br><a href="' + escape(row["flights_url"], quote=True) + '" style="' + link + '">Google Flights (' + escape(row["cabin"].title()) + ') ↗</a>'
@@ -3669,8 +3737,12 @@ def _option_title(option: Mapping[str, Any]) -> str:
         return "(a) Business, normal route"
     if option["kind"] == "economy":
         return "(b) Economy, same route"
-    return ("(c) Economy + 2 nights " + str(option.get("hub_label", option.get("hub")))
-            + " each way")
+    if option["kind"] == "premium_economy":
+        return "(b2) Premium Economy, same route"
+    hub_label = str(option.get("hub_label", option.get("hub")))
+    if option["kind"] == "stopover_premium_economy":
+        return "(c2) Premium Economy + 2 nights " + hub_label + " each way"
+    return "(c) Economy + 2 nights " + hub_label + " each way"
 
 
 def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: int,
@@ -3696,7 +3768,7 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
                 else '<span style="color:#b45309; font-weight:700;">over budget</span>')
         line = ('<br>' + escape(_option_title(option)) + ': flights £' + f'{float(option["flight_cost"]):,.0f}'
                 + ' (' + escape(str(option["flight_basis"])) + ') + stay £' + f'{float(option["hotel_cost"]):,.0f}')
-        if option["kind"] == "stopover":
+        if option["kind"] in ("stopover", "stopover_premium_economy"):
             hotel_note = ', estimate' if option.get("hub_hotel_confidence") == "estimate" else ''
             line += (' + ' + escape(option["hub_label"]) + ' hotel £' + f'{float(option["stopover_hotel_cost"]):,.0f}'
                      + ' (' + escape(str(option["hub_hotel"])) + ', ' + str(option["stopover_nights"]) + ' nights, '

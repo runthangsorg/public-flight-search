@@ -25,8 +25,13 @@ from typing import Any, Optional
 BUSINESS_FLIGHT_HOURS = 8.0  # strictly greater-than
 LONG_HAUL_CABIN = "BUSINESS"
 SHORT_HAUL_CABIN = "ECONOMY"
-#: Banned outright by the same rule. Legacy configs that still name it load
-#: (the live December secret predates the rule) but it is never priced.
+#: Banned outright by the same rule AS A DESTINATION'S HEADLINE/DERIVED CABIN.
+#: Legacy configs that still name it load (the live December secret predates
+#: the rule) but it is never priced as the headline. Owner direction
+#: 2026-09-30 added a Premium Economy row to the per-card "Flight options"
+#: comparison (holidays.py's _flight_options) alongside Business and Economy —
+#: that is a reader-visible comparison line, never a destination's own
+#: cabin_class/watch cabin, so it does not reopen the bug this rule fixed.
 BANNED_CABINS = frozenset({"PREMIUM_ECONOMY"})
 
 #: Built-in London flight hours per destination key, used when a config

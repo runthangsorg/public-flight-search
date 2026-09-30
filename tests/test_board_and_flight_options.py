@@ -288,6 +288,10 @@ class FlightOptionTests(unittest.TestCase):
                         self.assertEqual(option["cabin"], "ECONOMY")
                         self.assertGreater(option["stopover_hotel_cost"], 0)
                         self.assertEqual(option["stopover_nights"], 4)
+                    elif option["kind"] == "stopover_premium_economy":
+                        self.assertEqual(option["cabin"], "PREMIUM_ECONOMY")
+                        self.assertGreater(option["stopover_hotel_cost"], 0)
+                        self.assertEqual(option["stopover_nights"], 4)
                     else:
                         self.assertEqual(option["stopover_hotel_cost"], 0)
 

@@ -423,10 +423,18 @@ class HolidayPlannerTests(unittest.TestCase):
             self.assertLessEqual(deal.total_package_price_gbp, 12000.0)
 
         html = render_holiday_report(config, generated_at="2026-07-01T10:00:00+00:00", deals=deals)
-        self.assertNotIn("Premium Economy", html)
-        # Business appears only in the Far East watch, which leads the report.
+        # Business appears only in the Far East watch, which leads the report;
+        # every ECONOMY-cabin card here is short-haul, so none carries a
+        # flight_options block (long_haul-gated) and "Premium Economy" can
+        # only come from the watch's own Business/Economy/Premium Economy
+        # comparison (owner direction 2026-09-30).
         self.assertIn("Far East first", html)
         self.assertLess(html.index("Far East first"), html.index("Summer Luxury Deals"))
+        watch_block = html[html.index("Far East first"):html.index("Summer Luxury Deals")]
+        self.assertIn("Premium Economy", watch_block)
+        cards_block = html[html.index("Summer Luxury Deals"):]
+        self.assertNotIn("Premium Economy", cards_block)
+        self.assertNotIn("Flight options for", cards_block)
 
     def test_invalid_cabin_class_rejected(self):
         payload = {
