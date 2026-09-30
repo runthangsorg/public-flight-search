@@ -12,6 +12,8 @@ pipeline outage, not a quiet market — this test fails loudly instead.
 from pathlib import Path
 import unittest
 
+from html import escape
+
 from public_flight_search.holidays import load_holiday_config, collect_holiday_deals
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
@@ -53,17 +55,28 @@ class ExampleConfigDealFunnelTests(unittest.TestCase):
         deals = collect_holiday_deals(config, max_budget_gbp=config.max_budget_gbp)
         carded = {d.destination_key for d in deals}
         over = {row["destination_key"] for row in hol.LAST_OVER_BUDGET}
-        backed = {
+        catalog = hol.resort_catalog(config)
+        filtered_names = {name for name, _reason in hol.LAST_FILTERED_OUT}
+        # A destination whose every resort failed a filter (the breakfast
+        # rule) is still stated: each resort is in the "filters applied"
+        # list with its reason.
+        stated_filtered = {
             d.key for d in config.destinations
-            if hol.resort_catalog(config).get(d.key)
+            if catalog.get(d.key)
+            and all(r["name"] in filtered_names for r in catalog[d.key])
         }
+        backed = {d.key for d in config.destinations if catalog.get(d.key)}
         self.assertTrue(backed, "the July example has no catalogue-backed destination")
-        self.assertEqual(backed, carded | over, "a July destination vanished from the report")
+        self.assertEqual(
+            backed, carded | over | stated_filtered, "a July destination vanished from the report"
+        )
         html = hol.render_holiday_report(
             config, generated_at="2026-09-29T00:00:00+00:00", deals=deals
         )
+        for name in filtered_names:
+            self.assertIn(escape(name), html)
         if over:
-            self.assertIn("Long-haul resorts priced over", html)
+            self.assertIn("Resorts priced over", html)
         if deals:
             self.assertIn("One Family Unit", html)
 

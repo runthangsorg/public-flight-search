@@ -178,6 +178,27 @@ def build_google_flights_multicity_url(
     return "https://www.google.com/travel/flights/search?" + urlencode({"tfs": b64encode(info).decode(), "curr": "GBP", "hl": "en-GB"})
 
 
+def build_google_flights_legs_url(
+    legs, *, travellers: int, cabin_class: str = "ECONOMY",
+) -> str:
+    """Multi-city search for any number of ``(origin, destination, date)`` legs.
+
+    Used for the stopover itineraries (London - hub, hub - beach, beach - hub,
+    hub - London). Verified live 2026-09-29: the results page lists each
+    first-leg flight with the whole itinerary's price ("entire trip").
+    """
+    legs = tuple(legs)
+    if len(legs) < 2:
+        raise ValueError("a multi-city search needs at least two legs")
+    info = b"".join(_field(3, _leg(o, d, day)) for o, d, day in legs)
+    info += (
+        _field(8, bytes([1]) * travellers)
+        + _seat_field(travellers, cabin_class)
+        + _trip_type_field(TRIP_MULTI_CITY)
+    )
+    return "https://www.google.com/travel/flights/search?" + urlencode({"tfs": b64encode(info).decode(), "curr": "GBP", "hl": "en-GB"})
+
+
 def _build_search_pairs(search: FlightSearch) -> list[tuple[str, str, str]]:
     """Build all (origin, destination, date) triples for a search."""
     pairs = []

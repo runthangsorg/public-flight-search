@@ -69,6 +69,15 @@
       "flight_hours_source": "No nonstop listed for 20 Jul 2027. Fastest 1-stop on Google Flights for LHR-HKT (read 2026-09-29): THAI via BKK, 14h30; Etihad via AUH, 14h35. Then about 1h40 by road from Phuket airport"
     },
     {
+      "key": "zanzibar",
+      "label": "Zanzibar, Tanzania (Nungwi beach; dry season, 22-29°C in July)",
+      "airports": [
+        "ZNZ"
+      ],
+      "flight_hours": 11.67,
+      "flight_hours_source": "No London nonstop. Fastest 1-stop on Google Flights for LHR 20 Dec 2026 (read 2026-09-29): Ethiopian via ADD, 11h40; EgyptAir via CAI 12h20. For 20 Jul 2027: Ethiopian via ADD 11h55"
+    },
+    {
       "key": "bali",
       "label": "Bali, Indonesia (Nusa Dua / Seminyak beaches, 27-30C and dry in July)",
       "airports": [

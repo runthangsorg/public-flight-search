@@ -93,6 +93,10 @@ class HolidayPlannerTests(unittest.TestCase):
                 "penang",
                 "singapore",
                 "phu_quoc",
+                # Africa and Mexico, added 2026-09-30 after the Far East.
+                "zanzibar",
+                "mauritius",
+                "riviera_maya",
             },
         )
         self.assertEqual(

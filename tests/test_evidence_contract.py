@@ -212,11 +212,13 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
     def test_december_contract_lists_only_airports_that_have_cards(self):
         contract = evidence_consumption_contract(_load(DEC_CONFIG))
         # Airports the hunt crawled in September 2026 that have no card at
-        # all: hunting them can never price anything.
-        for dead in ("AGA", "CAI", "DOH", "FNC", "MCT", "MLA"):
+        # all: hunting them can never price anything. (Doha and Muscat got
+        # December resorts on 2026-09-30, so they left this list.)
+        for dead in ("AGA", "CAI", "FNC", "MLA"):
             self.assertNotIn(dead, contract.airports, dead)
         # Card-bearing airports, including the two that were never hunted.
-        for live in ("ACE", "AYT", "FUE", "HRG", "LPA", "PFO", "TFS"):
+        for live in ("ACE", "AYT", "FUE", "HRG", "LPA", "PFO", "TFS",
+                     "DOH", "MCT", "ZNZ", "MRU", "CUN"):
             self.assertIn(live, contract.airports, live)
 
     def test_july_contract_follows_the_cabin_rule_on_the_priced_pair(self):
@@ -224,14 +226,15 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         # within 6 hours; Lombok and Thailand). Every card-bearing July
         # airport is over 8 hours from London, so under the cabin rule the
         # hunt is aimed at Business only. The Far East watch keys (Bali, Da
-        # Nang, Japan) and Doha/Muscat have no resort cards, so they add no
-        # airports to the contract.
+        # Nang, Japan) and Doha/Muscat have no July resort cards (Doha and
+        # Muscat are July stopovers, priced separately), so they add no
+        # airports to the contract. Zanzibar joined on 2026-09-30.
         contract = evidence_consumption_contract(_load(JULY_CONFIG))
         self.assertEqual(
             (contract.outbound, contract.return_date),
             ("2027-07-20", "2027-07-27"),
         )
-        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM"})
+        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ"})
         self.assertEqual({cabin for _, cabin in contract.keys}, {"BUSINESS"})
 
     def test_contract_serializes_for_the_hunt(self):
@@ -301,10 +304,11 @@ class TestContractGaps(unittest.TestCase):
         self.assertNotIn("AYT/ECONOMY", gaps["missing"])
         self.assertIn("ACE/ECONOMY", gaps["missing"])
         self.assertIn("PFO/ECONOMY", gaps["missing"])
-        # No December card airport is over 8 hours away, so nothing may ask
-        # the hunt for a Business (or premium economy) fare.
+        # Since 2026-09-30 the only December Business keys are the long-haul
+        # beaches (Zanzibar, Mauritius, Cancún); every other card is Economy.
         self.assertEqual(
-            [k for k in gaps["missing"] if not k.endswith("/ECONOMY")], []
+            [k for k in gaps["missing"] if not k.endswith("/ECONOMY")],
+            ["CUN/BUSINESS", "MRU/BUSINESS", "ZNZ/BUSINESS"],
         )
 
     def test_evidence_for_an_airport_with_no_card_is_reported_unused(self):
@@ -381,7 +385,7 @@ class TestEvidenceContractCommand(unittest.TestCase):
             ],
         )
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
-        self.assertEqual(payload["airports"], ["HKT", "LOP", "USM"])
+        self.assertEqual(payload["airports"], ["HKT", "LOP", "USM", "ZNZ"])
 
     def test_hunt_config_drives_the_hunt_on_its_own(self):
         # Regression: the fragment carried only origins/date_pairs/cabins/
@@ -487,12 +491,17 @@ class TestCatalogProvenance(unittest.TestCase):
         december = _load(DEC_CONFIG)
         self.assertIs(resort_catalog(), WINTER_RESORT_CATALOG)
         self.assertIs(resort_catalog(december), WINTER_RESORT_CATALOG)
-        for absent in ("malta", "taghazout", "doha", "muscat"):
+        for absent in ("malta", "taghazout"):
             self.assertNotIn(absent, resort_catalog(), absent)
             self.assertNotIn(absent, resort_catalog(july), absent)
+        # Doha and Muscat are December destinations since 2026-09-30, priced
+        # at December rates: they must never reach the July catalogue view.
+        for december_only in ("doha", "muscat"):
+            self.assertIn(december_only, resort_catalog(december), december_only)
+            self.assertNotIn(december_only, resort_catalog(july), december_only)
 
         contract = evidence_consumption_contract(july)
-        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM"})
+        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ"})
         for dead in ("MLA", "DOH", "MCT", "AGA"):
             self.assertNotIn(dead, contract.airports, dead)
 

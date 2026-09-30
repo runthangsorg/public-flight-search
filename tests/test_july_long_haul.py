@@ -73,9 +73,17 @@ class JulyScopeTests(unittest.TestCase):
         catalog = resort_catalog(config)
         for key in LOMBOK_KEYS | THAILAND_KEYS:
             with self.subTest(key=key):
-                kept, dropped = filter_resorts(catalog.get(key, []), is_summer=True)
-                self.assertTrue(kept, f"{key} has no resort that survives the filters")
-                self.assertEqual(dropped, [])
+                resorts = catalog.get(key, [])
+                self.assertTrue(resorts, f"{key} has no catalogue resort")
+                kept, dropped = filter_resorts(resorts, is_summer=True)
+                # A resort may be filtered (the breakfast rule of 2026-09-30),
+                # but only with a stated reason, never silently.
+                self.assertEqual(len(kept) + len(dropped), len(resorts))
+                for _name, reason in dropped:
+                    self.assertTrue(reason)
+        for key in ("lombok", "koh_samui", "khao_lak"):
+            kept, _ = filter_resorts(catalog[key], is_summer=True)
+            self.assertTrue(kept, f"{key} has no resort that survives the filters")
 
     def test_thailand_is_mostly_the_gulf_side(self):
         # July: the Gulf (Samui, Phangan) is the drier coast; the Andaman
@@ -98,8 +106,17 @@ class JulyScopeTests(unittest.TestCase):
 
 
 class SummerCatalogueTests(unittest.TestCase):
-    def test_catalogues_share_no_key(self):
-        self.assertFalse(set(SUMMER_RESORT_CATALOG) & set(WINTER_RESORT_CATALOG))
+    def test_summer_view_takes_only_both_season_winter_keys(self):
+        # A key in both catalogues (Zanzibar) is priced at July rates in July
+        # and December rates in December; December-only winter keys (Doha,
+        # Muscat, Mauritius, Mexico) never reach the summer view.
+        summer = resort_catalog(_july())
+        for key, resorts in WINTER_RESORT_CATALOG.items():
+            with self.subTest(key=key):
+                if key in hol.BOTH_SEASON_WINTER_KEYS:
+                    self.assertIs(summer[key], resorts)
+                else:
+                    self.assertIsNot(summer.get(key), resorts)
 
     def test_season_selects_the_catalogue(self):
         july = _july()
@@ -111,15 +128,23 @@ class SummerCatalogueTests(unittest.TestCase):
         summer = resort_catalog(july)
         for key in SUMMER_RESORT_CATALOG:
             self.assertIn(key, summer)
-        for key in WINTER_RESORT_CATALOG:
+        for key in hol.BOTH_SEASON_WINTER_KEYS & set(WINTER_RESORT_CATALOG):
             self.assertIs(summer[key], WINTER_RESORT_CATALOG[key])
 
     def test_december_never_prices_a_summer_resort(self):
         december = load_holiday_config(DEC.read_text(encoding="utf-8"))
-        summer_names = {r["name"] for rs in SUMMER_RESORT_CATALOG.values() for r in rs}
+        # Nungwi Dreams is sold in both seasons: its December card must be
+        # the winter entry's (half board, December rate), never the July one.
+        winter_names = {r["name"] for rs in WINTER_RESORT_CATALOG.values() for r in rs}
+        summer_only = {
+            r["name"] for rs in SUMMER_RESORT_CATALOG.values() for r in rs
+        } - winter_names
         deals = collect_holiday_deals(december, max_budget_gbp=UNCAPPED_GBP)
         self.assertTrue(deals)
-        self.assertFalse({d.resort_name for d in deals} & summer_names)
+        self.assertFalse({d.resort_name for d in deals} & summer_only)
+        for deal in deals:
+            if deal.resort_name == "Nungwi Dreams by Mantis":
+                self.assertEqual(deal.board_basis, "Half Board")
 
     def test_every_summer_resort_is_complete_and_sourced(self):
         for key, resorts in SUMMER_RESORT_CATALOG.items():
@@ -155,31 +180,54 @@ class JulyReportHonestyTests(unittest.TestCase):
         names = {d.resort_name for d in deals} | {
             row["resort_name"] for row in hol.LAST_OVER_BUDGET
         }
-        expected = {
-            r["name"]
-            for key in LOMBOK_KEYS | THAILAND_KEYS
-            for r in SUMMER_RESORT_CATALOG[key]
-        }
+        expected = set()
+        for key in LOMBOK_KEYS | THAILAND_KEYS | {"zanzibar"}:
+            kept, _ = filter_resorts(
+                SUMMER_RESORT_CATALOG[key], is_summer=True,
+                island=key in hol.ISLAND_RULE_KEYS,
+            )
+            expected |= {r["name"] for r in kept}
         self.assertEqual(names, expected)
+        filtered = {name for name, _reason in hol.LAST_FILTERED_OUT}
+        for key in LOMBOK_KEYS | THAILAND_KEYS:
+            for resort in SUMMER_RESORT_CATALOG[key]:
+                if resort["name"] not in expected:
+                    self.assertIn(resort["name"], filtered)
         for row in hol.LAST_OVER_BUDGET:
             with self.subTest(resort=row["resort_name"]):
                 self.assertGreater(row["true_d2d"], config.max_budget_gbp)
                 self.assertEqual(row["flight_confidence"], "benchmark")
+        # Since 2026-09-30 a long-haul card needs only ONE of its three flight
+        # options within budget; its Business headline may be over.
         for deal in deals:
-            self.assertLessEqual(deal.true_d2d_gbp, config.max_budget_gbp)
+            with self.subTest(card=deal.resort_name):
+                self.assertTrue(any(o["within_budget"] for o in deal.flight_options))
+                for option in deal.flight_options:
+                    self.assertEqual(
+                        option["within_budget"],
+                        option["total_pkg"] <= config.max_budget_gbp
+                        and option["true_d2d"] <= config.max_budget_gbp,
+                    )
         if hol.LAST_OVER_BUDGET:
             html = render_holiday_report(
                 config, generated_at="2026-09-29T00:00:00+00:00", deals=deals
             )
-            self.assertIn("Long-haul resorts priced over", html)
+            self.assertIn("Resorts priced over", html)
             self.assertIn("benchmark estimate", html)
 
-    def test_short_haul_over_budget_resorts_keep_the_old_behaviour(self):
+    def test_short_haul_over_budget_is_listed_only_for_uncarded_destinations(self):
         fixture = load_holiday_config(
             (ROOT / "tests" / "fixtures" / "july_short_haul_config.json").read_text(encoding="utf-8")
         )
+        deals = collect_holiday_deals(fixture)
+        self.assertTrue(deals)
+        carded = {d.destination_key for d in deals}
+        for row in hol.LAST_OVER_BUDGET:
+            self.assertNotIn(row["destination_key"], carded)
+        # Priced out entirely, every short-haul destination is stated.
         collect_holiday_deals(fixture, max_budget_gbp=100.0)
-        self.assertEqual(hol.LAST_OVER_BUDGET, ())
+        listed = {row["destination_key"] for row in hol.LAST_OVER_BUDGET}
+        self.assertTrue({"antalya", "tenerife", "paphos", "hurghada"} <= listed)
 
     def test_cards_state_routing_estimates_and_the_rule_not_applied(self):
         config = dataclasses.replace(_july(), max_budget_gbp=UNCAPPED_GBP)

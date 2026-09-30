@@ -68,6 +68,10 @@ DEFAULT_FLIGHT_HOURS_LHR: dict[str, float] = {
     "koh_samui": 14.92,      # USM via BKK (EVA Air + Bangkok Airways 14h55)
     "koh_phangan": 14.92,    # USM as above, then the resort boat (~40 min)
     "lombok": 24.0,          # LOP via SIN (Singapore Airlines + Scoot, 24h)
+    # Africa and Mexico (Google Flights, LHR, read 2026-09-29).
+    "zanzibar": 11.67,       # ZNZ via ADD (Ethiopian 11h40 Dec; 11h55 Jul)
+    "mauritius": 14.42,      # MRU via CDG (Air France + Air Mauritius 14h25); no nonstop listed
+    "riviera_maya": 11.02,   # CUN nonstop (Virgin Atlantic 11h01)
 }
 
 

@@ -43,7 +43,7 @@ PRE_RULE_DESTINATIONS = {
 FAR_EAST_DECEMBER = ["phuket", "krabi", "langkawi", "penang", "singapore", "phu_quoc"]
 #: July since 2026-09-29: Lombok and Thailand lead (resort cards, no watch
 #: row), then the watch destinations. Kota Kinabalu left with Malaysia.
-LONG_HAUL_JULY = ["lombok", "koh_samui", "koh_phangan", "khao_lak", "bali", "da_nang", "japan"]
+LONG_HAUL_JULY = ["lombok", "koh_samui", "koh_phangan", "khao_lak", "zanzibar", "bali", "da_nang", "japan"]
 FAR_EAST_JULY = ["bali", "da_nang", "japan"]
 
 
@@ -200,7 +200,7 @@ class CommittedConfigTests(unittest.TestCase):
                 start = html.index("Far East first")
                 # The next section: the cards, or (a long-haul July priced out
                 # by its public budget) the over-budget list.
-                ends = [i for i in (html.find("One Family Unit"), html.find("Long-haul resorts priced over")) if i >= 0]
+                ends = [i for i in (html.find("One Family Unit"), html.find("Resorts priced over")) if i >= 0]
                 self.assertTrue(ends, "neither cards nor an over-budget list follow the watch")
                 first_card = min(ends)
                 self.assertLess(start, first_card)

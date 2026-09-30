@@ -95,6 +95,33 @@
       "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK or SGN: London leg ~11h45-12h45 + connection + ~1h-1h30, about 15h (estimate from published schedules, not live-checked)"
     },
     {
+      "key": "zanzibar",
+      "label": "Zanzibar, Tanzania (Nungwi beach; hot, 31-32°C in December)",
+      "airports": [
+        "ZNZ"
+      ],
+      "flight_hours": 11.67,
+      "flight_hours_source": "No London nonstop. Fastest 1-stop on Google Flights for LHR 20 Dec 2026 (read 2026-09-29): Ethiopian via ADD, 11h40; EgyptAir via CAI 12h20. For 20 Jul 2027: Ethiopian via ADD 11h55"
+    },
+    {
+      "key": "mauritius",
+      "label": "Mauritius (west-coast beaches; summer, 31°C in December)",
+      "airports": [
+        "MRU"
+      ],
+      "flight_hours": 14.42,
+      "flight_hours_source": "No nonstop listed on Google Flights for LHR 20 Dec 2026 (read 2026-09-29). Fastest 1-stop: Air France + Air Mauritius via CDG, 14h25; Emirates via DXB, 15h10"
+    },
+    {
+      "key": "riviera_maya",
+      "label": "Cancún & Riviera Maya, Mexico (Caribbean; dry season, 29°C in December)",
+      "airports": [
+        "CUN"
+      ],
+      "flight_hours": 11.02,
+      "flight_hours_source": "Virgin Atlantic / Delta LHR-CUN nonstop, 11h01, listed on Google Flights for 20 Dec 2026 (read 2026-09-29)"
+    },
+    {
       "key": "antalya",
       "label": "Antalya Riviera, Turkey (Ultra All Inclusive resorts)",
       "airports": [
