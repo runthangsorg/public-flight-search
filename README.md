@@ -57,6 +57,25 @@ estimate until a live Business fare replaces it. A long-haul resort that is over
 budget is listed with its cheapest price instead of silently dropped, and the
 report names every resort whose TripAdvisor rating could not be checked.
 
+## Board basis and flight options (owner rules, 2026-09-30)
+
+- **Breakfast is the minimum.** A room-only rate is not a deal, and a rate
+  whose page did not state its board is "board unverified" and never assumed
+  to include breakfast; both are filtered with the reason shown in the email.
+- **Islands** (Maldives, Mauritius, Zanzibar, Seychelles) show every board
+  basis the hotel sells, each priced separately from a read rate; nothing is
+  invented. Stopover hotels are B&B at minimum.
+- **Three flight options for every long-haul destination**, side by side and
+  each a total for the whole party (flights + hotels + board): (a) Business on
+  the normal route, still the headline; (b) Economy on the same route; (c)
+  Economy with about two nights in Doha or Muscat each way, stopover hotel
+  included (July). The budget is tested on each option separately: a resort is
+  a card when any option fits, and is listed over budget, with every option,
+  only when none does.
+- December adds Doha and Muscat (Economy) and Zanzibar, Mauritius and Cancún
+  (Business headline); July adds Zanzibar. A destination whose resorts all
+  exceed the budget is listed with its cheapest price rather than vanishing.
+
 Emails are change-driven, not scheduled spam: before building, the job seeds
 prior price history from the private data repo and computes a change digest
 (drops / rises / new resorts vs the last report). A flat re-quote is
