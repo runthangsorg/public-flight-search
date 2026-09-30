@@ -2123,7 +2123,16 @@ STOPOVER_LINK_HUBS: tuple[str, ...] = ("DOH", "MCT")
 #: Stopover itineraries whose whole-trip Economy price for five was read on
 #: Google Flights (multi-city: London - hub on outbound-2, hub - beach on the
 #: outbound date, beach - hub on the return date, hub - London on return+2).
-#: The price is the cheapest "entire trip" figure listed on the first leg.
+#: The price is the cheapest "entire trip" figure listed on the first leg —
+#: but ONLY from the pre-expansion card list, confirmed by clicking through
+#: to the second leg and checking the same total still holds. Google's own
+#: "more flights" expander can surface a card whose displayed "entire trip"
+#: total does not reconcile on selection (observed live 2026-09-30: an ITA
+#: Airways-via-Rome DXB card read GBP 4,515 in the expanded list but priced
+#: GBP 6,100, matching the pre-expansion cheapest, once actually selected).
+#: A clean re-read that never touches the expander is the safer default when
+#: it already contains a plausible fare; an expanded-list price is provisional
+#: until leg 2 confirms it.
 _STOPOVER_READS: tuple[tuple[str, str, float, str, str], ...] = (
     ("DOH", "HKT", 5538.0, "Qatar Airways / British Airways", "2026-09-29T16:39:13Z"),
     ("DOH", "USM", 5966.0, "Qatar Airways / British Airways, then Bangkok Airways", "2026-09-29T16:39:44Z"),
@@ -2131,6 +2140,16 @@ _STOPOVER_READS: tuple[tuple[str, str, float, str, str], ...] = (
     ("MCT", "HKT", 6190.0, "Qatar Airways / British Airways via Doha to Muscat, then Oman Air", "2026-09-30T08:01:06Z"),
     ("MCT", "USM", 7212.0, "Qatar Airways / British Airways via Doha to Muscat, then onward", "2026-09-29T16:41:28Z"),
     ("MCT", "LOP", 9012.0, "Qatar Airways / British Airways via Doha to Muscat, then onward", "2026-09-29T16:41:56Z"),
+    # Owner preference 2026-09-30: prefer Oman/Doha over UAE stopovers unless
+    # UAE is much cheaper — enforced by listing order (STOPOVER_HUBS is
+    # defined DOH, MCT, then AUH, DXB; _flight_options iterates that dict in
+    # order), not by a price threshold, so every option's real price is shown
+    # and the reader judges "much cheaper" themselves.
+    ("AUH", "HKT", 4676.0, "Etihad", "2026-09-30T13:25:30Z"),
+    ("AUH", "ZNZ", 5337.0, "Etihad", "2026-09-30T13:26:41Z"),
+    ("AUH", "LOP", 8666.0, "Qatar Airways / British Airways via Doha to Abu Dhabi, then onward", "2026-09-30T13:27:17Z"),
+    ("DXB", "HKT", 6061.0, "Emirates / Qantas", "2026-09-30T13:27:51Z"),
+    ("DXB", "ZNZ", 6100.0, "Emirates, then flydubai / Emirates", "2026-09-30T13:32:19Z"),
 )
 _STOPOVER_PAIR = ("2027-07-20", "2027-07-27")
 
@@ -2156,8 +2175,10 @@ def _stopover_fares() -> dict[tuple[str, str], tuple[dict[str, Any], ...]]:
     return {key: tuple(value) for key, value in fares.items()}
 
 
-#: No itinerary was listed for Doha - Lombok or Muscat - Zanzibar; those
-#: cards say so rather than inventing a fare.
+#: No itinerary was listed for Doha - Lombok, Muscat - Zanzibar, Abu Dhabi -
+#: Koh Samui, Dubai - Koh Samui or Dubai - Lombok (checked 2026-09-30, each a
+#: correctly-formed multi-city search that Google itself returned no options
+#: for); those cards say so rather than inventing a fare.
 STOPOVER_FARES: dict[tuple[str, str], tuple[dict[str, Any], ...]] = _stopover_fares()
 
 
