@@ -65,6 +65,72 @@ def _rec(airport: str, outbound: str, returning: str) -> dict:
     }
 
 
+class OtherAirportNoiseTests(unittest.TestCase):
+    """T10: a run only evaluates airports its own season prices."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        consume_skip_log()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+        consume_skip_log()
+
+    def _write(self, records) -> str:
+        path = os.path.join(self._tmp.name, "evidence.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"travellers": 5, "evidence": records}, handle)
+        return path
+
+    def test_a_july_run_does_not_log_stale_cache_for_a_december_airport(self):
+        # MLA, AGA and TFS are December-only airports. A July run must not
+        # evaluate their records at all, so it must not announce them.
+        config = load_holiday_config(JULY_CONFIG)
+        records = [
+            _rec("MLA", "2027-07-21", "2027-07-28"),
+            _rec("AGA", "2027-07-21", "2027-07-28"),
+            _rec("TFS", "2027-07-21", "2027-07-28"),
+        ]
+        path = self._write(records)
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            load_live_flight_evidence(config, path=path)
+        out = stderr.getvalue()
+        for airport in ("MLA", "AGA", "TFS"):
+            with self.subTest(airport=airport):
+                self.assertNotIn(airport, out)
+        self.assertIn("airports this season does not price", out)
+        self.assertIn("3", out)
+
+    def test_a_july_run_still_logs_stale_cache_for_its_own_airport(self):
+        # HKT IS a July destination: its aged record must still be reported.
+        config = load_holiday_config(JULY_CONFIG)
+        aged = _rec("HKT", "2027-07-20", "2027-07-27")
+        # Inside the stale-cache window (past 48h, under the 30-day ceiling).
+        aged["observed_at"] = "2026-09-29T00:00:00+00:00"
+        path = self._write([aged])
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            load_live_flight_evidence(config, path=path)
+        self.assertIn("HKT", stderr.getvalue())
+        self.assertIn("stale cache", stderr.getvalue())
+
+    def test_a_stopover_hub_airport_is_always_in_scope(self):
+        # Gulf stopover hubs are priced by every long-haul card, so a fare for
+        # one must not be filtered out as an unknown airport.
+        from public_flight_search.holidays import STOPOVER_HUBS
+        for hub in STOPOVER_HUBS:
+            with self.subTest(hub=hub):
+                config = load_holiday_config(JULY_CONFIG)
+                path = self._write([_rec(hub, "2027-07-21", "2027-07-28")])
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    load_live_flight_evidence(config, path=path)
+                self.assertNotIn(
+                    "airports this season does not price", stderr.getvalue()
+                )
+
+
 class OtherSeasonNoiseTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

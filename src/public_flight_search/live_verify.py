@@ -598,6 +598,38 @@ def load_live_flight_evidence(
             file=sys.stderr,
         )
 
+    # …and the same is true of the AIRPORT. A July run prices HKT/LOP/USM, so
+    # a fare read for MLA or TFS is for another planner entirely: evaluating it
+    # only produced noise ("MLA is stale cache, using it") for a fare no July
+    # card will ever look up. The in-scope airports are this season's
+    # destinations plus the Gulf stopover hubs, which every long-haul card
+    # prices. Reported as one count, same as the season filter above.
+    from .holidays import STOPOVER_HUBS
+
+    season_airports = {
+        str(code).strip().upper()
+        for dest in (getattr(config, "destinations", ()) or ())
+        for code in (getattr(dest, "airports", ()) or ())
+    }
+    season_airports |= {str(hub).strip().upper() for hub in STOPOVER_HUBS}
+
+    other_airport_count = 0
+    if season_airports:
+        in_scope: list[Any] = []
+        for item in in_season:
+            code = str(item.get("airport", "")).strip().upper() if isinstance(item, dict) else ""
+            if code and code not in season_airports:
+                other_airport_count += 1
+            else:
+                in_scope.append(item)
+        in_season = in_scope
+        if other_airport_count:
+            print(
+                f"live-evidence: {other_airport_count} record(s) are for airports this "
+                f"season does not price; not evaluated",
+                file=sys.stderr,
+            )
+
     evidence: dict[str, LiveFareEvidence] = {}
     for index, item in enumerate(in_season):
         if not isinstance(item, dict):
