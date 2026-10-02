@@ -252,7 +252,12 @@ class JulyReportHonestyTests(unittest.TestCase):
         self.assertNotIn("TripAdvisor ≥4.5", heading)
         self.assertNotIn("nonstop flights", heading)
         self.assertNotIn("verified rate", html)
-        self.assertIn("criteria scores not assessed", html)
+        # Unassessed criteria are no longer a second caveat line of their own:
+        # they join the single "not verified" booking-terms list (2026-10-02).
+        self.assertIn("Booking terms:", html)
+        self.assertIn("not verified:", html)
+        self.assertIn("criteria scores", html)
+        self.assertNotIn("criteria scores not assessed", html)
 
     def test_the_budget_line_names_the_configured_budget(self):
         config = dataclasses.replace(_july(), max_budget_gbp=UNCAPPED_GBP)

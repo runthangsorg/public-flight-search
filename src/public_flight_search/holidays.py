@@ -1023,6 +1023,17 @@ class PackageDeal:
     # monsoon resort may be priced, but never wins the climate award for a
     # travel month in this set, and its card carries a visible warning.
     monsoon_months: tuple[int, ...] = ()
+    # Booking terms, shown ONLY when verified (owner rule 2026-10-02). Every
+    # field defaults to None = not verified, and the card lists the unknowns
+    # as "not verified: …" rather than inventing a value. ``atol_protected`` is
+    # the one tri-state: True/False are facts, None is unknown.
+    free_cancellation_until: Optional[str] = None
+    deposit_payment: Optional[str] = None
+    checked_baggage: Optional[str] = None
+    atol_protected: Optional[bool] = None
+    transfer_minutes: Optional[int] = None
+    beach_access: Optional[str] = None
+    pool: Optional[str] = None
 
     @property
     def vs_peak_saving_gbp(self) -> float:
@@ -3378,6 +3389,17 @@ def collect_holiday_deals(
                             flight_options=flight_options,
                             board_options=board_totals(resort, nights),
                             monsoon_months=tuple(resort.get("monsoon_months", ()) or ()),
+                            # Booking terms: carried from the resort data only
+                            # when it is actually there. A key that is absent
+                            # stays None, which the card prints as "not
+                            # verified" rather than filling in.
+                            free_cancellation_until=resort.get("free_cancellation_until") or None,
+                            deposit_payment=resort.get("deposit_payment") or None,
+                            checked_baggage=resort.get("checked_baggage") or None,
+                            atol_protected=resort.get("atol_protected"),
+                            transfer_minutes=resort.get("transfer_minutes"),
+                            beach_access=resort.get("beach_access") or None,
+                            pool=resort.get("pool") or None,
                             highlights=resort["highlights"],
                             uk_ground_gbp=uk_ground,
                             transfer_gbp=transfer,
@@ -3904,6 +3926,70 @@ def render_board_line(deal_or_row: Any) -> str:
     return '<div style="margin:0 0 6px 0; color:#334155; font-size:13px;">' + text + '</div>'
 
 
+#: The booking terms a card may show, in order, each mapped to its field on
+#: PackageDeal. ``atol`` is handled separately because it is a tri-state fact.
+_BOOKING_TERM_LABELS: tuple[tuple[str, str], ...] = (
+    ("free_cancellation_until", "cancellation"),
+    ("deposit_payment", "deposit"),
+    ("checked_baggage", "baggage"),
+    ("transfer_minutes", "transfer"),
+    ("beach_access", "beach"),
+    ("pool", "pool"),
+)
+
+
+def _booking_term_values(deal: Any) -> tuple[list[str], list[str]]:
+    """(verified statements, unknown labels) for one deal's booking terms.
+
+    Only a value that is actually present is stated; everything else is named
+    as unknown. A field is never inferred from another one.
+    """
+    verified: list[str] = []
+    unknown: list[str] = []
+    for field, label in _BOOKING_TERM_LABELS:
+        value = getattr(deal, field, None)
+        if value is None or value == "":
+            unknown.append(label)
+        elif field == "transfer_minutes":
+            verified.append("transfer " + str(int(value)) + " min")
+        else:
+            verified.append(str(value))
+    atol = getattr(deal, "atol_protected", None)
+    if atol is None:
+        unknown.append("ATOL")
+    elif atol:
+        verified.append("ATOL protected")
+    else:
+        verified.append("not ATOL protected")
+    # The same single unknown list carries what was never assessed, so a card
+    # has one "not verified" line rather than several separate caveats
+    # (owner rule 2026-10-02).
+    if not getattr(deal, "mosque_name", ""):
+        unknown.append("mosque access")
+    if getattr(deal, "resort_name", "") not in RESORT_CRITERIA:
+        unknown.append("criteria scores")
+    return verified, unknown
+
+
+def render_booking_terms(deal_or_row: Any) -> str:
+    """A compact, honest booking-terms line: verified facts, then the unknowns.
+
+    A value is shown only when the data carries it; anything not verified is
+    named once as "not verified: …" so the reader knows what to check before
+    booking rather than being told a figure the report never had.
+    """
+    verified, unknown = _booking_term_values(deal_or_row)
+    parts = []
+    if verified:
+        parts.append(' · '.join(escape(text) for text in verified))
+    if unknown:
+        parts.append('<span style="color:#b45309;">not verified: '
+                     + escape(', '.join(unknown)) + '</span>')
+    body = ' · '.join(parts) if parts else 'nothing verified'
+    return ('<div style="margin:0 0 6px 0; color:#334155; font-size:13px;">'
+            '<strong style="color:#0f172a;">Booking terms:</strong> ' + body + '</div>')
+
+
 def _option_title(option: Mapping[str, Any]) -> str:
     if option["kind"] == "business":
         return "(a) Business, normal route"
@@ -4396,19 +4482,25 @@ def render_holiday_report(
             out.append('<div style="color:#64748b; font-size:14px; margin-bottom:7px;">📍 ' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ') · ' + escape(deal.outbound_date) + ' → ' + escape(deal.return_date) + ' · ' + str(deal.nights) + ' nights</div>')
             if deal.highlights:
                 out.append('<div style="color:#475569; font-size:14px; margin-bottom:8px;">✨ ' + escape(' · '.join(deal.highlights)) + '</div>')
-            # Recovered criteria strip: value score, deal class, and the
-            # 0-10 scores that matter to this household (mosque, food first).
+            # Recovered criteria strip: value score and deal class always; the
+            # 0-10 scores only where curated scores exist. What is NOT assessed
+            # is not a second "not assessed" line — it joins the single
+            # "not verified: …" booking-terms line (owner rule 2026-10-02).
             crit = ('🕌 ' + escape(deal.mosque_name) + ' — ' + str(deal.mosque_walk_minutes) + ' min walk'
-                    if deal.mosque_name else '🕌 mosque access not assessed')
+                    if deal.mosque_name else '')
             out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;"><strong style="color:#7c3aed;">VALUE ' + f'{deal.value_score:.0f}' + '/100</strong> · '
                        + '<span style="background:#faf5ff; color:#6d28d9; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700;">' + escape(deal.deal_class.replace('_', ' ')) + '</span></div>')
             season_score_name = "🏊 beach & pools" if is_summer else "❄️ winter"
-            if deal.resort_name not in RESORT_CRITERIA:
-                # No curated scores exist for this resort: the numbers below
-                # would be the neutral 5/10 defaults, so they are not printed.
-                out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">' + crit + ' · criteria scores not assessed for this resort</div>')
-            else:
-                out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">' + crit + ' · 🍽️ food ' + f'{deal.food_reality_score:.0f}' + '/10 · 💎 luxury ' + f'{deal.actual_luxury_score:.0f}' + '/10 · ' + season_score_name + ' ' + f'{deal.winter_facilities_score:.0f}' + '/10 · 🎯 activities ' + f'{deal.activities_score:.0f}' + '/10 · ✈️ flights ' + f'{deal.flight_quality_score:.0f}' + '/10</div>')
+            if deal.resort_name in RESORT_CRITERIA:
+                score_parts = ([crit] if crit else []) + [
+                    '🍽️ food ' + f'{deal.food_reality_score:.0f}' + '/10',
+                    '💎 luxury ' + f'{deal.actual_luxury_score:.0f}' + '/10',
+                    season_score_name + ' ' + f'{deal.winter_facilities_score:.0f}' + '/10',
+                    '🎯 activities ' + f'{deal.activities_score:.0f}' + '/10',
+                    '✈️ flights ' + f'{deal.flight_quality_score:.0f}' + '/10',
+                ]
+                out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">'
+                           + ' · '.join(score_parts) + '</div>')
             if deal.food_review_summary:
                 out.append('<div style="color:#64748b; font-size:13px; margin-bottom:8px;"><strong style="color:#475569;">Food reviews:</strong> ' + escape(deal.food_review_summary) + '</div>')
             # Facts strip: flights | stay | weather | BIG price
@@ -4463,8 +4555,10 @@ def render_holiday_report(
             out.append('</td>')
             out.append('</tr></table>')
 
-            # Board basis on every hotel line; long-haul flight options side by side.
+            # Board basis, then booking terms, on every hotel line; long-haul
+            # flight options side by side.
             out.append(render_board_line(deal))
+            out.append(render_booking_terms(deal))
             if deal.flight_options:
                 out.append(render_flight_options(
                     deal.flight_options, travellers=config.travellers,
@@ -4490,7 +4584,10 @@ def render_holiday_report(
             else:
                 rationale_points.append('<strong>Nonstop Logistics:</strong> Flights to ' + escape(deal.destination_airport) + ' from ' + escape(', '.join(config.origins[:2])) + ', preserving civil arrival times.')
             per_person_per_night = round(deal.price_per_person_gbp / max(1, deal.nights))
-            rationale_points.append('<strong>Door-to-Door Transparency:</strong> £' + f'{deal.price_per_person_gbp:,.0f}' + 'pp (£' + str(per_person_per_night) + '/day) true total with flights, luggage, stay, and transfers included.')
+            # "luggage included" is a claim about what a fare includes, and no
+            # fare data verifies it, so it is never asserted here: baggage sits
+            # in the booking-terms not-verified list instead.
+            rationale_points.append('<strong>Door-to-Door Transparency:</strong> £' + f'{deal.price_per_person_gbp:,.0f}' + 'pp (£' + str(per_person_per_night) + '/day) true total with flights, stay, and transfers.')
 
             out.append('<div style="margin:0 0 10px 0; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;">')
             out.append('<div style="color:#166534; font-size:13px; font-weight:700; margin-bottom:4px;">💡 Why this is a great deal:</div>')
