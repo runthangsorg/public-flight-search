@@ -59,33 +59,6 @@
       "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK: LHR-BKK nonstop ~11h45 + connection + BKK-KBV ~1h20, about 14h30 (estimate from published schedules, not live-checked)"
     },
     {
-      "key": "langkawi",
-      "label": "Langkawi, Malaysia (island beach resorts, 31-32C in December)",
-      "airports": [
-        "LGK"
-      ],
-      "flight_hours": 15.5,
-      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via KUL: LHR-KUL nonstop ~13h + connection + KUL-LGK ~1h, about 15h30 (estimate from published schedules, not live-checked)"
-    },
-    {
-      "key": "penang",
-      "label": "Penang & Batu Ferringhi, Malaysia (heritage + beach, 31C in December)",
-      "airports": [
-        "PEN"
-      ],
-      "flight_hours": 15.5,
-      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via KUL: LHR-KUL nonstop ~13h + connection + KUL-PEN ~1h, about 15h30 (estimate from published schedules, not live-checked)"
-    },
-    {
-      "key": "singapore",
-      "label": "Singapore & Sentosa (city-resort base, 30-31C, monsoon showers in December)",
-      "airports": [
-        "SIN"
-      ],
-      "flight_hours": 13.0,
-      "flight_hours_source": "BA / Singapore Airlines LHR-SIN nonstop, scheduled block about 13h (published schedules, not re-checked live on 2026-09-28)"
-    },
-    {
       "key": "phu_quoc",
       "label": "Phu Quoc, Vietnam (island beaches, 30-31C, dry season from December)",
       "airports": [

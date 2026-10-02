@@ -46,7 +46,8 @@ PRE_RULE_DESTINATIONS = {
     "tenerife", "madeira", "lanzarote", "cape_verde", "fuerteventura",
     "gran_canaria", "paphos",
 }
-FAR_EAST_DECEMBER = ["phuket", "krabi", "langkawi", "penang", "singapore", "phu_quoc"]
+#: Langkawi, Penang and Singapore left with Malaysia/Singapore on 2026-10-02.
+FAR_EAST_DECEMBER = ["phuket", "krabi", "phu_quoc"]
 #: July since 2026-09-29: Lombok and Thailand lead (resort cards, no watch
 #: row), then the watch destinations. Kota Kinabalu left with Malaysia.
 LONG_HAUL_JULY = ["lombok", "koh_samui", "koh_phangan", "khao_lak", "zanzibar", "bali", "da_nang", "japan"]

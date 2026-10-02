@@ -87,11 +87,10 @@ class HolidayPlannerTests(unittest.TestCase):
                 "paphos",
                 # Far East, added 2026-09-28 (owner preference) and listed
                 # first; no existing destination was dropped to make room.
+                # Langkawi, Penang and Singapore were removed on 2026-10-02:
+                # the owner excluded Malaysia and Singapore from BOTH seasons.
                 "phuket",
                 "krabi",
-                "langkawi",
-                "penang",
-                "singapore",
                 "phu_quoc",
                 # Africa and Mexico, added 2026-09-30 after the Far East.
                 "zanzibar",
@@ -101,7 +100,7 @@ class HolidayPlannerTests(unittest.TestCase):
         )
         self.assertEqual(
             [item.key for item in config.destinations[:6]],
-            ["phuket", "krabi", "langkawi", "penang", "singapore", "phu_quoc"],
+            ["phuket", "krabi", "phu_quoc", "zanzibar", "mauritius", "riviera_maya"],
         )
 
     def test_rejects_ai_content_in_holiday_report_title(self):
