@@ -46,6 +46,9 @@ def _deal(name: str, score: float, **overrides) -> PackageDeal:
         hotel_booking_url="https://example.invalid/hotel",
         is_under_budget=True,
         value_score=score,
+        # These tests are about how a REAL score reads; a default-derived
+        # score is not shown at all (see test_value_score_verified).
+        value_score_verified=True,
         deal_class=hol._classify_deal_price(1400.0),
     )
     base.update(overrides)

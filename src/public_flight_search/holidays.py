@@ -1003,6 +1003,11 @@ class PackageDeal:
     mosque_name: str = ""
     mosque_walk_minutes: int = 0
     food_review_summary: str = ""
+    #: True only when the value score was computed from this resort's own
+    #: curated criteria. False means every input fell back to a neutral
+    #: default, so the number measured only the price — not shown, and listed
+    #: as not verified instead (owner rule 2026-10-02).
+    value_score_verified: bool = False
     indoor_activity_count: int = 0
     heated_indoor_pool: bool = False
     deal_class: str = ""
@@ -2989,6 +2994,9 @@ def _criteria_fields(
         "activities_score": float(c.get("activities", 5)),
         "flight_quality_score": float(c.get("flight_quality", 7)),
         "value_score": value,
+        # Whether that score came from this resort's own criteria or from the
+        # neutral defaults above. A default-derived score is not a measurement.
+        "value_score_verified": bool(c),
         "mosque_name": c.get("mosque_name", ""),
         "mosque_walk_minutes": int(c.get("mosque_walk_minutes", 0)),
         "food_review_summary": c.get("food_review_summary", ""),
@@ -4064,6 +4072,10 @@ def _booking_term_values(deal: Any) -> tuple[list[str], list[str]]:
         unknown.append("mosque access")
     if getattr(deal, "resort_name", "") not in RESORT_CRITERIA:
         unknown.append("criteria scores")
+    # A value score built from default inputs is not a measurement, so it is
+    # named as unknown rather than printed as a number (owner rule 2026-10-02).
+    if not getattr(deal, "value_score_verified", False):
+        unknown.append("value score")
     return verified, unknown
 
 
@@ -4459,7 +4471,11 @@ def render_holiday_report(
         # contradicts the card (owner rule 2026-10-02): below the threshold no
         # value award is shown at all, rather than a "best" that reads as a
         # splurge to avoid.
-        if b4 is not None and b4.value_score >= VALUE_AWARD_MIN_SCORE:
+        if (
+            b4 is not None
+            and getattr(b4, "value_score_verified", False)
+            and b4.value_score >= VALUE_AWARD_MIN_SCORE
+        ):
             score_type = "(family luxury score)" if is_summer else "(winter-first score)"
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px;">'
                        '<strong style="color:#0f172a;">🏆 Best Overall Value:</strong> '
@@ -4589,7 +4605,15 @@ def render_holiday_report(
             # "not verified: …" booking-terms line (owner rule 2026-10-02).
             crit = ('🕌 ' + escape(deal.mosque_name) + ' — ' + str(deal.mosque_walk_minutes) + ' min walk'
                     if deal.mosque_name else '')
-            out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;"><strong style="color:#7c3aed;">value score ' + f'{deal.value_score:.0f}' + '/100</strong> · '
+            # The score is shown only when it is computed from this resort's own
+            # criteria. A default-derived number measured only the price, so
+            # printing it (as "35/100" on every card) was a measurement that
+            # never happened; "value score" then sits in the not-verified list.
+            score_html = (
+                '<strong style="color:#7c3aed;">value score ' + f'{deal.value_score:.0f}' + '/100</strong> · '
+                if getattr(deal, "value_score_verified", False) else ''
+            )
+            out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;">' + score_html
                        + '<span style="background:#faf5ff; color:#6d28d9; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700;">' + escape(_deal_class_words(deal.deal_class)) + '</span></div>')
             season_score_name = "🏊 beach & pools" if is_summer else "❄️ winter"
             if deal.resort_name in RESORT_CRITERIA:

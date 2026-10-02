@@ -47,6 +47,7 @@ def _base_deal(**overrides) -> PackageDeal:
         flight_booking_url="https://example.invalid/flight",
         hotel_booking_url="https://example.invalid/hotel",
         is_under_budget=True,
+        value_score_verified=True,
     )
     base.update(overrides)
     return PackageDeal(**base)
