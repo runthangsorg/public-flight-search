@@ -332,13 +332,23 @@ class FlightOptionTests(unittest.TestCase):
         deals = collect_holiday_deals(december)
         carded = {d.destination_key for d in deals}
         listed = {row["destination_key"] for row in hol.LAST_OVER_BUDGET}
-        for key in ("doha", "muscat", "zanzibar", "mauritius", "riviera_maya"):
+        for key in ("doha", "riviera_maya"):
             with self.subTest(key=key):
                 self.assertIn(key, carded | listed)
         html = render_holiday_report(december, generated_at="2026-09-30T00:00:00+00:00", deals=deals)
         self.assertIn("Rixos Gulf Hotel Doha", html)
-        self.assertIn("InterContinental Muscat", html)
         self.assertIn("Rule not applied — pools heated", html)
+        # Muscat, Zanzibar and Mauritius each have one 3-room resort; the
+        # one-booking rule filters it, and the transparency list names it so
+        # the destination is stated, not silently absent.
+        for name in (
+            "InterContinental Muscat",
+            "Nungwi Dreams by Mantis",
+            "Sofitel Mauritius L&#x27;Impérial Resort &amp; Spa",
+        ):
+            with self.subTest(resort=name):
+                self.assertIn(name, html)
+        self.assertIn("needs 3 rooms — breaks the one-unit rule", html)
 
     def test_short_haul_cards_are_unchanged(self):
         december = load_holiday_config(DEC.read_text(encoding="utf-8"))

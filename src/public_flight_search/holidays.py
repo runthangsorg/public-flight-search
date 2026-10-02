@@ -973,6 +973,10 @@ class PackageDeal:
     # Room architecture of THIS quote. A 2-bed family suite and 3 separate
     # rooms are different products: prices must never merge into one series.
     unit_architecture: str = ""
+    # How many rooms the quote's single booking actually uses. 1 or 2 are a
+    # one-booking family unit; 3 is not a unit at all and is filtered out by
+    # the one-booking rule, so a card is never priced on it.
+    rooms_in_unit: int = 1
     # Recovered criteria model (from the winter tracker contract):
     # curated 0-10 benchmark scores per resort. Honest, review-required —
     # presented as benchmarks, never as live observations.
@@ -2634,6 +2638,13 @@ def filter_resorts(
         if arch is None:
             dropped.append((name, "no verified one-unit room sleeping 5 (2-bed suite / interconnecting)"))
             continue
+        # The one-booking rule (owner, 2026-10-02): 5 travellers book ONE unit —
+        # a 2-bedroom suite/villa or two rooms on the same booking. A resort
+        # whose only verified option is THREE separate rooms is not a deal,
+        # however cheap it looks: it must never become a card.
+        if int(arch.get("rooms_in_unit", 1)) >= 3:
+            dropped.append((name, "needs 3 rooms — breaks the one-unit rule"))
+            continue
         if not arch["beach_walkable"]:
             dropped.append((name, "no genuine walkable private beach attached"))
             continue
@@ -3260,6 +3271,7 @@ def collect_holiday_deals(
                             ),
                             peak_summer_total_gbp=peak_total,
                             unit_architecture=arch["suite_type"],
+                            rooms_in_unit=int(arch.get("rooms_in_unit", 1)),
                             **_criteria_fields(
                                 resort["name"],
                                 price_pp,
@@ -4213,8 +4225,11 @@ def render_holiday_report(
                     airport=deal.destination_airport, origin=deal.origin))
             # Deal rationale callout: explain WHY this is a great deal for this party
             rationale_points: list[str] = []
-            if deal.unit_architecture:
-                rationale_points.append('<strong>Family Unit for ' + str(config.travellers) + ':</strong> ' + escape(deal.unit_architecture) + ' sleeps everyone in one booking without paying for 3 scattered rooms.')
+            if deal.unit_architecture and int(getattr(deal, "rooms_in_unit", 1)) < 3:
+                # Never claim a three-room quote is one unit: the collector
+                # filters those out, and a hand-built deal must not slip one
+                # through here either.
+                rationale_points.append('<strong>Family Unit for ' + str(config.travellers) + ':</strong> ' + escape(deal.unit_architecture) + ' sleeps everyone in one booking.')
             elif len(config.rooms) >= 2:
                 rationale_points.append('<strong>Connecting Family Unit:</strong> 2 interconnecting rooms confirmed post-booking for all ' + str(config.travellers) + '.')
             if "All Inclusive" in deal.board_basis:
