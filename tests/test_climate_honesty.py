@@ -15,7 +15,9 @@ import unittest
 
 import public_flight_search.holidays as hol
 from public_flight_search.holidays import (
+    FAR_EAST_WATCH,
     SUMMER_RESORT_CATALOG,
+    WINTER_RESORT_CATALOG,
     collect_holiday_deals,
     load_holiday_config,
     render_holiday_report,
@@ -73,9 +75,58 @@ class MonsoonClimateTests(unittest.TestCase):
             config, generated_at="2026-09-30T00:00:00+00:00",
             deals=collect_holiday_deals(config),
         )
-        self.assertIn("Monsoon season for your July travel month", html)
+        self.assertIn("Monsoon season (approximate climatology) for your July travel month", html)
         # Not just the destination label: the card header warning is separate.
         self.assertIn("⚠️ Monsoon", html)
+
+
+class WetMonthsCoverageTests(unittest.TestCase):
+    """Every catalogue destination declares its wet/storm months (or an
+    explicit empty tuple): approximate climatology, never a silent gap."""
+
+    def test_every_catalogue_destination_has_an_explicit_entry(self):
+        keys = (
+            set(WINTER_RESORT_CATALOG)
+            | set(SUMMER_RESORT_CATALOG)
+            | set(FAR_EAST_WATCH)
+        )
+        self.assertTrue(keys)
+        for key in sorted(keys):
+            with self.subTest(key=key):
+                self.assertIn(key, hol.WET_MONTHS_BY_DESTINATION)
+
+    def test_entries_are_valid_month_tuples(self):
+        for key, months in hol.WET_MONTHS_BY_DESTINATION.items():
+            with self.subTest(key=key):
+                self.assertIsInstance(months, tuple)
+                self.assertEqual(tuple(sorted(set(months))), months)
+                for month in months:
+                    self.assertTrue(1 <= month <= 12)
+
+    def test_the_storm_seasons_match_the_owner_list(self):
+        expected = {
+            "phuket": (5, 6, 7, 8, 9, 10),
+            "krabi": (5, 6, 7, 8, 9, 10),
+            "khao_lak": (5, 6, 7, 8, 9, 10),
+            "koh_samui": (10, 11, 12),
+            "koh_phangan": (10, 11, 12),
+            "bali": (1, 2, 3, 11, 12),
+            "lombok": (1, 2, 3, 11, 12),
+            "da_nang": (9, 10, 11, 12),
+            "singapore": (1, 11, 12),
+            "langkawi": (9, 10, 11),
+            "penang": (9, 10, 11),
+            "phu_quoc": (5, 6, 7, 8, 9, 10),
+            "zanzibar": (4, 5, 11),
+            "mauritius": (1, 2, 3),
+            "riviera_maya": (6, 7, 8, 9, 10, 11),
+        }
+        for key, months in expected.items():
+            with self.subTest(key=key):
+                self.assertEqual(hol.WET_MONTHS_BY_DESTINATION[key], months)
+
+    def test_a_dry_destination_carries_an_explicit_empty_tuple(self):
+        self.assertEqual(hol.WET_MONTHS_BY_DESTINATION["tenerife"], ())
 
 
 if __name__ == "__main__":

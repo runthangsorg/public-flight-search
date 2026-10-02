@@ -1101,11 +1101,55 @@ def deal_travel_month(deal: Any) -> Optional[int]:
         return None
 
 
+#: Approximate wet / storm climatology per destination key, as calendar
+#: months. APPROXIMATE CLIMATOLOGY: regional seasons vary year to year, so
+#: this warns, it does not forbid. An explicit empty tuple is a destination
+#: with no flagged wet/storm season here — a declared fact, not a gap. A
+#: resort may override with its own ``monsoon_months``; otherwise the deal
+#: inherits its destination's months. (Owner list, 2026-10-02.)
+WET_MONTHS_BY_DESTINATION: dict[str, tuple[int, ...]] = {
+    # Winter catalogue
+    "antalya": (), "malta": (), "taghazout": (), "hurghada": (), "cairo": (),
+    "muscat": (), "doha": (), "tenerife": (), "madeira": (), "lanzarote": (),
+    "cape_verde": (), "fuerteventura": (), "gran_canaria": (), "paphos": (),
+    "zanzibar": (4, 5, 11),          # long rains Apr-May, short rains Nov
+    "mauritius": (1, 2, 3),          # cyclone season
+    "riviera_maya": (6, 7, 8, 9, 10, 11),  # Atlantic hurricane season
+    # Summer catalogue
+    "lombok": (1, 2, 3, 11, 12),
+    "koh_samui": (10, 11, 12),       # Gulf side: wetter late in the year
+    "koh_phangan": (10, 11, 12),
+    "khao_lak": (5, 6, 7, 8, 9, 10),  # Andaman side SW monsoon
+    # Far East watch keys (destination watches, no cards)
+    "phuket": (5, 6, 7, 8, 9, 10),
+    "krabi": (5, 6, 7, 8, 9, 10),
+    "langkawi": (9, 10, 11),
+    "penang": (9, 10, 11),
+    "singapore": (1, 11, 12),
+    "phu_quoc": (5, 6, 7, 8, 9, 10),
+    "bali": (1, 2, 3, 11, 12),
+    "da_nang": (9, 10, 11, 12),
+    "kota_kinabalu": (1, 2, 10, 11, 12),  # Sabah north-east monsoon
+    "japan": (),                     # no single wet-season flag for the watch
+}
+
+
 def deal_in_monsoon(deal: Any) -> bool:
-    """True when the deal's travel month is monsoon season at the resort."""
+    """True when the deal's travel month is a wet/storm month at the resort.
+
+    A resort's own ``monsoon_months`` wins; otherwise the deal inherits its
+    destination's approximate climatology. An empty result means no season is
+    flagged, never an assumption that the destination is dry.
+    """
     month = deal_travel_month(deal)
+    if month is None:
+        return False
     months = tuple(getattr(deal, "monsoon_months", ()) or ())
-    return month is not None and month in months
+    if not months:
+        months = WET_MONTHS_BY_DESTINATION.get(
+            str(getattr(deal, "destination_key", "") or "").lower(), ()
+        )
+    return month in months
 
 
 def _dec_temp_for_floor(outbound_date: str, dec_avg_temp_c: float) -> Optional[float]:
@@ -4241,7 +4285,7 @@ def render_holiday_report(
                 # still be priced, but never without this warning.
                 month = deal_travel_month(deal)
                 month_name = escape(_MONTH_NAMES[month - 1]) if month else "your travel"
-                out.append('<div style="margin:0 0 8px 0; padding:7px 11px; background:#fff7ed; border:1px solid #fdba74; border-radius:6px; color:#9a3412; font-size:13px; font-weight:600;">⚠️ Monsoon season for your ' + month_name + ' travel month — expect heavy rain and rough seas; pool and beach days may be rained off.</div>')
+                out.append('<div style="margin:0 0 8px 0; padding:7px 11px; background:#fff7ed; border:1px solid #fdba74; border-radius:6px; color:#9a3412; font-size:13px; font-weight:600;">⚠️ Monsoon season (approximate climatology) for your ' + month_name + ' travel month — expect heavy rain and rough seas; pool and beach days may be rained off.</div>')
             out.append('<div style="color:#64748b; font-size:14px; margin-bottom:7px;">📍 ' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ') · ' + escape(deal.outbound_date) + ' → ' + escape(deal.return_date) + ' · ' + str(deal.nights) + ' nights</div>')
             if deal.highlights:
                 out.append('<div style="color:#475569; font-size:14px; margin-bottom:8px;">✨ ' + escape(' · '.join(deal.highlights)) + '</div>')
