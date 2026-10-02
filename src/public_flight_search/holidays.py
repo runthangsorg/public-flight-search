@@ -3909,10 +3909,43 @@ def _option_title(option: Mapping[str, Any]) -> str:
     return "(c) Economy + 2 nights " + hub_label + " each way"
 
 
+def _flight_option_line(option: Mapping[str, Any]) -> str:
+    """One full option line: flights, stay, any hub hotel, totals and the budget chip."""
+    chip = ('<span style="color:#166534; font-weight:700;">within budget</span>' if option["within_budget"]
+            else '<span style="color:#b45309; font-weight:700;">over budget</span>')
+    line = ('<br>' + escape(_option_title(option)) + ': flights £' + f'{float(option["flight_cost"]):,.0f}'
+            + ' (' + escape(str(option["flight_basis"])) + ') + stay £' + f'{float(option["hotel_cost"]):,.0f}')
+    if option["kind"] in ("stopover", "stopover_premium_economy"):
+        hotel_note = ', estimate' if option.get("hub_hotel_confidence") == "estimate" else ''
+        line += (' + ' + escape(str(option["hub_label"])) + ' hotel £' + f'{float(option["stopover_hotel_cost"]):,.0f}'
+                 + ' (' + escape(str(option["hub_hotel"])) + ', ' + str(option["stopover_nights"]) + ' nights, '
+                 + escape(BOARD_LABELS.get(board_code(option["hub_board"]), str(option["hub_board"]))) + hotel_note + ')')
+    line += (' = <strong>£' + f'{float(option["total_pkg"]):,.0f}' + '</strong> · £'
+             + f'{float(option["true_d2d"]):,.0f}' + ' door to door · ' + escape(str(option["outbound"]))
+             + '→' + escape(str(option["return"])) + ' from ' + escape(str(option["origin"])) + ' · ' + chip)
+    if option.get("source_url"):
+        line += (' <a href="' + escape(str(option["source_url"]), quote=True)
+                 + '" style="color:#2563eb;text-decoration:none;">multi-city search ↗</a>')
+    return line
+
+
+def _cheapest_stopover(stopovers: Sequence[Mapping[str, Any]]) -> Optional[Mapping[str, Any]]:
+    """The stopover to show in full: cheapest within budget, else cheapest overall."""
+    if not stopovers:
+        return None
+    within = [o for o in stopovers if o.get("within_budget")]
+    return min(within or list(stopovers), key=lambda o: float(o["total_pkg"]))
+
+
 def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: int,
                           dates: Optional[tuple[str, str]] = None, airport: str = "",
                           origin: str = "") -> str:
     """(a) Business, (b) Economy, (c) Economy with a stopover: each a total for the party.
+
+    Shown in full: Business, Economy, the cheapest Economy stopover, and any
+    Premium Economy that fits the budget. Every other stopover, and any Premium
+    Economy over budget, collapses into one compact line so a card does not list
+    every hub's itinerary at once.
 
     When a card has no read stopover fare, the (c) line still offers the
     multi-city itinerary for every hub as a search link (hotel named), so the
@@ -3924,27 +3957,37 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
         '<strong style="color:#0f172a;">✈ Flight options for ' + str(travellers)
         + '</strong> <span style="color:#64748b;">— each a total: flights + hotel(s) + board; the budget is tested on each</span>'
     ]
-    has_stopover = False
-    for option in options:
-        if option["kind"] == "stopover":
-            has_stopover = True
-        chip = ('<span style="color:#166534; font-weight:700;">within budget</span>' if option["within_budget"]
-                else '<span style="color:#b45309; font-weight:700;">over budget</span>')
-        line = ('<br>' + escape(_option_title(option)) + ': flights £' + f'{float(option["flight_cost"]):,.0f}'
-                + ' (' + escape(str(option["flight_basis"])) + ') + stay £' + f'{float(option["hotel_cost"]):,.0f}')
-        if option["kind"] in ("stopover", "stopover_premium_economy"):
-            hotel_note = ', estimate' if option.get("hub_hotel_confidence") == "estimate" else ''
-            line += (' + ' + escape(option["hub_label"]) + ' hotel £' + f'{float(option["stopover_hotel_cost"]):,.0f}'
-                     + ' (' + escape(str(option["hub_hotel"])) + ', ' + str(option["stopover_nights"]) + ' nights, '
-                     + escape(BOARD_LABELS.get(board_code(option["hub_board"]), str(option["hub_board"]))) + hotel_note + ')')
-        line += (' = <strong>£' + f'{float(option["total_pkg"]):,.0f}' + '</strong> · £'
-                 + f'{float(option["true_d2d"]):,.0f}' + ' door to door · ' + escape(str(option["outbound"]))
-                 + '→' + escape(str(option["return"])) + ' from ' + escape(str(option["origin"])) + ' · ' + chip)
-        if option.get("source_url"):
-            line += (' <a href="' + escape(str(option["source_url"]), quote=True)
-                     + '" style="color:#2563eb;text-decoration:none;">multi-city search ↗</a>')
-        out.append(line)
-    if not has_stopover:
+    stopovers = [o for o in options if o["kind"] == "stopover"]
+    expanded = _cheapest_stopover(stopovers)
+
+    # (a) Business and (b) Economy always; Premium Economy only when within budget.
+    for kind in ("business", "economy"):
+        out.extend(_flight_option_line(o) for o in options if o["kind"] == kind)
+    for kind in ("premium_economy", "stopover_premium_economy"):
+        out.extend(_flight_option_line(o) for o in options
+                   if o["kind"] == kind and o.get("within_budget"))
+    if expanded is not None:
+        out.append(_flight_option_line(expanded))
+
+    other_stopovers = [o for o in stopovers if o is not expanded]
+    over_budget_premium = [o for o in options
+                           if o["kind"] in ("premium_economy", "stopover_premium_economy")
+                           and not o.get("within_budget")]
+    if other_stopovers:
+        totals = ' · '.join(
+            escape(str(o.get("hub_label") or o.get("hub"))) + ' £' + f'{float(o["total_pkg"]):,.0f}'
+            for o in other_stopovers)
+        out.append('<br>Other stopovers: ' + totals + ' (economy, totals)')
+    if over_budget_premium:
+        parts = []
+        for o in over_budget_premium:
+            where = (escape(str(o.get("hub_label") or o.get("hub"))) + ' '
+                     if o["kind"] == "stopover_premium_economy" else 'same route ')
+            parts.append(where + '£' + f'{float(o["total_pkg"]):,.0f}')
+        out.append('<br><span style="color:#b45309; font-weight:700;">Premium Economy over budget</span>: '
+                   + ' · '.join(parts))
+
+    if not stopovers:
         offered = False
         if dates and airport:
             card_outbound, card_return = dates
