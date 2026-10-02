@@ -3095,10 +3095,16 @@ def collect_holiday_deals(
         }
 
     def _evidence_words(picked: dict, fallback: str) -> str:
+        # One provenance per fare, never a mixture (owner rule 2026-10-02): a
+        # read fare says when it was read, an aged one says observed-not-live,
+        # everything else falls through to a benchmark or an estimate.
         evidence = picked.get("evidence")
         if picked.get("evidence_used") and evidence is not None:
-            return {"verified-exact-date": "live fare", "stale-cache": "observed fare, not live"}.get(
-                evidence.confidence, "observed fare")
+            if evidence.confidence == "verified-exact-date":
+                return "live fare read " + str(getattr(evidence, "observed_at", ""))[:10]
+            if evidence.confidence == "stale-cache":
+                return "observed fare, not live"
+            return "observed fare"
         return fallback
 
     def _flight_options(resort, arch, business: dict) -> tuple[dict, ...]:
@@ -3110,10 +3116,10 @@ def collect_holiday_deals(
         economy = _best_option(resort, "ECONOMY", 1.0, arch, enforce_budget=False,
                                prefer_evidence=True)
         if economy is not None:
-            # No evidence read for these dates: a benchmark. Never call it
-            # both "read" and a "benchmark" — those contradict (2026-10-02).
+            # No evidence read for these dates: exactly "benchmark", never
+            # "read" and never a second provenance word (2026-10-02).
             rows.append(_option_row("economy", "ECONOMY", economy,
-                                    _evidence_words(economy, "benchmark estimate")))
+                                    _evidence_words(economy, "benchmark")))
         # Live evidence is already read for PREMIUM_ECONOMY (evidence_consumption_contract
         # requests it per destination) and was previously discarded as an "unused key" —
         # this is the same _best_option seam Economy uses, just a different cabin/multiplier.
@@ -4041,9 +4047,9 @@ def render_gate_not_applied(resort_names: Sequence[str], *, pool_unverified: Seq
 
 
 _FLIGHT_BASIS_WORDS = {
-    "verified-exact-date": "live fare",
+    "verified-exact-date": "live fare read",
     "stale-cache": "observed fare, not live",
-    "benchmark": "benchmark estimate",
+    "benchmark": "benchmark",
 }
 _HOTEL_BASIS_WORDS = {
     "market-supported": "rate read for these dates",

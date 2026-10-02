@@ -213,7 +213,9 @@ class JulyReportHonestyTests(unittest.TestCase):
                 config, generated_at="2026-09-29T00:00:00+00:00", deals=deals
             )
             self.assertIn("Resorts priced over", html)
-            self.assertIn("benchmark estimate", html)
+            # One provenance word per fare (2026-10-02): an unread fare's basis
+            # is stated as "benchmark", never "benchmark estimate".
+            self.assertIn("(benchmark)", html)
 
     def test_short_haul_over_budget_is_listed_only_for_uncarded_destinations(self):
         fixture = load_holiday_config(

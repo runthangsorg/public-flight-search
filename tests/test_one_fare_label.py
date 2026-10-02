@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 from pathlib import Path
+import re
 import unittest
 
 from public_flight_search.holidays import (
@@ -19,6 +20,12 @@ from public_flight_search.holidays import (
     load_holiday_config,
     render_holiday_report,
 )
+from public_flight_search.live_verify import LiveFareEvidence
+
+#: A fare's parenthesised provenance in a rendered line: "flights £4,695 (...)".
+_FARE_LABEL = re.compile(r"flights £[\d,]+[^(]*\(([^)]*)\)")
+#: The four provenance words a fare label may use, one at a time.
+_PROVENANCE = ("read", "observed", "benchmark", "estimate")
 
 ROOT = Path(__file__).parents[1]
 JULY = ROOT / "examples" / "july_holiday_config.json"
@@ -72,6 +79,44 @@ class OneFareLabelTests(unittest.TestCase):
             deals=collect_holiday_deals(config),
         )
         self.assertNotIn("fare read (benchmark)", html)
+
+    def test_every_rendered_fare_label_carries_exactly_one_provenance(self):
+        # Four provenances in one report: a benchmark-fallback Economy fare, a
+        # read multi-city stopover fare, an aged observed headline fare, and an
+        # x1.6 estimate. Each label must pick exactly one of the four words.
+        config = _july_uncapped()
+        aged = LiveFareEvidence(
+            airport="HKT",
+            total_gbp=11100.0,
+            basis="whole_party_return_total",
+            source_url="https://example.invalid/hkt",
+            observed_at="2026-09-01T00:00:00+00:00",
+            exact_date_match=True,
+            cabin_class="BUSINESS",
+            stale=True,
+        )
+        html = render_holiday_report(
+            config, generated_at="2026-10-02T00:00:00+00:00",
+            deals=collect_holiday_deals(config, live_flight_offers={("HKT", "BUSINESS"): aged}),
+        )
+        labels = _FARE_LABEL.findall(html)
+        self.assertTrue(labels)
+        for label in labels:
+            with self.subTest(label=label):
+                hits = [word for word in _PROVENANCE if word in label.lower()]
+                self.assertEqual(
+                    len(hits), 1, f"{label!r} carries {hits}, expected exactly one"
+                )
+        joined = " | ".join(labels).lower()
+        for word in _PROVENANCE:
+            with self.subTest(missing=word):
+                self.assertIn(word, joined, f"the report should exercise {word!r}")
+        # And the one rule the brief states outright: no fare is both read and
+        # a benchmark.
+        for label in labels:
+            with self.subTest(label=label):
+                low = label.lower()
+                self.assertFalse("read" in low and "benchmark" in low)
 
 
 if __name__ == "__main__":
