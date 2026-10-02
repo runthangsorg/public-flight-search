@@ -3942,9 +3942,10 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
                           origin: str = "") -> str:
     """(a) Business, (b) Economy, (c) Economy with a stopover: each a total for the party.
 
-    Shown in full: Business, Economy, the cheapest Economy stopover, and any
-    Premium Economy that fits the budget. Every other stopover, and any Premium
-    Economy over budget, collapses into one compact line so a card does not list
+    Shown in full, in this order: (a) Business, (b) Economy, (c) the cheapest
+    Economy stopover, then ONE Premium Economy line — the cheapest PE option,
+    same route or stopover, marked in or over budget. Every other stopover
+    collapses into one compact "Other stopovers" line, so a card never lists
     every hub's itinerary at once.
 
     When a card has no read stopover fare, the (c) line still offers the
@@ -3960,32 +3961,27 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
     stopovers = [o for o in options if o["kind"] == "stopover"]
     expanded = _cheapest_stopover(stopovers)
 
-    # (a) Business and (b) Economy always; Premium Economy only when within budget.
+    # (a) Business and (b) Economy always.
     for kind in ("business", "economy"):
         out.extend(_flight_option_line(o) for o in options if o["kind"] == kind)
-    for kind in ("premium_economy", "stopover_premium_economy"):
-        out.extend(_flight_option_line(o) for o in options
-                   if o["kind"] == kind and o.get("within_budget"))
+    # (c) the cheapest Economy stopover, in full.
     if expanded is not None:
         out.append(_flight_option_line(expanded))
-
+    # ONE Premium Economy line: the cheapest PE option (same route or stopover),
+    # whichever it is, carrying its in/over-budget mark — never a line per
+    # cabin variant.
+    pe_options = [o for o in options
+                  if o["kind"] in ("premium_economy", "stopover_premium_economy")]
+    if pe_options:
+        cheapest_pe = min(pe_options, key=lambda o: float(o["total_pkg"]))
+        out.append(_flight_option_line(cheapest_pe))
+    # Every other stopover collapses into one compact totals line.
     other_stopovers = [o for o in stopovers if o is not expanded]
-    over_budget_premium = [o for o in options
-                           if o["kind"] in ("premium_economy", "stopover_premium_economy")
-                           and not o.get("within_budget")]
     if other_stopovers:
         totals = ' · '.join(
             escape(str(o.get("hub_label") or o.get("hub"))) + ' £' + f'{float(o["total_pkg"]):,.0f}'
             for o in other_stopovers)
         out.append('<br>Other stopovers: ' + totals + ' (economy, totals)')
-    if over_budget_premium:
-        parts = []
-        for o in over_budget_premium:
-            where = (escape(str(o.get("hub_label") or o.get("hub"))) + ' '
-                     if o["kind"] == "stopover_premium_economy" else 'same route ')
-            parts.append(where + '£' + f'{float(o["total_pkg"]):,.0f}')
-        out.append('<br><span style="color:#b45309; font-weight:700;">Premium Economy over budget</span>: '
-                   + ' · '.join(parts))
 
     if not stopovers:
         offered = False
@@ -4415,6 +4411,17 @@ def render_holiday_report(
                     '<br><span style="font-size:11px; color:#166534;">'
                     + escape(getattr(deal, "live_carrier", "") or deal.airline)
                     + ' — live observed fare</span>'
+                )
+            elif stale:
+                # Observed, merely not current: say how old it is. 'estimate'
+                # is reserved for modelled prices, so an aged observation must
+                # never wear it (2026-10-02 correction).
+                age_text = relative_age_label(
+                    observation_age_hours(deal.live_observed_at, generated_at)
+                ) or "earlier"
+                flight_note = (
+                    '<br><span style="font-size:11px; color:#9a3412;">observed '
+                    + escape(age_text) + ' — not live</span>'
                 )
             else:
                 flight_note = "<br><span style=\"font-size:11px;\">estimate — live cabin check required</span>" if cabin_is_premium else ""

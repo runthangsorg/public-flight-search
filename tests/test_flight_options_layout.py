@@ -60,6 +60,11 @@ def _render(options):
     )
 
 
+def _option_lines(html):
+    """The full option lines (each carries the 'door to door' total)."""
+    return [segment for segment in html.split("<br>") if "door to door" in segment]
+
+
 JULY_HUBS = [
     _opt("business", 12873.0),
     _opt("economy", 5830.0),
@@ -99,7 +104,7 @@ class ShorterFlightOptionsTests(unittest.TestCase):
         self.assertIn("(b2) Premium Economy, same route", html)
         self.assertNotIn("Premium Economy over budget", html)
 
-    def test_over_budget_premium_economy_collapses_into_the_compact_line(self):
+    def test_over_budget_premium_economy_is_shown_once_marked_over_budget(self):
         html = _render([
             _opt("business", 12873.0),
             _opt("economy", 5830.0),
@@ -107,11 +112,34 @@ class ShorterFlightOptionsTests(unittest.TestCase):
             _opt("stopover", 9387.0, hub="DOH", hub_label="Doha", stop=2714.0),
             _opt("stopover_premium_economy", 12710.0, hub="DOH", hub_label="Doha", within=False, stop=2714.0),
         ])
-        self.assertNotIn("(b2) Premium Economy, same route", html)
-        self.assertNotIn("(c2) Premium Economy", html)
         self.assertIn("(c) Economy + 2 nights Doha each way", html)
-        self.assertIn("Premium Economy over budget", html)
+        # Exactly one Premium Economy line: the cheapest PE, marked over budget,
+        # not silently dropped and not the over-budget stopover variant.
+        self.assertEqual(html.count("(b2) Premium Economy, same route"), 1)
+        self.assertNotIn("(c2) Premium Economy", html)
+        pe_line = next(ln for ln in _option_lines(html) if "Premium Economy" in ln)
+        self.assertIn("over budget", pe_line)
+        self.assertNotIn("within budget", pe_line)
         self.assertIn("£8,647", html)
+
+    def test_a_long_haul_card_shows_at_most_four_full_option_lines(self):
+        # The Pullman Khao Lak shape: every Gulf hub priced, plus a same-route
+        # and a stopover Premium Economy. The fix caps it at (a) Business,
+        # (b) Economy, (c) the cheapest stopover and ONE Premium Economy line.
+        html = _render(JULY_HUBS + [
+            _opt("premium_economy", 8647.0, within=True),
+            _opt("stopover_premium_economy", 12710.0, hub="DOH", hub_label="Doha", within=True, stop=2714.0),
+        ])
+        self.assertEqual(len(_option_lines(html)), 4)
+        self.assertIn("(a) Business", html)
+        self.assertIn("(b) Economy", html)
+        # Order: (a), (b), (c) cheapest stopover, then the single PE line.
+        self.assertLess(html.index("(a) Business"), html.index("(b) Economy"))
+        self.assertLess(html.index("(b) Economy"), html.index("(c) Economy + 2 nights"))
+        self.assertLess(html.index("(c) Economy + 2 nights"), html.index("(b2) Premium Economy"))
+        # The cheapest PE (same route, £8,647) is the one PE line shown.
+        self.assertEqual(html.count("(b2) Premium Economy, same route"), 1)
+        self.assertEqual(sum("Premium Economy" in ln for ln in _option_lines(html)), 1)
 
     def test_the_july_report_cards_use_the_compact_line(self):
         config = dataclasses.replace(

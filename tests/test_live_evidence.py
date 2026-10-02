@@ -407,6 +407,40 @@ class TestEvidenceFileLoader(unittest.TestCase):
         self.assertIn("observed 24 days ago (2026-09-01)", html)
         self.assertIn("fare source", html)
 
+    def test_a_stale_fare_in_the_flights_box_is_never_called_an_estimate(self):
+        """2026-10-02 correction: once a fare passes EVIDENCE_MAX_AGE_HOURS the
+        Flights box said 'estimate — live cabin check required', but that fare
+        WAS observed. 'estimate' is reserved for modelled prices; an aged
+        observation says how old it is instead."""
+        from public_flight_search.holidays import (
+            collect_holiday_deals,
+            render_holiday_report,
+        )
+
+        # A premium cabin makes the old bug visible: only premium cards carried
+        # that flight note. A 9 h hop makes Antalya price Business.
+        long_haul = load_holiday_config(
+            CONFIG_JSON.replace('"flight_hours": 4.5', '"flight_hours": 9.0')
+        )
+        path = self._write(
+            [self._rec(observed_at=self.stale, cabin_class="BUSINESS", total_gbp=3100.0)]
+        )
+        offers = try_live_flight_offers(long_haul, path=path, now=self.now)
+        stale_deal = next(
+            d
+            for d in collect_holiday_deals(long_haul, live_flight_offers=offers)
+            if d.confidence == "stale-cache"
+        )
+        html = render_holiday_report(
+            long_haul, generated_at="2026-09-25T13:00:00Z", deals=[stale_deal]
+        )
+        # Isolate the main Flights box and check its note only.
+        flights_box = html[html.index("✈️ Flights"):]
+        flights_box = flights_box[: flights_box.index("</td>")]
+        self.assertNotIn("estimate", flights_box)
+        self.assertIn("observed", flights_box)
+        self.assertIn("not live", flights_box)
+
     def test_a_live_card_states_how_old_the_observation_is(self):
         from public_flight_search.holidays import (
             collect_holiday_deals,
