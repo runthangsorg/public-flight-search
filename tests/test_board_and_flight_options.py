@@ -198,9 +198,21 @@ class StopoverSeasonTests(unittest.TestCase):
                     self.assertNotEqual(option.get("kind"), "stopover")
 
     def test_a_card_with_no_read_fare_offers_the_hub_itinerary_to_price(self):
-        december = load_holiday_config(DEC.read_text(encoding="utf-8"))
-        html = render_holiday_report(december, generated_at="2026-09-30T00:00:00+00:00",
-                                     deals=collect_holiday_deals(december))
+        # A long-haul card with no read stopover fare must offer the itinerary
+        # to price rather than invent one. July has read fares, so the read-
+        # fare map is emptied for this test; the December config no longer has
+        # a long-haul card at all (its only ones were 3-room or unknown units,
+        # filtered by the one-booking rule on 2026-10-02).
+        july = _july_uncapped()
+        saved = hol.STOPOVER_FARES
+        hol.STOPOVER_FARES = {}
+        try:
+            html = render_holiday_report(
+                july, generated_at="2026-09-30T00:00:00+00:00",
+                deals=collect_holiday_deals(july),
+            )
+        finally:
+            hol.STOPOVER_FARES = saved
         # No invented price: the block says nothing is priced and links the
         # multi-city itinerary per hub, naming the hub hotel the owner would stay in.
         self.assertIn("One click to price it:", html)
@@ -332,23 +344,26 @@ class FlightOptionTests(unittest.TestCase):
         deals = collect_holiday_deals(december)
         carded = {d.destination_key for d in deals}
         listed = {row["destination_key"] for row in hol.LAST_OVER_BUDGET}
-        for key in ("doha", "riviera_maya"):
+        for key in ("doha",):
             with self.subTest(key=key):
                 self.assertIn(key, carded | listed)
         html = render_holiday_report(december, generated_at="2026-09-30T00:00:00+00:00", deals=deals)
         self.assertIn("Rixos Gulf Hotel Doha", html)
         self.assertIn("Rule not applied — pools heated", html)
-        # Muscat, Zanzibar and Mauritius each have one 3-room resort; the
-        # one-booking rule filters it, and the transparency list names it so
-        # the destination is stated, not silently absent.
+        # Muscat, Zanzibar, Mauritius and Cancún each have one resort the
+        # one-booking rule cannot confirm (three rooms, or a unit not shown);
+        # the transparency list names it so the destination is stated, not
+        # silently absent.
         for name in (
             "InterContinental Muscat",
             "Nungwi Dreams by Mantis",
             "Sofitel Mauritius L&#x27;Impérial Resort &amp; Spa",
+            "Grand Fiesta Americana Coral Beach Cancún All Inclusive Spa &amp; Resort",
         ):
             with self.subTest(resort=name):
                 self.assertIn(name, html)
         self.assertIn("needs 3 rooms — breaks the one-unit rule", html)
+        self.assertIn("unit not verified - cannot confirm one booking for 5", html)
 
     def test_short_haul_cards_are_unchanged(self):
         december = load_holiday_config(DEC.read_text(encoding="utf-8"))

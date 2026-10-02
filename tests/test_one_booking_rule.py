@@ -66,6 +66,36 @@ class ThreeRoomResortTests(unittest.TestCase):
         self.assertIn("InterContinental Muscat", listed)
 
 
+UNKNOWN_UNIT_REASON = "unit not verified - cannot confirm one booking for 5"
+
+#: Catalogue resorts whose unit is not shown at all, so neither a one-unit
+#: booking nor a two-room booking can be confirmed for five.
+UNKNOWN_UNIT_RESORTS = (
+    "Grand Fiesta Americana Coral Beach Cancún All Inclusive Spa & Resort",
+    "Anantara Rasananda Koh Phangan Villas",
+)
+
+
+class UnknownUnitTests(unittest.TestCase):
+    def test_an_unknown_unit_cannot_confirm_one_booking(self):
+        for name in UNKNOWN_UNIT_RESORTS:
+            with self.subTest(resort=name):
+                arch = hol.SUITE_ARCHITECTURE[name]
+                self.assertIn("unit not shown", arch["suite_type"])
+                kept, dropped = filter_resorts([_resort(name)])
+                self.assertEqual(kept, [], "an unknown unit must never be a card")
+                self.assertEqual(
+                    [reason for _, reason in dropped], [UNKNOWN_UNIT_REASON]
+                )
+
+    def test_no_card_has_an_unknown_unit(self):
+        for config_path in (JULY, DEC):
+            config = load_holiday_config(config_path.read_text(encoding="utf-8"))
+            for deal in collect_holiday_deals(config, max_budget_gbp=UNCAPPED_GBP):
+                with self.subTest(config=config_path.name, resort=deal.resort_name):
+                    self.assertIn(deal.rooms_in_unit, (1, 2))
+
+
 class NoFalseThreeRoomClaimTests(unittest.TestCase):
     def test_a_card_never_claims_three_rooms_is_not_three_rooms(self):
         config = load_holiday_config(DEC.read_text(encoding="utf-8"))

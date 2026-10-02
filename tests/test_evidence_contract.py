@@ -217,12 +217,12 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         for dead in ("AGA", "CAI", "FNC", "MLA"):
             self.assertNotIn(dead, contract.airports, dead)
         # Card-bearing airports, including the two that were never hunted.
-        # MCT/ZNZ/MRU left on 2026-10-02: their only resort needs three rooms,
-        # so the one-booking rule filters it and hunting them prices nothing.
-        for live in ("ACE", "AYT", "FUE", "HRG", "LPA", "PFO", "TFS",
-                     "DOH", "CUN"):
+        # MCT/ZNZ/MRU/CUN left on 2026-10-02: their only resort needs three
+        # rooms or has an unverified unit, so the one-booking rule filters it
+        # and hunting them prices nothing.
+        for live in ("ACE", "AYT", "FUE", "HRG", "LPA", "PFO", "TFS", "DOH"):
             self.assertIn(live, contract.airports, live)
-        for filtered in ("MCT", "ZNZ", "MRU"):
+        for filtered in ("MCT", "ZNZ", "MRU", "CUN"):
             self.assertNotIn(filtered, contract.airports, filtered)
 
     def test_july_contract_follows_the_cabin_rule_on_the_priced_pair(self):
@@ -309,12 +309,12 @@ class TestContractGaps(unittest.TestCase):
         self.assertNotIn("AYT/ECONOMY", gaps["missing"])
         self.assertIn("ACE/ECONOMY", gaps["missing"])
         self.assertIn("PFO/ECONOMY", gaps["missing"])
-        # Since 2026-10-02 the only December Business key is Cancún: the
-        # Zanzibar and Mauritius resorts need three rooms and are filtered,
-        # and every other card is Economy.
+        # Since 2026-10-02 the December report has no long-haul card at all:
+        # every one of its candidates needed three rooms or an unverified unit
+        # and is filtered, so every contracted key is Economy.
         self.assertEqual(
             [k for k in gaps["missing"] if not k.endswith("/ECONOMY")],
-            ["CUN/BUSINESS"],
+            [],
         )
 
     def test_evidence_for_an_airport_with_no_card_is_reported_unused(self):

@@ -974,9 +974,10 @@ class PackageDeal:
     # rooms are different products: prices must never merge into one series.
     unit_architecture: str = ""
     # How many rooms the quote's single booking actually uses. 1 or 2 are a
-    # one-booking family unit; 3 is not a unit at all and is filtered out by
-    # the one-booking rule, so a card is never priced on it.
-    rooms_in_unit: int = 1
+    # one-booking family unit; 3 is not a unit at all and unknown is not
+    # verified, so both are filtered out by the one-booking rule and a card is
+    # never priced on either.
+    rooms_in_unit: Optional[int] = None
     # Recovered criteria model (from the winter tracker contract):
     # curated 0-10 benchmark scores per resort. Honest, review-required —
     # presented as benchmarks, never as live observations.
@@ -2623,6 +2624,21 @@ def board_totals(resort: Mapping[str, Any], nights: int) -> tuple[dict[str, Any]
     return tuple(sorted(rows, key=lambda row: row["hotel_cost"]))
 
 
+def _unit_rooms(arch: Mapping[str, Any]) -> Optional[int]:
+    """Rooms the resort's one-booking unit uses, or ``None`` when unknown.
+
+    The one-booking rule turns on this number, so "unknown" must not silently
+    become 1. A verified 2-bedroom suite (or a two-room booking) omits the key
+    and is one unit; a resort whose unit was never shown in the source returns
+    ``None`` (as does an explicit ``None``), and is filtered rather than
+    assumed.
+    """
+    if "unit not shown" in str(arch.get("suite_type", "")).lower():
+        return None
+    rooms = arch.get("rooms_in_unit", 1)
+    return None if rooms is None else int(rooms)
+
+
 def filter_resorts(
     resorts: list[dict[str, Any]], *, is_summer: bool = False, island: bool = False
 ) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
@@ -2641,8 +2657,13 @@ def filter_resorts(
         # The one-booking rule (owner, 2026-10-02): 5 travellers book ONE unit —
         # a 2-bedroom suite/villa or two rooms on the same booking. A resort
         # whose only verified option is THREE separate rooms is not a deal,
-        # however cheap it looks: it must never become a card.
-        if int(arch.get("rooms_in_unit", 1)) >= 3:
+        # however cheap it looks: it must never become a card. An unknown unit
+        # ("unit not shown") is not a confirmed one-booking unit either.
+        rooms_in_unit = _unit_rooms(arch)
+        if rooms_in_unit is None:
+            dropped.append((name, "unit not verified - cannot confirm one booking for 5"))
+            continue
+        if rooms_in_unit >= 3:
             dropped.append((name, "needs 3 rooms — breaks the one-unit rule"))
             continue
         if not arch["beach_walkable"]:
@@ -3271,7 +3292,7 @@ def collect_holiday_deals(
                             ),
                             peak_summer_total_gbp=peak_total,
                             unit_architecture=arch["suite_type"],
-                            rooms_in_unit=int(arch.get("rooms_in_unit", 1)),
+                            rooms_in_unit=_unit_rooms(arch),
                             **_criteria_fields(
                                 resort["name"],
                                 price_pp,
@@ -4225,7 +4246,7 @@ def render_holiday_report(
                     airport=deal.destination_airport, origin=deal.origin))
             # Deal rationale callout: explain WHY this is a great deal for this party
             rationale_points: list[str] = []
-            if deal.unit_architecture and int(getattr(deal, "rooms_in_unit", 1)) < 3:
+            if deal.unit_architecture and int(deal.rooms_in_unit or 1) < 3:
                 # Never claim a three-room quote is one unit: the collector
                 # filters those out, and a hand-built deal must not slip one
                 # through here either.
