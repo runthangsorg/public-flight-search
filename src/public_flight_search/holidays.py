@@ -967,6 +967,11 @@ class PackageDeal:
     # Real discount intelligence: the SAME resort at summer peak prices
     # (same rooms/nights/party) and property-level cross-vendor links.
     peak_summer_total_gbp: float = 0.0
+    # True only when the peak comparison is an OBSERVED earlier price for the
+    # same resort and dates, from history. A modelled benchmark peak (the
+    # default) may be compared, but the difference it produces is not a
+    # "saving" and must never be worded as one (owner rule, 2026-10-02).
+    peak_observed: bool = False
     compare_url: str = ""   # Google Hotels property card — all vendors' prices
     booking_deep_url: str = ""  # Booking.com property-targeted, dated
     expedia_deep_url: str = ""  # Expedia property-targeted, dated
@@ -3512,21 +3517,31 @@ DEST_IMAGES: dict[str, str] = {
 
 
 def peak_discount_badge(deal) -> str:
-    """The "▼x% vs summer peak · save £y" chip, or an honest one when there is none.
+    """The discount chip, with honest wording for a benchmark comparison.
 
     The 2026-09-24 July report badged a card that was DEARER than its own summer peak
     with a green "▼-5% vs summer peak · save £-243", two cells away from the
     "summer peak £5,260" that contradicted it. ``vs_peak_saving_gbp`` is negative when the
     card is above its peak, so a chip that reads as a saving must be conditioned on the
     sign: when there is no discount it says so, in the same place, at the same size.
+
+    "Save" is additionally reserved for an OBSERVED earlier price
+    (``peak_observed``): a difference against our own benchmark estimate is
+    stated as "below our benchmark estimate (not a saving)", in neutral grey,
+    never as money the reader has saved (owner rule, 2026-10-02).
     """
     saving = float(deal.vs_peak_saving_gbp or 0.0)
     pct = float(deal.vs_peak_pct or 0.0)
     style = "padding:3px 10px; border-radius:9999px; font-size:13px;"
+    observed = bool(getattr(deal, "peak_observed", False))
     if saving > 0 and pct > 0:
-        return ('<span style="background:#16a34a; color:#ffffff; ' + style
-                + ' font-weight:800;">▼' + f"{pct:g}" + '% vs summer peak · save £'
-                + f'{saving:,.0f}' + '</span>')
+        if observed:
+            return ('<span style="background:#16a34a; color:#ffffff; ' + style
+                    + ' font-weight:800;">▼' + f"{pct:g}" + '% vs summer peak · save £'
+                    + f'{saving:,.0f}' + '</span>')
+        return ('<span style="background:#f1f5f9; color:#475569; ' + style
+                + ' font-weight:700;">▼' + f"{pct:g}" + '% — £' + f'{saving:,.0f}'
+                + ' below our benchmark estimate (not a saving)</span>')
     label = "at its summer peak — no discount" if abs(saving) < 0.5 else (
         "no summer-peak discount — £" + f'{abs(saving):,.0f}' + " above it"
     )
@@ -4096,9 +4111,18 @@ def render_holiday_report(
         b3 = climate_pool[0] if climate_pool else None
         if b1 is not None and b1.vs_peak_saving_gbp > 0:
             disc_label = "💰 Biggest Discount vs Benchmark:" if is_summer else "💰 Biggest Discount vs Summer Peak:"
+            # "Save" only for an observed earlier price; a benchmark gap is
+            # stated as a gap, not as money the reader has saved.
+            if getattr(b1, "peak_observed", False):
+                disc_value = ('<strong style="color:#059669;">▼' + str(b1.vs_peak_pct)
+                              + '% (save £' + f'{b1.vs_peak_saving_gbp:,.0f}' + ' for the same resort)</strong>')
+            else:
+                disc_value = ('<strong style="color:#475569;">▼' + str(b1.vs_peak_pct)
+                              + '% (£' + f'{b1.vs_peak_saving_gbp:,.0f}'
+                              + ' below our benchmark estimate — not a saving)</strong>')
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
                        '<strong style="color:#0f172a;">' + disc_label + '</strong> '
-                       + escape(b1.resort_name) + ' — <strong style="color:#059669;">▼' + str(b1.vs_peak_pct) + '% (save £' + f'{b1.vs_peak_saving_gbp:,.0f}' + ' for the same resort)</strong></td></tr>')
+                       + escape(b1.resort_name) + ' — ' + disc_value + '</td></tr>')
         if b2 is not None:
             lux_limit = "£" + f"{config.max_budget_gbp / 1000:g}" + "k"
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
@@ -4269,7 +4293,7 @@ def render_holiday_report(
             out.append('<div style="color:#64748b; font-size:13px; white-space:nowrap;">£' + f'{deal.price_per_person_gbp:,.0f}' + 'pp · D2D £' + f'{deal.true_d2d_gbp:,.0f}' + '</div>')
             if is_summer:
                 if deal.vs_peak_saving_gbp > 0:
-                    out.append('<div style="color:#059669; font-size:12px; white-space:nowrap;">benchmark saving £' + f'{deal.vs_peak_saving_gbp:,.0f}' + '</div>')
+                    out.append('<div style="color:#475569; font-size:12px; white-space:nowrap;">£' + f'{deal.vs_peak_saving_gbp:,.0f}' + ' below our benchmark estimate</div>')
                 else:
                     out.append('<div style="color:#64748b; font-size:12px; white-space:nowrap;">summer rate — no peak discount claimed</div>')
             else:

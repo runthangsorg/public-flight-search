@@ -167,8 +167,10 @@ class HolidayPlannerTests(unittest.TestCase):
         deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
         html = render_holiday_report(config, generated_at="2026-09-06T12:00:00+00:00", deals=deals)
         self.assertIn("December Deals — One Family Unit, Real Discounts vs Summer Peak", html)
-        self.assertIn("vs summer peak", html)
-        self.assertIn("save £", html)
+        # The comparison is against our own benchmark estimate, so it is
+        # stated as a gap, never as a saving (owner rule 2026-10-02).
+        self.assertIn("below our benchmark estimate", html)
+        self.assertNotIn("save £", html)
         self.assertIn("Lara Barut Collection", html)
         self.assertIn("Biggest Discount vs Summer Peak", html)
         self.assertIn("Top Luxury Within", html)
@@ -695,18 +697,25 @@ class PeakDiscountBadgeTests(unittest.TestCase):
     """
 
     class _Deal:
-        def __init__(self, peak, total):
+        def __init__(self, peak, total, observed=False):
             self.peak_summer_total_gbp = peak
             self.total_package_price_gbp = total
+            self.peak_observed = observed
 
         vs_peak_saving_gbp = hol.PackageDeal.vs_peak_saving_gbp
         vs_peak_pct = hol.PackageDeal.vs_peak_pct
 
-    def test_a_real_discount_keeps_the_green_saving_chip(self):
-        badge = hol.peak_discount_badge(self._Deal(peak=6860.0, total=3985.0))
+    def test_an_observed_earlier_price_keeps_the_green_saving_chip(self):
+        badge = hol.peak_discount_badge(self._Deal(peak=6860.0, total=3985.0, observed=True))
         self.assertIn("vs summer peak", badge)
         self.assertIn("save £2,875", badge)
         self.assertIn("#16a34a", badge)  # the green discount chip
+
+    def test_a_benchmark_comparison_is_not_a_saving(self):
+        badge = hol.peak_discount_badge(self._Deal(peak=6860.0, total=3985.0))
+        self.assertNotIn("save £", badge)
+        self.assertIn("below our benchmark estimate (not a saving)", badge)
+        self.assertNotIn("#16a34a", badge)
 
     def test_a_card_above_its_peak_is_never_badged_as_a_saving(self):
         badge = hol.peak_discount_badge(self._Deal(peak=5260.0, total=5544.0))
