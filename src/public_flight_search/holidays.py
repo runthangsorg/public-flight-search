@@ -3110,8 +3110,10 @@ def collect_holiday_deals(
         economy = _best_option(resort, "ECONOMY", 1.0, arch, enforce_budget=False,
                                prefer_evidence=True)
         if economy is not None:
+            # No evidence read for these dates: a benchmark. Never call it
+            # both "read" and a "benchmark" — those contradict (2026-10-02).
             rows.append(_option_row("economy", "ECONOMY", economy,
-                                    _evidence_words(economy, "economy fare read (benchmark)")))
+                                    _evidence_words(economy, "benchmark estimate")))
         # Live evidence is already read for PREMIUM_ECONOMY (evidence_consumption_contract
         # requests it per destination) and was previously discarded as an "unused key" —
         # this is the same _best_option seam Economy uses, just a different cabin/multiplier.
