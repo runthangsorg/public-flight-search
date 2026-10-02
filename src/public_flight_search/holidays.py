@@ -3828,6 +3828,61 @@ def _hours_text(hours: Optional[float]) -> str:
     return f"{whole}h{minutes:02d}"
 
 
+#: Cabin names for the shared budget line, so a watch card and a resort card
+#: name the same cabin the same way.
+_BUDGET_CABIN_LABELS = {
+    "business": "Business",
+    "premium_economy": "Premium Economy",
+    "economy": "Economy",
+}
+
+
+def budget_headline(
+    options: Sequence[tuple[str, float, bool]], budget: float
+) -> str:
+    """The budget line for a set of priced options: what FITS, then what does not.
+
+    ``options`` is ``(cabin label, whole-party total, within budget)`` per
+    option. The owner's rule tests the budget on EACH option, so a line that
+    quotes only one cabin's gap hides the option the family can actually
+    afford: a Bali watch row at a £12,000 budget read "£10,650 over the £12,000
+    budget" — the Business figure — while Economy (£10,950) fits (owner rule
+    2026-10-02). The cheapest option that fits therefore leads, and the
+    cabins that do not fit follow with their own gaps. Empty when every option
+    is within budget: there is nothing to reconcile.
+    """
+    priced = [
+        (str(label), float(total), bool(within))
+        for label, total, within in options
+        if total is not None
+    ]
+    budget = float(budget or 0.0)
+    if not priced or budget <= 0:
+        return ""
+    if all(within for _, _, within in priced):
+        # Nothing breaches: the headline price is inside the budget and needs no
+        # budget line, so no bytes are spent restating it.
+        return ""
+    fitting = [o for o in priced if o[2]]
+    breaching = sorted(
+        (o for o in priced if not o[2]), key=lambda o: o[1] - budget
+    )
+    gaps = ' · '.join(
+        escape(label) + ' £' + f'{total - budget:,.0f}' + ' over'
+        for label, total, _ in breaching
+    )
+    if fitting:
+        label, total, _ = min(fitting, key=lambda o: o[1])
+        head = ('<span style="color:#166534; font-weight:700;">fits the £'
+                + f'{budget:,.0f}' + ' budget on ' + escape(label)
+                + ' (about £' + f'{total:,.0f}' + ')</span>')
+        return head + (' · <span style="color:#b45309;">' + gaps + '</span>' if gaps else '')
+    # Nothing fits: every option is named, cheapest gap first, and the ceiling
+    # is stated once so the number is never a bare gap.
+    return ('<span style="color:#b45309;">' + gaps
+            + ' — every option is over the £' + f'{budget:,.0f}' + ' budget</span>')
+
+
 def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
     """The Far East watch for this config, in config order (they lead it).
 
@@ -3972,9 +4027,25 @@ def render_far_east_watch(config: HolidayConfig) -> str:
                            + f'{row["suite_night_gbp"]:,.0f}' + '/night → <strong style="color:#0f172a;">≈ £'
                            + f'{row["indicative_total_gbp"]:,.0f}' + '</strong> for ' + str(config.travellers)
                            + ', ' + str(row["nights"]) + ' nights — <em>' + FAR_EAST_PRICE_LABEL + '</em>')
-                if row["over_budget_gbp"] > 0:
-                    out.append(' · <span style="color:#b45309;">£' + f'{row["over_budget_gbp"]:,.0f}'
-                               + ' over the £' + f'{budget:,.0f}' + ' budget</span>')
+                # The budget line leads with the cheapest option that FITS and
+                # only then names the cabins that do not (owner rule 2026-10-02):
+                # quoting only the Business gap hid an affordable Economy trip.
+                budget_line = budget_headline(
+                    [
+                        (_BUDGET_CABIN_LABELS["business"],
+                         float(row["indicative_total_gbp"]),
+                         float(row["indicative_total_gbp"]) <= budget),
+                        (_BUDGET_CABIN_LABELS["premium_economy"],
+                         float(row["premium_economy_total_gbp"]),
+                         float(row["premium_economy_total_gbp"]) <= budget),
+                        (_BUDGET_CABIN_LABELS["economy"],
+                         float(row["economy_total_gbp"]),
+                         float(row["economy_total_gbp"]) <= budget),
+                    ],
+                    budget,
+                )
+                if budget_line:
+                    out.append(' · ' + budget_line)
                 out.append('<br>&nbsp;&nbsp;also ≈ £' + f'{row["economy_total_gbp"]:,.0f}' + ' Economy · ≈ £'
                            + f'{row["premium_economy_total_gbp"]:,.0f}' + ' Premium Economy — same suite, same basis')
             else:
@@ -4693,6 +4764,21 @@ def render_holiday_report(
                 out.append('<div style="color:#b45309; font-size:12px; white-space:nowrap;">summer peak £' + f'{deal.peak_summer_total_gbp:,.0f}' + '</div>')
             out.append('</td>')
             out.append('</tr></table>')
+
+            # The card's headline price is the Business option, and a card can
+            # exist because an Economy option fits. Its budget line therefore
+            # leads with the cabin that FITS, naming the others that breach
+            # (owner rule 2026-10-02) — the same line a Far East watch row
+            # carries. It says nothing when every option is inside the budget.
+            cabin_options = [
+                (_BUDGET_CABIN_LABELS.get(str(option["kind"]), str(option["kind"])),
+                 float(option["true_d2d"]), bool(option["within_budget"]))
+                for option in deal.flight_options
+                if str(option["kind"]) in _BUDGET_CABIN_LABELS
+            ]
+            budget_line = budget_headline(cabin_options, config.max_budget_gbp)
+            if budget_line:
+                out.append('<div style="margin:0 0 8px 0; font-size:13px;">💷 ' + budget_line + '</div>')
 
             # Board basis, then booking terms, on every hotel line; long-haul
             # flight options side by side.
