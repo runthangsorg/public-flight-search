@@ -555,8 +555,51 @@ def load_live_flight_evidence(
         print(f"live-evidence: {path} has no evidence list", file=sys.stderr)
         return {}
 
+    # A run prices exactly one season, but the evidence file holds both. Every
+    # record for the OTHER season used to fall through to the per-record date
+    # check and print its own "dates do not match" line — hundreds of lines for
+    # a single July run. Partition them out first and report one count. This
+    # is NOT a rejection: they are real observations, simply for the other
+    # planner, and they are left in the file untouched.
+    from .holidays import SUMMER_TRIP_MONTHS, WINTER_TRIP_MONTHS
+
+    def _season_of(date_str: str) -> str:
+        parts = str(date_str).split("-")
+        if len(parts) < 2 or not parts[1].isdigit():
+            return ""
+        month = int(parts[1])
+        if month in SUMMER_TRIP_MONTHS:
+            return "summer"
+        if month in WINTER_TRIP_MONTHS:
+            return "winter"
+        return ""
+
+    config_season = ""
+    for pair in sorted(priced_pairs):
+        config_season = _season_of(pair[0])
+        if config_season:
+            break
+
+    in_season: list[Any] = []
+    other_season_count = 0
+    for item in entries:
+        if not isinstance(item, dict):
+            in_season.append(item)
+            continue
+        record_season = _season_of(str((item.get("exact_dates") or {}).get("outbound", "")))
+        if config_season and record_season and record_season != config_season:
+            other_season_count += 1
+        else:
+            in_season.append(item)
+    if other_season_count:
+        print(
+            f"live-evidence: {other_season_count} record(s) are for the other season "
+            f"(this run prices {config_season}); not evaluated",
+            file=sys.stderr,
+        )
+
     evidence: dict[str, LiveFareEvidence] = {}
-    for index, item in enumerate(entries):
+    for index, item in enumerate(in_season):
         if not isinstance(item, dict):
             _warn_skip(f"#{index}", "not an object")
             continue
