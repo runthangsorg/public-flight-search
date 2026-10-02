@@ -200,6 +200,12 @@ FAR_EAST_WATCH: dict[str, dict[str, Any]] = {
 #: The exact label every Far East watch figure carries.
 FAR_EAST_PRICE_LABEL = "benchmark, unverified"
 
+#: A Far East watch row more than this fraction over the budget loses its full
+#: card and collapses to one compact line (owner rule 2026-10-02). A watch row
+#: is an unverified benchmark, not a bookable deal, so spending a full card on
+#: one the owner cannot afford buries the destinations that fit.
+FAR_EAST_WATCH_COLLAPSE_RATIO: float = 0.25
+
 # easyJet holidays destination guides, verified live (muscat/doha 404: not
 # served by easyJet holidays -> hub fallback in build_easyjet_url).
 EASYJET_DESTINATION_PATHS: dict[str, str] = {
@@ -3897,11 +3903,38 @@ def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
 
 
 def render_far_east_watch(config: HolidayConfig) -> str:
-    """Compact HTML block for the Far East watch; empty when none configured."""
+    """Compact HTML block for the Far East watch; empty when none configured.
+
+    A watch row is an UNVERIFIED benchmark, not a bookable deal, so one that sits
+    far over the owner's budget earns no full card: at more than
+    ``FAR_EAST_WATCH_COLLAPSE_RATIO`` over budget it collapses to one compact
+    line (owner rule 2026-10-02) that still names the destination, the flight
+    time, the benchmark total, the gap to budget and the links.
+    """
     rows = far_east_watch_rows(config)
     if not rows:
         return ""
     link = "color:#2563eb;text-decoration:none;font-weight:600;"
+    budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
+    collapse_limit = budget * (1.0 + FAR_EAST_WATCH_COLLAPSE_RATIO)
+
+    def _links(row: Mapping[str, Any]) -> str:
+        return ('<a href="' + escape(row["flights_url"], quote=True) + '" style="' + link + '">Google Flights ('
+                + escape(row["cabin"].title()) + ') ↗</a>'
+                + ' · <a href="' + escape(row["booking_url"], quote=True) + '" style="' + link + '">Booking.com ↗</a>'
+                + ' · <a href="' + escape(row["hotels_url"], quote=True) + '" style="' + link + '">Google Hotels ↗</a>')
+
+    def _collapsed(row: Mapping[str, Any]) -> bool:
+        total = row.get("indicative_total_gbp")
+        return (
+            row.get("in_season")
+            and total is not None
+            and float(total) > collapse_limit
+        )
+
+    full = [row for row in rows if not _collapsed(row)]
+    collapsed = [row for row in rows if _collapsed(row)]
+
     out = [
         '<h2 style="margin:6px 0 4px 0; color:#0f172a; font-size:22px; font-weight:800;">'
         '🌏 Far East first — long haul, Business (over 8 h from London)</h2>',
@@ -3910,31 +3943,56 @@ def render_far_east_watch(config: HolidayConfig) -> str:
         'and a 5-star family-suite night, not an observed or quoted price. These destinations have no '
         'resort in the catalogue, so they are destination watches, not '
         'hotel cards. Cabin rule: Business only when the flight is over 8 hours, otherwise Economy.</p>',
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
-        'background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 18px 0;">',
     ]
-    for row in rows:
-        out.append('<tr><td style="padding:9px 12px; border-bottom:1px solid #f1f5f9; font-size:13px; color:#475569;">')
-        out.append('<strong style="color:#0f172a; font-size:14px;">' + escape(row["label"]) + '</strong><br>')
-        out.append('✈ ' + escape(_hours_text(row["flight_hours"])) + ' · ' + escape(row["routing"])
-                   + ' · <strong>' + escape(row["cabin"].title()) + '</strong> · ' + escape(row["climate"]))
-        if row["in_season"] and row["indicative_total_gbp"] is not None:
-            out.append('<br>≈ £' + f'{row["fare_pp_gbp"]:,.0f}' + 'pp Business + suite ≈ £'
-                       + f'{row["suite_night_gbp"]:,.0f}' + '/night → <strong style="color:#0f172a;">≈ £'
-                       + f'{row["indicative_total_gbp"]:,.0f}' + '</strong> for ' + str(config.travellers)
-                       + ', ' + str(row["nights"]) + ' nights — <em>' + FAR_EAST_PRICE_LABEL + '</em>')
-            if row["over_budget_gbp"] > 0:
-                out.append(' · <span style="color:#b45309;">£' + f'{row["over_budget_gbp"]:,.0f}'
-                           + ' over the £' + f'{config.max_budget_gbp:,.0f}' + ' budget</span>')
-            out.append('<br>&nbsp;&nbsp;also ≈ £' + f'{row["economy_total_gbp"]:,.0f}' + ' Economy · ≈ £'
-                       + f'{row["premium_economy_total_gbp"]:,.0f}' + ' Premium Economy — same suite, same basis')
-        else:
-            out.append('<br><span style="color:#b45309;">Outside its season for these dates — no price shown.</span>')
-        out.append('<br><a href="' + escape(row["flights_url"], quote=True) + '" style="' + link + '">Google Flights (' + escape(row["cabin"].title()) + ') ↗</a>'
-                   + ' · <a href="' + escape(row["booking_url"], quote=True) + '" style="' + link + '">Booking.com ↗</a>'
-                   + ' · <a href="' + escape(row["hotels_url"], quote=True) + '" style="' + link + '">Google Hotels ↗</a>')
-        out.append('</td></tr>')
-    out.append('</table>')
+    if full:
+        out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
+                   'background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 18px 0;">')
+        for row in full:
+            out.append('<tr><td style="padding:9px 12px; border-bottom:1px solid #f1f5f9; font-size:13px; color:#475569;">')
+            out.append('<strong style="color:#0f172a; font-size:14px;">' + escape(row["label"]) + '</strong><br>')
+            out.append('✈ ' + escape(_hours_text(row["flight_hours"])) + ' · ' + escape(row["routing"])
+                       + ' · <strong>' + escape(row["cabin"].title()) + '</strong> · ' + escape(row["climate"]))
+            if row["in_season"] and row["indicative_total_gbp"] is not None:
+                out.append('<br>≈ £' + f'{row["fare_pp_gbp"]:,.0f}' + 'pp Business + suite ≈ £'
+                           + f'{row["suite_night_gbp"]:,.0f}' + '/night → <strong style="color:#0f172a;">≈ £'
+                           + f'{row["indicative_total_gbp"]:,.0f}' + '</strong> for ' + str(config.travellers)
+                           + ', ' + str(row["nights"]) + ' nights — <em>' + FAR_EAST_PRICE_LABEL + '</em>')
+                if row["over_budget_gbp"] > 0:
+                    out.append(' · <span style="color:#b45309;">£' + f'{row["over_budget_gbp"]:,.0f}'
+                               + ' over the £' + f'{budget:,.0f}' + ' budget</span>')
+                out.append('<br>&nbsp;&nbsp;also ≈ £' + f'{row["economy_total_gbp"]:,.0f}' + ' Economy · ≈ £'
+                           + f'{row["premium_economy_total_gbp"]:,.0f}' + ' Premium Economy — same suite, same basis')
+            else:
+                out.append('<br><span style="color:#b45309;">Outside its season for these dates — no price shown.</span>')
+            out.append('<br>' + _links(row))
+            out.append('</td></tr>')
+        out.append('</table>')
+    if collapsed:
+        out.append(
+            '<p style="margin:0 0 6px 0; color:#475569; font-size:13px;">'
+            '<strong style="color:#0f172a;">Too far over budget to show as a card</strong> — '
+            'these benchmark-only watches are more than '
+            + f'{FAR_EAST_WATCH_COLLAPSE_RATIO:.0%}'
+            + ' over the £' + f'{budget:,.0f}' + ' budget, so they are one line each:</p>'
+        )
+        out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
+                   'background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 18px 0;">')
+        for row in collapsed:
+            gap = float(row["indicative_total_gbp"]) - budget
+            out.append('<tr><td style="padding:7px 12px; border-bottom:1px solid #f1f5f9; font-size:13px; color:#475569;">'
+                       '<strong style="color:#0f172a;">' + escape(row["label"]) + '</strong> · '
+                       + escape(_hours_text(row["flight_hours"])) + ' · benchmark ≈ £'
+                       + f'{row["indicative_total_gbp"]:,.0f}' + ' for ' + str(config.travellers)
+                       + ' <em>' + FAR_EAST_PRICE_LABEL + '</em>'
+                       # The Economy / Premium Economy comparison stays even
+                       # on a collapsed row: it is an owner direction
+                       # (2026-09-30), and compaction must not drop it.
+                       + ' · also ≈ £' + f'{row["economy_total_gbp"]:,.0f}' + ' Economy · ≈ £'
+                       + f'{row["premium_economy_total_gbp"]:,.0f}' + ' Premium Economy'
+                       + ' · gap to budget '
+                       + '<span style="color:#b45309;">£' + f'{gap:,.0f}' + ' over the £'
+                       + f'{budget:,.0f}' + ' budget</span> · ' + _links(row) + '</td></tr>')
+        out.append('</table>')
     return ''.join(out)
 
 
