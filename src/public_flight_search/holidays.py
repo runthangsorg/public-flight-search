@@ -1013,6 +1013,10 @@ class PackageDeal:
     # Island resorts: every board basis the hotel sells, each priced for this
     # card's nights ({"basis", "label", "hotel_cost"}). Empty elsewhere.
     board_options: tuple = ()
+    # Calendar months the destination is in monsoon season (empty = none). A
+    # monsoon resort may be priced, but never wins the climate award for a
+    # travel month in this set, and its card carries a visible warning.
+    monsoon_months: tuple[int, ...] = ()
 
     @property
     def vs_peak_saving_gbp(self) -> float:
@@ -1075,6 +1079,28 @@ MIN_RENDERED_HOTEL_CARDS: int = 5
 #: discount up a WINTER search; a July trip to the same resort is 30°C+ and
 #: must not be penalised for December weather.
 WINTER_TRIP_MONTHS: frozenset[int] = frozenset({11, 12, 1, 2, 3})
+
+
+#: Full month names, 1-indexed via ``_MONTH_NAMES[month - 1]``.
+_MONTH_NAMES = (
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+)
+
+
+def deal_travel_month(deal: Any) -> Optional[int]:
+    """Calendar month of the deal's outbound date, or None if unparseable."""
+    try:
+        return int(str(getattr(deal, "outbound_date", ""))[5:7])
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def deal_in_monsoon(deal: Any) -> bool:
+    """True when the deal's travel month is monsoon season at the resort."""
+    month = deal_travel_month(deal)
+    months = tuple(getattr(deal, "monsoon_months", ()) or ())
+    return month is not None and month in months
 
 
 def _dec_temp_for_floor(outbound_date: str, dec_avg_temp_c: float) -> Optional[float]:
@@ -1996,6 +2022,10 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
         {
             "name": "Pullman Khao Lak Resort",
             "destination_label": "Khao Lak, Thailand (Andaman side — MONSOON in July)",
+            # The Andaman coast sees the south-west monsoon roughly May-Oct:
+            # a July trip here may be rained off. Flagged so the climate award
+            # can never rank it and its card can warn (2026-10-02).
+            "monsoon_months": (5, 6, 7, 8, 9, 10),
             "stars": 5,  # Accor ALL listing: "Resort Hotel 5"
             "board": "Bed & Breakfast",
             # Accor ALL booking engine, 20-27 Jul 2027, 7 nights, taxes
@@ -3249,6 +3279,7 @@ def collect_holiday_deals(
                             is_under_budget=_within(total_pkg, true_d2d),
                             flight_options=flight_options,
                             board_options=board_totals(resort, nights),
+                            monsoon_months=tuple(resort.get("monsoon_months", ()) or ()),
                             highlights=resort["highlights"],
                             uk_ground_gbp=uk_ground,
                             transfer_gbp=transfer,
@@ -4059,7 +4090,10 @@ def render_holiday_report(
         glance = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 16px 0;">'
         b1 = buckets["discounts"][0] if buckets["discounts"] else None
         b2 = buckets["luxury"][0] if buckets["luxury"] else None
-        b3 = buckets["winter"][0] if buckets["winter"] else None
+        # Climate award ranks only IN-SEASON resorts: a monsoon resort must
+        # never win "Best Summer Climate" for a travel month it is rained out.
+        climate_pool = [d for d in buckets["winter"] if not deal_in_monsoon(d)]
+        b3 = climate_pool[0] if climate_pool else None
         if b1 is not None and b1.vs_peak_saving_gbp > 0:
             disc_label = "💰 Biggest Discount vs Benchmark:" if is_summer else "💰 Biggest Discount vs Summer Peak:"
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px; border-bottom:1px solid #f1f5f9;">'
@@ -4178,6 +4212,12 @@ def render_holiday_report(
             if history_chip:
                 out.append(' ' + history_chip)
             out.append('</div>')
+            if deal_in_monsoon(deal):
+                # Visible, on the card header itself: a monsoon-month trip can
+                # still be priced, but never without this warning.
+                month = deal_travel_month(deal)
+                month_name = escape(_MONTH_NAMES[month - 1]) if month else "your travel"
+                out.append('<div style="margin:0 0 8px 0; padding:7px 11px; background:#fff7ed; border:1px solid #fdba74; border-radius:6px; color:#9a3412; font-size:13px; font-weight:600;">⚠️ Monsoon season for your ' + month_name + ' travel month — expect heavy rain and rough seas; pool and beach days may be rained off.</div>')
             out.append('<div style="color:#64748b; font-size:14px; margin-bottom:7px;">📍 ' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ') · ' + escape(deal.outbound_date) + ' → ' + escape(deal.return_date) + ' · ' + str(deal.nights) + ' nights</div>')
             if deal.highlights:
                 out.append('<div style="color:#475569; font-size:14px; margin-bottom:8px;">✨ ' + escape(' · '.join(deal.highlights)) + '</div>')
