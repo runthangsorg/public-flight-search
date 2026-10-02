@@ -157,8 +157,10 @@ def live_evidence_unavailable_reason() -> str:
 
 
 #: Evidence older than this is stale cache: it may still be shown, but it may
-#: never be labelled live.
-EVIDENCE_MAX_AGE_HOURS = 72
+#: never be labelled live. ONE threshold, shared by the loader, the job's
+#: ``live_evidence_stale`` flag and the card's amber label (owner rule
+#: 2026-10-02): 48 hours, so a two-day-old fare is not called live.
+EVIDENCE_MAX_AGE_HOURS = 48
 
 #: The ceiling beyond which an aged observation is no longer evidence of
 #: anything and is discarded outright. A fare read two months ago prices nothing
@@ -502,7 +504,7 @@ def load_live_flight_evidence(
     * the hunt's party size matches ``config.travellers`` (a whole-party
       total is only valid for the party it was quoted for);
     * the observation is younger than ``EVIDENCE_STALE_CACHE_MAX_AGE_HOURS``;
-      between ``EVIDENCE_MAX_AGE_HOURS`` (72) and that ceiling it is still
+      between ``EVIDENCE_MAX_AGE_HOURS`` (48) and that ceiling it is still
       consumed, but labelled ``stale-cache`` instead of
       ``verified-exact-date`` — an aged exact-date fare is worth showing, it
       just may not claim to be live;

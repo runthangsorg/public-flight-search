@@ -402,9 +402,61 @@ class TestEvidenceFileLoader(unittest.TestCase):
         self.assertIn("🟠 OBSERVED, NOT LIVE", html)
         self.assertNotIn("🟢 LIVE VERIFIED", html)
         self.assertNotIn("🟡 BENCHMARK PRICE", html)
-        # AUDITABLE, not decorative: when it was observed and where it came from.
-        self.assertIn("observed 2026-09-01", html)
+        # AUDITABLE, not decorative: HOW OLD the observation is and the exact
+        # date it was read (owner rule 2026-10-02), plus where it came from.
+        self.assertIn("observed 24 days ago (2026-09-01)", html)
         self.assertIn("fare source", html)
+
+    def test_a_live_card_states_how_old_the_observation_is(self):
+        from public_flight_search.holidays import (
+            collect_holiday_deals,
+            render_holiday_report,
+        )
+
+        # 12h old at the report's own generation instant.
+        path = self._write([self._rec(observed_at="2026-09-21T00:00:00+00:00")])
+        offers = try_live_flight_offers(self.config, path=path, now=self.now)
+        deals = collect_holiday_deals(self.config, live_flight_offers=offers)
+        html = render_holiday_report(
+            self.config, generated_at="2026-09-21T12:00:00Z", deals=deals
+        )
+        self.assertIn("🟢 LIVE VERIFIED", html)
+        self.assertIn("observed 12 hours ago (2026-09-21)", html)
+
+    def test_an_observation_over_48h_is_amber_not_live(self):
+        from public_flight_search.holidays import (
+            collect_holiday_deals,
+            render_holiday_report,
+        )
+
+        # 60h old at generation: already past the 48h bound, so no live label.
+        path = self._write([self._rec(observed_at="2026-09-19T00:00:00+00:00")])
+        offers = try_live_flight_offers(self.config, path=path, now=self.now)
+        deals = collect_holiday_deals(self.config, live_flight_offers=offers)
+        html = render_holiday_report(
+            self.config, generated_at="2026-09-21T12:00:00Z", deals=deals
+        )
+        self.assertIn("🟠 OBSERVED, NOT LIVE", html)
+        self.assertNotIn("🟢 LIVE VERIFIED", html)
+        self.assertIn("observed 2 days ago (2026-09-19)", html)
+
+    def test_one_threshold_is_shared_with_the_planner(self):
+        """The card's amber bound and the planner's live_evidence_stale are
+        the same configurable number, not two."""
+        from public_flight_search import live_verify
+        from public_flight_search.live_verify import evidence_freshness
+
+        self.assertEqual(live_verify.EVIDENCE_MAX_AGE_HOURS, 48)
+        for observed, expected in (
+            ("2026-09-19T13:00:00+00:00", False),  # 47h: still live
+            ("2026-09-19T11:00:00+00:00", True),   # 49h: stale
+        ):
+            with self.subTest(observed=observed):
+                path = self._write([self._rec(observed_at=observed)])
+                freshness = evidence_freshness(
+                    path, now="2026-09-21T12:00:00+00:00"
+                )
+                self.assertEqual(freshness["stale"], expected)
 
     def test_an_ancient_observation_is_dropped_outright(self):
         """Past the stale-cache ceiling it is not evidence of anything, so it must

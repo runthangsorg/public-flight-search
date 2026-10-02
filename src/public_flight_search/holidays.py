@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from html import escape
 import json
 import sys
@@ -21,6 +21,7 @@ from .config import (
     _window,
 )
 from .google_flights import build_google_flights_legs_url, build_google_flights_roundtrip_url
+from . import live_verify
 from .live_verify import LiveFareEvidence, evidence_for, priced_date_pair
 from .vendors import (
     DEEP_LINK as VENDOR_DEEP_LINK,
@@ -1132,6 +1133,46 @@ WET_MONTHS_BY_DESTINATION: dict[str, tuple[int, ...]] = {
     "kota_kinabalu": (1, 2, 10, 11, 12),  # Sabah north-east monsoon
     "japan": (),                     # no single wet-season flag for the watch
 }
+
+
+def _parse_iso_instant(value: Any) -> Optional[datetime]:
+    """Parse an ISO-8601 instant (``Z`` accepted); None if unparseable."""
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, AttributeError, TypeError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def observation_age_hours(observed_at: Any, generated_at: Any) -> Optional[float]:
+    """Hours between an observation and the report's generation instant.
+
+    The age the reader sees is measured at RENDER time, against the same one
+    threshold (``live_verify.EVIDENCE_MAX_AGE_HOURS``) the planner's
+    ``live_evidence_stale`` uses, so a fare that was fresh when loaded but has
+    aged by the time the report is built is labelled with its real age.
+    """
+    observed = _parse_iso_instant(observed_at)
+    generated = _parse_iso_instant(generated_at)
+    if observed is None or generated is None:
+        return None
+    return (generated - observed).total_seconds() / 3600.0
+
+
+def relative_age_label(hours: Optional[float]) -> str:
+    """Human age text: "3 days ago", "12 hours ago", "just now"."""
+    if hours is None:
+        return ""
+    if hours < 0:
+        hours = 0.0
+    if hours < 1:
+        return "just now"
+    if hours < 24:
+        return f"{int(hours)} hours ago"
+    days = int(hours // 24)
+    return "1 day ago" if days == 1 else f"{days} days ago"
 
 
 def deal_in_monsoon(deal: Any) -> bool:
@@ -4242,6 +4283,19 @@ def render_holiday_report(
             # VERIFIED nor a BENCHMARK PRICE, and labelling it as either tells
             # the reader something untrue.
             stale = deal.confidence == 'stale-cache'
+            # Age at RENDER time against the one shared threshold: an
+            # observation that has passed EVIDENCE_MAX_AGE_HOURS by the time
+            # this report is generated may not claim to be live, whatever the
+            # loader thought when it read the file.
+            observed_age_hours = observation_age_hours(
+                getattr(deal, "live_observed_at", ""), generated_at
+            )
+            if (
+                observed_age_hours is not None
+                and (live or stale)
+                and observed_age_hours > live_verify.EVIDENCE_MAX_AGE_HOURS
+            ):
+                live, stale = False, True
             under = 5000.0 - deal.total_package_price_gbp
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:separate; border-spacing:0; margin:0 0 14px 0; background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">')
             out.append('<tr>')
@@ -4276,7 +4330,11 @@ def render_holiday_report(
                     observed_day = str(deal.live_observed_at)[:10]
                 except (TypeError, ValueError):
                     observed_day = ""
-                out.append('<span style="color:#166534; font-size:11px;">observed ' + escape(observed_day) + ' · </span><a href="' + escape(deal.source_url, quote=True) + '" style="color:#166534; font-size:11px;">fare source ↗</a>')
+                age_text = relative_age_label(
+                    observation_age_hours(deal.live_observed_at, generated_at)
+                )
+                age_html = escape(age_text) if age_text else "date unknown"
+                out.append('<span style="color:' + ('#9a3412' if stale else '#166534') + '; font-size:11px;">observed ' + age_html + ' (' + escape(observed_day) + ') · </span><a href="' + escape(deal.source_url, quote=True) + '" style="color:' + ('#9a3412' if stale else '#166534') + '; font-size:11px;">fare source ↗</a>')
             out.append(peak_discount_badge(deal))
             history_chip = chip_by_resort.get(deal.resort_name, '')
             if history_chip:
