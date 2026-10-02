@@ -172,7 +172,7 @@ class HolidayPlannerTests(unittest.TestCase):
         self.assertIn("below our benchmark estimate", html)
         self.assertNotIn("save £", html)
         self.assertIn("Lara Barut Collection", html)
-        self.assertIn("Biggest Discount vs Summer Peak", html)
+        self.assertIn("Furthest below our benchmark estimate", html)
         self.assertIn("Top Luxury Within", html)
         self.assertIn("Best Winter Facilities", html)
         # Room-only metasearch is still there with exact dates + party, but

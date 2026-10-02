@@ -9,6 +9,7 @@ same resort and dates, from history.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 import unittest
 
@@ -71,6 +72,21 @@ class BenchmarkNotSavingTests(unittest.TestCase):
         self.assertIn("below our benchmark estimate (not a saving)", html)
         # The facts strip must not call a benchmark a "saving" either.
         self.assertNotIn("benchmark saving", html)
+
+    def test_award_headline_does_not_sell_a_benchmark_as_a_discount(self):
+        _, html = _dec_report()
+        self.assertIn("Furthest below our benchmark estimate", html)
+        self.assertNotIn("Biggest Discount", html)
+
+    def test_award_headline_keeps_discount_only_for_an_observed_price(self):
+        config = load_holiday_config(DEC.read_text(encoding="utf-8"))
+        deals = collect_holiday_deals(config, max_budget_gbp=5000.0)
+        observed = [dataclasses.replace(deals[0], peak_observed=True)]
+        html = render_holiday_report(
+            config, generated_at="2026-10-02T00:00:00+00:00", deals=observed
+        )
+        self.assertIn("Biggest Discount vs Summer Peak", html)
+        self.assertNotIn("Furthest below our benchmark estimate", html)
 
 
 if __name__ == "__main__":

@@ -4154,13 +4154,15 @@ def render_holiday_report(
         climate_pool = [d for d in buckets["winter"] if not deal_in_monsoon(d)]
         b3 = climate_pool[0] if climate_pool else None
         if b1 is not None and b1.vs_peak_saving_gbp > 0:
-            disc_label = "💰 Biggest Discount vs Benchmark:" if is_summer else "💰 Biggest Discount vs Summer Peak:"
-            # "Save" only for an observed earlier price; a benchmark gap is
-            # stated as a gap, not as money the reader has saved.
+            # "Biggest Discount" only for an observed earlier price; a gap
+            # against our own benchmark is "furthest below", not a discount.
             if getattr(b1, "peak_observed", False):
+                disc_label = "💰 Biggest Discount vs Benchmark:" if is_summer else "💰 Biggest Discount vs Summer Peak:"
                 disc_value = ('<strong style="color:#059669;">▼' + str(b1.vs_peak_pct)
                               + '% (save £' + f'{b1.vs_peak_saving_gbp:,.0f}' + ' for the same resort)</strong>')
             else:
+                disc_label = "💰 Furthest below our benchmark estimate:"
+
                 disc_value = ('<strong style="color:#475569;">▼' + str(b1.vs_peak_pct)
                               + '% (£' + f'{b1.vs_peak_saving_gbp:,.0f}'
                               + ' below our benchmark estimate — not a saving)</strong>')
