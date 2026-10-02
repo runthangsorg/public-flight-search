@@ -3933,12 +3933,19 @@ def render_far_east_watch(config: HolidayConfig) -> str:
                 + ' · <a href="' + escape(row["hotels_url"], quote=True) + '" style="' + link + '">Google Hotels ↗</a>')
 
     def _collapsed(row: Mapping[str, Any]) -> bool:
-        total = row.get("indicative_total_gbp")
-        return (
-            row.get("in_season")
-            and total is not None
-            and float(total) > collapse_limit
-        )
+        # Judged on the CHEAPEST option, not Business. The owner's rule tests
+        # the budget on EACH option, so a watch row that fits on Economy is not
+        # out of reach: collapsing it on the Business benchmark hid two
+        # destinations the family could actually afford (owner rule
+        # 2026-10-02). It collapses only when EVERY cabin is over the limit.
+        if not row.get("in_season"):
+            return False
+        candidates = [
+            float(row[key])
+            for key in ("indicative_total_gbp", "economy_total_gbp", "premium_economy_total_gbp")
+            if row.get(key) is not None
+        ]
+        return bool(candidates) and min(candidates) > collapse_limit
 
     full = [row for row in rows if not _collapsed(row)]
     collapsed = [row for row in rows if _collapsed(row)]
@@ -3986,11 +3993,18 @@ def render_far_east_watch(config: HolidayConfig) -> str:
         out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
                    'background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 18px 0;">')
         for row in collapsed:
-            gap = float(row["indicative_total_gbp"]) - budget
+            # The gap quoted is against the CHEAPEST cabin, because that is
+            # the figure that decided the collapse.
+            cheapest = min(
+                float(row[key])
+                for key in ("indicative_total_gbp", "economy_total_gbp", "premium_economy_total_gbp")
+                if row.get(key) is not None
+            )
+            gap = cheapest - budget
             out.append('<tr><td style="padding:7px 12px; border-bottom:1px solid #f1f5f9; font-size:13px; color:#475569;">'
                        '<strong style="color:#0f172a;">' + escape(row["label"]) + '</strong> · '
-                       + escape(_hours_text(row["flight_hours"])) + ' · benchmark ≈ £'
-                       + f'{row["indicative_total_gbp"]:,.0f}' + ' for ' + str(config.travellers)
+                       + escape(_hours_text(row["flight_hours"])) + ' · cheapest benchmark ≈ £'
+                       + f'{cheapest:,.0f}' + ' for ' + str(config.travellers)
                        + ' <em>' + FAR_EAST_PRICE_LABEL + '</em>'
                        # The Economy / Premium Economy comparison stays even
                        # on a collapsed row: it is an owner direction

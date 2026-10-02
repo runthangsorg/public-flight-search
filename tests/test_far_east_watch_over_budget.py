@@ -33,12 +33,28 @@ def _july(budget: float):
     )
 
 
+def _cheapest_option(row) -> float:
+    """The cheapest cabin a watch row offers — what the collapse is judged on."""
+    return min(
+        float(row[key])
+        for key in ("indicative_total_gbp", "economy_total_gbp", "premium_economy_total_gbp")
+        if row.get(key) is not None
+    )
+
+
+def _is_collapsed(row, budget: float) -> bool:
+    return bool(row["in_season"]) and _cheapest_option(row) > budget * (
+        1.0 + FAR_EAST_WATCH_COLLAPSE_RATIO
+    )
+
+
 class FarEastCollapseTests(unittest.TestCase):
     def test_the_collapse_threshold_is_a_quarter_over_budget(self):
         self.assertEqual(FAR_EAST_WATCH_COLLAPSE_RATIO, 0.25)
 
     def test_a_watch_row_well_over_budget_is_collapsed(self):
-        config = _july(12000.0)  # every watch row is far over this
+        # £5,000: no watch row fits on ANY cabin, so all of them collapse.
+        config = _july(5000.0)
         html = render_far_east_watch(config)
         self.assertIn("Too far over budget to show as a card", html)
         # A compact line, not the full card prose.
@@ -84,11 +100,49 @@ class FarEastCollapseTests(unittest.TestCase):
         self.assertEqual(html.count("Too far over budget to show as a card"), 1)
         collapsed_rows = [
             row for row in far_east_watch_rows(config)
-            if row["in_season"] and row["indicative_total_gbp"] is not None
-            and float(row["indicative_total_gbp"])
-            > config.max_budget_gbp * (1.0 + FAR_EAST_WATCH_COLLAPSE_RATIO)
+            if _is_collapsed(row, config.max_budget_gbp)
         ]
         self.assertEqual(html.count("gap to budget"), len(collapsed_rows))
+
+
+class CheapestOptionCollapseTests(unittest.TestCase):
+    """T12b: the collapse is judged on the CHEAPEST option.
+
+    The owner's rule tests the budget on EACH option, so a watch row that fits
+    on Economy is not out of reach. Judging only the Business benchmark
+    collapsed Bali (Economy ~£10,950) and Da Nang (Economy ~£9,050), which both
+    fit inside £12,000; Tokyo (Economy ~£15,300, 27% over) still collapses.
+    """
+
+    def _cheapest_option(self, row) -> float:
+        return _cheapest_option(row)
+
+    def test_a_watch_row_that_fits_on_economy_keeps_its_full_card(self):
+        config = _july(12000.0)
+        rows = {r["key"]: r for r in far_east_watch_rows(config)}
+        # Bali and Da Nang both fit on Economy under £12,000.
+        self.assertLessEqual(_cheapest_option(rows["bali"]), 12000.0)
+        self.assertLessEqual(_cheapest_option(rows["da_nang"]), 12000.0)
+        html = render_far_east_watch(config)
+        self.assertIn("pp Business + suite", html)
+        collapsed_block = html.split("Too far over budget to show as a card")[1]
+        self.assertNotIn("Bali, Indonesia", collapsed_block)
+        self.assertNotIn("Da Nang &amp; Hoi An", collapsed_block)
+
+    def test_a_watch_row_over_on_every_option_still_collapses(self):
+        config = _july(12000.0)
+        rows = {r["key"]: r for r in far_east_watch_rows(config)}
+        tokyo = _cheapest_option(rows["japan"])
+        self.assertGreater(tokyo, 12000.0 * (1.0 + FAR_EAST_WATCH_COLLAPSE_RATIO))
+        html = render_far_east_watch(config)
+        collapsed_block = html.split("Too far over budget to show as a card")[1]
+        self.assertIn("Tokyo &amp; Hakone", collapsed_block)
+
+    def test_only_tokyo_collapses_in_the_july_example(self):
+        config = _july(12000.0)
+        html = render_far_east_watch(config)
+        self.assertEqual(html.count("Too far over budget to show as a card"), 1)
+        self.assertEqual(html.count("gap to budget"), 1)
 
 
 if __name__ == "__main__":
