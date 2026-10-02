@@ -1031,7 +1031,6 @@ class PackageDeal:
     deposit_payment: Optional[str] = None
     checked_baggage: Optional[str] = None
     atol_protected: Optional[bool] = None
-    transfer_minutes: Optional[int] = None
     beach_access: Optional[str] = None
     pool: Optional[str] = None
 
@@ -3397,8 +3396,11 @@ def collect_holiday_deals(
                             deposit_payment=resort.get("deposit_payment") or None,
                             checked_baggage=resort.get("checked_baggage") or None,
                             atol_protected=resort.get("atol_protected"),
-                            transfer_minutes=resort.get("transfer_minutes"),
-                            beach_access=resort.get("beach_access") or None,
+                            beach_access=resort.get("beach_access") or (
+                                "walkable beach" if arch.get("beach_walkable") is True
+                                else ("no walkable beach" if arch.get("beach_walkable") is False
+                                      else None)
+                            ),
                             pool=resort.get("pool") or None,
                             highlights=resort["highlights"],
                             uk_ground_gbp=uk_ground,
@@ -3932,7 +3934,6 @@ _BOOKING_TERM_LABELS: tuple[tuple[str, str], ...] = (
     ("free_cancellation_until", "cancellation"),
     ("deposit_payment", "deposit"),
     ("checked_baggage", "baggage"),
-    ("transfer_minutes", "transfer"),
     ("beach_access", "beach"),
     ("pool", "pool"),
 )
@@ -3950,8 +3951,6 @@ def _booking_term_values(deal: Any) -> tuple[list[str], list[str]]:
         value = getattr(deal, field, None)
         if value is None or value == "":
             unknown.append(label)
-        elif field == "transfer_minutes":
-            verified.append("transfer " + str(int(value)) + " min")
         else:
             verified.append(str(value))
     atol = getattr(deal, "atol_protected", None)
@@ -3961,6 +3960,18 @@ def _booking_term_values(deal: Any) -> tuple[list[str], list[str]]:
         verified.append("ATOL protected")
     else:
         verified.append("not ATOL protected")
+    # The transfer is ground transport the code already prices, so it is a known
+    # value (a modelled estimate, labelled as one) — never an unknown. The
+    # per-option lines state the time; here we carry the priced amount.
+    transfer = getattr(deal, "transfer_gbp", 0.0)
+    try:
+        transfer = float(transfer)
+    except (TypeError, ValueError):
+        transfer = 0.0
+    if transfer > 0:
+        verified.append("resort transfer £" + f"{transfer:,.0f} (estimate)")
+    else:
+        unknown.append("transfer")
     # The same single unknown list carries what was never assessed, so a card
     # has one "not verified" line rather than several separate caveats
     # (owner rule 2026-10-02).

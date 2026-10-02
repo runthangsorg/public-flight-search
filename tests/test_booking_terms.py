@@ -60,7 +60,6 @@ class BookingTermsModelTests(unittest.TestCase):
             "deposit_payment",
             "checked_baggage",
             "atol_protected",
-            "transfer_minutes",
             "beach_access",
             "pool",
         ):
@@ -90,7 +89,7 @@ class BookingTermsRenderingTests(unittest.TestCase):
                 self.assertIn(label, html)
         # Nothing was verified, so no field may claim a value.
         self.assertNotIn("ATOL protected", html)
-        self.assertNotIn("transfer 0", html)
+        self.assertNotIn("resort transfer", html)
 
     def test_verified_terms_are_shown_and_drop_out_of_the_not_verified_list(self):
         html = render_booking_terms(_base_deal(
@@ -100,8 +99,8 @@ class BookingTermsRenderingTests(unittest.TestCase):
             deposit_payment="20% deposit, balance 8 weeks before",
             checked_baggage="23 kg checked bag included",
             atol_protected=True,
-            transfer_minutes=95,
-            beach_access="walkable beach at the resort",
+            transfer_gbp=77.0,
+            beach_access="walkable beach",
             pool="pool heated to 28°C",
         ))
         for value in (
@@ -109,13 +108,24 @@ class BookingTermsRenderingTests(unittest.TestCase):
             "20% deposit, balance 8 weeks before",
             "23 kg checked bag included",
             "ATOL protected",
-            "transfer 95 min",
-            "walkable beach at the resort",
+            "resort transfer £77",
+            "walkable beach",
             "pool heated to 28°C",
         ):
             with self.subTest(value=value):
                 self.assertIn(value, html)
         self.assertNotIn("not verified:", html)
+
+    def test_beach_and_transfer_come_from_data_the_code_already_has(self):
+        # A real priced card: the resort passed the beach_walkable filter and
+        # the code prices a ground transfer. Neither may be listed as unknown.
+        html = render_booking_terms(_base_deal(
+            transfer_gbp=77.0,
+            beach_access="walkable beach",
+        ))
+        self.assertIn("walkable beach", html)
+        self.assertIn("resort transfer £77", html)
+        self.assertNotIn("resort transfer £77", html.split("not verified:")[1])
 
     def test_a_partially_known_card_lists_only_the_unknowns(self):
         html = render_booking_terms(_base_deal(
@@ -127,7 +137,7 @@ class BookingTermsRenderingTests(unittest.TestCase):
         self.assertIn("not ATOL protected", html)
         self.assertIn("not verified:", html)
         self.assertIn("cancellation", html)
-        self.assertIn("transfer", html)
+        self.assertIn("beach", html)
         self.assertNotIn("baggage", html.split("not verified:")[1])
 
     def test_every_rendered_card_carries_the_booking_terms_line(self):
