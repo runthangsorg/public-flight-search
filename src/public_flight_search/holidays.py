@@ -1067,6 +1067,33 @@ def _classify_deal_price(true_pp: float) -> str:
     return "SPLURGE_WATCH_FOR_PRICE_DROP"
 
 
+#: The "Best Overall Value" award is only given to a card scoring at least this
+#: much (owner rule 2026-10-02). Under it the card's own line says the stay is
+#: a splurge, so crowning it "best value" is a contradiction; below the
+#: threshold the report simply shows no value award.
+VALUE_AWARD_MIN_SCORE: float = 50.0
+
+#: The deal class as a reader-facing phrase. The card says what the number
+#: MEANS rather than printing the SHOUTED acronym beside it, which is what made
+#: "VALUE 35/100 · SPLURGE WATCH FOR PRICE DROP" read as a contradiction.
+_DEAL_CLASS_PHRASES: dict[str, str] = {
+    "ULTRA_BARGAIN": "an ultra bargain",
+    "EXCEPTIONAL": "exceptional value",
+    "VERY_STRONG": "a very strong deal",
+    "GOOD": "a good deal",
+    "ACCEPTABLE_PREMIUM": "an acceptable premium",
+    "SPLURGE_WATCH_FOR_PRICE_DROP": "a luxury splurge, watch for a price drop",
+}
+
+
+def _deal_class_words(deal_class: str) -> str:
+    """A deal class in words, falling back to the raw value if unknown."""
+    key = str(deal_class or "")
+    if key in _DEAL_CLASS_PHRASES:
+        return _DEAL_CLASS_PHRASES[key]
+    return key.replace("_", " ").lower() or "not assessed"
+
+
 #: Weather floor (2026-09-22 user mandate): a beach destination whose
 #: December average ambient temperature is below this cannot deliver a beach
 #: holiday, so its vs-peak discount is de-weighted in ranking and its value
@@ -4370,11 +4397,16 @@ def render_holiday_report(
                            '<strong style="color:#0f172a;">☀️ Best Winter Facilities:</strong> '
                            + escape(b3.resort_name) + ' — ' + str(b3.dec_ambient_c[0]) + '–' + str(b3.dec_ambient_c[1]) + '°C air, sea ' + str(b3.sea_temp_c) + '°C</td></tr>')
         b4 = buckets["value"][0] if buckets["value"] else None
-        if b4 is not None:
+        # A "best overall value" award for a card whose own score is under half
+        # contradicts the card (owner rule 2026-10-02): below the threshold no
+        # value award is shown at all, rather than a "best" that reads as a
+        # splurge to avoid.
+        if b4 is not None and b4.value_score >= VALUE_AWARD_MIN_SCORE:
             score_type = "(family luxury score)" if is_summer else "(winter-first score)"
             glance += ('<tr><td style="padding:9px 12px; color:#475569; font-size:14px;">'
                        '<strong style="color:#0f172a;">🏆 Best Overall Value:</strong> '
-                       + escape(b4.resort_name) + ' — VALUE ' + f'{b4.value_score:.0f}' + '/100 ' + score_type + '</td></tr>')
+                       + escape(b4.resort_name) + ' — value score ' + f'{b4.value_score:.0f}'
+                       + '/100 ' + score_type + '</td></tr>')
         glance += '</table>'
         out.append(glance)
 
@@ -4499,8 +4531,8 @@ def render_holiday_report(
             # "not verified: …" booking-terms line (owner rule 2026-10-02).
             crit = ('🕌 ' + escape(deal.mosque_name) + ' — ' + str(deal.mosque_walk_minutes) + ' min walk'
                     if deal.mosque_name else '')
-            out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;"><strong style="color:#7c3aed;">VALUE ' + f'{deal.value_score:.0f}' + '/100</strong> · '
-                       + '<span style="background:#faf5ff; color:#6d28d9; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700;">' + escape(deal.deal_class.replace('_', ' ')) + '</span></div>')
+            out.append('<div style="color:#334155; font-size:14px; margin-bottom:4px;"><strong style="color:#7c3aed;">value score ' + f'{deal.value_score:.0f}' + '/100</strong> · '
+                       + '<span style="background:#faf5ff; color:#6d28d9; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:700;">' + escape(_deal_class_words(deal.deal_class)) + '</span></div>')
             season_score_name = "🏊 beach & pools" if is_summer else "❄️ winter"
             if deal.resort_name in RESORT_CRITERIA:
                 score_parts = ([crit] if crit else []) + [
