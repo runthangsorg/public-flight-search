@@ -31,13 +31,33 @@ from .mailer import send_html
 
 
 def _live_evidence_default_path() -> str:
-    """Where the workflow seeds the private engine's evidence export."""
+    """Where the workflow seeds the private engine's evidence export.
+
+    The single definition of the default tier, so ``_evidence_path`` and any
+    future caller cannot disagree about it.
+    """
     from .live_verify import DEFAULT_EVIDENCE_PATH
 
     return DEFAULT_EVIDENCE_PATH
 
 
 logger = logging.getLogger(__name__)
+
+
+def _evidence_path(named: str, env_name: str, default: str) -> str:
+    """Where one evidence file is read from: argument, then env, then default.
+
+    All three tiers, in that order, because they answer to different callers.
+    The workflow seeds the file at the default and passes nothing; an operator
+    overrides with the env var; a TEST must be able to name its own path,
+    because both defaults are CWD-relative and a checkout with ``data/`` on it
+    is a different machine from CI. The argument tier exists so that omission
+    is visible at the call site rather than silently resolved from whatever
+    happens to be in the working directory.
+    """
+    if named:
+        return named
+    return os.environ.get(env_name, default)
 
 
 def _live_evidence_counts(live_offers) -> dict[str, int]:
@@ -130,6 +150,8 @@ def run_holiday_planner(
     force_send: bool = False,
     config_path: str = "",
     expect_season: str = "",
+    hotel_evidence_path: str = "",
+    live_evidence_path: str = "",
 ) -> dict[str, int | bool]:
     # WHICH CONFIG THIS RUN USED belongs in the result, not in an operator's
     # guess. Five shapes reach this function — an explicit --config path, two
@@ -179,8 +201,10 @@ def run_holiday_planner(
     config = load_holiday_config(payload)
     from . import live_verify
 
-    evidence_path = os.environ.get(
-        "HOLIDAY_LIVE_EVIDENCE_PATH", live_verify.DEFAULT_EVIDENCE_PATH
+    evidence_path = _evidence_path(
+        live_evidence_path,
+        "HOLIDAY_LIVE_EVIDENCE_PATH",
+        _live_evidence_default_path(),
     )
     # Bounded live flight injection (GHA-safe HTTP only, no browser).
     live_offers: dict[tuple[str, ...], object] = {}
@@ -208,8 +232,8 @@ def run_holiday_planner(
     # this job runs, so a run with no file simply keeps the catalogue rates.
     from . import hotel_evidence as hotel_evidence_module
 
-    hotel_evidence_path = os.environ.get(
-        "HOLIDAY_HOTEL_EVIDENCE_PATH",
+    hotel_evidence_path = _evidence_path(
+        hotel_evidence_path, "HOLIDAY_HOTEL_EVIDENCE_PATH",
         hotel_evidence_module.DEFAULT_HOTEL_EVIDENCE_PATH,
     )
     hotel_rates: dict[tuple[str, str, str], object] = {}
@@ -374,12 +398,13 @@ def run_holiday_planner(
         # AYT alone is ONE airport, and the label has to mean what it says.
         **_live_evidence_counts(live_offers),
         "live_attempted": live_attempted,
-        "live_evidence_file_found": os.path.exists(
-            os.environ.get(
-                "HOLIDAY_LIVE_EVIDENCE_PATH",
-                _live_evidence_default_path(),
-            )
-        ),
+        # On the path the RUN used, not on a path re-derived from the
+        # environment. It used to re-read the env var and the default here,
+        # so a run pointed at one file reported on another: the summary could
+        # say the export was found while the evidence came from nowhere, or
+        # the reverse. A flag that describes a file this run never opened is
+        # worse than no flag.
+        "live_evidence_file_found": os.path.exists(evidence_path),
         "live_skipped": live_skipped,
         # The contract, the gap it leaves and how old the cache is. A run that
         # silently reverts to benchmarks should be visibly a stale-cache run.

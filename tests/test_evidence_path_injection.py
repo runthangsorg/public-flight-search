@@ -74,6 +74,11 @@ DECOY_REJECTED_RECORD = {
 }
 
 
+#: The committed December example, used when a test needs a run rather than a
+#: bare loader.
+CONFIG_PATH = str(Path(__file__).parents[1] / "examples" / "dec_holiday_config.json")
+
+
 @contextmanager
 def decoy_data_file():
     """Write ``data/holiday_live_evidence.json`` in a scratch cwd.
@@ -95,6 +100,50 @@ def decoy_data_file():
                 encoding="utf-8",
             )
             yield str(path)
+        finally:
+            os.chdir(original)
+
+
+#: A decoy hotel rate, shaped so the loader WOULD accept it: right property,
+#: right exact dates, right party, one booking. Its purpose is to be accepted,
+#: so that any run reading the default path has something real to pick up.
+DECOY_HOTEL_RATE = {
+    "property": "Concorde De Luxe Resort",
+    "check_in": "2026-12-20",
+    "check_out": "2026-12-28",
+    "cheapest": {
+        "nightly_gbp": 1.0,
+        "basis": "two_rooms_one_booking",
+        "rooms": 2,
+        "party": 5,
+        "source_url": "https://example.invalid/decoy-hotel",
+    },
+}
+
+
+@contextmanager
+def decoy_data_dir():
+    """A scratch cwd holding BOTH decoy evidence files.
+
+    The job's default paths are CWD-relative, so a checkout with ``data/``
+    seeded by the workflow is a different machine from CI. This puts the two
+    files exactly where an operator's would be.
+    """
+    original = os.getcwd()
+    with tempfile.TemporaryDirectory() as tmp:
+        os.chdir(tmp)
+        try:
+            data_dir = Path(tmp) / "data"
+            data_dir.mkdir()
+            (data_dir / "holiday_live_evidence.json").write_text(
+                json.dumps({"evidence": [DECOY_RECORD]}), encoding="utf-8"
+            )
+            (data_dir / "holiday_hotel_evidence.json").write_text(
+                json.dumps({"schema": "hotel_evidence/v1", "travellers": 5,
+                            "rates": [DECOY_HOTEL_RATE]}),
+                encoding="utf-8",
+            )
+            yield str(data_dir)
         finally:
             os.chdir(original)
 
@@ -145,6 +194,104 @@ class TestNoDefaultPathInTests(unittest.TestCase):
             [("AYT", "ECONOMY")],
             "the seeded default path must still be honoured on a real run",
         )
+
+
+class TestHotelEvidencePathIsInjectedToo(unittest.TestCase):
+    """R5: the HOTEL evidence path must be injectable the same way.
+
+    The live half was fixed above and the hotel half was not, so every
+    planner test that did not name a path silently read whatever an operator's
+    checkout happened to seed into ``data/``. Both paths are the same seam and
+    must be pinnable independently.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+
+    def _absent(self, name: str) -> str:
+        return os.path.join(self._tmp.name, name)
+
+    def test_the_default_path_is_still_reachable(self):
+        """The hazard must be real, or the tests below prove nothing.
+
+        A test that cannot fail is not evidence. If the decoy were never read,
+        "the suite ignores it" would be vacuous.
+        """
+        from public_flight_search.jobs import run_holiday_planner
+
+        with decoy_data_dir():
+            result = run_holiday_planner(
+                dry_run=True, config_path=CONFIG_PATH
+            )
+        self.assertTrue(result["hotel_evidence_file_found"])
+        self.assertTrue(result["live_evidence_file_found"])
+
+    def test_named_paths_win_over_the_decoy_data_dir(self):
+        """What every test must do: name where the evidence is.
+
+        Passes now because both loaders and the job's env seam already accept a
+        path. What it pins is that naming one is enough — the CWD-relative
+        default is not consulted as a fallback once a path is given.
+        """
+        from public_flight_search.jobs import run_holiday_planner
+
+        with decoy_data_dir():
+            result = run_holiday_planner(
+                dry_run=True,
+                config_path=CONFIG_PATH,
+                hotel_evidence_path=self._absent("no-hotel.json"),
+                live_evidence_path=self._absent("no-live.json"),
+            )
+        self.assertFalse(result["hotel_evidence_file_found"])
+        self.assertFalse(result["live_evidence_file_found"])
+        self.assertIsNone(result["hotel_evidence_load_error"])
+        self.assertIsNone(result["live_evidence_load_error"])
+
+    def test_the_run_is_identical_with_and_without_the_decoys(self):
+        """Same result with or without data/: the property in one comparison."""
+        from public_flight_search.jobs import run_holiday_planner
+
+        def _run() -> dict:
+            return run_holiday_planner(
+                dry_run=True,
+                config_path=CONFIG_PATH,
+                hotel_evidence_path=self._absent("no-hotel.json"),
+                live_evidence_path=self._absent("no-live.json"),
+            )
+
+        clean = _run()
+        with decoy_data_dir():
+            decoyed = _run()
+        for key in (
+            "deal_count",
+            "destination_count",
+            "date_combination_count",
+            "provider_entry_count",
+            "hotel_rate_properties",
+            "hotel_rates_priced_cards",
+            "live_evidence_record_count",
+            "live_evidence_missing_keys",
+        ):
+            with self.subTest(key=key):
+                self.assertEqual(clean[key], decoyed[key])
+
+    def test_a_planner_test_can_name_its_paths_as_arguments(self):
+        """Parameters, not only environment variables.
+
+        ``patch.dict(os.environ, ..., clear=True)`` is how these tests pin
+        every other input, and it is silent about a path nobody thought to
+        set. Naming the two evidence paths in the call is the only way the
+        omission becomes visible at the call site.
+        """
+        import inspect
+
+        from public_flight_search.jobs import run_holiday_planner
+
+        parameters = inspect.signature(run_holiday_planner).parameters
+        for name in ("hotel_evidence_path", "live_evidence_path"):
+            with self.subTest(parameter=name):
+                self.assertIn(name, parameters)
 
 
 class TestSkipLogIsScopedToOneLoad(unittest.TestCase):

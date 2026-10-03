@@ -10,6 +10,35 @@ from public_flight_search.jobs import (
     run_holiday_planner,
 )
 
+#: One empty scratch directory for the whole module, so the paths below never
+#: exist. See ``_no_evidence``.
+_NO_EVIDENCE_DIR = ""
+
+
+def _no_evidence() -> dict:
+    """Explicit paths to evidence files that do not exist.
+
+    EVERY planner test in this module passes these. Both evidence defaults are
+    CWD-relative (``data/holiday_...json``), so a checkout the workflow has
+    seeded is a different machine from CI: a test that names no path reads
+    whatever that operator's checkout happens to hold, and reports on prices
+    the test author never chose. Naming an absent path is the cheapest way to
+    say "this test is about the job, not about somebody's evidence file" — and
+    it makes the omission visible at the call site instead of resolving it from
+    the working directory.
+    """
+    global _NO_EVIDENCE_DIR
+    if not _NO_EVIDENCE_DIR:
+        import atexit
+        import shutil
+
+        _NO_EVIDENCE_DIR = tempfile.mkdtemp(prefix="holiday-no-evidence-")
+        atexit.register(shutil.rmtree, _NO_EVIDENCE_DIR, True)
+    return {
+        "hotel_evidence_path": os.path.join(_NO_EVIDENCE_DIR, "absent-hotel.json"),
+        "live_evidence_path": os.path.join(_NO_EVIDENCE_DIR, "absent-live.json"),
+    }
+
 
 class HolidayJobTests(unittest.TestCase):
     def test_provider_count_includes_every_destination_and_date_pair(self):
@@ -18,7 +47,7 @@ class HolidayJobTests(unittest.TestCase):
             encoding="utf-8"
         )
         with patch.dict(os.environ, {"HOLIDAY_SEARCH_CONFIG_JSON": payload}):
-            result = run_holiday_planner(dry_run=True)
+            result = run_holiday_planner(dry_run=True, **_no_evidence())
         self.assertEqual(result["destination_count"], 20)
         self.assertEqual(result["date_combination_count"], 49)
         # 10 destinations x 49 pairs x 10 providers (6 package + 4 dynamic)
@@ -50,7 +79,7 @@ class HolidayJobTests(unittest.TestCase):
                 "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "h.jsonl"),
             }
             with patch.dict(os.environ, env):
-                result = run_holiday_planner(dry_run=False)
+                result = run_holiday_planner(dry_run=False, **_no_evidence())
         self.assertTrue(result["email_sent"])
         self.assertFalse(result["send_skipped_no_change"])
         self.assertEqual(result["last_prior_observation"], "")
@@ -67,9 +96,9 @@ class HolidayJobTests(unittest.TestCase):
                 "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "h.jsonl"),
             }
             with patch.dict(os.environ, env):
-                first = run_holiday_planner(dry_run=False)
+                first = run_holiday_planner(dry_run=False, **_no_evidence())
                 self.assertTrue(first["email_sent"])
-                second = run_holiday_planner(dry_run=False)
+                second = run_holiday_planner(dry_run=False, **_no_evidence())
         self.assertFalse(second["email_sent"])
         self.assertTrue(second["send_skipped_no_change"])
         # Same-day re-run: day-level dedupe means no double-counted rows —
@@ -120,7 +149,7 @@ class HolidayJobTests(unittest.TestCase):
                 "HOLIDAY_EMAIL_COOLDOWN_MINUTES": "0",
             }
             with patch.dict(os.environ, env):
-                first = run_holiday_planner(dry_run=False)
+                first = run_holiday_planner(dry_run=False, **_no_evidence())
                 self.assertTrue(first["email_sent"])
                 # Simulate a resort repricing £200 cheaper since run 1.
                 history_file = Path(env["HOLIDAY_HISTORY_PATH"])
@@ -130,7 +159,7 @@ class HolidayJobTests(unittest.TestCase):
                 target["observed_at"] = "2026-09-12T08:00:00+00:00"
                 rows.append(target)
                 history_file.write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n")
-                third = run_holiday_planner(dry_run=False)
+                third = run_holiday_planner(dry_run=False, **_no_evidence())
         self.assertTrue(third["email_sent"])
         self.assertFalse(third["send_skipped_no_change"])
         self.assertEqual(send.call_count, 2)
@@ -149,7 +178,7 @@ class HolidayJobTests(unittest.TestCase):
                 "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "h.jsonl"),
             }
             with patch.dict(os.environ, env):
-                first = run_holiday_planner(dry_run=False)
+                first = run_holiday_planner(dry_run=False, **_no_evidence())
                 self.assertTrue(first["email_sent"])
                 history_file = Path(env["HOLIDAY_HISTORY_PATH"])
                 rows = [json.loads(l) for l in history_file.read_text().splitlines() if l.strip()]
@@ -157,11 +186,13 @@ class HolidayJobTests(unittest.TestCase):
                 target["total_package_price_gbp"] -= 200.0
                 rows.append(target)
                 history_file.write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n")
-                rapid = run_holiday_planner(dry_run=False)
+                rapid = run_holiday_planner(dry_run=False, **_no_evidence())
                 self.assertFalse(rapid["email_sent"])
                 self.assertIn("cooldown", rapid["email_cooldown_reason"])
                 # force_send still overrides the cooldown.
-                forced = run_holiday_planner(dry_run=False, force_send=True)
+                forced = run_holiday_planner(
+                    dry_run=False, force_send=True, **_no_evidence()
+                )
                 self.assertTrue(forced["email_sent"])
         self.assertEqual(send.call_count, 2)  # first + forced; rapid suppressed
 
@@ -185,7 +216,7 @@ class HolidayConfigSourceTests(unittest.TestCase):
 
     def _run(self, env):
         with patch.dict(os.environ, env, clear=True):
-            return run_holiday_planner(dry_run=True)
+            return run_holiday_planner(dry_run=True, **_no_evidence())
 
     def test_names_the_env_secret_that_was_used(self):
         result = self._run({"HOLIDAY_SEARCH_CONFIG_JSON": self.payload})
@@ -209,7 +240,9 @@ class HolidayConfigSourceTests(unittest.TestCase):
     def test_names_an_explicit_config_path(self):
         explicit = self.root / "examples" / "dec_holiday_config.json"
         with patch.dict(os.environ, {}, clear=True):
-            result = run_holiday_planner(dry_run=True, config_path=str(explicit))
+            result = run_holiday_planner(
+                dry_run=True, config_path=str(explicit), **_no_evidence()
+            )
         self.assertTrue(result["config_source"].startswith("config-path:"))
         self.assertTrue(
             result["config_source"].endswith("examples/dec_holiday_config.json")
@@ -231,7 +264,9 @@ class HolidayConfigSourceTests(unittest.TestCase):
         with patch.dict(os.environ, {"HOLIDAY_SEARCH_CONFIG_JSON": self.payload}, clear=True):
             with self.assertRaises(SystemExit) as ctx:
                 run_holiday_planner(
-                    dry_run=True, config_path="examples/july_holday_config.json"
+                    dry_run=True,
+                    config_path="examples/july_holday_config.json",
+                    **_no_evidence(),
                 )
         self.assertIn("july_holday_config.json", str(ctx.exception))
 
@@ -278,7 +313,7 @@ class HolidaySeasonGuardTests(unittest.TestCase):
             }
             with patch.dict(os.environ, env, clear=True):
                 result = run_holiday_planner(dry_run=False, force_send=force_send,
-                                             expect_season=expect)
+                                             expect_season=expect, **_no_evidence())
         return result, send
 
     def _patch_smtp(self):
@@ -329,7 +364,8 @@ class HolidaySeasonGuardTests(unittest.TestCase):
                 "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "h.jsonl"),
             }
             with patch.dict(os.environ, env, clear=True):
-                result = run_holiday_planner(dry_run=False, force_send=True, expect_season="july")
+                result = run_holiday_planner(dry_run=False, force_send=True,
+                                             expect_season="july", **_no_evidence())
         self.assertEqual(result["config_season"], "unknown")
         self.assertFalse(result["config_season_mismatch"])
         self.assertTrue(result["email_sent"])
@@ -340,7 +376,7 @@ class HolidayStepSummaryTests(unittest.TestCase):
 
     def _run(self, env):
         with patch.dict(os.environ, env, clear=True):
-            return run_holiday_planner(dry_run=True)
+            return run_holiday_planner(dry_run=True, **_no_evidence())
 
     def test_the_summary_names_the_config_season_and_live_coverage(self):
         root = Path(__file__).parents[1]
