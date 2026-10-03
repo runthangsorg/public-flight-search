@@ -27,7 +27,12 @@ from .live_verify import LiveFareEvidence, evidence_for, priced_date_pair
 # ``hotel_evidence`` imports this module lazily (inside its functions, for the
 # priced date pairs and the season tables), so the import is acyclic — the
 # same seam as ``live_verify`` above.
-from .hotel_evidence import hotel_rate_for, hotel_rate_provenance
+from .hotel_evidence import (
+    hotel_rate_for,
+    hotel_rate_provenance,
+    supplemental_for,
+    unit_check_blocks_party,
+)
 from .vendors import (
     DEEP_LINK as VENDOR_DEEP_LINK,
     DESTINATION_PAGE as VENDOR_DESTINATION_PAGE,
@@ -983,6 +988,9 @@ class PackageDeal:
     # ``confidence`` field above is the FLIGHT basis whenever live evidence
     # is used, so the hotel's own basis needs its own field (F4, 2026-10-03).
     hotel_rate_basis: str = ""
+    #: Google (or another named site's) rating read for this property, with
+    #: its source and review count (owner brief 2026-10-03, H4).
+    hotel_ratings: tuple = ()
     #: The loader's evidence for this resort and these dates, when one was
     #: read (owner brief 2026-10-03, H3). None means the stay is priced from
     #: the catalogue, exactly as before the seam existed.
@@ -3127,6 +3135,46 @@ def _criteria_fields(
     }
 
 
+def _highlights_with_blocked_sources(
+    highlights: Sequence[str], blocked: Sequence[Any]
+) -> tuple[str, ...]:
+    """Rewrite "X >=4.5 not verified" as "X blocked (reason)".
+
+    The catalogue says the review gate was not applied because the rating could
+    not be read. When the engine has since tried and been refused by a bot
+    wall, that is a stronger and more useful fact: it is not a gap in our
+    research, it is the source saying no. Saying "not verified" there would
+    quietly imply the rating was looked for, found and found wanting.
+    """
+    out: list[str] = []
+    for line in highlights:
+        text = str(line)
+        for entry in blocked:
+            claim = f"{entry.what} ≥4.5 not verified"
+            if claim in text:
+                text = text.replace(claim, f"{entry.what} blocked ({entry.reason})")
+        out.append(text)
+    return tuple(out)
+
+
+def _unit_check_refusal(resort_name: str, config, *, travellers: int) -> str:
+    """The engine's finding when this property cannot take the party, else "".
+
+    Looked up per date pair, because a property that refuses five adults for
+    one week may well take them for another. "" means no refusal was recorded,
+    which is the safe default: an unrecognised wording keeps the card.
+    """
+    from .holidays import priceable_date_pairs
+
+    for outbound, returning in priceable_date_pairs(config):
+        for check in supplemental_for(
+            resort_name, "unit_checks", dates=(outbound, returning)
+        ):
+            if unit_check_blocks_party(check.finding, travellers):
+                return f"{check.finding} (checked {outbound}→{returning})"
+    return ""
+
+
 def collect_holiday_deals(
     config: HolidayConfig,
     max_budget_gbp: Optional[float] = None,
@@ -3449,6 +3497,17 @@ def collect_holiday_deals(
         for cabin in dest_cabins:
             flight_mult = cabin_multipliers.get(cabin.upper(), 1.0)
             for resort in resorts:
+                # A unit check that says the property cannot take this party in
+                # one booking REMOVES it, with the engine's own words as the
+                # reason (owner brief 2026-10-03, H4). Offering a resort we
+                # watched refuse five adults in one room is worse than not
+                # offering it: the reader only finds out after choosing it.
+                refusal = _unit_check_refusal(
+                    resort["name"], config, travellers=config.travellers
+                )
+                if refusal:
+                    filtered_out.append((resort["name"], refusal))
+                    continue
                 airport = resort["airport"]
                 # ONE family unit pricing (strict mandate) with suite premium.
                 arch = _suite_for(resort)
@@ -3589,7 +3648,11 @@ def collect_holiday_deals(
                                       else None)
                             ),
                             pool=resort.get("pool") or None,
-                            highlights=resort["highlights"],
+                            highlights=_highlights_with_blocked_sources(
+                                resort["highlights"],
+                                supplemental_for(resort["name"], "blocked"),
+                            ),
+                            hotel_ratings=supplemental_for(resort["name"], "ratings"),
                             uk_ground_gbp=uk_ground,
                             transfer_gbp=transfer,
                             true_d2d_gbp=true_d2d,
@@ -4316,6 +4379,37 @@ def hotel_provider_line(rate: Any) -> str:
     return f"via {provider}"
 
 
+def render_hotel_rating_line(deal: Any) -> str:
+    """Every rating read for this property, each with its source and count.
+
+    A bare "4.6" is a number with no denominator and no provenance, so the
+    source and the review count travel with it. Two sources that disagree are
+    both shown: picking a winner between a 4.6 on Google and a 4.4 on the
+    brand's own page is a judgement the evidence cannot make.
+    """
+    ratings = tuple(getattr(deal, "hotel_ratings", ()) or ())
+    if not ratings:
+        return ""
+    parts: list[str] = []
+    for rating in ratings:
+        scale = f"{rating.scale:g}" if rating.scale else "5"
+        text = f"{escape(rating.source)} {rating.score:g}/{escape(scale)}"
+        if rating.review_count:
+            text += f" ({escape(rating.review_count)} reviews)"
+        if rating.where:
+            text += f" — {escape(rating.where)}"
+        if rating.source_url:
+            text += (' <a href="' + escape(rating.source_url, quote=True)
+                     + '" style="color:#2563eb;text-decoration:none;font-size:11px;">source ↗</a>')
+        parts.append(text)
+    return (
+        '<div style="margin:0 0 6px 0; color:#334155; font-size:13px;">'
+        '<strong style="color:#0f172a;">Ratings read:</strong> '
+        + '<span style="color:#cbd5e1;"> · </span>'.join(parts)
+        + '</div>'
+    )
+
+
 def render_hotel_rate_line(deal: Any) -> str:
     """The stay's price, where it was read rather than estimated.
 
@@ -4661,16 +4755,33 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
     return ''.join(out)
 
 
-def render_gate_not_applied(resort_names: Sequence[str], *, pool_unverified: Sequence[str] = ()) -> str:
-    """Name every shown resort whose TripAdvisor or heated-pool gate could not be applied."""
+def render_gate_not_applied(resort_names: Sequence[str], *, pool_unverified: Sequence[str] = (),
+                            blocked_reasons: Mapping[str, str] | None = None) -> str:
+    """Name every shown resort whose TripAdvisor or heated-pool gate could not be applied.
+
+    ``blocked_reasons`` maps a resort to why its source refused the read. Where
+    we have one, the banner says the read was ATTEMPTED and refused — the
+    difference between a gap in our research and the source saying no.
+    """
     parts = []
     if resort_names:
-        parts.append(
-            '<strong>🔍 Rule not applied — TripAdvisor ≥4.5:</strong> the rating could not be read for '
-            + escape(', '.join(resort_names))
-            + '. TripAdvisor blocks automated reads and its public summary shows only a rounded whole '
-            'number, so these resorts are shown without that check. Look each one up before booking.'
-        )
+        blocked = blocked_reasons or {}
+        attempts = [name for name in resort_names if name in blocked]
+        unread = [name for name in resort_names if name not in blocked]
+        if attempts:
+            reasons = sorted({blocked[name] for name in attempts})
+            parts.append(
+                '<strong>🔍 Rule not applied — TripAdvisor ≥4.5:</strong> we read the page and were '
+                'refused for ' + escape(', '.join(attempts)) + ' ('
+                + escape('; '.join(reasons)) + '), so those resorts are shown without that check.'
+            )
+        if unread:
+            parts.append(
+                '<strong>🔍 Rule not applied — TripAdvisor ≥4.5:</strong> the rating could not be read for '
+                + escape(', '.join(unread))
+                + '. TripAdvisor blocks automated reads and its public summary shows only a rounded whole '
+                'number, so these resorts are shown without that check. Look each one up before booking.'
+            )
     if pool_unverified:
         parts.append(
             '<strong>🔍 Rule not applied — pools heated to ≥28°C in December:</strong> not stated for '
@@ -4848,7 +4959,25 @@ def render_holiday_report(
         if not is_summer_trip(config) and pool_heating_unverified(name)
     )
     if gate_open or pool_open:
-        out.append(render_gate_not_applied(gate_open, pool_unverified=pool_open))
+        # Where the hotel file records a blocked source for a resort, the
+        # banner says the read was attempted and refused rather than that the
+        # rating "could not be read" — a gap in our research and a source
+        # saying no are different facts.
+        blocked_reasons = {}
+        for deal in deals:
+            for entry in getattr(deal, "hotel_evidence_blocked", ()) or ():
+                blocked_reasons[deal.resort_name] = (
+                    f"{entry.what} {entry.reason}"
+                )
+            for entry in supplemental_for(deal.resort_name, "blocked"):
+                blocked_reasons[deal.resort_name] = f"{entry.what} {entry.reason}"
+        out.append(
+            render_gate_not_applied(
+                gate_open,
+                pool_unverified=pool_open,
+                blocked_reasons=blocked_reasons,
+            )
+        )
         out.append('</td></tr><tr><td>')
 
     is_summer = is_summer_trip(config)
@@ -5159,6 +5288,7 @@ def render_holiday_report(
             # flight options side by side. The hotel-rate line comes first when
             # a real rate was read for this resort and these dates (H3).
             out.append(render_hotel_rate_line(deal))
+            out.append(render_hotel_rating_line(deal))
             out.append(render_board_line(deal))
             out.append(render_booking_terms(deal))
             if deal.flight_options:

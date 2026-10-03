@@ -157,6 +157,8 @@ class UnitCheck:
     source_url: str
     observed_at: str
     destination_key: str = ""
+    #: The dates this check was made for; empty when the engine did not say.
+    dates: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -617,6 +619,7 @@ def load_hotel_evidence(
     never a crash and never a fabricated figure.
     """
     _SKIP_LOG.clear()
+    _SUPPLEMENTAL_BY_PROPERTY.clear()
 
     now_dt = _parse_observed_at(now) or datetime.now(timezone.utc)
     ceiling = max_age_hours if max_age_hours and max_age_hours > 0 else hotel_evidence_max_age_hours()
@@ -633,9 +636,11 @@ def load_hotel_evidence(
         with open(path, encoding="utf-8") as handle:
             payload = json.load(handle)
     except FileNotFoundError:
+        _SUPPLEMENTAL_BY_PROPERTY.clear()
         return {}
     except (json.JSONDecodeError, OSError) as exc:
         print(f"hotel-evidence: unreadable {path}: {exc}", file=sys.stderr)
+        _SUPPLEMENTAL_BY_PROPERTY.clear()
         return {}
 
     rates = payload.get("rates", []) if isinstance(payload, dict) else payload
@@ -644,6 +649,10 @@ def load_hotel_evidence(
         return {}
 
     qualifying: dict[tuple[str, str, str], list[HotelRate]] = {}
+    # Indexed BEFORE the rates are walked, and for every property the file
+    # mentions rather than only the priced ones: a unit check for a property we
+    # found no rate for is still a fact about the property.
+    _SUPPLEMENTAL_BY_PROPERTY.update(_index_supplemental(payload))
     for index, item in enumerate(rates):
         if not isinstance(item, dict):
             _warn_skip(f"#{index}", "not an object")
@@ -791,24 +800,103 @@ def _supplementary(payload, section: str) -> list[dict]:
     return [item for item in items if isinstance(item, dict)]
 
 
+#: Wording the engine uses when a property has no unit that takes the party in
+#: one booking. A unit check that FINDS units is not in here: this list is the
+#: refusal vocabulary, and a finding that matches none of it keeps the resort.
+#: A wrong removal is worse than a kept card, so the default is to keep.
+UNIT_REFUSAL_WORDS: tuple[str, ...] = (
+    "refused",
+    "refuse",
+    "not available",
+    "no unit",
+    "no single unit",
+    "no rooms",
+    "no room",
+    "cannot",
+    "can't",
+    "unavailable",
+    "does not take",
+    "will not take",
+)
+
+
+def unit_check_blocks_party(finding: str, travellers: int) -> bool:
+    """True when this finding says the property cannot take the party.
+
+    Both halves must be present: a refusal word, and the party it refuses. A
+    finding like "two units available: 2+2 and 3+2" contains numbers but no
+    refusal, so the resort stays; "5 adults in one room refused" contains
+    both, so it goes. Anything unrecognised keeps the card, because dropping a
+    resort on a misread sentence loses a holiday the reader could have had.
+    """
+    text = str(finding or "").strip().lower()
+    if not text:
+        return False
+    if not any(word in text for word in UNIT_REFUSAL_WORDS):
+        return False
+    party = str(int(travellers))
+    party_mentions = (
+        f"{party} adult",
+        f"{party} guest",
+        f"{party} traveller",
+        f"{party} traveller",
+        f"for {party}",
+        f"party of {party}",
+        "one room",
+        "single unit",
+        "one booking",
+    )
+    return any(mention in text for mention in party_mentions)
+
+
+def _unit_check_from(item: dict, name: str) -> Optional[UnitCheck]:
+    finding = _stated(item, "finding")
+    if not finding:
+        return None
+    return UnitCheck(
+        property_name=name,
+        finding=finding,
+        source_url=_stated(item, "source_url"),
+        observed_at=_stated(item, "observed_at"),
+        destination_key=_stated(item, "destination_key"),
+        dates=tuple(str(value) for value in (item.get("dates") or ())),
+    )
+
+
 def _unit_checks(payload, name: str, check_in: str, check_out: str) -> tuple[UnitCheck, ...]:
     out: list[UnitCheck] = []
     for item in _supplementary(payload, "unit_checks"):
         if str(item.get("property_name", "")).strip() != name:
             continue
-        dates = [str(value) for value in (item.get("dates") or [])]
-        if dates and dates != [check_in, check_out]:
+        record = _unit_check_from(item, name)
+        if record is None:
             continue
-        out.append(
-            UnitCheck(
-                property_name=name,
-                finding=str(item.get("finding", "")).strip(),
-                source_url=str(item.get("source_url", "")).strip(),
-                observed_at=str(item.get("observed_at", "")).strip(),
-                destination_key=str(item.get("destination_key", "")).strip(),
-            )
-        )
+        if record.dates and tuple(record.dates) != (check_in, check_out):
+            continue
+        out.append(record)
     return tuple(out)
+
+
+def _rating_from(item: dict, name: str) -> Optional[HotelRating]:
+    try:
+        score = float(item.get("score"))
+        scale = float(item.get("scale", 5))
+    except (TypeError, ValueError):
+        return None
+    source = _stated(item, "source")
+    if not source:
+        # A rating with no source is a number with nothing behind it.
+        return None
+    return HotelRating(
+        property_name=name,
+        source=source,
+        score=score,
+        scale=scale,
+        review_count=_stated(item, "review_count"),
+        where=_stated(item, "where"),
+        source_url=_stated(item, "source_url"),
+        observed_at=_stated(item, "observed_at"),
+    )
 
 
 def _ratings(payload, name: str) -> tuple[HotelRating, ...]:
@@ -816,24 +904,30 @@ def _ratings(payload, name: str) -> tuple[HotelRating, ...]:
     for item in _supplementary(payload, "ratings"):
         if str(item.get("property_name", "")).strip() != name:
             continue
-        try:
-            score = float(item.get("score"))
-            scale = float(item.get("scale", 5))
-        except (TypeError, ValueError):
-            continue
-        out.append(
-            HotelRating(
-                property_name=name,
-                source=str(item.get("source", "")).strip(),
-                score=score,
-                scale=scale,
-                review_count=str(item.get("review_count", "")).strip(),
-                where=str(item.get("where", "")).strip(),
-                source_url=str(item.get("source_url", "")).strip(),
-                observed_at=str(item.get("observed_at", "")).strip(),
-            )
-        )
+        record = _rating_from(item, name)
+        if record is not None:
+            out.append(record)
     return tuple(out)
+
+
+def _fact_from(item: dict, name: str) -> Optional[HotelFact]:
+    stated = _stated(item, "stated")
+    field_name = _stated(item, "field")
+    if not stated or not field_name:
+        return None
+    if field_name not in HOTEL_FACT_FIELDS:
+        # Kept out, not dropped from the file: this card cannot render it, and
+        # a fact the reader cannot act on is noise on a card.
+        _warn_skip(f"{name} fact {field_name!r}", "field is not one this card can present")
+        return None
+    return HotelFact(
+        property_name=name,
+        field=field_name,
+        stated=stated,
+        where=_stated(item, "where"),
+        source_url=_stated(item, "source_url"),
+        observed_at=_stated(item, "observed_at"),
+    )
 
 
 def _facts(payload, name: str) -> tuple[HotelFact, ...]:
@@ -846,29 +940,25 @@ def _facts(payload, name: str) -> tuple[HotelFact, ...]:
     for item in _supplementary(payload, "facts"):
         if str(item.get("property_name", "")).strip() != name:
             continue
-        stated = str(item.get("stated", "")).strip()
-        field_name = str(item.get("field", "")).strip()
-        if not stated or not field_name:
-            continue
-        if field_name not in HOTEL_FACT_FIELDS:
-            # Kept out, not dropped from the file: this card cannot render it,
-            # and a fact the reader cannot act on is noise on a card.
-            _warn_skip(
-                f"{name} fact {field_name!r}",
-                "field is not one this card can present",
-            )
-            continue
-        out.append(
-            HotelFact(
-                property_name=name,
-                field=field_name,
-                stated=stated,
-                where=str(item.get("where", "")).strip(),
-                source_url=str(item.get("source_url", "")).strip(),
-                observed_at=str(item.get("observed_at", "")).strip(),
-            )
-        )
+        record = _fact_from(item, name)
+        if record is not None:
+            out.append(record)
     return tuple(out)
+
+
+def _blocked_from(item: dict, name: str) -> Optional[BlockedSource]:
+    reason = _stated(item, "reason")
+    if not reason:
+        # A block with no reason says nothing a reader can act on, and the card
+        # would read as if the rating had been judged and rejected.
+        return None
+    return BlockedSource(
+        what=_stated(item, "what") or "a review site",
+        property_name=name,
+        reason=reason,
+        source_url=_stated(item, "source_url"),
+        observed_at=_stated(item, "observed_at"),
+    )
 
 
 def _blocked(payload, name: str) -> tuple[BlockedSource, ...]:
@@ -876,13 +966,64 @@ def _blocked(payload, name: str) -> tuple[BlockedSource, ...]:
     for item in _supplementary(payload, "blocked"):
         if str(item.get("property_name", "")).strip() != name:
             continue
-        out.append(
-            BlockedSource(
-                what=str(item.get("what", "")).strip(),
-                property_name=name,
-                reason=str(item.get("reason", "")).strip(),
-                source_url=str(item.get("source_url", "")).strip(),
-                observed_at=str(item.get("observed_at", "")).strip(),
-            )
-        )
+        record = _blocked_from(item, name)
+        if record is not None:
+            out.append(record)
     return tuple(out)
+
+
+#: Supplementary records from the most recent load, keyed by the NORMALISED
+#: property name, for EVERY property the file mentions — including properties
+#: with no qualifying rate. That last part is the whole reason this index
+#: exists: a property we watched refuse five adults in one booking may have no
+#: rate for us, and dropping that resort is exactly the case which must not
+#: depend on having found a price for it. Same pattern as ``_SKIP_LOG``: it
+#: belongs to THIS load, and every load rebuilds it.
+_SUPPLEMENTAL_BY_PROPERTY: dict[str, dict[str, tuple]] = {}
+
+
+def _index_supplemental(payload) -> dict[str, dict[str, tuple]]:
+    """Group every supplementary record by normalised property name."""
+    index: dict[str, dict[str, tuple]] = {}
+    builders = (
+        ("unit_checks", _unit_check_from),
+        ("ratings", _rating_from),
+        ("facts", _fact_from),
+        ("blocked", _blocked_from),
+    )
+    for section, builder in builders:
+        for item in _supplementary(payload, section):
+            name = str(item.get("property_name", "")).strip()
+            if not name:
+                continue
+            record = builder(item, name)
+            if record is None:
+                continue
+            key = _normalise_property(name)
+            entry = index.setdefault(
+                key,
+                {"unit_checks": (), "ratings": (), "facts": (), "blocked": ()},
+            )
+            entry[section] = tuple(entry[section]) + (record,)
+    return index
+
+
+def supplemental_for(
+    property_name: str, section: str, *, dates: tuple[str, ...] = ()
+) -> tuple:
+    """The records of one section for one property, from the last load.
+
+    ``section`` is one of ``unit_checks``, ``ratings``, ``facts``, ``blocked``.
+    With ``dates`` given, unit checks for other date pairs are excluded: a
+    check of last month's nights is not a check of these.
+    """
+    entry = _SUPPLEMENTAL_BY_PROPERTY.get(_normalise_property(property_name))
+    if not entry:
+        return ()
+    records = tuple(entry.get(section, ()))
+    if not dates:
+        return records
+    return tuple(
+        record for record in records
+        if not getattr(record, "dates", ()) or tuple(record.dates) == tuple(dates)
+    )
