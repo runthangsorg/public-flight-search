@@ -44,12 +44,21 @@ ONE_BOOKING_SHAPES: frozenset[str] = frozenset(
     {"one_unit", "two_rooms_one_booking"}
 )
 
-#: Boards that count as a holiday deal. ``RO`` is deliberately absent: a
-#: room-only rate excludes meals for five people, so it is not comparable
-#: with a breakfast rate and must never be priced as one.
+#: Boards that count as a holiday deal: meals included, at least breakfast.
+#: The owner's breakfast-minimum rule, and ``SC`` was wrongly in this set —
+#: self-catering includes no meals at all, so it breaks the rule exactly as
+#: ``RO`` does and must never be priced as a deal.
 DEAL_BOARDS: frozenset[str] = frozenset(
-    {"BB", "B&B", "BREAKFAST", "HB", "FB", "AI", "SC", "UAI"}
+    {"BB", "B&B", "BREAKFAST", "HB", "FB", "AI", "UAI"}
 )
+
+#: Boards that include no meals, with the reason shown when one is dropped.
+#: Naming the code alone ("SC") tells an operator nothing about why their rate
+#: vanished from the report.
+NO_MEAL_BOARDS: dict[str, str] = {
+    "RO": "no breakfast (room only)",
+    "SC": "no breakfast (self-catering)",
+}
 
 
 def hotel_evidence_max_age_hours() -> int:
@@ -402,7 +411,12 @@ def load_hotel_evidence(
             continue
         board = str(item.get("board", "")).strip().upper()
         if board not in DEAL_BOARDS:
-            _warn_skip(name, f"board {board!r} is not breakfast or better")
+            _warn_skip(
+                name,
+                NO_MEAL_BOARDS.get(
+                    board, f"board {board!r} is not breakfast or better"
+                ),
+            )
             continue
         source_url = str(item.get("source_url", "")).strip()
         if not source_url.startswith(("http://", "https://")):

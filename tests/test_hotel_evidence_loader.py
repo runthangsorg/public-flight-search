@@ -147,6 +147,11 @@ class TestDisqualifyingConditions(unittest.TestCase):
     def test_room_only_is_not_priced(self):
         self._assert_not_loaded("Room Only Resort", "board RO is never a deal")
 
+    def test_self_catering_is_not_priced(self):
+        # SC is self-catering: no meals at all, so it breaks the owner's
+        # breakfast minimum exactly as RO does.
+        self._assert_not_loaded("Self Catering Resort", "board SC is not breakfast")
+
     def test_three_rooms_is_not_priced(self):
         self._assert_not_loaded("Three Rooms Resort", "the booking is not one booking")
 
@@ -175,6 +180,7 @@ class TestDisqualifyingConditions(unittest.TestCase):
             "Winter Season Resort",
             "Party Of Four Resort",
             "Room Only Resort",
+            "Self Catering Resort",
             "Three Rooms Resort",
             "Stale Resort",
             "Approx Dates Resort",
@@ -188,6 +194,14 @@ class TestDisqualifyingConditions(unittest.TestCase):
         _load()
         reasons = "\n".join(consume_hotel_skip_log())
         self.assertIn("stale", reasons.lower())
+
+    def test_every_no_meal_board_is_explained_as_no_breakfast(self):
+        # The reason must name the reason, not the code: "SC" on its own tells
+        # an operator nothing about why their rate was dropped.
+        _load()
+        reasons = "\n".join(consume_hotel_skip_log())
+        self.assertIn("Room Only Resort: no breakfast (room only)", reasons)
+        self.assertIn("Self Catering Resort: no breakfast (self-catering)", reasons)
 
     def test_a_winter_run_prices_nothing_from_a_summer_file(self):
         loaded = _load(WINTER_CONFIG)

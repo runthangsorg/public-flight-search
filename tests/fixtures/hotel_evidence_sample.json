@@ -1,183 +1,565 @@
 {
   "schema": "holiday_hotel_evidence/1",
   "travellers": 5,
-  "fx_reference": {"source": "ECB euro foreign exchange reference rates", "date": "2026-10-01",
-                   "EUR_GBP": 0.85, "EUR_THB": 38.0, "EUR_IDR": 20000.0},
+  "fx_reference": {
+    "source": "ECB euro foreign exchange reference rates",
+    "date": "2026-10-01",
+    "EUR_GBP": 0.85,
+    "EUR_THB": 38.0,
+    "EUR_IDR": 20000.0
+  },
   "rules": "SYNTHETIC FIXTURE - made-up values for loader tests only",
   "rates": [
     {
-      "property_name": "Example Beach Resort", "destination_key": "khao_lak", "season": "summer",
-      "vendor": "Example brand booking engine", "vendor_property_code": "X123",
-      "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 5, "children": 0},
+      "property_name": "Example Beach Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example brand booking engine",
+      "vendor_property_code": "X123",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
       "booking_shape": "two_rooms_one_booking",
-      "units": [{"name": "FAMILY SUITE", "adults": 3, "max_persons_stated": "5 pers. max", "size_m2": 62},
-                {"name": "DELUXE ROOM", "adults": 2, "max_persons_stated": "3 pers. max", "size_m2": 44}],
-      "rate_name": "FLEXIBLE RATE WITH BREAKFAST", "board": "BB",
-      "price_basis": "total_stay_rate", "currency": "EUR", "taxes_included": true,
-      "prices_shown": [{"unit": "FAMILY SUITE", "public": 1000.00, "member": 950.00, "rate_name": "FLEXIBLE RATE WITH BREAKFAST"},
-                       {"unit": "DELUXE ROOM", "public": 500.00, "member": 475.00, "rate_name": "FLEXIBLE RATE WITH BREAKFAST"}],
-      "terms": [{"unit": "FAMILY SUITE", "cancellation": "Free cancellation until 19 Jul 2027", "payment": "Pay at the hotel", "refundable": true},
-                {"unit": "DELUXE ROOM", "cancellation": "Free cancellation until 19 Jul 2027", "payment": "Pay at the hotel", "refundable": true}],
+      "units": [
+        {
+          "name": "FAMILY SUITE",
+          "adults": 3,
+          "max_persons_stated": "5 pers. max",
+          "size_m2": 62
+        },
+        {
+          "name": "DELUXE ROOM",
+          "adults": 2,
+          "max_persons_stated": "3 pers. max",
+          "size_m2": 44
+        }
+      ],
+      "rate_name": "FLEXIBLE RATE WITH BREAKFAST",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "taxes_included": true,
+      "prices_shown": [
+        {
+          "unit": "FAMILY SUITE",
+          "public": 1000.0,
+          "member": 950.0,
+          "rate_name": "FLEXIBLE RATE WITH BREAKFAST"
+        },
+        {
+          "unit": "DELUXE ROOM",
+          "public": 500.0,
+          "member": 475.0,
+          "rate_name": "FLEXIBLE RATE WITH BREAKFAST"
+        }
+      ],
+      "terms": [
+        {
+          "unit": "FAMILY SUITE",
+          "cancellation": "Free cancellation until 19 Jul 2027",
+          "payment": "Pay at the hotel",
+          "refundable": true
+        },
+        {
+          "unit": "DELUXE ROOM",
+          "cancellation": "Free cancellation until 19 Jul 2027",
+          "payment": "Pay at the hotel",
+          "refundable": true
+        }
+      ],
       "source_url": "https://example.com/booking?dateIn=2027-07-20",
       "observed_at": "2026-10-02T15:02:10+00:00",
       "exact_date_match": true,
       "confidence": "verified-exact-date",
-      "derived_public_total": {"value": 1500.00, "currency": "EUR", "how": "sum of the two rooms' public rates"},
-      "derived_gbp": {"value": 1275.00, "how": "public total x ECB EUR/GBP 0.85 (2026-10-01); a conversion, not a GBP price"}
+      "derived_public_total": {
+        "value": 1500.0,
+        "currency": "EUR",
+        "how": "sum of the two rooms' public rates"
+      },
+      "derived_gbp": {
+        "value": 1275.0,
+        "how": "public total x ECB EUR/GBP 0.85 (2026-10-01); a conversion, not a GBP price"
+      }
     },
     {
-      "property_name": "Example Beach Resort", "destination_key": "khao_lak", "season": "summer",
-      "vendor": "Example brand booking engine", "vendor_property_code": "X123",
-      "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 5, "children": 0},
+      "property_name": "Example Beach Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example brand booking engine",
+      "vendor_property_code": "X123",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
       "booking_shape": "two_rooms_one_booking",
-      "units": [{"name": "FAMILY SUITE", "adults": 3, "max_persons_stated": "5 pers. max"},
-                {"name": "DELUXE ROOM", "adults": 2, "max_persons_stated": "3 pers. max"}],
-      "rate_name": "SAVER NON-REFUNDABLE", "board": "BB",
-      "price_basis": "total_stay_rate", "currency": "EUR", "taxes_included": true,
-      "prices_shown": [{"unit": "FAMILY SUITE", "public": 800.00},
-                       {"unit": "DELUXE ROOM", "public": 500.00}],
-      "terms": [{"unit": "FAMILY SUITE", "cancellation": "Non-refundable", "payment": "Pay online now", "refundable": false},
-                {"unit": "DELUXE ROOM", "cancellation": "Non-refundable", "payment": "Pay online now", "refundable": false}],
+      "units": [
+        {
+          "name": "FAMILY SUITE",
+          "adults": 3,
+          "max_persons_stated": "5 pers. max"
+        },
+        {
+          "name": "DELUXE ROOM",
+          "adults": 2,
+          "max_persons_stated": "3 pers. max"
+        }
+      ],
+      "rate_name": "SAVER NON-REFUNDABLE",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "taxes_included": true,
+      "prices_shown": [
+        {
+          "unit": "FAMILY SUITE",
+          "public": 800.0
+        },
+        {
+          "unit": "DELUXE ROOM",
+          "public": 500.0
+        }
+      ],
+      "terms": [
+        {
+          "unit": "FAMILY SUITE",
+          "cancellation": "Non-refundable",
+          "payment": "Pay online now",
+          "refundable": false
+        },
+        {
+          "unit": "DELUXE ROOM",
+          "cancellation": "Non-refundable",
+          "payment": "Pay online now",
+          "refundable": false
+        }
+      ],
       "source_url": "https://example.com/booking?dateIn=2027-07-20",
       "observed_at": "2026-10-02T15:02:10+00:00",
       "exact_date_match": true,
       "confidence": "verified-exact-date",
-      "derived_public_total": {"value": 1300.00, "currency": "EUR", "how": "sum of the two rooms' public rates"},
-      "derived_gbp": {"value": 1105.00, "how": "public total x ECB EUR/GBP 0.85 (2026-10-01); a conversion, not a GBP price"}
+      "derived_public_total": {
+        "value": 1300.0,
+        "currency": "EUR",
+        "how": "sum of the two rooms' public rates"
+      },
+      "derived_gbp": {
+        "value": 1105.0,
+        "how": "public total x ECB EUR/GBP 0.85 (2026-10-01); a conversion, not a GBP price"
+      }
     },
     {
-      "property_name": "GBP Direct Resort", "destination_key": "koh_samui", "season": "summer",
+      "property_name": "GBP Direct Resort",
+      "destination_key": "koh_samui",
+      "season": "summer",
       "vendor": "Example direct site",
-      "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 5, "children": 0},
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
       "booking_shape": "one_unit",
-      "units": [{"name": "TWO BEDROOM FAMILY VILLA", "adults": 5, "max_persons_stated": "5 pers. max"}],
-      "rate_name": "BED AND BREAKFAST", "board": "BB",
-      "price_basis": "total_stay_rate", "currency": "GBP", "taxes_included": true,
-      "prices_shown": [{"unit": "TWO BEDROOM FAMILY VILLA", "public": 2100.00, "member": 1890.00}],
-      "terms": [{"unit": "TWO BEDROOM FAMILY VILLA", "cancellation": "Free cancellation until 18 Jul 2027", "payment": "Pay at the hotel", "refundable": true}],
+      "units": [
+        {
+          "name": "TWO BEDROOM FAMILY VILLA",
+          "adults": 5,
+          "max_persons_stated": "5 pers. max"
+        }
+      ],
+      "rate_name": "BED AND BREAKFAST",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "GBP",
+      "taxes_included": true,
+      "prices_shown": [
+        {
+          "unit": "TWO BEDROOM FAMILY VILLA",
+          "public": 2100.0,
+          "member": 1890.0
+        }
+      ],
+      "terms": [
+        {
+          "unit": "TWO BEDROOM FAMILY VILLA",
+          "cancellation": "Free cancellation until 18 Jul 2027",
+          "payment": "Pay at the hotel",
+          "refundable": true
+        }
+      ],
       "source_url": "https://example.com/gbp",
       "observed_at": "2026-10-02T15:02:10+00:00",
       "exact_date_match": true,
       "confidence": "verified-exact-date"
     },
     {
-      "property_name": "Nightly Basis Resort", "destination_key": "lombok", "season": "summer",
+      "property_name": "Nightly Basis Resort",
+      "destination_key": "lombok",
+      "season": "summer",
       "vendor": "Example nightly site",
-      "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 5, "children": 0},
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
       "booking_shape": "one_unit",
-      "units": [{"name": "TWO BEDROOM VILLA", "adults": 5, "max_persons_stated": "6 pers. max"}],
-      "rate_name": "BREAKFAST INCLUDED", "board": "BB",
-      "price_basis": "nightly", "currency": "EUR", "taxes_included": true,
-      "prices_shown": [{"unit": "TWO BEDROOM VILLA", "public": 140.00}],
+      "units": [
+        {
+          "name": "TWO BEDROOM VILLA",
+          "adults": 5,
+          "max_persons_stated": "6 pers. max"
+        }
+      ],
+      "rate_name": "BREAKFAST INCLUDED",
+      "board": "BB",
+      "price_basis": "nightly",
+      "currency": "EUR",
+      "taxes_included": true,
+      "prices_shown": [
+        {
+          "unit": "TWO BEDROOM VILLA",
+          "public": 140.0
+        }
+      ],
       "source_url": "https://example.com/nightly",
       "observed_at": "2026-10-02T15:02:10+00:00",
       "exact_date_match": true,
       "confidence": "verified-exact-date",
-      "derived_public_total": {"value": 980.00, "currency": "EUR", "how": "nightly x nights"},
-      "derived_gbp": {"value": 833.00, "how": "nightly x nights x ECB EUR/GBP 0.85 (2026-10-01); a conversion, not a GBP price"}
+      "derived_public_total": {
+        "value": 980.0,
+        "currency": "EUR",
+        "how": "nightly x nights"
+      },
+      "derived_gbp": {
+        "value": 833.0,
+        "how": "nightly x nights x ECB EUR/GBP 0.85 (2026-10-01); a conversion, not a GBP price"
+      }
     },
     {
-      "property_name": "Winter Season Resort", "destination_key": "khao_lak", "season": "winter",
-      "vendor": "Example", "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 5, "children": 0}, "booking_shape": "one_unit", "units": [],
-      "rate_name": "BB", "board": "BB", "price_basis": "total_stay_rate", "currency": "EUR",
-      "prices_shown": [], "source_url": "https://example.com/winter",
-      "observed_at": "2026-10-02T15:02:10+00:00", "exact_date_match": true,
-      "derived_gbp": {"value": 900.00, "how": "x"}
+      "property_name": "Self Catering Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example self-catering site",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "one_unit",
+      "units": [],
+      "rate_name": "SELF CATERING",
+      "board": "SC",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "prices_shown": [],
+      "source_url": "https://example.com/sc",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": true,
+      "derived_gbp": {
+        "value": 900.0,
+        "how": "x"
+      }
     },
     {
-      "property_name": "Party Of Four Resort", "destination_key": "khao_lak", "season": "summer",
-      "vendor": "Example", "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 4, "children": 0}, "booking_shape": "one_unit", "units": [],
-      "rate_name": "BB", "board": "BB", "price_basis": "total_stay_rate", "currency": "EUR",
-      "prices_shown": [], "source_url": "https://example.com/p4",
-      "observed_at": "2026-10-02T15:02:10+00:00", "exact_date_match": true,
-      "derived_gbp": {"value": 900.00, "how": "x"}
+      "property_name": "Winter Season Resort",
+      "destination_key": "khao_lak",
+      "season": "winter",
+      "vendor": "Example",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "one_unit",
+      "units": [],
+      "rate_name": "BB",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "prices_shown": [],
+      "source_url": "https://example.com/winter",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": true,
+      "derived_gbp": {
+        "value": 900.0,
+        "how": "x"
+      }
     },
     {
-      "property_name": "Room Only Resort", "destination_key": "khao_lak", "season": "summer",
-      "vendor": "Example", "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 5, "children": 0}, "booking_shape": "one_unit", "units": [],
-      "rate_name": "ROOM ONLY", "board": "RO", "price_basis": "total_stay_rate", "currency": "EUR",
-      "prices_shown": [], "source_url": "https://example.com/ro",
-      "observed_at": "2026-10-02T15:02:10+00:00", "exact_date_match": true,
-      "derived_gbp": {"value": 900.00, "how": "x"}
+      "property_name": "Party Of Four Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 4,
+        "children": 0
+      },
+      "booking_shape": "one_unit",
+      "units": [],
+      "rate_name": "BB",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "prices_shown": [],
+      "source_url": "https://example.com/p4",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": true,
+      "derived_gbp": {
+        "value": 900.0,
+        "how": "x"
+      }
     },
     {
-      "property_name": "Three Rooms Resort", "destination_key": "khao_lak", "season": "summer",
-      "vendor": "Example", "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 5, "children": 0}, "booking_shape": "three_rooms", "units": [],
-      "rate_name": "BB", "board": "BB", "price_basis": "total_stay_rate", "currency": "EUR",
-      "prices_shown": [], "source_url": "https://example.com/3r",
-      "observed_at": "2026-10-02T15:02:10+00:00", "exact_date_match": true,
-      "derived_gbp": {"value": 900.00, "how": "x"}
+      "property_name": "Room Only Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "one_unit",
+      "units": [],
+      "rate_name": "ROOM ONLY",
+      "board": "RO",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "prices_shown": [],
+      "source_url": "https://example.com/ro",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": true,
+      "derived_gbp": {
+        "value": 900.0,
+        "how": "x"
+      }
     },
     {
-      "property_name": "Stale Resort", "destination_key": "khao_lak", "season": "summer",
-      "vendor": "Example", "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 5, "children": 0}, "booking_shape": "one_unit", "units": [],
-      "rate_name": "BB", "board": "BB", "price_basis": "total_stay_rate", "currency": "EUR",
-      "prices_shown": [], "source_url": "https://example.com/stale",
-      "observed_at": "2026-08-01T15:02:10+00:00", "exact_date_match": true,
-      "derived_gbp": {"value": 900.00, "how": "x"}
+      "property_name": "Three Rooms Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "three_rooms",
+      "units": [],
+      "rate_name": "BB",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "prices_shown": [],
+      "source_url": "https://example.com/3r",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": true,
+      "derived_gbp": {
+        "value": 900.0,
+        "how": "x"
+      }
     },
     {
-      "property_name": "Approx Dates Resort", "destination_key": "khao_lak", "season": "summer",
-      "vendor": "Example", "check_in": "2027-07-19", "check_out": "2027-07-27", "nights": 8,
-      "party": {"adults": 5, "children": 0}, "booking_shape": "one_unit", "units": [],
-      "rate_name": "BB", "board": "BB", "price_basis": "total_stay_rate", "currency": "EUR",
-      "prices_shown": [], "source_url": "https://example.com/approx",
-      "observed_at": "2026-10-02T15:02:10+00:00", "exact_date_match": false,
-      "derived_gbp": {"value": 900.00, "how": "x"}
+      "property_name": "Stale Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "one_unit",
+      "units": [],
+      "rate_name": "BB",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "prices_shown": [],
+      "source_url": "https://example.com/stale",
+      "observed_at": "2026-08-01T15:02:10+00:00",
+      "exact_date_match": true,
+      "derived_gbp": {
+        "value": 900.0,
+        "how": "x"
+      }
     },
     {
-      "property_name": "Unpriced Pair Resort", "destination_key": "khao_lak", "season": "summer",
-      "vendor": "Example", "check_in": "2027-12-20", "check_out": "2027-12-27", "nights": 7,
-      "party": {"adults": 5, "children": 0}, "booking_shape": "one_unit", "units": [],
-      "rate_name": "BB", "board": "BB", "price_basis": "total_stay_rate", "currency": "EUR",
-      "prices_shown": [], "source_url": "https://example.com/dec",
-      "observed_at": "2026-10-02T15:02:10+00:00", "exact_date_match": true,
-      "derived_gbp": {"value": 900.00, "how": "x"}
+      "property_name": "Approx Dates Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example",
+      "check_in": "2027-07-19",
+      "check_out": "2027-07-27",
+      "nights": 8,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "one_unit",
+      "units": [],
+      "rate_name": "BB",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "prices_shown": [],
+      "source_url": "https://example.com/approx",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": false,
+      "derived_gbp": {
+        "value": 900.0,
+        "how": "x"
+      }
     },
     {
-      "property_name": "No Conversion Resort", "destination_key": "khao_lak", "season": "summer",
-      "vendor": "Example", "check_in": "2027-07-20", "check_out": "2027-07-27", "nights": 7,
-      "party": {"adults": 5, "children": 0}, "booking_shape": "one_unit", "units": [],
-      "rate_name": "BB", "board": "BB", "price_basis": "total_stay_rate", "currency": "EUR",
-      "prices_shown": [], "source_url": "https://example.com/nofx",
-      "observed_at": "2026-10-02T15:02:10+00:00", "exact_date_match": true
+      "property_name": "Unpriced Pair Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example",
+      "check_in": "2027-12-20",
+      "check_out": "2027-12-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "one_unit",
+      "units": [],
+      "rate_name": "BB",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "prices_shown": [],
+      "source_url": "https://example.com/dec",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": true,
+      "derived_gbp": {
+        "value": 900.0,
+        "how": "x"
+      }
+    },
+    {
+      "property_name": "No Conversion Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "one_unit",
+      "units": [],
+      "rate_name": "BB",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "EUR",
+      "prices_shown": [],
+      "source_url": "https://example.com/nofx",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": true
     }
   ],
   "unit_checks": [
-    {"property_name": "Example Beach Resort", "destination_key": "khao_lak", "season": "summer",
-     "dates": ["2027-07-20", "2027-07-27"], "vendor": "Example",
-     "finding": "5 adults in one room refused",
-     "source_url": "https://example.com/x", "observed_at": "2026-10-02T14:51:52+00:00"}
+    {
+      "property_name": "Example Beach Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "dates": [
+        "2027-07-20",
+        "2027-07-27"
+      ],
+      "vendor": "Example",
+      "finding": "5 adults in one room refused",
+      "source_url": "https://example.com/x",
+      "observed_at": "2026-10-02T14:51:52+00:00"
+    }
   ],
   "ratings": [
-    {"property_name": "Example Beach Resort", "source": "Google", "score": 4.6, "scale": 5,
-     "review_count": "1.2k", "where": "Google Hotels hotel page",
-     "source_url": "https://example.com/r", "observed_at": "2026-10-02T15:18:50+00:00"}
+    {
+      "property_name": "Example Beach Resort",
+      "source": "Google",
+      "score": 4.6,
+      "scale": 5,
+      "review_count": "1.2k",
+      "where": "Google Hotels hotel page",
+      "source_url": "https://example.com/r",
+      "observed_at": "2026-10-02T15:18:50+00:00"
+    }
   ],
   "facts": [
-    {"property_name": "Example Beach Resort", "field": "beach", "stated": "situated on Example Beach",
-     "where": "brand booking page", "source_url": "https://example.com/f", "observed_at": "2026-10-02T15:02:10+00:00"},
-    {"property_name": "Example Beach Resort", "field": "pools", "stated": "four pools",
-     "where": "brand site", "source_url": "https://example.com/f", "observed_at": "2026-10-02T15:02:10+00:00"},
-    {"property_name": "Example Beach Resort", "field": "pools", "stated": "2 pools",
-     "where": "OTA listing", "source_url": "https://example.com/f2", "observed_at": "2026-10-02T15:02:10+00:00"},
-    {"property_name": "Example Beach Resort", "field": "nearest_mosque",
-     "stated": "Masjid Example - 7 min / 2.8 km by car (Google Maps)",
-     "where": "public map", "source_url": "https://example.com/m", "observed_at": "2026-10-02T15:02:10+00:00"},
-    {"property_name": "Example Beach Resort", "field": "kids_club", "stated": "kids club for ages 4-12",
-     "where": "brand site", "source_url": "https://example.com/k", "observed_at": "2026-10-02T15:02:10+00:00"}
+    {
+      "property_name": "Example Beach Resort",
+      "field": "beach",
+      "stated": "situated on Example Beach",
+      "where": "brand booking page",
+      "source_url": "https://example.com/f",
+      "observed_at": "2026-10-02T15:02:10+00:00"
+    },
+    {
+      "property_name": "Example Beach Resort",
+      "field": "pools",
+      "stated": "four pools",
+      "where": "brand site",
+      "source_url": "https://example.com/f",
+      "observed_at": "2026-10-02T15:02:10+00:00"
+    },
+    {
+      "property_name": "Example Beach Resort",
+      "field": "pools",
+      "stated": "2 pools",
+      "where": "OTA listing",
+      "source_url": "https://example.com/f2",
+      "observed_at": "2026-10-02T15:02:10+00:00"
+    },
+    {
+      "property_name": "Example Beach Resort",
+      "field": "nearest_mosque",
+      "stated": "Masjid Example - 7 min / 2.8 km by car (Google Maps)",
+      "where": "public map",
+      "source_url": "https://example.com/m",
+      "observed_at": "2026-10-02T15:02:10+00:00"
+    },
+    {
+      "property_name": "Example Beach Resort",
+      "field": "kids_club",
+      "stated": "kids club for ages 4-12",
+      "where": "brand site",
+      "source_url": "https://example.com/k",
+      "observed_at": "2026-10-02T15:02:10+00:00"
+    }
   ],
   "blocked": [
-    {"what": "TripAdvisor", "property_name": "Example Beach Resort", "reason": "DataDome challenge",
-     "source_url": "https://example.com/b", "observed_at": "2026-10-02T15:00:00+00:00"}
+    {
+      "what": "TripAdvisor",
+      "property_name": "Example Beach Resort",
+      "reason": "DataDome challenge",
+      "source_url": "https://example.com/b",
+      "observed_at": "2026-10-02T15:00:00+00:00"
+    }
   ]
 }
