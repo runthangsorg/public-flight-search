@@ -70,7 +70,7 @@ def _rate(**overrides) -> dict:
         "check_out": "2027-07-27",
         "nights": 7,
         "party": {"adults": 5, "children": 0},
-        "booking_shape": "one_unit",
+        "booking_shape": "single_unit",
         "board": "BB",
         "price_basis": "total_stay_rate",
         "currency": "GBP",
@@ -192,12 +192,69 @@ class TestCardShowsTheRate(unittest.TestCase):
 
     def test_the_flexible_rate_leads_with_its_cancellation_date(self):
         html = render_hotel_rate_line(self.deal)
-        self.assertIn("Flexible", html)
+        self.assertIn("FLEXIBLE RATE WITH BREAKFAST", html)
         self.assertIn("Free cancellation until 19 Jul 2027", html)
+
+    def test_a_refundable_rate_is_labelled_with_its_own_name(self):
+        # "Flexible" is our word; "super advance saver" is the hotel's. A
+        # reader searching that name on the hotel's own site needs to find it.
+        saver = _rate(
+            rate_name="SUPER ADVANCE SAVER",
+            prices_shown=[{"unit": "TWO BEDROOM VILLA", "public": 1451.00}],
+            terms=[{"unit": "TWO BEDROOM VILLA",
+                    "cancellation": "Free cancellation until 21 May 2027",
+                    "payment": "Pay at the hotel",
+                    "refundable": True}],
+        )
+        html = render_hotel_rate_line(_deal_for(_deals(saver, _saver_rate())))
+        self.assertIn("SUPER ADVANCE SAVER", html)
+        self.assertIn("£1,451", html)
+        self.assertIn("Free cancellation until 21 May 2027", html)
+        self.assertIn("SAVER NON-REFUNDABLE", html)
+
+    def test_both_rates_are_shown_even_when_the_refundable_one_is_cheaper(self):
+        saver = _rate(
+            rate_name="SUPER ADVANCE SAVER",
+            prices_shown=[{"unit": "TWO BEDROOM VILLA", "public": 1451.00}],
+            terms=[{"unit": "TWO BEDROOM VILLA",
+                    "cancellation": "Free cancellation until 21 May 2027",
+                    "payment": "Pay at the hotel",
+                    "refundable": True}],
+        )
+        html = render_hotel_rate_line(_deal_for(_deals(saver, _saver_rate())))
+        self.assertIn("£1,451", html)
+        self.assertIn("£1,750", html)
+
+    def test_a_rate_with_no_published_name_falls_back_to_the_generic_label(self):
+        unnamed = _rate(
+            rate_name="",
+            prices_shown=[{"unit": "TWO BEDROOM VILLA", "public": 2100.00}],
+            terms=[{"unit": "TWO BEDROOM VILLA",
+                    "cancellation": "Free cancellation until 19 Jul 2027",
+                    "payment": "Pay at the hotel",
+                    "refundable": True}],
+        )
+        html = render_hotel_rate_line(_deal_for(_deals(unnamed)))
+        self.assertIn("Flexible", html)
+
+    def test_a_nightly_rate_is_labelled_as_nightly_x_nights(self):
+        nightly = _rate(
+            price_basis="nightly_room_rate",
+            prices_shown=[{"unit": "TWO BEDROOM VILLA", "public": 150.00}],
+            terms=[{"unit": "TWO BEDROOM VILLA",
+                    "cancellation": "Free cancellation until 19 Jul 2027",
+                    "payment": "Pay at the hotel",
+                    "refundable": True}],
+        )
+        deal = _deal_for(_deals(nightly))
+        self.assertAlmostEqual(deal.hotel_price_total_gbp, 1050.00)
+        html = render_hotel_rate_line(deal)
+        self.assertIn("£1,050", html)
+        self.assertIn("derived: nightly x 7 nights", html)
 
     def test_the_non_refundable_rate_is_labelled_as_such(self):
         html = render_hotel_rate_line(self.deal)
-        self.assertIn("Non-refundable", html)
+        self.assertIn("SAVER NON-REFUNDABLE", html)
 
     def test_the_provenance_names_the_vendor_and_the_day_it_was_read(self):
         html = render_hotel_rate_line(self.deal)
@@ -242,7 +299,7 @@ class TestCardShowsTheRate(unittest.TestCase):
         deal = _deal_for(_deals(_flexible_rate()))
         html = render_hotel_rate_line(deal)
         self.assertIn("£2,100", html)
-        self.assertNotIn("Non-refundable", html)
+        self.assertNotIn("SAVER NON-REFUNDABLE", html)
 
 
 class TestBookingTermsComeFromTheRate(unittest.TestCase):

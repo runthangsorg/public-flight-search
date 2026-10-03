@@ -4291,14 +4291,22 @@ def render_hotel_rate_line(deal: Any) -> str:
     if evidence is None:
         return ""
     cheapest = evidence.cheapest
-    flexible = evidence.flexible or cheapest
-    primary = flexible if flexible.refundable else cheapest
-    # The second rate is shown only when the first one is not already it: a
-    # card must never print the same rate twice under two names.
-    secondary = None if primary is cheapest else cheapest
+    rates = getattr(evidence, "rates", ()) or (cheapest,)
+    refundable = next((rate for rate in rates if rate.refundable), None)
+    non_refundable = next((rate for rate in rates if not rate.refundable), None)
+    # Both are shown when both exist: the refundable rate is frequently the
+    # CHEAPER one, so a card showing only the cheapest can hide the bookable
+    # rate entirely.
+    primary = refundable or non_refundable or cheapest
+    secondary = non_refundable if (refundable and non_refundable is not primary) else None
 
     def _amount(rate: Any) -> str:
-        head = "Flexible" if rate.refundable else "Non-refundable"
+        # The hotel's own rate name is what a reader will search for on the
+        # hotel's site, so it is preferred over our word for the category;
+        # "Flexible" is only a fallback for a rate with no published name.
+        head = str(rate.rate_name or "").strip()
+        if not head:
+            head = "Flexible" if rate.refundable else "Non-refundable"
         text = f"{head} £{rate.price_gbp:,.0f}"
         if rate.refundable and rate.cancellation:
             text += f" ({rate.cancellation})"

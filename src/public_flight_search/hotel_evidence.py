@@ -39,18 +39,22 @@ DEFAULT_HOTEL_EVIDENCE_PATH = "data/holiday_hotel_evidence.json"
 HOTEL_EVIDENCE_MAX_AGE_HOURS = 168
 
 #: Booking shapes that satisfy the one-booking rule: the whole party is in a
-#: single booking, so the total on it is the total for the party.
+#: single booking, so the total on it is the total for the party. These are
+#: the values the engine actually writes — an earlier version of this list
+#: guessed ``one_unit`` and dropped every real villa with "not one booking".
 ONE_BOOKING_SHAPES: frozenset[str] = frozenset(
-    {"one_unit", "two_rooms_one_booking"}
+    {"single_unit", "two_rooms_one_booking"}
 )
 
+#: ``price_basis`` values the engine writes.
+TOTAL_STAY_BASES: frozenset[str] = frozenset({"total_stay_rate"})
+NIGHTLY_BASES: frozenset[str] = frozenset({"nightly_room_rate"})
+
 #: Boards that count as a holiday deal: meals included, at least breakfast.
-#: The owner's breakfast-minimum rule, and ``SC`` was wrongly in this set —
-#: self-catering includes no meals at all, so it breaks the rule exactly as
-#: ``RO`` does and must never be priced as a deal.
-DEAL_BOARDS: frozenset[str] = frozenset(
-    {"BB", "B&B", "BREAKFAST", "HB", "FB", "AI", "UAI"}
-)
+#: The owner's breakfast-minimum rule, and this is the engine's vocabulary
+#: rather than a guess — ``SC`` (self-catering) was wrongly accepted once
+#: already, because it includes no meals, exactly as ``RO`` does not either.
+DEAL_BOARDS: frozenset[str] = frozenset({"BB", "HB", "FB", "AI"})
 
 #: Boards that include no meals, with the reason shown when one is dropped.
 #: Naming the code alone ("SC") tells an operator nothing about why their rate
@@ -59,6 +63,26 @@ NO_MEAL_BOARDS: dict[str, str] = {
     "RO": "no breakfast (room only)",
     "SC": "no breakfast (self-catering)",
 }
+
+#: ``facts.field`` values the card knows how to render. A fact outside this
+#: set is not something this card can present, so it is kept out rather than
+#: mixed into lines a reader will act on.
+HOTEL_FACT_FIELDS: frozenset[str] = frozenset(
+    {
+        "beach",
+        "board_offer",
+        "breakfast",
+        "breakfast_style",
+        "kids_club",
+        "nearest_mosque",
+        "pools",
+        "pools_kids_restaurants",
+        "restaurants",
+        "restaurants_bars",
+        "transfer_distance",
+        "transfer_time",
+    }
+)
 
 
 def hotel_evidence_max_age_hours() -> int:
@@ -169,6 +193,10 @@ class HotelEvidence:
     #: The refundable rate when it is a different rate; None when the
     #: cheapest is already refundable. Never a second copy of the cheapest.
     flexible: Optional[HotelRate]
+    #: Every qualifying rate, cheapest first. The card needs the whole set: a
+    #: refundable "super advance saver" is frequently the CHEAPER rate, and
+    #: showing only the cheapest would hide the bookable one.
+    rates: tuple[HotelRate, ...] = ()
     unit_checks: tuple[UnitCheck, ...] = ()
     ratings: tuple[HotelRating, ...] = ()
     facts: tuple[HotelFact, ...] = ()
@@ -314,69 +342,128 @@ def _terms_for(rate: dict, *, refundable: bool) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def _published_public_total(rate: dict) -> Optional[float]:
+    """The sum of the rates the page displayed, across the units booked."""
+    shown = rate.get("prices_shown")
+    if not isinstance(shown, list):
+        return None
+    total = 0.0
+    seen = False
+    for entry in shown:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            value = float(entry.get("public"))
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            total += value
+            seen = True
+    return total if seen else None
+
+
+def _float_field(payload: Any) -> Optional[float]:
+    if not isinstance(payload, dict):
+        return None
+    try:
+        value = float(payload.get("value"))
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
 def _price_for(rate: dict) -> Optional[tuple[float, str, str, str, str]]:
     """``(gbp, basis, label, stay_basis, how)`` for this rate, or None.
 
-    GBP public first, because a displayed GBP price is a price and a
-    conversion is arithmetic. A derived figure is only ever returned with the
-    exporter's own description of how it was derived, so the card states that
-    it is a conversion and not a GBP price.
+    The card is priced in GBP, so a rate in another currency can only reach it
+    through the exporter's own conversion. In order:
+
+    1. a displayed GBP ``total_stay_rate`` - that figure IS the price of the
+       stay, so it is the one thing here that is a ``public`` price;
+    2. the exporter's ``derived_public_total`` where it is already in GBP -
+       derived, because it is a sum rather than a displayed stay total;
+    3. a displayed GBP ``nightly_room_rate`` multiplied by the nights - the
+       hotel publishes a nightly figure, so the stay total is derived from it;
+    4. ``derived_gbp`` for any other currency - always labelled a conversion.
+
+    Anything else prices nothing. A EUR figure with no GBP conversion is not a
+    GBP rate, and this module exists to stop arithmetic becoming a price.
     """
     currency = str(rate.get("currency", "")).strip().upper()
-    shown = rate.get("prices_shown")
-    public_total = None
-    if isinstance(shown, list):
-        for entry in shown:
-            if not isinstance(entry, dict):
-                continue
-            try:
-                value = float(entry.get("public"))
-            except (TypeError, ValueError):
-                continue
-            if value > 0:
-                public_total = (public_total or 0.0) + value
-    stay_basis = str(rate.get("price_basis", "")).strip() or "unknown"
-    if stay_basis == "nightly":
+    basis_raw = str(rate.get("price_basis", "")).strip()
+    public_total = _published_public_total(rate)
+    derived_total = _float_field(rate.get("derived_public_total"))
+    nights = rate.get("nights")
+    try:
+        nights = int(nights)
+    except (TypeError, ValueError):
+        nights = 0
+
+    if basis_raw in NIGHTLY_BASES:
         stay_basis = "nightly_x_nights"
+    elif basis_raw in TOTAL_STAY_BASES:
+        stay_basis = "total_stay_rate"
+    else:
+        stay_basis = basis_raw or "unknown"
 
-    if currency == "GBP" and public_total:
-        basis = str(rate.get("price_basis", "")).strip()
-        if basis == "total_stay_rate":
-            stay_label = "total price for the stay, tax included"
-        elif basis == "nightly":
-            stay_label = f"nightly rate x {rate.get('nights', 0)} nights"
-        else:
-            stay_label = "price basis not published"
-        return (
-            float(public_total),
-            "public",
-            f"£{public_total:,.0f} {stay_label}, as displayed in GBP",
-            stay_basis,
-            "",
-        )
+    if currency == "GBP":
+        if public_total and basis_raw in TOTAL_STAY_BASES:
+            return (
+                float(public_total),
+                "public",
+                f"£{public_total:,.0f} total price for the stay, tax included, "
+                f"as displayed in GBP",
+                stay_basis,
+                "",
+            )
+        if public_total and basis_raw in NIGHTLY_BASES and nights > 0:
+            # Before ``derived_public_total``: the hotel published a nightly
+            # figure, so the stay total is nightly x nights and the card can
+            # show that arithmetic. The exporter's own total is the fallback
+            # for a nightly rate with no unit prices to multiply.
+            total = float(public_total) * nights
+            # The brief's wording verbatim, with the figures the reader needs
+            # to check the arithmetic themselves.
+            how = (f"nightly x {nights} nights "
+                   f"(£{public_total:,.0f} per night)")
+            return (
+                total,
+                "derived",
+                f"£{total:,.0f} derived: {how}",
+                stay_basis,
+                how,
+            )
+        if derived_total:
+            return (
+                float(derived_total),
+                "derived",
+                f"£{derived_total:,.0f} derived: "
+                f"{_derived_how(rate, 'sum of the units published rates')}",
+                stay_basis,
+                _derived_how(rate, "sum of the units published rates"),
+            )
 
-    derived = rate.get("derived_gbp")
-    if isinstance(derived, dict):
-        try:
-            value = float(derived.get("value"))
-        except (TypeError, ValueError):
-            return None
-        if not value > 0:
-            return None
-        how = str(derived.get("how", "")).strip() or "converted from the displayed price"
-        # The disclaimer is the point of this branch, so it is stated unless
-        # the exporter's own wording already says it (appending it twice reads
-        # like two different conversions).
-        if "not a gbp price" not in how.lower():
-            how = f"{how}; a conversion, not a GBP price"
-        return (
-            value,
-            "derived",
-            f"£{value:,.0f} converted — {how}",
-            stay_basis,
-            how,
-        )
-    return None
+    converted = _float_field(rate.get("derived_gbp"))
+    if converted is None:
+        return None
+    how = str((rate.get("derived_gbp") or {}).get("how", "")).strip()
+    how = how or "converted from the displayed price"
+    # The disclaimer is the point of this branch, so it is stated unless the
+    # exporter's own wording already says it (appending it twice reads like
+    # two different conversions).
+    if "not a gbp price" not in how.lower():
+        how = f"{how}; a conversion, not a GBP price"
+    return (
+        float(converted),
+        "derived",
+        f"£{converted:,.0f} converted — {how}",
+        stay_basis,
+        how,
+    )
+
+
+def _derived_how(rate: dict, fallback: str) -> str:
+    return str((rate.get("derived_public_total") or {}).get("how", "")).strip() or fallback
 
 
 def _refundable(rate: dict) -> bool:
@@ -568,6 +655,7 @@ def load_hotel_evidence(
             booking_shape=cheapest.booking_shape,
             cheapest=cheapest,
             flexible=flexible,
+            rates=tuple(sorted(found, key=lambda rate: rate.price_gbp)),
             unit_checks=_unit_checks(payload, name, check_in, check_out),
             ratings=_ratings(payload, name),
             facts=_facts(payload, name),
@@ -643,6 +731,14 @@ def _facts(payload, name: str) -> tuple[HotelFact, ...]:
         stated = str(item.get("stated", "")).strip()
         field_name = str(item.get("field", "")).strip()
         if not stated or not field_name:
+            continue
+        if field_name not in HOTEL_FACT_FIELDS:
+            # Kept out, not dropped from the file: this card cannot render it,
+            # and a fact the reader cannot act on is noise on a card.
+            _warn_skip(
+                f"{name} fact {field_name!r}",
+                "field is not one this card can present",
+            )
             continue
         out.append(
             HotelFact(

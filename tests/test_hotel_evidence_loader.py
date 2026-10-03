@@ -128,6 +128,77 @@ class TestMissingFile(unittest.TestCase):
         self.assertEqual(loaded, {})
 
 
+class TestExporterVocabulary(unittest.TestCase):
+    """The loader must speak the EXPORTER's vocabulary, not an invented one.
+
+    The first version of this loader accepted ``booking_shape: one_unit`` and a
+    ``price_basis: nightly``, neither of which the engine ever writes. It
+    dropped 24 of 38 real rates with "not one booking" - every villa, because
+    the engine writes ``single_unit``. A gate written from a guessed schema is
+    not a gate; it is an outage with a reassuring skip log.
+    """
+
+    def setUp(self):
+        self.properties = _properties(_load())
+        consume_hotel_skip_log()
+
+    def test_single_unit_is_one_booking(self):
+        self.assertIn("GBP Direct Resort", self.properties)
+        self.assertEqual(
+            self.properties["GBP Direct Resort"].booking_shape, "single_unit")
+
+    def test_no_real_rate_is_dropped_as_not_one_booking(self):
+        _load()
+        reasons = "\n".join(consume_hotel_skip_log())
+        self.assertNotIn("is not one booking", reasons.replace(
+            "Three Rooms Resort: booking_shape 'three_rooms' is not one booking", ""))
+
+    def test_nightly_room_rate_is_priced_for_the_whole_stay(self):
+        entry = self.properties["Gbp Nightly Resort"]
+        self.assertAlmostEqual(entry.cheapest.price_gbp, 1050.00)
+        self.assertEqual(entry.cheapest.stay_basis, "nightly_x_nights")
+        self.assertEqual(entry.cheapest.nights, 7)
+        self.assertIn("derived: nightly x 7 nights", entry.cheapest.price_label)
+
+    def test_a_nightly_rate_is_labelled_derived_not_public(self):
+        entry = self.properties["Nightly Basis Resort"]
+        self.assertEqual(entry.cheapest.price_basis, "derived")
+        self.assertIn("not a GBP price", entry.cheapest.price_label)
+
+    def test_derived_public_total_is_used_when_no_unit_prices_are_published(self):
+        entry = self.properties["Derived Total Resort"]
+        self.assertAlmostEqual(entry.cheapest.price_gbp, 1200.00)
+        self.assertEqual(entry.cheapest.price_basis, "derived")
+
+    def test_a_euro_total_with_no_gbp_conversion_prices_nothing(self):
+        # The card is priced in GBP. A EUR figure with no conversion is not a
+        # GBP rate, and guessing a rate is what this whole seam exists to stop.
+        self.assertNotIn("Euro Without Conversion Resort", self.properties)
+        _load()
+        self.assertIn("Euro Without Conversion Resort", "\n".join(consume_hotel_skip_log()))
+
+    def test_all_inclusive_is_a_deal_board(self):
+        entry = self.properties["All Inclusive Resort"]
+        self.assertEqual(entry.cheapest.board, "AI")
+        self.assertAlmostEqual(entry.cheapest.price_gbp, 3400.00)
+
+    def test_an_unknown_fact_field_is_kept_out_of_the_card_facts(self):
+        # The card renders a known set of fields; a fact we cannot render is
+        # not silently mixed into them.
+        fields = {fact.field for fact in self.properties["Example Beach Resort"].facts}
+        self.assertNotIn("spa", fields)
+        self.assertIn("pools_kids_restaurants", fields)
+        self.assertIn("transfer_time", fields)
+
+    def test_every_qualifying_rate_is_returned_for_the_card_to_choose_between(self):
+        entry = self.properties["Example Beach Resort"]
+        self.assertEqual(len(entry.rates), 2)
+        self.assertEqual(
+            {rate.rate_name for rate in entry.rates},
+            {"FLEXIBLE RATE WITH BREAKFAST", "SAVER NON-REFUNDABLE"},
+        )
+
+
 class TestDisqualifyingConditions(unittest.TestCase):
     def setUp(self):
         self.properties = _properties(_load())
