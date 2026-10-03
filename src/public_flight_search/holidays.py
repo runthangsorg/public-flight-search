@@ -973,6 +973,12 @@ class PackageDeal:
     beach: str = ""
     # Data provenance per confidence gates.
     confidence: str = "market-supported"
+    # How the HOTEL rate on this card was obtained, from the resort data's
+    # own confidence field ("market-supported" = a rate read for these dates,
+    # "estimate" = an estimate from the nearest dates on sale). The single
+    # ``confidence`` field above is the FLIGHT basis whenever live evidence
+    # is used, so the hotel's own basis needs its own field (F4, 2026-10-03).
+    hotel_rate_basis: str = ""
     source_url: str = ""
     # When a live whole-party fare is used, the carrier the provider actually
     # displayed (may differ from the benchmark carrier); empty on benchmarks.
@@ -3573,6 +3579,11 @@ def collect_holiday_deals(
                                     else resort.get("confidence", "market-supported")
                                 )
                             ),
+                            # The hotel rate's own basis, kept apart from the
+                            # flight basis above (F4, 2026-10-03).
+                            hotel_rate_basis=str(
+                                resort.get("confidence", "market-supported")
+                            ),
                             # An aged fare shows its source and observed date too:
                             # the auditability mandate applies to a "this was
                             # observed on <date>" claim as much as to a live one.
@@ -4326,6 +4337,36 @@ def render_booking_terms(deal_or_row: Any) -> str:
             '<strong style="color:#0f172a;">Booking terms:</strong> ' + body + '</div>')
 
 
+def prices_checked_footer(deal: Any, *, generated_at: str) -> str:
+    """The card's last line: how old each half of its numbers is.
+
+    Flights carry their age from the observed-at field the fare was read with
+    (``live_observed_at``); a benchmark that was never observed says so rather
+    than wearing an age. The hotel rate has no observed-at field anywhere in
+    the data, so its leg states the basis instead of a fabricated date — and
+    when the rate is an estimate from the nearest dates on sale, it says
+    exactly that (owner brief 2026-10-03, F4).
+    """
+    observed_at = str(getattr(deal, "live_observed_at", "") or "")
+    if observed_at:
+        flight_words = (
+            relative_age_label(observation_age_hours(observed_at, generated_at))
+            or "date unknown"
+        )
+    else:
+        flight_words = "not observed — benchmark"
+    basis = str(getattr(deal, "hotel_rate_basis", "") or "market-supported")
+    if basis == "estimate":
+        hotel_words = "hotel rate from nearest dates, not your exact dates"
+    else:
+        hotel_words = "hotel rate read for these dates"
+    return (
+        '<div style="margin:8px 0 0 0; color:#64748b; font-size:11px;">'
+        'Prices last checked: flights ' + escape(flight_words)
+        + ', ' + hotel_words + '.</div>'
+    )
+
+
 def _option_title(option: Mapping[str, Any]) -> str:
     if option["kind"] == "business":
         return "(a) Business, normal route"
@@ -5031,6 +5072,8 @@ def render_holiday_report(
             out.append('<span style="color:#cbd5e1;"> · </span>')
             out.append('<a href="' + escape(deal.compare_url, quote=True) + '" style="color:#2563eb;text-decoration:none;">compare room prices ↗</a>')
             out.append('</div>')
+            # The card's last line: the age of the numbers above it (F4).
+            out.append(prices_checked_footer(deal, generated_at=generated_at))
             out.append('</td>')
             out.append('</tr></table>')
 
