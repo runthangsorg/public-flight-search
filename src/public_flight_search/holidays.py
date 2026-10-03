@@ -991,6 +991,12 @@ class PackageDeal:
     #: Google (or another named site's) rating read for this property, with
     #: its source and review count (owner brief 2026-10-03, H4).
     hotel_ratings: tuple = ()
+    #: Facts the engine read for this property (nearest mosque with its drive
+    #: time, kids' club, pools, restaurants), each with its own source.
+    hotel_facts: tuple = ()
+    #: Which value-score inputs came from read facts rather than the registry
+    #: or its defaults (owner brief 2026-10-03, H5).
+    value_score_from_facts: tuple = ()
     #: The loader's evidence for this resort and these dates, when one was
     #: read (owner brief 2026-10-03, H3). None means the stay is priced from
     #: the catalogue, exactly as before the seam existed.
@@ -3095,14 +3101,75 @@ def cabin_carrier(*, airport: str, cabin: str, economy_carrier: str) -> str:
     return economy_carrier
 
 
+def _criteria_from_facts(facts: Sequence[Any]) -> dict[str, float]:
+    """Criteria inputs this report can state because the engine READ them.
+
+    The registry's curated 0-10 scores are hand-assigned, and a resort with no
+    registry entry falls back to neutral defaults — which is why most cards
+    say "value score not verified". When the private engine has read a fact
+    about this property, the input it covers stops being a default and becomes
+    a measurement, and the score may be shown.
+
+    The mapping is deliberately thin and conservative: a fact either covers an
+    input or it does not. Pools alone do not establish a heated pool, so they
+    do not move the winter score, and nothing here infers a number nobody
+    stated.
+    """
+    overrides: dict[str, float] = {}
+    fields = {getattr(fact, "field", ""): getattr(fact, "stated", "")
+              for fact in (facts or ())}
+
+    kids = fields.get("kids_club") or fields.get("pools_kids_restaurants")
+    if kids:
+        # A club with a stated age range is a real, age-appropriate activity.
+        overrides["activities"] = 6.0
+    restaurants = (fields.get("restaurants") or fields.get("restaurants_bars")
+                   or fields.get("pools_kids_restaurants"))
+    if restaurants:
+        # Stated on-site restaurants are what the food score measures: the
+        # number of venues, not whether we think the food is good.
+        overrides["food"] = 6.0
+
+    mosque = fields.get("nearest_mosque") or ""
+    if mosque:
+        match = re.search(r"(\d{1,3})\s*min", mosque, re.IGNORECASE)
+        if match:
+            minutes = int(match.group(1))
+            # Drive time, not walking time: the number the reader will drive.
+            if minutes <= 10:
+                overrides["mosque"] = 8.0
+            elif minutes <= 20:
+                overrides["mosque"] = 6.0
+            elif minutes <= 45:
+                overrides["mosque"] = 4.0
+            else:
+                overrides["mosque"] = 2.0
+    return overrides
+
+
 def _criteria_fields(
-    resort_name: str, true_pp: float, dec_avg_temp_c: Optional[float] = None
+    resort_name: str,
+    true_pp: float,
+    dec_avg_temp_c: Optional[float] = None,
+    facts: Sequence[Any] = (),
 ) -> dict[str, Any]:
     """Criteria bundle for one resort from the recovered registry (defaults
-    keep any un-registered resort renderable with neutral scores)."""
-    c = RESORT_CRITERIA.get(resort_name, {})
+    keep any un-registered resort renderable with neutral scores).
+
+    ``facts`` are the facts the private engine read for THIS property. They
+    override the registry for the inputs they cover, and their presence is
+    what makes the score a measurement rather than a set of defaults.
+    """
+    c = dict(RESORT_CRITERIA.get(resort_name, {}))
+    registry_has_criteria = bool(RESORT_CRITERIA.get(resort_name))
     indoor = int(c.get("indoor", 2))
     heated = bool(c.get("heated_indoor_pool", False))
+    # Facts read for THIS property by the private engine override the registry
+    # for the inputs they cover: they are the fresher, property-specific
+    # reading, and they are the difference between a measured score and the
+    # neutral defaults.
+    fact_inputs = _criteria_from_facts(facts)
+    c.update(fact_inputs)
     value = compute_value_score(
         true_pp=true_pp,
         luxury=float(c.get("luxury", 5)),
@@ -3123,9 +3190,12 @@ def _criteria_fields(
         "activities_score": float(c.get("activities", 5)),
         "flight_quality_score": float(c.get("flight_quality", 7)),
         "value_score": value,
-        # Whether that score came from this resort's own criteria or from the
-        # neutral defaults above. A default-derived score is not a measurement.
-        "value_score_verified": bool(c),
+        # Whether that score came from real inputs: this resort's own criteria
+        # in the registry, or facts read for it by the private engine. A
+        # default-derived score is not a measurement, so it is named unknown on
+        # the card rather than printed as a number (T11b).
+        "value_score_verified": bool(registry_has_criteria or fact_inputs),
+        "value_score_from_facts": sorted(fact_inputs),
         "mosque_name": c.get("mosque_name", ""),
         "mosque_walk_minutes": int(c.get("mosque_walk_minutes", 0)),
         "food_review_summary": c.get("food_review_summary", ""),
@@ -3653,6 +3723,7 @@ def collect_holiday_deals(
                                 supplemental_for(resort["name"], "blocked"),
                             ),
                             hotel_ratings=supplemental_for(resort["name"], "ratings"),
+                            hotel_facts=supplemental_for(resort["name"], "facts"),
                             uk_ground_gbp=uk_ground,
                             transfer_gbp=transfer,
                             true_d2d_gbp=true_d2d,
@@ -3707,6 +3778,7 @@ def collect_holiday_deals(
                             **_criteria_fields(
                                 resort["name"],
                                 price_pp,
+                                facts=supplemental_for(resort["name"], "facts"),
                                 dec_avg_temp_c=_dec_temp_for_floor(
                                     target_outbound,
                                     float(resort.get("dec_ambient_c", (0, 0))[0]),
@@ -4377,6 +4449,64 @@ def hotel_provider_line(rate: Any) -> str:
     # "aggregator" is an inference, and an inference on a price is the thing
     # this card exists to avoid.
     return f"via {provider}"
+
+
+#: How each fact the engine reads is introduced on the card. Only the fields
+#: the engine actually writes appear here; anything else was refused at load.
+HOTEL_FACT_LABELS: dict[str, str] = {
+    "nearest_mosque": "🕌 mosque",
+    "kids_club": "🧒 kids club",
+    "pools": "🏊 pools",
+    "pools_kids_restaurants": "🏊 pools, kids club, restaurants",
+    "restaurants": "🍽 restaurants",
+    "restaurants_bars": "🍽 restaurants and bars",
+    "beach": "🏖 beach",
+    "breakfast": "🍳 breakfast",
+    "breakfast_style": "🍳 breakfast",
+    "board_offer": "🍽 board",
+    "transfer_time": "🚐 transfer",
+    "transfer_distance": "🚐 transfer",
+}
+
+
+def render_hotel_facts_line(deal: Any) -> str:
+    """Every fact read for this property, each with the source it came from.
+
+    Only stated facts appear: a fact nobody read is not a fact, and inventing
+    one is the failure this seam exists to prevent. Where two sources disagree
+    — "four pools" from the brand site, "2 pools" from an OTA — both are shown
+    and the disagreement is named. Picking a winner between two sources is a
+    judgement the evidence cannot make, and silently picking one would make the
+    card look certain about something it is not.
+    """
+    facts = tuple(getattr(deal, "hotel_facts", ()) or ())
+    if not facts:
+        return ""
+    grouped: dict[str, list[Any]] = {}
+    for fact in facts:
+        grouped.setdefault(fact.field, []).append(fact)
+    parts: list[str] = []
+    for field_name, records in grouped.items():
+        label = HOTEL_FACT_LABELS.get(field_name, field_name.replace("_", " "))
+        texts = []
+        for record in records:
+            source = record.where or "read"
+            text = f"{escape(record.stated)} <span style=\"color:#94a3b8;\">({escape(source)})</span>"
+            if record.source_url:
+                text += (' <a href="' + escape(record.source_url, quote=True)
+                         + '" style="color:#2563eb;text-decoration:none;font-size:11px;">'
+                         'source ↗</a>')
+            texts.append(text)
+        disputed = len({str(record.stated).strip().lower() for record in records}) > 1
+        flag = (' <span style="color:#b45309;">sources disagree</span>'
+                if disputed else "")
+        parts.append(f"{escape(label)}: " + flag.join([""]) + '<span style="color:#cbd5e1;"> · </span>'.join(texts) + flag)
+    return (
+        '<div style="margin:0 0 6px 0; color:#334155; font-size:13px;">'
+        '<strong style="color:#0f172a;">Facts read:</strong> '
+        + '<span style="color:#cbd5e1;"> | </span>'.join(parts)
+        + '</div>'
+    )
 
 
 def render_hotel_rating_line(deal: Any) -> str:
@@ -5289,6 +5419,7 @@ def render_holiday_report(
             # a real rate was read for this resort and these dates (H3).
             out.append(render_hotel_rate_line(deal))
             out.append(render_hotel_rating_line(deal))
+            out.append(render_hotel_facts_line(deal))
             out.append(render_board_line(deal))
             out.append(render_booking_terms(deal))
             if deal.flight_options:
