@@ -576,6 +576,29 @@ def build_trailfinders_link(trip: TripQuery) -> VendorLink:
     )
 
 
+#: UK ATOL holders behind this module's vendor links, from the CAA's own
+#: public "Check an ATOL" register (POST
+#: https://aircraftapi.caa.co.uk/api/checkanatol/search — the API behind
+#: https://www.caa.co.uk/atol-protection/check-an-atol/search-atol-holders/ —
+#: searched by company/trading name on 2026-10-03). The vendor key is the
+#: exact name a VendorLink carries, so the renderer can only name a claim the
+#: register supports. An operator absent from the register under its own name
+#: is deliberately not here: Qatar Airways Holidays returned no results under
+#: "Qatar Airways Holidays", "Qatar Airways" or "qatarairways" (searched
+#: 2026-10-03), so its link stays but it is never named ATOL-protected.
+ATOL_REGISTER_BY_VENDOR: dict[str, str] = {
+    "Love Holidays": "10989",           # We Love Holidays Ltd
+    "Destination2": "11462",            # Destination 2 Limited
+    "Jet2holidays": "9618",             # Jet2holidays Ltd
+    "easyJet holidays": "11694",        # easyJet Holidays Ltd
+    "British Airways Holidays": "5985", # British Airways Holidays Ltd
+    "Emirates Holidays": "4086",        # Emirates Holidays (U.K.) Limited
+    "Etihad Holidays": "11125",         # Capital Holidays (International) L.L.C., trading as Etihad Holidays
+    "Kuoni": "0132",                    # DER Touristik UK Ltd, trading as Kuoni
+    "Trailfinders": "T1458",            # Trailfinders Ltd
+}
+
+
 def build_atol_operator_links(trip: TripQuery) -> tuple[VendorLink, ...]:
     """The six ATOL package operators, in the brief's order.
 

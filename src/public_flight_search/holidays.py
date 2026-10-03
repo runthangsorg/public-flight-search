@@ -31,6 +31,7 @@ from .vendors import (
     SEARCH_PAGE as VENDOR_SEARCH_PAGE,
     PRICE_NOT_VERIFIED,
     ATOL_OPERATOR_LINK_BASES,
+    ATOL_REGISTER_BY_VENDOR,
     build_atol_operator_links,
     build_vendor_links,
     price_label_line,
@@ -3813,6 +3814,28 @@ def peak_discount_badge(deal) -> str:
             + ' font-weight:700;">' + escape(label) + '</span>')
 
 
+def _atol_line(links: Sequence[Any]) -> str:
+    """The ATOL statement for the operator links a card actually carries.
+
+    Only operators in the CAA's own register (``ATOL_REGISTER_BY_VENDOR``) are
+    named, each with its ATOL number so the claim is checkable at the source.
+    An operator the register does not list under its own name is never given
+    the claim (owner brief 2026-10-03, F2).
+    """
+    named = []
+    for link in links:
+        atol = ATOL_REGISTER_BY_VENDOR.get(link.vendor)
+        if atol:
+            named.append(escape(link.vendor) + ' (ATOL ' + escape(atol) + ')')
+    if not named:
+        return ""
+    return (
+        '<div style="margin:2px 0 0 0; color:#166534; font-size:12px;">'
+        '🛡️ ATOL-protected package available via ' + ' · '.join(named)
+        + '.</div>'
+    )
+
+
 def render_vendor_block(deal: PackageDeal, *, adults: int, rooms: Sequence[int]) -> str:
     """One link per PACKAGE OPERATOR for this hotel card, each tagged with what
     its URL actually carries.
@@ -3847,6 +3870,9 @@ def render_vendor_block(deal: PackageDeal, *, adults: int, rooms: Sequence[int])
         + escape(deal.outbound_date) + '→' + escape(deal.return_date) + ' · '
         + escape(','.join(deal.origin_airports)) + '</span><br>'
     ]
+    # The package route's protection, stated where the operator links are and
+    # only for operators the CAA register lists (F2).
+    parts.append(_atol_line(links))
     for i, link in enumerate(links):
         if i:
             parts.append('<span style="color:#cbd5e1;"> · </span>')
@@ -4250,6 +4276,11 @@ def _booking_term_values(deal: Any) -> tuple[list[str], list[str]]:
         verified.append("ATOL protected")
     else:
         verified.append("not ATOL protected")
+    # The self-build route the card prices — flights bought separately from
+    # the room — is never ATOL-protected. ATOL protects a package bought as
+    # one purchase from an operator, so this is a fact about the booking
+    # route, not an unknown (owner brief 2026-10-03, F2).
+    verified.append("self-build: not ATOL-protected")
     # The transfer is ground transport the code already prices, so it is a known
     # value (a modelled estimate, labelled as one) — never an unknown. The
     # per-option lines state the time; here we carry the priced amount.
