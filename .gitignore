@@ -9,3 +9,7 @@ build/
 .env
 *.log
 results/
+# Runtime private evidence seeded by the workflows from the private data
+# repo — never committed.
+data/holiday_hotel_evidence.json
+data/holiday_live_evidence.json

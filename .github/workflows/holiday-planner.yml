@@ -123,6 +123,42 @@ jobs:
           else
             echo "::warning::No holiday_live_evidence.json in private repo; report will run on benchmarks."
           fi
+      # Hotel evidence is CURRENT MARKET DATA from the private browser
+      # engine, exactly like the flight evidence above: exact-date, whole-party
+      # rate observations with terms, facts and unit checks, revalidated by
+      # the loader. A missing file changes nothing in today's output.
+      - name: Seed hotel evidence from private data repo
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.dry_run == false || inputs.seed_evidence == true))
+        env:
+          HISTORY_DEPLOY_KEY: ${{ secrets.HISTORY_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HISTORY_DEPLOY_KEY}" || {
+            echo "::warning::HISTORY_DEPLOY_KEY not configured; cards will run on catalogue rates."
+            exit 0
+          }
+          # Same transport as the flight evidence step: reuse the history
+          # clone when this run made one, else clone once.
+          HOTEL_SRC="/tmp/history-seed/data/holiday_hotel_evidence.json"
+          if [[ ! -f "${HOTEL_SRC}" ]]; then
+            mkdir -p ~/.ssh
+            echo "$HISTORY_DEPLOY_KEY" > ~/.ssh/history_deploy_key
+            chmod 600 ~/.ssh/history_deploy_key
+            export GIT_SSH_COMMAND="ssh -i ~/.ssh/history_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+            GH_USER_PART="git@"
+            GH_HOST_PART="github.com"
+            rm -rf /tmp/hotel-evidence-seed
+            git clone --depth 1 "${GH_USER_PART}${GH_HOST_PART}:runthangsorg/dealsearch.git" /tmp/hotel-evidence-seed
+            HOTEL_SRC="/tmp/hotel-evidence-seed/data/holiday_hotel_evidence.json"
+          fi
+          mkdir -p data
+          if [[ -f "${HOTEL_SRC}" ]]; then
+            cp "${HOTEL_SRC}" data/holiday_hotel_evidence.json
+            echo "Seeded hotel evidence: $(python3 -c "import json;e=json.load(open('data/holiday_hotel_evidence.json'));print(len(e.get('rates',[])),'rates across',len({r.get('property_name') for r in e.get('rates',[])}),'properties')" 2>/dev/null || echo 'unreadable')"
+          else
+            echo "::warning::No holiday_hotel_evidence.json in private repo; cards will use catalogue rates."
+          fi
       - name: Build and optionally deliver
         env:
           HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.HOLIDAY_SEARCH_CONFIG_JSON }}
