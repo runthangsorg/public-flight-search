@@ -108,6 +108,9 @@ def _write_step_summary(result: dict) -> None:
          f"{result.get('live_flight_airports', 0)} airports "
          f"(stale cache: {result.get('stale_flight_airports', 0)}, "
          f"aged out: {result.get('live_evidence_age_hours')}h)"),
+        ("Hotel rates used",
+         f"{result.get('hotel_rates_priced_cards', 0)} cards priced from "
+         f"{result.get('hotel_rate_properties', 0)} read properties"),
         ("Email sent", "yes" if result.get("email_sent") else
          f"no ({result.get('email_skipped_reason') or result.get('email_cooldown_reason') or 'no change'})"),
     ]
@@ -200,6 +203,32 @@ def run_holiday_planner(
         print(
             f"live-evidence: load failed: {during_live_error}", file=sys.stderr
         )
+    # HOTEL EVIDENCE (owner brief 2026-10-03, H3): the same seam for the stay.
+    # The workflow seeds `hotel-evidence.json` from the private repo before
+    # this job runs, so a run with no file simply keeps the catalogue rates.
+    from . import hotel_evidence as hotel_evidence_module
+
+    hotel_evidence_path = os.environ.get(
+        "HOLIDAY_HOTEL_EVIDENCE_PATH",
+        hotel_evidence_module.DEFAULT_HOTEL_EVIDENCE_PATH,
+    )
+    hotel_rates: dict[tuple[str, str, str], object] = {}
+    hotel_skipped: list[str] = []
+    hotel_evidence_error: Optional[str] = None
+    try:
+        hotel_rates = dict(
+            hotel_evidence_module.load_hotel_evidence(
+                config, path=hotel_evidence_path, now=datetime.now(timezone.utc).isoformat()
+            )
+        )
+        hotel_skipped = hotel_evidence_module.consume_hotel_skip_log()
+    except Exception as exc:
+        hotel_rates = {}
+        hotel_evidence_error = f"{type(exc).__name__}: {exc}"
+        hotel_skipped = [f"hotel-evidence load failed: {hotel_evidence_error}"]
+        print(
+            f"hotel-evidence: load failed: {hotel_evidence_error}", file=sys.stderr
+        )
     # CONSUMPTION CONTRACT (2026-09-23): the report prices ONE date pair from
     # ONE origin for a specific set of (airport, cabin) keys, and the private
     # hunt has no other way to learn that set. Before this was recorded, 125
@@ -233,6 +262,7 @@ def run_holiday_planner(
     deals = collect_holiday_deals(
         config, max_budget_gbp=config.max_budget_gbp,
         live_flight_offers=live_offers or None,
+        hotel_evidence=hotel_rates or None,
     )
     # MEMORY BEFORE BUILD: the workflow seeds `history_path` from the
     # private repo in a dedicated bash step (proven transport) BEFORE this
@@ -359,6 +389,18 @@ def run_holiday_planner(
         # above is a fallback shape rather than a measurement.
         "live_evidence_contract_error": contract_error,
         "live_evidence_load_error": during_live_error,
+        # Hotel evidence: what actually priced a stay, and what was refused.
+        # An operator who sees a catalogue rate needs to know whether a rate
+        # was loaded and rejected, or simply never collected.
+        "hotel_evidence_file_found": os.path.exists(hotel_evidence_path),
+        "hotel_rate_properties": len(
+            {key[0] for key in hotel_rates}
+        ),
+        "hotel_rates_priced_cards": sum(
+            1 for deal in deals if deal.hotel_evidence is not None
+        ),
+        "hotel_evidence_skipped": hotel_skipped,
+        "hotel_evidence_load_error": hotel_evidence_error,
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
         "send_skipped_no_change": (not dry_run) and not send_email,

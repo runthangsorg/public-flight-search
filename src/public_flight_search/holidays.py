@@ -24,6 +24,10 @@ from .config import (
 from .google_flights import build_google_flights_legs_url, build_google_flights_roundtrip_url
 from . import live_verify
 from .live_verify import LiveFareEvidence, evidence_for, priced_date_pair
+# ``hotel_evidence`` imports this module lazily (inside its functions, for the
+# priced date pairs and the season tables), so the import is acyclic — the
+# same seam as ``live_verify`` above.
+from .hotel_evidence import hotel_rate_for, hotel_rate_provenance
 from .vendors import (
     DEEP_LINK as VENDOR_DEEP_LINK,
     DESTINATION_PAGE as VENDOR_DESTINATION_PAGE,
@@ -979,6 +983,10 @@ class PackageDeal:
     # ``confidence`` field above is the FLIGHT basis whenever live evidence
     # is used, so the hotel's own basis needs its own field (F4, 2026-10-03).
     hotel_rate_basis: str = ""
+    #: The loader's evidence for this resort and these dates, when one was
+    #: read (owner brief 2026-10-03, H3). None means the stay is priced from
+    #: the catalogue, exactly as before the seam existed.
+    hotel_evidence: Any = None
     source_url: str = ""
     # When a live whole-party fare is used, the carrier the provider actually
     # displayed (may differ from the benchmark carrier); empty on benchmarks.
@@ -3123,11 +3131,18 @@ def collect_holiday_deals(
     config: HolidayConfig,
     max_budget_gbp: Optional[float] = None,
     live_flight_offers: Optional[Mapping[str, LiveFareEvidence]] = None,
+    hotel_evidence: Optional[Mapping[Any, Any]] = None,
 ) -> tuple[PackageDeal, ...]:
     """Calculate holiday packages, enforcing the budget on BOTH the package
     total (flights + hotel) AND the True D2D total (package + UK ground +
     destination transfer). Anything over budget on either measure is dropped —
-    never labelled "under budget" while breaching the ceiling."""
+    never labelled "under budget" while breaching the ceiling.
+
+    ``hotel_evidence`` is the loader's output (owner brief 2026-10-03, H3). Where
+    a card's resort and dates have a qualifying rate, that rate prices the stay
+    instead of the catalogue estimate — and the card says so. Absent, or with no
+    qualifying rate, nothing changes.
+    """
     if max_budget_gbp is None:
         max_budget_gbp = getattr(config, "max_budget_gbp", 5000.0)
     pairs = pricing_order(config)
@@ -3174,7 +3189,15 @@ def collect_holiday_deals(
         best: Optional[dict] = None
         for outbound, returning in pairs:
             nights = nights_between((outbound, returning))
-            hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
+            # A rate read for THIS resort on THESE dates beats the catalogue
+            # estimate or nearest-date figure for the same property: it is the
+            # price for the stay the card is offering. It is looked up per pair
+            # because a rate for one set of nights is not a rate for another.
+            hotel_rate = hotel_rate_for(hotel_evidence, resort["name"], outbound, returning)
+            if hotel_rate is not None:
+                hotel_cost = round(float(hotel_rate.cheapest.price_gbp), 2)
+            else:
+                hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
             peak_hotel = round(arch["suite_peak_nightly_gbp"] * nights, 2)
             for origin_index, origin in enumerate(config.origins):
                 # Live evidence must be a WHOLE-PARTY, exact-date amount for
@@ -3219,6 +3242,7 @@ def collect_holiday_deals(
                     "peak_hotel": peak_hotel,
                     "evidence": evidence,
                     "evidence_used": evidence_used,
+                    "hotel_rate": hotel_rate,
                 }
                 if prefer_evidence and best is not None and best["evidence_used"] != evidence_used:
                     # An observed fare beats a benchmark outright: a x2.5
@@ -3476,6 +3500,7 @@ def collect_holiday_deals(
                     departure_origin = option["origin"]
                     evidence = option["evidence"]
                     evidence_used = option["evidence_used"]
+                    hotel_rate = option.get("hotel_rate")
                     price_pp = round(total_pkg / travellers, 2)
                     # REAL discount baseline: the SAME suite, same nights/party,
                     # at the resort's summer peak (Jul/Aug school-holiday highs),
@@ -3546,8 +3571,16 @@ def collect_holiday_deals(
                             # when it is actually there. A key that is absent
                             # stays None, which the card prints as "not
                             # verified" rather than filling in.
-                            free_cancellation_until=resort.get("free_cancellation_until") or None,
-                            deposit_payment=resort.get("deposit_payment") or None,
+                            free_cancellation_until=(
+                                hotel_rate.cheapest.cancellation
+                                if hotel_rate is not None and hotel_rate.cheapest.cancellation
+                                else resort.get("free_cancellation_until") or None
+                            ),
+                            deposit_payment=(
+                                hotel_rate.cheapest.payment
+                                if hotel_rate is not None and hotel_rate.cheapest.payment
+                                else resort.get("deposit_payment") or None
+                            ),
                             checked_baggage=resort.get("checked_baggage") or None,
                             atol_protected=resort.get("atol_protected"),
                             beach_access=resort.get("beach_access") or (
@@ -3581,9 +3614,12 @@ def collect_holiday_deals(
                             ),
                             # The hotel rate's own basis, kept apart from the
                             # flight basis above (F4, 2026-10-03).
-                            hotel_rate_basis=str(
-                                resort.get("confidence", "market-supported")
+                            hotel_rate_basis=(
+                                "exact-date-rate"
+                                if hotel_rate is not None
+                                else str(resort.get("confidence", "market-supported"))
                             ),
+                            hotel_evidence=hotel_rate,
                             # An aged fare shows its source and observed date too:
                             # the auditability mandate applies to a "this was
                             # observed on <date>" claim as much as to a live one.
@@ -4236,6 +4272,56 @@ def render_far_east_watch(config: HolidayConfig) -> str:
                        + f'{budget:,.0f}' + ' budget</span> · ' + _links(row) + '</td></tr>')
         out.append('</table>')
     return ''.join(out)
+
+
+def render_hotel_rate_line(deal: Any) -> str:
+    """The stay's price, where it was read rather than estimated.
+
+    Only rendered when a qualifying rate exists for this resort and these dates;
+    without one the card looks exactly as it did before hotel evidence existed,
+    because a catalogue estimate must not be dressed up as an observation.
+
+    Both rates are shown when there are two — the flexible one with its
+    cancellation date, then the non-refundable one — and the line states when
+    the rate was read, from whom, and on what basis, because a converted
+    figure that reads like a GBP price is the failure mode this whole seam
+    exists to prevent (owner brief 2026-10-03, H3).
+    """
+    evidence = getattr(deal, "hotel_evidence", None)
+    if evidence is None:
+        return ""
+    cheapest = evidence.cheapest
+    flexible = evidence.flexible or cheapest
+    primary = flexible if flexible.refundable else cheapest
+    # The second rate is shown only when the first one is not already it: a
+    # card must never print the same rate twice under two names.
+    secondary = None if primary is cheapest else cheapest
+
+    def _amount(rate: Any) -> str:
+        head = "Flexible" if rate.refundable else "Non-refundable"
+        text = f"{head} £{rate.price_gbp:,.0f}"
+        if rate.refundable and rate.cancellation:
+            text += f" ({rate.cancellation})"
+        return escape(text)
+
+    parts = [_amount(primary)]
+    if secondary is not None:
+        parts.append('<span style="color:#cbd5e1;"> · </span>')
+        parts.append(_amount(secondary))
+    detail = escape(hotel_rate_provenance(cheapest))
+    link = ''
+    if cheapest.source_url:
+        link = (' <a href="' + escape(cheapest.source_url, quote=True)
+                + '" style="color:#2563eb;text-decoration:none;font-size:11px;">'
+                'rate ↗</a>')
+    return (
+        '<div style="margin:0 0 6px 0; color:#334155; font-size:13px;">'
+        '<strong style="color:#0f172a;">Hotel rate for these dates:</strong> '
+        + ''.join(parts) + link
+        + '<div style="font-size:11px; color:#64748b;">' + detail
+        + ' · ' + escape(cheapest.check_in) + '→' + escape(cheapest.check_out)
+        + ' · ' + escape(cheapest.price_label) + '</div></div>'
+    )
 
 
 def render_board_line(deal_or_row: Any) -> str:
@@ -4981,7 +5067,9 @@ def render_holiday_report(
                 out.append('<div style="margin:0 0 8px 0; font-size:13px;">💷 ' + budget_line + '</div>')
 
             # Board basis, then booking terms, on every hotel line; long-haul
-            # flight options side by side.
+            # flight options side by side. The hotel-rate line comes first when
+            # a real rate was read for this resort and these dates (H3).
+            out.append(render_hotel_rate_line(deal))
             out.append(render_board_line(deal))
             out.append(render_booking_terms(deal))
             if deal.flight_options:

@@ -105,6 +105,13 @@ class HotelRate:
     observed_at: str
     booking_shape: str
     party_adults: int = 0
+    #: The exporter's own words for how a derived figure was derived.
+    price_how: str = ""
+    #: The cancellation and payment terms as published, for the card's
+    #: booking-terms line. Empty when the page published none — never
+    #: inferred from the rate name.
+    cancellation: str = ""
+    payment: str = ""
 
 
 @dataclass(frozen=True)
@@ -221,6 +228,71 @@ def _run_season(config) -> str:
     return ""
 
 
+def _normalise_property(name: str) -> str:
+    """A hotel name reduced to comparable letters and digits.
+
+    Exporters and resort catalogues punctuate the same hotel differently
+    ("Pullman Lombok, Merujani Mandalika Beach Resort" vs the same without the
+    comma), so matching must not depend on punctuation or spacing or a card
+    misses its own rate over a comma.
+    """
+    return "".join(character for character in str(name).lower() if character.isalnum())
+
+
+def hotel_rate_for(loaded, property_name: str, check_in: str, check_out: str):
+    """The evidence for this property and these dates, or None.
+
+    The dates must match exactly: a rate read for other nights is another
+    rate, and the loader has already rejected records whose dates were not
+    exact.
+    """
+    if not loaded:
+        return None
+    wanted = _normalise_property(property_name)
+    for key, entry in loaded.items():
+        if _normalise_property(entry.property_name) != wanted:
+            continue
+        if entry.check_in == check_in and entry.check_out == check_out:
+            return entry
+    return None
+
+
+def hotel_rate_provenance(rate: HotelRate) -> str:
+    """One sentence a reader can check: when, from whom, and on what basis."""
+    observed = _parse_observed_at(rate.observed_at)
+    when = (
+        f"{observed.day} {observed.strftime('%b %Y')}" if observed else "date unknown"
+    )
+    parts = [f"rate read {when}"]
+    if rate.vendor:
+        parts.append(rate.vendor)
+    sentence = ", ".join(parts)
+    if rate.price_basis == "derived":
+        how = rate.price_how or "converted from the displayed price"
+        sentence = f"{sentence}; {how}"
+    elif rate.price_basis == "public" and rate.stay_basis == "nightly_x_nights":
+        sentence = f"{sentence}; {rate.currency} nightly rate x {rate.nights} nights"
+    return sentence
+
+
+def _terms_by_field(rate: dict) -> tuple[str, str]:
+    """(cancellation, payment) as published, across the units in the booking.
+
+    A booking of two rooms can publish different terms per room; the card
+    shows the union of what was stated rather than picking one room's terms
+    for the whole party.
+    """
+    seen: dict[str, list[str]] = {"cancellation": [], "payment": []}
+    for entry in rate.get("terms") or []:
+        if not isinstance(entry, dict):
+            continue
+        for field_name in seen:
+            value = str(entry.get(field_name, "")).strip()
+            if value and value not in seen[field_name]:
+                seen[field_name].append(value)
+    return ("; ".join(seen["cancellation"]), " · ".join(seen["payment"]))
+
+
 def _terms_for(rate: dict, *, refundable: bool) -> tuple[str, ...]:
     """Human-readable terms lines, in the order the card shows them."""
     lines: list[str] = []
@@ -242,8 +314,8 @@ def _terms_for(rate: dict, *, refundable: bool) -> tuple[str, ...]:
     return tuple(lines)
 
 
-def _price_for(rate: dict) -> Optional[tuple[float, str, str, str]]:
-    """``(gbp, basis, label, stay_basis)`` for this rate, or None.
+def _price_for(rate: dict) -> Optional[tuple[float, str, str, str, str]]:
+    """``(gbp, basis, label, stay_basis, how)`` for this rate, or None.
 
     GBP public first, because a displayed GBP price is a price and a
     conversion is arithmetic. A derived figure is only ever returned with the
@@ -280,6 +352,7 @@ def _price_for(rate: dict) -> Optional[tuple[float, str, str, str]]:
             "public",
             f"£{public_total:,.0f} {stay_label}, as displayed in GBP",
             stay_basis,
+            "",
         )
 
     derived = rate.get("derived_gbp")
@@ -301,6 +374,7 @@ def _price_for(rate: dict) -> Optional[tuple[float, str, str, str]]:
             "derived",
             f"£{value:,.0f} converted — {how}",
             stay_basis,
+            how,
         )
     return None
 
@@ -441,7 +515,8 @@ def load_hotel_evidence(
         if priced is None:
             _warn_skip(name, "no GBP public price and no derived_gbp figure")
             continue
-        value, basis, label, stay_basis = priced
+        value, basis, label, stay_basis, how = priced
+        cancellation, payment = _terms_by_field(item)
         refundable = _refundable(item)
         try:
             nights = int(item.get("nights", 0) or 0)
@@ -461,9 +536,12 @@ def load_hotel_evidence(
             price_basis=basis,
             price_label=label,
             currency=str(item.get("currency", "")).strip().upper(),
+            price_how=how,
             stay_basis=stay_basis,
             refundable=refundable,
             terms=_terms_for(item, refundable=refundable),
+            cancellation=cancellation,
+            payment=payment,
             source_url=source_url,
             observed_at=observed_raw,
             booking_shape=shape,
