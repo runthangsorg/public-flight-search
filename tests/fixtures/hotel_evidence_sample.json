@@ -11,6 +11,132 @@
   "rules": "SYNTHETIC FIXTURE - made-up values for loader tests only",
   "rates": [
     {
+      "property_name": "Pullman Khao Lak Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "vendor": "Example brand booking engine",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "two_rooms_one_booking",
+      "units": [
+        {
+          "name": "FAMILY SUITE",
+          "adults": 3,
+          "max_persons_stated": "5 pers. max"
+        },
+        {
+          "name": "DELUXE ROOM",
+          "adults": 2,
+          "max_persons_stated": "3 pers. max"
+        }
+      ],
+      "rate_name": "FLEXIBLE RATE WITH BREAKFAST",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "GBP",
+      "taxes_included": true,
+      "prices_shown": [
+        {
+          "unit": "FAMILY SUITE",
+          "public": 1100.0
+        },
+        {
+          "unit": "DELUXE ROOM",
+          "public": 500.0
+        }
+      ],
+      "terms": [
+        {
+          "unit": "FAMILY SUITE",
+          "cancellation": "Free cancellation until 19 Jul 2027",
+          "payment": "Pay at the hotel",
+          "refundable": true
+        },
+        {
+          "unit": "DELUXE ROOM",
+          "cancellation": "Free cancellation until 19 Jul 2027",
+          "payment": "Pay at the hotel",
+          "refundable": true
+        }
+      ],
+      "source_url": "https://example.invalid/booking",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": true,
+      "derived_public_total": {
+        "value": 1600.0,
+        "currency": "GBP",
+        "how": "sum of the two rooms' public rates"
+      }
+    },
+    {
+      "property_name": "Garrya Tongsai Bay Samui",
+      "destination_key": "koh_samui",
+      "season": "summer",
+      "vendor": "Example brand booking engine",
+      "check_in": "2027-07-20",
+      "check_out": "2027-07-27",
+      "nights": 7,
+      "party": {
+        "adults": 5,
+        "children": 0
+      },
+      "booking_shape": "two_rooms_one_booking",
+      "units": [
+        {
+          "name": "FAMILY SUITE",
+          "adults": 3,
+          "max_persons_stated": "5 pers. max"
+        },
+        {
+          "name": "DELUXE ROOM",
+          "adults": 2,
+          "max_persons_stated": "3 pers. max"
+        }
+      ],
+      "rate_name": "FLEXIBLE RATE WITH BREAKFAST",
+      "board": "BB",
+      "price_basis": "total_stay_rate",
+      "currency": "GBP",
+      "taxes_included": true,
+      "prices_shown": [
+        {
+          "unit": "FAMILY SUITE",
+          "public": 1100.0
+        },
+        {
+          "unit": "DELUXE ROOM",
+          "public": 500.0
+        }
+      ],
+      "terms": [
+        {
+          "unit": "FAMILY SUITE",
+          "cancellation": "Free cancellation until 19 Jul 2027",
+          "payment": "Pay at the hotel",
+          "refundable": true
+        },
+        {
+          "unit": "DELUXE ROOM",
+          "cancellation": "Free cancellation until 19 Jul 2027",
+          "payment": "Pay at the hotel",
+          "refundable": true
+        }
+      ],
+      "source_url": "https://example.invalid/booking",
+      "observed_at": "2026-10-02T15:02:10+00:00",
+      "exact_date_match": true,
+      "derived_public_total": {
+        "value": 1600.0,
+        "currency": "GBP",
+        "how": "sum of the two rooms' public rates"
+      }
+    },
+    {
       "property_name": "Example Beach Resort",
       "destination_key": "khao_lak",
       "season": "summer",
@@ -823,6 +949,45 @@
     }
   ],
   "unit_checks": [
+    {
+      "property_name": "Pullman Khao Lak Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "dates": [
+        "2027-07-20",
+        "2027-07-27"
+      ],
+      "vendor": "Example brand booking engine",
+      "finding": "5 adults in one room refused: no single unit sleeps 5; sold as 2 rooms in one booking",
+      "source_url": "https://example.invalid/check",
+      "observed_at": "2026-10-02T14:51:52+00:00"
+    },
+    {
+      "property_name": "Garrya Tongsai Bay Samui",
+      "destination_key": "koh_samui",
+      "season": "summer",
+      "dates": [
+        "2027-07-20",
+        "2027-07-27"
+      ],
+      "vendor": "Example brand booking engine",
+      "finding": "5 adults in one room refused: no single unit sleeps 5; sold as 2 rooms in one booking",
+      "source_url": "https://example.invalid/check",
+      "observed_at": "2026-10-02T14:51:52+00:00"
+    },
+    {
+      "property_name": "Refused With No Rate Resort",
+      "destination_key": "khao_lak",
+      "season": "summer",
+      "dates": [
+        "2027-07-20",
+        "2027-07-27"
+      ],
+      "vendor": "Example",
+      "finding": "5 adults in one room refused: the property has no 2-bedroom villa",
+      "source_url": "https://example.invalid/check",
+      "observed_at": "2026-10-02T14:51:52+00:00"
+    },
     {
       "property_name": "Example Beach Resort",
       "destination_key": "khao_lak",

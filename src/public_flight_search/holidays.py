@@ -994,6 +994,12 @@ class PackageDeal:
     #: Facts the engine read for this property (nearest mosque with its drive
     #: time, kids' club, pools, restaurants), each with its own source.
     hotel_facts: tuple = ()
+    #: A unit check that refused ONE room for the party where the property then
+    #: sold two rooms on one booking. Informational, not a removal
+    #: (owner brief 2026-10-03, H4b).
+    hotel_unit_note: str = ""
+    #: The booking shape of the rate that priced this card, when one did.
+    booking_shape_seen: str = ""
     #: Which value-score inputs came from read facts rather than the registry
     #: or its defaults (owner brief 2026-10-03, H5).
     value_score_from_facts: tuple = ()
@@ -3227,21 +3233,64 @@ def _highlights_with_blocked_sources(
     return tuple(out)
 
 
-def _unit_check_refusal(resort_name: str, config, *, travellers: int) -> str:
-    """The engine's finding when this property cannot take the party, else "".
+def _unit_check_findings(resort_name: str, config) -> tuple[tuple[str, str], ...]:
+    """``(finding, dates)`` for this property's unit checks, per date pair.
 
-    Looked up per date pair, because a property that refuses five adults for
-    one week may well take them for another. "" means no refusal was recorded,
-    which is the safe default: an unrecognised wording keeps the card.
+    A property that refuses five adults for one week may well take them for
+    another, so a check only speaks for the dates it was made on.
     """
     from .holidays import priceable_date_pairs
 
+    out: list[tuple[str, str]] = []
     for outbound, returning in priceable_date_pairs(config):
         for check in supplemental_for(
             resort_name, "unit_checks", dates=(outbound, returning)
         ):
-            if unit_check_blocks_party(check.finding, travellers):
-                return f"{check.finding} (checked {outbound}→{returning})"
+            out.append((check.finding, f"{outbound}→{returning}"))
+    return tuple(out)
+
+
+def _unit_check_refusal(resort_name: str, config, *, travellers: int,
+                        hotel_evidence=None) -> str:
+    """Why this property cannot take the party in one booking, else "".
+
+    A unit check removes a resort ONLY when the loader found no qualifying
+    one-booking rate for it on those dates. "5 adults in one room refused ...
+    sold as 2 rooms in one booking" is a refusal of ONE room, not of the
+    party: two rooms on one booking is what the owner's rule asks for, the
+    loader had a qualifying rate, and removing the resort on those words cost
+    July two good cards.
+
+    Where a qualifying rate exists the finding is still true and still worth
+    saying, so it becomes a note on the card (``_unit_check_note``) instead of
+    a removal.
+    """
+    for finding, dates in _unit_check_findings(resort_name, config):
+        if not unit_check_blocks_party(finding, travellers):
+            continue
+        outbound, _, returning = dates.partition("→")
+        if hotel_rate_for(hotel_evidence, resort_name, outbound, returning) is not None:
+            continue
+        return f"{finding} (checked {dates})"
+    return ""
+
+
+def _unit_check_note(resort_name: str, config, *, travellers: int,
+                     hotel_evidence=None) -> str:
+    """The informational note for a property that was refused and then booked.
+
+    The finding is carried in the engine's own words: "one room for 5 refused;
+    sold as 2 rooms in one booking" is exactly the thing a reader wants to
+    know before choosing it, and paraphrasing it risks saying something the
+    engine did not.
+    """
+    for finding, dates in _unit_check_findings(resort_name, config):
+        if not unit_check_blocks_party(finding, travellers):
+            continue
+        outbound, _, returning = dates.partition("→")
+        if hotel_rate_for(hotel_evidence, resort_name, outbound, returning) is None:
+            continue
+        return finding
     return ""
 
 
@@ -3573,7 +3622,8 @@ def collect_holiday_deals(
                 # watched refuse five adults in one room is worse than not
                 # offering it: the reader only finds out after choosing it.
                 refusal = _unit_check_refusal(
-                    resort["name"], config, travellers=config.travellers
+                    resort["name"], config,
+                    travellers=config.travellers, hotel_evidence=hotel_evidence,
                 )
                 if refusal:
                     filtered_out.append((resort["name"], refusal))
@@ -3724,6 +3774,14 @@ def collect_holiday_deals(
                             ),
                             hotel_ratings=supplemental_for(resort["name"], "ratings"),
                             hotel_facts=supplemental_for(resort["name"], "facts"),
+                            hotel_unit_note=_unit_check_note(
+                                resort["name"], config,
+                                travellers=travellers, hotel_evidence=hotel_evidence,
+                            ),
+                            booking_shape_seen=(
+                                hotel_rate.cheapest.booking_shape
+                                if hotel_rate is not None else ""
+                            ),
                             uk_ground_gbp=uk_ground,
                             transfer_gbp=transfer,
                             true_d2d_gbp=true_d2d,
@@ -4467,6 +4525,23 @@ HOTEL_FACT_LABELS: dict[str, str] = {
     "transfer_time": "🚐 transfer",
     "transfer_distance": "🚐 transfer",
 }
+
+
+def render_hotel_unit_note_line(deal: Any) -> str:
+    """A one-room refusal the property then solved, in the engine's words.
+
+    Rendered instead of removing the resort: the reader wants to know the
+    villa does not take five in one room and that the hotel sells two rooms on
+    one booking instead. Removing the card would hide both.
+    """
+    note = str(getattr(deal, "hotel_unit_note", "") or "").strip()
+    if not note:
+        return ""
+    return (
+        '<div style="margin:0 0 6px 0; color:#334155; font-size:13px;">'
+        '<strong style="color:#0f172a;">One-booking check:</strong> '
+        + escape(note) + '</div>'
+    )
 
 
 def render_hotel_facts_line(deal: Any) -> str:
@@ -5420,6 +5495,7 @@ def render_holiday_report(
             out.append(render_hotel_rate_line(deal))
             out.append(render_hotel_rating_line(deal))
             out.append(render_hotel_facts_line(deal))
+            out.append(render_hotel_unit_note_line(deal))
             out.append(render_board_line(deal))
             out.append(render_booking_terms(deal))
             if deal.flight_options:
