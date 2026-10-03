@@ -586,16 +586,57 @@ def build_trailfinders_link(trip: TripQuery) -> VendorLink:
 #: is deliberately not here: Qatar Airways Holidays returned no results under
 #: "Qatar Airways Holidays", "Qatar Airways" or "qatarairways" (searched
 #: 2026-10-03), so its link stays but it is never named ATOL-protected.
+#: Every number below comes from the CAA's own public register, and every one
+#: of them is re-checkable by anyone without asking us:
+#:
+#: * API: :data:`ATOL_REGISTER_SOURCE_URL` (``POST``, JSON body
+#:   ``{"Name": <the name in ATOL_REGISTER_QUERIES>, "AtolNumber": null}``)
+#: * the same search by hand: https://www.atol.org.uk/atol-check
+#: * queried :data:`ATOL_REGISTER_QUERIED_ON`
+#:
+#: The register matches on the holder's own spelling, which is not always the
+#: brand the reader knows: Destination2 is listed as "Destination 2", so a
+#: search on the brand returns an empty list and the number looks unsourceable.
+#: That is why :data:`ATOL_REGISTER_QUERIES` records the name actually queried
+#: for each one.
+#:
+#: An operator the register does not list is NOT here and is never named
+#: ATOL-protected. Qatar Airways Holidays returns no results under
+#: "Qatar Airways Holidays", "Qatar Airways" or "qatarairways" (queried
+#: 2026-10-03), so its link stays and it carries no ATOL claim. A number
+#: nobody can source is worse than no number: it looks checked.
 ATOL_REGISTER_BY_VENDOR: dict[str, str] = {
-    "Love Holidays": "10989",           # We Love Holidays Ltd
-    "Destination2": "11462",            # Destination 2 Limited
+    "Love Holidays": "10989",           # We Love Holidays Ltd (register name "Love Holidays")
+    "Destination2": "11462",            # Destination 2 Limited (register name "Destination 2")
     "Jet2holidays": "9618",             # Jet2holidays Ltd
     "easyJet holidays": "11694",        # easyJet Holidays Ltd
     "British Airways Holidays": "5985", # British Airways Holidays Ltd
     "Emirates Holidays": "4086",        # Emirates Holidays (U.K.) Limited
-    "Etihad Holidays": "11125",         # Capital Holidays (International) L.L.C., trading as Etihad Holidays
+    "Etihad Holidays": "11125",         # Capital Holidays (International) Sole Proprietorship L.L.C., trading as Etihad Holidays
     "Kuoni": "0132",                    # DER Touristik UK Ltd, trading as Kuoni
     "Trailfinders": "T1458",            # Trailfinders Ltd
+}
+
+#: The public CAA endpoint the numbers above were read from.
+ATOL_REGISTER_SOURCE_URL = "https://aircraftapi.caa.co.uk/api/checkanatol/search"
+
+#: When they were read. An ATOL register changes (holders cease trading, get
+#: re-issued); a number with no date beside it ages into a claim nobody made.
+ATOL_REGISTER_QUERIED_ON = "2026-10-03"
+
+#: The exact ``Name`` queried for each number above. Same key as
+#: ``ATOL_REGISTER_BY_VENDOR``; the value is what the register is searched for,
+#: which differs from the brand name where the register uses another spelling.
+ATOL_REGISTER_QUERIES: dict[str, str] = {
+    "Love Holidays": "Love Holidays",
+    "Destination2": "Destination 2",
+    "Jet2holidays": "Jet2holidays",
+    "easyJet holidays": "easyJet holidays",
+    "British Airways Holidays": "British Airways Holidays",
+    "Emirates Holidays": "Emirates Holidays",
+    "Etihad Holidays": "Etihad Holidays",
+    "Kuoni": "Kuoni",
+    "Trailfinders": "Trailfinders",
 }
 
 

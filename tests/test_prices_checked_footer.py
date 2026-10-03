@@ -129,5 +129,56 @@ class PricesCheckedFooterRenderTests(unittest.TestCase):
         self.assertLess(room_line, first)
 
 
+class _DatedRate:
+    observed_at = "2026-10-01T09:00:00+00:00"
+    vendor = "Example brand booking engine"
+
+
+class _UndatedRate:
+    observed_at = ""
+    vendor = "Example brand booking engine"
+
+
+class _Evidence:
+    """The minimum shape prices_checked_footer reads off a rate."""
+
+    def __init__(self, rate):
+        self.cheapest = rate
+
+
+class HotelAgeInTheFooterTests(unittest.TestCase):
+    """F2b: with a read rate the footer states its age, like the flight leg.
+
+    The hotel half used to have no observed-at field at all, so it could only
+    state a basis. Now the rate carries the instant it was read, and the same
+    words the flight leg uses are available for it.
+    """
+
+    def test_a_read_rate_shows_its_age(self):
+        html = prices_checked_footer(
+            _base_deal(hotel_evidence=_Evidence(_DatedRate()),
+                       hotel_rate_basis="exact-date-rate"),
+            generated_at="2026-10-03T00:00:00+00:00",
+        )
+        self.assertIn("hotel rate read 1 day ago", html)
+        self.assertIn("Example brand booking engine", html)
+
+    def test_an_unknown_observation_date_is_not_invented(self):
+        html = prices_checked_footer(
+            _base_deal(hotel_evidence=_Evidence(_UndatedRate()),
+                       hotel_rate_basis="exact-date-rate"),
+            generated_at="2026-10-03T00:00:00+00:00",
+        )
+        self.assertIn("hotel rate date unknown", html)
+
+    def test_a_catalogue_rate_still_states_its_basis_not_an_age(self):
+        html = prices_checked_footer(
+            _base_deal(hotel_rate_basis="estimate"),
+            generated_at="2026-10-03T00:00:00+00:00",
+        )
+        self.assertIn("hotel rate from nearest dates, not your exact dates", html)
+        self.assertNotIn("hotel rate read", html)
+
+
 if __name__ == "__main__":
     unittest.main()

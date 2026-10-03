@@ -4429,7 +4429,13 @@ def _booking_term_values(deal: Any) -> tuple[list[str], list[str]]:
             verified.append(str(value))
     atol = getattr(deal, "atol_protected", None)
     if atol is None:
-        unknown.append("ATOL")
+        # NOT an unknown. The self-build route's position is stated below as
+        # a verified fact, and listing "ATOL" as not verified on the same line
+        # said and unsaid the same thing in one breath. The package route's
+        # position is not a card-level fact at all: it depends which operator
+        # the reader books, and the ATOL line on the operator links names the
+        # register number for each one that holds a licence.
+        pass
     elif atol:
         verified.append("ATOL protected")
     else:
@@ -4484,15 +4490,41 @@ def render_booking_terms(deal_or_row: Any) -> str:
             '<strong style="color:#0f172a;">Booking terms:</strong> ' + body + '</div>')
 
 
+def hotel_rate_age_words(deal: Any, *, generated_at: str) -> str:
+    """The hotel leg of the age footer: an age when read, a basis otherwise.
+
+    A rate read by the private engine carries the instant it was observed, so
+    it gets the same words the flight leg uses plus the vendor it came from.
+    A rate with no readable observation says so rather than borrowing the
+    card's flight date, and a catalogue rate keeps stating its basis — an age
+    it never had.
+    """
+    evidence = getattr(deal, "hotel_evidence", None)
+    rate = getattr(evidence, "cheapest", None) if evidence is not None else None
+    if rate is not None:
+        observed_at = str(getattr(rate, "observed_at", "") or "")
+        vendor = str(getattr(rate, "vendor", "") or "").strip()
+        age = relative_age_label(observation_age_hours(observed_at, generated_at))
+        if age:
+            suffix = f", {vendor}" if vendor else ""
+            return f"hotel rate read {age}{suffix}"
+        return "hotel rate date unknown"
+    basis = str(getattr(deal, "hotel_rate_basis", "") or "market-supported")
+    if basis == "estimate":
+        return "hotel rate from nearest dates, not your exact dates"
+    return "hotel rate read for these dates"
+
+
 def prices_checked_footer(deal: Any, *, generated_at: str) -> str:
     """The card's last line: how old each half of its numbers is.
 
     Flights carry their age from the observed-at field the fare was read with
     (``live_observed_at``); a benchmark that was never observed says so rather
-    than wearing an age. The hotel rate has no observed-at field anywhere in
-    the data, so its leg states the basis instead of a fabricated date — and
-    when the rate is an estimate from the nearest dates on sale, it says
-    exactly that (owner brief 2026-10-03, F4).
+    than wearing an age. The hotel rate states its age the same way once a
+    rate was actually read for these dates (owner brief 2026-10-03, F2b) —
+    previously the hotel half had no observed-at field anywhere in the data and
+    could only state a basis, which is what it still does for a catalogue rate
+    or an estimate from the nearest dates on sale (F4).
     """
     observed_at = str(getattr(deal, "live_observed_at", "") or "")
     if observed_at:
@@ -4502,11 +4534,7 @@ def prices_checked_footer(deal: Any, *, generated_at: str) -> str:
         )
     else:
         flight_words = "not observed — benchmark"
-    basis = str(getattr(deal, "hotel_rate_basis", "") or "market-supported")
-    if basis == "estimate":
-        hotel_words = "hotel rate from nearest dates, not your exact dates"
-    else:
-        hotel_words = "hotel rate read for these dates"
+    hotel_words = hotel_rate_age_words(deal, generated_at=generated_at)
     return (
         '<div style="margin:8px 0 0 0; color:#64748b; font-size:11px;">'
         'Prices last checked: flights ' + escape(flight_words)
