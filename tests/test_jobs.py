@@ -77,6 +77,36 @@ class HolidayJobTests(unittest.TestCase):
         self.assertEqual(second["history_observations_appended"], 0)
         send.assert_called_once()  # only the first run emailed
 
+    def test_send_every_run_switch_sends_an_unchanged_run(self):
+        """HOLIDAY_SEND_EVERY_RUN=1: the 3x-week schedule mails even when flat."""
+        root = Path(__file__).parents[1]
+        payload = (root / "examples" / "dec_holiday_config.json").read_text()
+        send = self._patch_smtp()
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "HOLIDAY_SEARCH_CONFIG_JSON": payload,
+                "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "h.jsonl"),
+                "HOLIDAY_SEND_EVERY_RUN": "1",
+                "HOLIDAY_EMAIL_COOLDOWN_MINUTES": "0",
+            }
+            with patch.dict(os.environ, env):
+                first = run_holiday_planner(dry_run=False)
+                second = run_holiday_planner(dry_run=False)
+        self.assertTrue(first["email_sent"])
+        self.assertTrue(second["email_sent"])
+        self.assertFalse(second["send_skipped_no_change"])
+        self.assertEqual(send.call_count, 2)
+
+    def test_send_every_run_switch_never_overrides_dry_run(self):
+        root = Path(__file__).parents[1]
+        payload = (root / "examples" / "dec_holiday_config.json").read_text()
+        send = self._patch_smtp()
+        env = {"HOLIDAY_SEARCH_CONFIG_JSON": payload, "HOLIDAY_SEND_EVERY_RUN": "true"}
+        with patch.dict(os.environ, env):
+            result = run_holiday_planner(dry_run=True)
+        self.assertFalse(result["email_sent"])
+        send.assert_not_called()
+
     def test_price_drop_re_sends(self):
         """A drop vs last report re-sends once the cooldown has passed
         (cooldown explicitly disabled here to isolate the drop rule)."""

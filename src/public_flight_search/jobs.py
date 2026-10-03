@@ -308,8 +308,14 @@ def run_holiday_planner(
     # A flat re-quote is suppressed (still tracked, still persisted).
     # force_send overrides — and is itself overridden by dry-run so a dry
     # run can never email.
+    # HOLIDAY_SEND_EVERY_RUN: the owner wants every scheduled run mailed so
+    # the price history is read 3x a week, flat or not. Dry runs still never send.
+    send_every_run = os.environ.get("HOLIDAY_SEND_EVERY_RUN", "").strip().lower() in (
+        "1", "true", "yes",
+    )
     send_email = (not dry_run) and (
         bool(force_send)
+        or send_every_run
         or not digest["has_prior"]
         or bool(digest["drops"])
         or bool(digest["rises"])
