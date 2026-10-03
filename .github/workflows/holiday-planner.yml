@@ -171,6 +171,7 @@ jobs:
           HOLIDAY_LIVE_FLIGHTS: "1"
           DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
           DISPATCH_FORCE_SEND: ${{ inputs.force_send }}
+          HOLIDAY_SEND_EVERY_RUN: ${{ vars.HOLIDAY_SEND_EVERY_RUN }}
         shell: bash
         run: |
           set -euo pipefail
