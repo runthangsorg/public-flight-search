@@ -28,8 +28,12 @@ from .vendors import (
     DEEP_LINK as VENDOR_DEEP_LINK,
     DESTINATION_PAGE as VENDOR_DESTINATION_PAGE,
     PREFILLED_SEARCH as VENDOR_PREFILLED_SEARCH,
+    SEARCH_PAGE as VENDOR_SEARCH_PAGE,
     PRICE_NOT_VERIFIED,
+    ATOL_OPERATOR_LINK_BASES,
+    build_atol_operator_links,
     build_vendor_links,
+    price_label_line,
     trip_from_deal,
 )
 from .diy import (
@@ -262,6 +266,7 @@ VERIFIED_LINK_BASES: frozenset[str] = frozenset(
         GOOGLE_FLIGHTS_SEARCH_BASE,
         *EASYJET_DESTINATION_PATHS.values(),
         *JET2_DESTINATION_PATHS.values(),
+        *ATOL_OPERATOR_LINK_BASES,
     }
 )
 
@@ -3821,13 +3826,19 @@ def render_vendor_block(deal: PackageDeal, *, adults: int, rooms: Sequence[int])
     clipped card helps nobody.
     """
     trip = trip_from_deal(deal, adults=adults, rooms=tuple(rooms))
-    links = build_vendor_links(trip)
+    links = list(build_vendor_links(trip))
+    # Long-haul cards also link the six ATOL package operators (owner brief
+    # 2026-10-03, F1): an ATOL-protected package can beat a self-built trip
+    # and protects the money. Short haul keeps the operators it has.
+    if deal.flight_options:
+        links.extend(build_atol_operator_links(trip))
     if not links:
         return ""
     tags = {
         VENDOR_DEEP_LINK: "deep link",
         VENDOR_PREFILLED_SEARCH: "prefilled",
         VENDOR_DESTINATION_PAGE: "dest. page",
+        VENDOR_SEARCH_PAGE: "search page",
     }
     parts = [
         '<div style="margin:6px 0;font-size:13px;color:#475569;">'
@@ -3846,8 +3857,8 @@ def render_vendor_block(deal: PackageDeal, *, adults: int, rooms: Sequence[int])
             + escape(tags.get(link.kind, link.kind)) + '</span>'
         )
     parts.append(
-        '<div style="font-size:11px;color:#b45309;">' + escape(PRICE_NOT_VERIFIED)
-        + ' — a link is not a quote.</div></div>'
+        '<div style="font-size:11px;color:#b45309;">' + escape(price_label_line(links))
+        + '</div></div>'
     )
     return ''.join(parts)
 

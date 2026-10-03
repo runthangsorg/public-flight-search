@@ -23,6 +23,50 @@ Three link kinds, and the renderer must show which one it is:
     The vendor accepts no search parameters in a URL at all (POST-only search,
     or opaque internal IDs). The link is the vendor's own page for that
     destination — never a bare homepage, which was the old behaviour.
+``SEARCH_PAGE``
+    Like DESTINATION_PAGE but for an operator whose whole search is behind a
+    bot wall or a JavaScript app whose URL grammar could not be confirmed
+    from its own live site with plain fetches. The link is the operator's own
+    search page and the note says the dates and party are entered there. The
+    kind exists so a link that does not prefill can never be labelled as one
+    that does.
+
+ATOL OPERATORS ON LONG-HAUL CARDS (owner brief 2026-10-03, F1)
+--------------------------------------------------------------
+A long-haul card also links the six ATOL package operators the owner named:
+British Airways Holidays, Qatar Airways Holidays, Emirates Holidays, Etihad
+Holidays, Kuoni and Trailfinders. Each URL was checked against the operator's
+own live site on 2026-10-03 with plain fetches only — no CAPTCHA solving, no
+bot-wall evasion, no logins — and only what the checks could actually support
+was built:
+
+- Kuoni (kuoni.co.uk, live HTTP 200): its search widget is JavaScript-only
+  (no form action; input placeholder "Search destinations, hotels and
+  holidays") and its enquiry forms are POST, so no dates/party can be
+  prefilled. Its own sitemap (https://www.kuoni.co.uk/sitemap.xml, live) does
+  publish destination pages, so the link is the operator's destination page
+  for the card's destination — verified live 200 on 2026-10-03 for koh-samui,
+  koh-phangan, khao-lak, lombok-and-gili-islands and cancun.
+- British Airways Holidays: ba.com served an Akamai "Information Page"
+  interstitial to plain fetchers ("We are experiencing high demand on
+  ba.com"), so no URL grammar was observable. Search page, no prefill.
+- Emirates Holidays: emiratesholidays.com served a DataDome CAPTCHA wall
+  (HTTP 403 to both fetchers). Search page, no prefill.
+- Etihad Holidays: etihadholidays.com and holidays.etihad.com both answered
+  301 with ``Location: https://www.etihad.com/holidays`` (or /en-ae/holidays)
+  — the operator's own redirect — but the page body times out from this
+  network, so nothing deeper could be confirmed. Search page, no prefill.
+- Qatar Airways Holidays: HTTP 403 and connection timeouts on every fetch
+  path tried. Search page, no prefill.
+- Trailfinders: every path serves an Incapsula interstitial (NOINDEX,
+  NOFOLLOW), sitemap included. Search page, no prefill.
+
+None of the six therefore earns a prefilled URL today: the card's
+"Package operators" header carries the dates, party of 5 and origins (that is
+the search), and each link's note says the dates and party are entered on the
+operator's site. If an operator's grammar is later confirmed from its own
+live site — dates observed landing prefilled — its builder upgrades to
+``PREFILLED_SEARCH`` and the block footer's label names it.
 
 No vendor link is ever a price. A constructed URL has not been priced, so
 every link carries :data:`PRICE_NOT_VERIFIED`; only a fare or rate actually
@@ -80,7 +124,7 @@ itself, looping until curl gives up:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 from urllib.parse import urlencode
 
 #: The URL lands on a dated, party-correct results page.
@@ -89,6 +133,9 @@ DEEP_LINK = "deep-link"
 PREFILLED_SEARCH = "prefilled-search"
 #: The vendor accepts no search parameters; this is its page for the destination.
 DESTINATION_PAGE = "destination-page"
+#: The operator's own search page, entered by hand: its URL grammar could not
+#: be confirmed from its live site with plain fetches (bot wall or JS app).
+SEARCH_PAGE = "search-page"
 
 #: Every vendor link carries this. A URL is not a quote.
 PRICE_NOT_VERIFIED = "search link, price not verified"
@@ -128,6 +175,11 @@ class VendorLink:
             return "deep link — dates & party carried"
         if self.kind == PREFILLED_SEARCH:
             return "prefilled search — finish on the vendor site"
+        if self.kind == SEARCH_PAGE:
+            return (
+                "search page — no prefill: dates & party entered "
+                "on the operator's site"
+            )
         return "destination page — dates & party entered on the vendor site"
 
 
@@ -366,6 +418,196 @@ def build_easyjet_link(trip: TripQuery) -> Optional[VendorLink]:
         note="easyJet holidays destination page; enter the exact dates and party on its search widget",
         example_url=url,
     )
+
+
+# ---------------------------------------------------------------------------
+# ATOL package operators on long-haul cards (owner brief 2026-10-03, F1)
+# ---------------------------------------------------------------------------
+
+#: The day every URL in this section was checked against the operator's own
+#: live site (plain fetches only; see the module docstring for per-operator
+#: results).
+ATOL_GRAMMAR_OBSERVED_ON = "2026-10-03"
+
+BA_HOLIDAYS_SEARCH_PAGE = (
+    "https://www.britishairways.com/en-gb/flights-and-holidays/holidays"
+)
+QATAR_HOLIDAYS_SEARCH_PAGE = "https://www.qatarairways.com/en/holidays.html"
+EMIRATES_HOLIDAYS_SEARCH_PAGE = "https://www.emiratesholidays.com/"
+ETIHAD_HOLIDAYS_SEARCH_PAGE = "https://www.etihad.com/holidays"
+TRAILFINDERS_SEARCH_PAGE = "https://www.trailfinders.com/"
+KUONI_DESTINATIONS_INDEX = "https://www.kuoni.co.uk/destinations/"
+
+#: Kuoni destination pages, from Kuoni's own sitemap, each verified live
+#: (HTTP 200) on 2026-10-03. Keys absent here fall back to the destinations
+#: index rather than a guessed URL.
+KUONI_DESTINATION_PATHS: dict[str, str] = {
+    "lombok": "https://www.kuoni.co.uk/destinations/south-east-asia/"
+              "indonesia/lombok-and-gili-islands/",
+    "koh_samui": "https://www.kuoni.co.uk/destinations/south-east-asia/"
+                 "thailand/koh-samui/",
+    "koh_phangan": "https://www.kuoni.co.uk/destinations/south-east-asia/"
+                   "thailand/koh-phangan/",
+    "khao_lak": "https://www.kuoni.co.uk/destinations/south-east-asia/"
+                "thailand/khao-lak/",
+    "riviera_maya": "https://www.kuoni.co.uk/destinations/caribbean/"
+                    "mexico/cancun/",
+}
+
+#: The URL bases the six operators' links may use. holidays.py folds these
+#: into its VERIFIED_LINK_BASES allowlist so the renderer cannot emit a
+#: different base for the same operators.
+ATOL_OPERATOR_LINK_BASES: tuple[str, ...] = (
+    BA_HOLIDAYS_SEARCH_PAGE,
+    QATAR_HOLIDAYS_SEARCH_PAGE,
+    EMIRATES_HOLIDAYS_SEARCH_PAGE,
+    ETIHAD_HOLIDAYS_SEARCH_PAGE,
+    TRAILFINDERS_SEARCH_PAGE,
+    KUONI_DESTINATIONS_INDEX,
+    *KUONI_DESTINATION_PATHS.values(),
+)
+
+#: The card's search, stated on every no-prefill note: the reader carries the
+#: dates, party and origin from the card's "Package operators" header into the
+#: operator's own site.
+_ENTER_ON_SITE = (
+    "no prefill: the operator's URL grammar could not be confirmed from its own "
+    "live site with plain fetches, so enter the card's dates and party there"
+)
+
+
+def build_kuoni_link(trip: TripQuery) -> VendorLink:
+    """Kuoni's own page for the destination, from Kuoni's own sitemap.
+
+    Its search widget is JavaScript-only and its enquiry forms are POST, so a
+    dated search URL cannot be built; the destination page is the deepest page
+    the site itself publishes for the card's destination.
+    """
+    url = KUONI_DESTINATION_PATHS.get(
+        trip.destination_key.lower(), KUONI_DESTINATIONS_INDEX
+    )
+    fallback = url == KUONI_DESTINATIONS_INDEX
+    return VendorLink(
+        vendor="Kuoni",
+        url=url,
+        kind=DESTINATION_PAGE,
+        carried=("destination",),
+        note=(
+            "Kuoni publishes no dated search URL (its search widget is "
+            "JavaScript-only and its forms are POST), so this is its page for "
+            "the destination — "
+            + (
+                "the destinations index, because its sitemap publishes no page "
+                "for this destination; "
+                if fallback
+                else ""
+            )
+            + "enter the card's dates and party on the site"
+        ),
+        observed_on=ATOL_GRAMMAR_OBSERVED_ON,
+        example_url=KUONI_DESTINATION_PATHS["koh_samui"],
+    )
+
+
+def _search_page_link(vendor: str, url: str, *, note_prefix: str) -> VendorLink:
+    """A walled operator's search page: honest, unparameterised, labelled."""
+    return VendorLink(
+        vendor=vendor,
+        url=url,
+        kind=SEARCH_PAGE,
+        carried=(),
+        note=note_prefix + " — " + _ENTER_ON_SITE,
+        observed_on=ATOL_GRAMMAR_OBSERVED_ON,
+        example_url=url,
+    )
+
+
+def build_ba_holidays_link(trip: TripQuery) -> VendorLink:
+    """British Airways Holidays' holidays hub.
+
+    ba.com served an Akamai "Information Page" interstitial to plain fetches
+    (2026-10-03), so no URL grammar was observable and nothing is prefilled.
+    """
+    return _search_page_link(
+        "British Airways Holidays", BA_HOLIDAYS_SEARCH_PAGE,
+        note_prefix="ba.com interstitials plain fetches, so no search grammar "
+                    "was observable",
+    )
+
+
+def build_qatar_holidays_link(trip: TripQuery) -> VendorLink:
+    """Qatar Airways Holidays' holidays page (403/timeout to plain fetches)."""
+    return _search_page_link(
+        "Qatar Airways Holidays", QATAR_HOLIDAYS_SEARCH_PAGE,
+        note_prefix="qatarairways.com answered 403 / timed out on every plain "
+                    "fetch path",
+    )
+
+
+def build_emirates_holidays_link(trip: TripQuery) -> VendorLink:
+    """Emirates Holidays' own site root (DataDome CAPTCHA wall to fetchers)."""
+    return _search_page_link(
+        "Emirates Holidays", EMIRATES_HOLIDAYS_SEARCH_PAGE,
+        note_prefix="emiratesholidays.com serves a DataDome CAPTCHA wall to "
+                    "plain fetches",
+    )
+
+
+def build_etihad_holidays_link(trip: TripQuery) -> VendorLink:
+    """Etihad Holidays' page — the redirect target its own domains publish.
+
+    etihadholidays.com and holidays.etihad.com both 301 to this URL (the
+    operator's own redirect), but the page body times out from this network,
+    so nothing deeper than the page could be confirmed.
+    """
+    return _search_page_link(
+        "Etihad Holidays", ETIHAD_HOLIDAYS_SEARCH_PAGE,
+        note_prefix="etihadholidays.com redirects here but the page body times "
+                    "out on plain fetches",
+    )
+
+
+def build_trailfinders_link(trip: TripQuery) -> VendorLink:
+    """Trailfinders' site root (Incapsula interstitial on every path)."""
+    return _search_page_link(
+        "Trailfinders", TRAILFINDERS_SEARCH_PAGE,
+        note_prefix="trailfinders.com serves an Incapsula interstitial on every "
+                    "path",
+    )
+
+
+def build_atol_operator_links(trip: TripQuery) -> tuple[VendorLink, ...]:
+    """The six ATOL package operators, in the brief's order.
+
+    Only links the operators' own live sites support are built: Kuoni's
+    destination page (from its own sitemap) and the five search pages whose
+    grammar is behind bot walls. Where an operator's grammar is confirmed
+    later — dates observed landing prefilled on its live site — its builder
+    upgrades to PREFILLED_SEARCH and nothing else needs to change.
+    """
+    return (
+        build_ba_holidays_link(trip),
+        build_qatar_holidays_link(trip),
+        build_emirates_holidays_link(trip),
+        build_etihad_holidays_link(trip),
+        build_kuoni_link(trip),
+        build_trailfinders_link(trip),
+    )
+
+
+def price_label_line(links: Sequence[VendorLink]) -> str:
+    """The one price label under a vendor block, worded for what the links are.
+
+    Every link is not a quote. A block whose links really do prefill the
+    search is labelled "prefilled search link, …"; a block containing any
+    link that does not prefill must not wear that word, so it reads "search
+    link, …" and each link's own tag says which it is.
+    """
+    all_prefilled = bool(links) and all(
+        link.kind == PREFILLED_SEARCH for link in links
+    )
+    head = "prefilled search link" if all_prefilled else "search link"
+    return head + ", price not verified — a link is not a quote."
 
 
 def build_vendor_links(trip: TripQuery) -> tuple[VendorLink, ...]:
