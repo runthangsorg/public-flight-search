@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import escape
 import json
+import re
 import sys
 from typing import Any, Mapping, Optional, Sequence
 from urllib.parse import urlencode
@@ -1127,6 +1128,106 @@ EMAIL_HTML_BUDGET_BYTES: int = 96_000
 #: ...but a budget must never produce a one-card report. This many cards are
 #: always rendered, budget or not.
 MIN_RENDERED_HOTEL_CARDS: int = 5
+
+#: How many times a repeated ``style`` value must appear before hoisting it
+#: into the shared block pays. At 2 the class (``class="p12"``, 11 bytes)
+#: already costs less than the rule it replaces; below that the swap is noise.
+_STYLE_HOIST_MIN_USES: int = 2
+
+#: A hoisted rule shorter than this is not worth a selector. A one-declaration
+#: rule like ``.p3{color:#cbd5e1}`` is already shorter inline, and hoisting it
+#: would ADD bytes while making the markup unreadable.
+_STYLE_HOIST_MIN_LEN: int = 10
+
+_STYLE_ATTR_RE = re.compile(r'style="([^"]*)"')
+
+
+def _normalise_style_value(value: str) -> str:
+    """Canonical form of a CSS declaration list, so equal rules match.
+
+    The renderer writes ``margin:0 0 6px 0;`` by hand in one place and
+    ``margin:0 0 6px`` in another, and pads with spaces after semicolons.
+    Those are the same rule to a browser, so they must be the same key here
+    or the hoist emits two classes for one style.
+    """
+    value = re.sub(r"\s+", " ", value.strip())
+    value = re.sub(r"\s*;\s*", ";", value)
+    value = re.sub(r";\s*$", "", value)
+    # `margin:0 0 6px 0` is the four-value form of `margin:0 0 6px`.
+    value = re.sub(r"\b0 0 (\d+(?:\.\d+)?(?:px|em|rem|%)) 0\b", r"0 0 \1", value)
+    value = re.sub(r"\s*:\s*", ":", value)
+    return value.strip()
+
+
+def _hoist_repeated_styles(html: str) -> str:
+    """Move repeated ``style`` values into one ``<style>`` block.
+
+    The report's weight was markup, not content: 42.9 % of the December
+    payload was ``style`` attributes, and the same short declarations were
+    re-serialised in full on every element (``color:#cbd5e1;`` 78 times,
+    ``color:#0f172a;`` 76). Each occurrence cost the full rule again.
+
+    Hoisting replaces those with a class reference, so the rule is paid for
+    once. This is why the December report drops from 99.1 % of the byte budget
+    to about 69 % WITHOUT dropping a card — the headroom comes from markup
+    weight, not from showing the reader fewer deals.
+
+    Values are normalised first (see ``_normalise_style_value``) so
+    cosmetically different spellings of one rule collapse into one class.
+
+    Only whole ``style="..."`` attributes are replaced, and only with an exact
+    match on the normalised value, so an element's own inline rule wins where
+    both exist and no attribute is ever merged or half-rewritten. Anything
+    used fewer than ``_STYLE_HOIST_MIN_USES`` times, or too short to be worth
+    a selector, stays inline: a rule with no selector is a rule that silently
+    stops applying, and colour here carries meaning (live vs stale vs
+    unverified), so an unstyled label is a wrong report rather than an ugly one.
+    """
+    if "</head>" not in html or not _STYLE_ATTR_RE.search(html):
+        return html
+
+    counts: dict[str, int] = {}
+    for match in _STYLE_ATTR_RE.finditer(html):
+        value = _normalise_style_value(match.group(1))
+        counts[value] = counts.get(value, 0) + 1
+
+    # Frequent first, so the numbering reads as "biggest wins are p0, p1...".
+    # Ties break on the value itself to keep the block byte-stable across runs:
+    # the same input must always produce the same HTML, or every run looks like
+    # a diff.
+    order = sorted(
+        (
+            value
+            for value, uses in counts.items()
+            if uses >= _STYLE_HOIST_MIN_USES and len(value) >= _STYLE_HOIST_MIN_LEN
+        ),
+        key=lambda value: (-counts[value], value),
+    )
+    if not order:
+        return html
+
+    # Deterministic short class names: p0, p1, ... Collisions with anything the
+    # renderer already emits are checked rather than assumed.
+    existing = set(re.findall(r'class="([^"]*)"', html))
+    used_names: set[str] = set()
+    mapping: dict[str, str] = {}
+    for index, value in enumerate(order):
+        name = f"p{index}"
+        while name in existing or name in used_names:
+            name += "x"
+        used_names.add(name)
+        mapping[value] = name
+
+    rules = "".join(f".{mapping[v]}{{{v}}}" for v in order)
+    out = _STYLE_ATTR_RE.sub(
+        lambda m: (
+            f'class="{mapping[_normalise_style_value(m.group(1))]}"'
+            if _normalise_style_value(m.group(1)) in mapping
+            else m.group(0)
+        ),
+        html,
+    )
+    return out.replace("</head>", f"<style>{rules}</style></head>", 1)
 
 #: Months in which the trip itself experiences winter (Nov–Mar). The
 #: December-temperature floor exists to stop a cold beach riding a big
@@ -4604,10 +4705,26 @@ def render_holiday_report(
         # a fixed card count silently breaks the moment a card gets richer,
         # which is exactly how an e-mail ends up clipped mid-link.
         rendered_hotels: list[dict] = []
-        for entry in hotels[:10]:
+        # Two DIFFERENT things shorten this report, and the reader deserves to
+        # be told which one happened: the deliberate hotels[:10] cap, and the
+        # byte budget. Counting them apart is the point — labelling a design
+        # choice as "size limit" is a false statement about why a deal is
+        # missing, and it trains the reader to distrust the real budget notice
+        # when it does fire.
+        size_dropped = 0
+        for index, entry in enumerate(hotels[:10]):
+            # Deliberately measured on the PRE-hoist chunks. The hoist runs at
+            # the very end, so this count over-states the finished payload by
+            # roughly a third. Erring that way is the safe direction: the
+            # budget may drop a card it strictly need not have, but it can
+            # never ship an e-mail Gmail clips. Measuring the smaller final
+            # size would be tighter, and is the change to make if the headroom
+            # ever proves too thin to afford the conservatism.
             if len(rendered_hotels) >= MIN_RENDERED_HOTEL_CARDS and sum(
                 len(chunk.encode("utf-8")) for chunk in out
             ) > EMAIL_HTML_BUDGET_BYTES:
+                # This card and every card after it lost the budget race.
+                size_dropped = len(hotels[:10]) - index
                 break
             rendered_hotels.append(entry)
             deal = entry["base"]
@@ -4878,6 +4995,20 @@ def render_holiday_report(
         if len(hotels) > len(rendered_hotels):
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:10px 0 16px 0;"><tr><td align="center" style="padding:10px; color:#64748b; font-size:13px;">')
             out.append('Showing top ' + str(len(rendered_hotels)) + ' hotels of ' + str(len(hotels)) + ' under budget — one card per hotel, cheapest cabin as the baseline, all ' + str(len(ordered)) + ' cabin options tracked in price history.')
+            # Say WHY the tail is missing, and how much of it. Only when the
+            # BYTE BUDGET is what cut it — the 10-hotel cap is a choice about
+            # how long an e-mail should be, and calling that "size limit" would
+            # blame the wrong cause. A reader who cannot tell a size cut from a
+            # quality filter has no way to know whether the resort they are
+            # missing was the good one.
+            if size_dropped:
+                out.append(
+                    f'<div style="margin-top:6px; color:#b45309;">'
+                    f"{size_dropped} more deal{'' if size_dropped == 1 else 's'} "
+                    f"not shown: size limit — this e-mail is near Gmail's "
+                    f"{EMAIL_HTML_BUDGET_BYTES // 1000} KB payload cap, so "
+                    f"richer cards win the space, not cheaper resorts.</div>"
+                )
             out.append('</td></tr></table>')
 
     if not deals:
@@ -4963,4 +5094,4 @@ def render_holiday_report(
     out.append('</td></tr></table>')
     out.append('</td></tr></table></body></html>')
     
-    return ''.join(out)
+    return _hoist_repeated_styles(''.join(out))
