@@ -136,6 +136,18 @@ class HotelRate:
     #: inferred from the rate name.
     cancellation: str = ""
     payment: str = ""
+    #: Who sells this rate: an online travel agent, or the hotel itself. The
+    #: card says so, because an aggregator's price is not the hotel's price.
+    provider: str = ""
+    #: True when the page stated whether the rate is refundable. False means
+    #: "not stated", which is NOT the same as non-refundable.
+    refundable_stated: bool = True
+    #: The units as the hotel states them ("5 guests", "3 bedrooms"). The
+    #: exporter's field names differ by source, so the wording is carried
+    #: rather than re-derived from an assumed schema.
+    units: tuple[str, ...] = ()
+    #: None means the page did not say whether taxes are included.
+    taxes_included: Optional[bool] = None
 
 
 @dataclass(frozen=True)
@@ -303,6 +315,21 @@ def hotel_rate_provenance(rate: HotelRate) -> str:
     return sentence
 
 
+def _stated(entry: Any, field_name: str) -> str:
+    """A published term value, or "" when the page published none.
+
+    The aggregator rows publish ``null`` for terms they did not read. Reading
+    that as ``str(None)`` printed the word "None" on the card as though the
+    hotel had said it — a null means not stated, and stays empty.
+    """
+    if not isinstance(entry, dict):
+        return ""
+    value = entry.get(field_name)
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def _terms_by_field(rate: dict) -> tuple[str, str]:
     """(cancellation, payment) as published, across the units in the booking.
 
@@ -315,7 +342,7 @@ def _terms_by_field(rate: dict) -> tuple[str, str]:
         if not isinstance(entry, dict):
             continue
         for field_name in seen:
-            value = str(entry.get(field_name, "")).strip()
+            value = _stated(entry, field_name)
             if value and value not in seen[field_name]:
                 seen[field_name].append(value)
     return ("; ".join(seen["cancellation"]), " · ".join(seen["payment"]))
@@ -327,12 +354,12 @@ def _terms_for(rate: dict, *, refundable: bool) -> tuple[str, ...]:
     for entry in rate.get("terms") or []:
         if not isinstance(entry, dict):
             continue
-        unit = str(entry.get("unit", "")).strip()
+        unit = _stated(entry, "unit")
         for field_name, prefix in (
             ("cancellation", "Cancellation"),
             ("payment", "Payment"),
         ):
-            value = str(entry.get(field_name, "")).strip()
+            value = _stated(entry, field_name)
             if not value:
                 continue
             lines.append(f"{unit}: {prefix} — {value}" if unit else f"{prefix} — {value}")
@@ -343,7 +370,12 @@ def _terms_for(rate: dict, *, refundable: bool) -> tuple[str, ...]:
 
 
 def _published_public_total(rate: dict) -> Optional[float]:
-    """The sum of the rates the page displayed, across the units booked."""
+    """The sum of the rates the page displayed, across the units booked.
+
+    Two key names for the same thing: a brand or direct site publishes
+    ``public`` (the stay or nightly figure), a Google Hotels aggregator row
+    publishes ``nightly`` and names the provider selling it.
+    """
     shown = rate.get("prices_shown")
     if not isinstance(shown, list):
         return None
@@ -352,14 +384,57 @@ def _published_public_total(rate: dict) -> Optional[float]:
     for entry in shown:
         if not isinstance(entry, dict):
             continue
-        try:
-            value = float(entry.get("public"))
-        except (TypeError, ValueError):
-            continue
-        if value > 0:
-            total += value
-            seen = True
+        for key in ("public", "nightly"):
+            try:
+                value = float(entry.get(key))
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                total += value
+                seen = True
+                break
     return total if seen else None
+
+
+def _provider_of(rate: dict) -> str:
+    """The provider that sells this rate, from the priced entry."""
+    shown = rate.get("prices_shown")
+    if not isinstance(shown, list):
+        return ""
+    for entry in shown:
+        if isinstance(entry, dict):
+            name = str(entry.get("provider", "")).strip()
+            if name:
+                return name
+    return ""
+
+
+def _unit_lines(rate: dict) -> tuple[str, ...]:
+    """Units as the hotel states them, in the exporter's own words.
+
+    Brand rows give ``adults``/``max_persons_stated``; aggregator rows give
+    ``guests_stated``/``bedrooms_stated``. Whatever was published is carried;
+    nothing is inferred from a field that is absent, because "3 bedrooms" is
+    the hotel's claim and our arithmetic about occupancy is not.
+    """
+    units = rate.get("units")
+    if not isinstance(units, list):
+        return ()
+    lines: list[str] = []
+    for entry in units:
+        if not isinstance(entry, dict):
+            continue
+        parts = [str(entry.get(key, "")).strip()
+                 for key in ("name", "guests_stated", "bedrooms_stated",
+                             "adults", "max_persons_stated", "size_m2")]
+        text = " — ".join(part for part in parts[:4] if part)
+        if entry.get("size_m2") is not None:
+            size = str(entry.get("size_m2")).strip()
+            if size:
+                text = f"{text} — {size} m²" if text else f"{size} m²"
+        if text:
+            lines.append(text)
+    return tuple(lines)
 
 
 def _float_field(payload: Any) -> Optional[float]:
@@ -370,6 +445,15 @@ def _float_field(payload: Any) -> Optional[float]:
     except (TypeError, ValueError):
         return None
     return value if value > 0 else None
+
+
+def _taxes_words(rate: dict) -> str:
+    stated = rate.get("taxes_included")
+    if stated is True:
+        return "tax included"
+    if stated is False:
+        return "taxes excluded"
+    return "taxes not stated"
 
 
 def _price_for(rate: dict) -> Optional[tuple[float, str, str, str, str]]:
@@ -411,10 +495,26 @@ def _price_for(rate: dict) -> Optional[tuple[float, str, str, str, str]]:
             return (
                 float(public_total),
                 "public",
-                f"£{public_total:,.0f} total price for the stay, tax included, "
-                f"as displayed in GBP",
+                f"£{public_total:,.0f} total price for the stay, "
+                f"{_taxes_words(rate)}, as displayed in GBP",
                 stay_basis,
                 "",
+            )
+        # The aggregator rows publish the stay total themselves, in
+        # ``derived_stay_total``, having done the nightly x nights arithmetic
+        # against the listing they read. Their own description of it is shown.
+        stay_total = _float_field(rate.get("derived_stay_total"))
+        stay_currency = str((rate.get("derived_stay_total") or {}).get(
+            "currency", "")).strip().upper()
+        if stay_total and stay_currency in ("", currency):
+            how = str((rate.get("derived_stay_total") or {}).get(
+                "how", "")).strip() or "the stay total the listing published"
+            return (
+                float(stay_total),
+                "derived",
+                f"£{stay_total:,.0f} derived: {how}, {_taxes_words(rate)}",
+                stay_basis,
+                how,
             )
         if public_total and basis_raw in NIGHTLY_BASES and nights > 0:
             # Before ``derived_public_total``: the hotel published a nightly
@@ -429,18 +529,18 @@ def _price_for(rate: dict) -> Optional[tuple[float, str, str, str, str]]:
             return (
                 total,
                 "derived",
-                f"£{total:,.0f} derived: {how}",
+                f"£{total:,.0f} derived: {how}, {_taxes_words(rate)}",
                 stay_basis,
                 how,
             )
         if derived_total:
+            how = _derived_how(rate, "sum of the units published rates")
             return (
                 float(derived_total),
                 "derived",
-                f"£{derived_total:,.0f} derived: "
-                f"{_derived_how(rate, 'sum of the units published rates')}",
+                f"£{derived_total:,.0f} derived: {how}, {_taxes_words(rate)}",
                 stay_basis,
-                _derived_how(rate, "sum of the units published rates"),
+                how,
             )
 
     converted = _float_field(rate.get("derived_gbp"))
@@ -456,7 +556,7 @@ def _price_for(rate: dict) -> Optional[tuple[float, str, str, str, str]]:
     return (
         float(converted),
         "derived",
-        f"£{converted:,.0f} converted — {how}",
+        f"£{converted:,.0f} converted — {how}, {_taxes_words(rate)}",
         stay_basis,
         how,
     )
@@ -467,12 +567,23 @@ def _derived_how(rate: dict, fallback: str) -> str:
 
 
 def _refundable(rate: dict) -> bool:
-    """True when every published term for this rate is refundable."""
+    """True when every published term for this rate is refundable.
+
+    A null ``refundable`` means the page did not say, so this is False — but
+    ``_refundable_stated`` records the difference, because "not stated" and
+    "stated non-refundable" are not the same fact about a booking.
+    """
     entries = [entry for entry in (rate.get("terms") or []) if isinstance(entry, dict)]
     if not entries:
         return False
-    flags = [bool(entry.get("refundable")) for entry in entries]
-    return all(flags)
+    return all(bool(entry.get("refundable")) for entry in entries)
+
+
+def _refundable_stated(rate: dict) -> bool:
+    entries = [entry for entry in (rate.get("terms") or []) if isinstance(entry, dict)]
+    if not entries:
+        return False
+    return all(entry.get("refundable") is not None for entry in entries)
 
 
 def load_hotel_evidence(
@@ -629,6 +740,13 @@ def load_hotel_evidence(
             terms=_terms_for(item, refundable=refundable),
             cancellation=cancellation,
             payment=payment,
+            provider=_provider_of(item),
+            refundable_stated=_refundable_stated(item),
+            units=_unit_lines(item),
+            taxes_included=(
+                item.get("taxes_included")
+                if isinstance(item.get("taxes_included"), bool) else None
+            ),
             source_url=source_url,
             observed_at=observed_raw,
             booking_shape=shape,

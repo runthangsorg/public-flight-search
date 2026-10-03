@@ -199,6 +199,78 @@ class TestExporterVocabulary(unittest.TestCase):
         )
 
 
+class TestGoogleHotelsShape(unittest.TestCase):
+    """The aggregator rows: a different shape again, and most of the villas.
+
+    Google Hotels rows price the unit per NIGHT under ``nightly`` rather than
+    ``public``, name the provider that sells it, put the stay total in
+    ``derived_stay_total`` rather than ``derived_gbp``, publish ``null`` for
+    terms and taxes they did not read, and state unit occupancy as
+    ``guests_stated``/``bedrooms_stated``. Reading only the brand-site shape
+    dropped every villa on the real file.
+    """
+
+    def setUp(self):
+        self.properties = _properties(_load())
+        consume_hotel_skip_log()
+
+    def test_the_stay_total_prices_the_card(self):
+        entry = self.properties["Google Hotels Villa"]
+        self.assertAlmostEqual(entry.cheapest.price_gbp, 1470.00)
+        self.assertEqual(entry.cheapest.price_basis, "derived")
+
+    def test_the_exporter_own_how_is_carried_through(self):
+        entry = self.properties["Google Hotels Villa"]
+        self.assertIn("nightly x nights", entry.cheapest.price_label)
+        self.assertEqual(entry.cheapest.price_how, "nightly x nights")
+
+    def test_the_provider_is_carried(self):
+        self.assertEqual(
+            self.properties["Google Hotels Villa"].cheapest.provider, "Booking.com")
+
+    def test_a_null_refundable_is_not_assumed_refundable(self):
+        entry = self.properties["Google Hotels Villa"]
+        self.assertFalse(entry.cheapest.refundable)
+        self.assertEqual(entry.cheapest.cancellation, "")
+
+    def test_null_taxes_are_not_described_as_included(self):
+        self.assertNotIn("tax included", self.properties["Google Hotels Villa"].cheapest.price_label)
+
+    def test_stated_taxes_are_described_as_included(self):
+        self.assertIn("tax included", self.properties["Direct Site Villa"].cheapest.price_label)
+
+    def test_unit_occupancy_is_carried_in_the_exporter_own_words(self):
+        units = self.properties["Google Hotels Villa"].cheapest.units
+        self.assertEqual(len(units), 1)
+        self.assertIn("THREE BEDROOM POOL VILLA", units[0])
+        self.assertIn("5 guests", units[0])
+        self.assertIn("3 bedrooms", units[0])
+
+    def test_a_non_gbp_stay_total_still_needs_a_conversion(self):
+        # The EUR stay total is real; without the conversion it is not a GBP
+        # rate and must not be priced as one.
+        entry = self.properties["Named Provider Villa"]
+        self.assertAlmostEqual(entry.cheapest.price_gbp, 952.00)
+        self.assertEqual(entry.cheapest.price_basis, "derived")
+
+    def test_a_stay_total_with_no_conversion_at_all_prices_nothing(self):
+        payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        for rate in payload["rates"]:
+            if rate["property_name"] == "Named Provider Villa":
+                rate.pop("derived_gbp", None)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "hotel.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            loaded = _load(path=path)
+        self.assertNotIn("Named Provider Villa", _properties(loaded))
+        consume_hotel_skip_log()
+
+    def test_the_direct_provider_is_not_called_an_aggregator(self):
+        self.assertEqual(
+            self.properties["Direct Site Villa"].cheapest.provider, "Direct")
+
+
 class TestDisqualifyingConditions(unittest.TestCase):
     def setUp(self):
         self.properties = _properties(_load())

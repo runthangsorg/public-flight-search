@@ -4274,6 +4274,48 @@ def render_far_east_watch(config: HolidayConfig) -> str:
     return ''.join(out)
 
 
+#: Providers whose listing price is not the hotel's own rate. A reader who
+#: assumes an aggregator's figure is the hotel's will meet a different price
+#: on the hotel's site, so the card names the channel rather than implying it.
+ONLINE_TRAVEL_AGENTS: frozenset[str] = frozenset(
+    {
+        "booking.com",
+        "expedia",
+        "expedia.co.uk",
+        "agoda",
+        "hotels.com",
+        "tripadvisor",
+        "trip.com",
+        "ebookers",
+        "lastminute.com",
+        "tui.co.uk",
+        "travelodge",
+    }
+)
+
+#: Providers that ARE the hotel's own site.
+DIRECT_PROVIDERS: frozenset[str] = frozenset(
+    {"direct", "hotel website", "hotel", "the hotel", "official site",
+     "brand site", "property website"}
+)
+
+
+def hotel_provider_line(rate: Any) -> str:
+    """Whose rate this is, in words, or "" when the source named no provider."""
+    provider = str(getattr(rate, "provider", "") or "").strip()
+    if not provider:
+        return ""
+    normalised = provider.lower().strip()
+    if normalised in ONLINE_TRAVEL_AGENTS:
+        return f"via {provider}: an online travel agent listing, not the hotel"
+    if normalised in DIRECT_PROVIDERS:
+        return f"via {provider}: the hotel's own site"
+    # An unrecognised provider is named and nothing more is claimed about it:
+    # "aggregator" is an inference, and an inference on a price is the thing
+    # this card exists to avoid.
+    return f"via {provider}"
+
+
 def render_hotel_rate_line(deal: Any) -> str:
     """The stay's price, where it was read rather than estimated.
 
@@ -4310,6 +4352,11 @@ def render_hotel_rate_line(deal: Any) -> str:
         text = f"{head} £{rate.price_gbp:,.0f}"
         if rate.refundable and rate.cancellation:
             text += f" ({rate.cancellation})"
+        elif not rate.refundable and not getattr(rate, "refundable_stated", False):
+            # The page said nothing about cancellation. "Not stated" is the
+            # only honest word: assuming either way would be deciding for the
+            # reader what they can and cannot get back.
+            text += " (cancellation not stated)"
         return escape(text)
 
     parts = [_amount(primary)]
@@ -4317,6 +4364,12 @@ def render_hotel_rate_line(deal: Any) -> str:
         parts.append('<span style="color:#cbd5e1;"> · </span>')
         parts.append(_amount(secondary))
     detail = escape(hotel_rate_provenance(cheapest))
+    provider_line = hotel_provider_line(cheapest)
+    if provider_line:
+        detail += ' · ' + escape(provider_line)
+    unit_words = " · ".join(getattr(cheapest, "units", ()) or ())
+    if unit_words:
+        detail += ' · ' + escape(unit_words)
     link = ''
     if cheapest.source_url:
         link = (' <a href="' + escape(cheapest.source_url, quote=True)

@@ -393,5 +393,76 @@ class TestThePlannerRunReportsIt(unittest.TestCase):
         self.assertIsNone(result["hotel_evidence_load_error"])
 
 
+class TestAggregatorRowsOnTheCard(unittest.TestCase):
+    """Google Hotels rows, where the rate is sold by somebody other than the
+    hotel. The card must say whose price it is: an OTA listing is not the
+    hotel's own rate, and a reader who assumes it is will find a different
+    price on the hotel's site."""
+
+    def _google_rate(self, **overrides) -> dict:
+        base = _rate(
+            vendor="Google Hotels",
+            price_basis="nightly_room_rate",
+            prices_shown=[{"unit": "THREE BEDROOM POOL VILLA", "nightly": 210.00,
+                           "provider": "Booking.com"}],
+            derived_stay_total={"value": 1470.00, "currency": "GBP",
+                                "how": "nightly x nights"},
+            terms=[{"unit": "THREE BEDROOM POOL VILLA", "refundable": None,
+                    "cancellation": None, "payment": None}],
+            units=[{"name": "THREE BEDROOM POOL VILLA", "guests_stated": "5 guests",
+                    "bedrooms_stated": "3 bedrooms"}],
+            taxes_included=None,
+        )
+        base.update(overrides)
+        return base
+
+    def test_the_stay_total_prices_the_card(self):
+        deal = _deal_for(_deals(self._google_rate()))
+        self.assertAlmostEqual(deal.hotel_price_total_gbp, 1470.00)
+
+    def test_the_card_says_whose_listing_the_price_is(self):
+        html = render_hotel_rate_line(_deal_for(_deals(self._google_rate())))
+        self.assertIn("via Booking.com", html)
+        self.assertIn("an online travel agent listing, not the hotel", html)
+
+    def test_the_card_carries_the_exporter_own_arithmetic(self):
+        html = render_hotel_rate_line(_deal_for(_deals(self._google_rate())))
+        self.assertIn("nightly x nights", html)
+
+    def test_a_null_refundable_reads_as_not_stated_not_as_refundable(self):
+        html = render_hotel_rate_line(_deal_for(_deals(self._google_rate())))
+        self.assertIn("cancellation not stated", html)
+        self.assertNotIn("Flexible", html)
+
+    def test_the_booking_terms_line_does_not_invent_a_cancellation_policy(self):
+        deal = _deal_for(_deals(self._google_rate()))
+        self.assertIsNone(deal.free_cancellation_until)
+        self.assertIn("not verified: cancellation", render_booking_terms(deal))
+
+    def test_the_unit_is_shown_as_the_hotel_states_it(self):
+        html = render_hotel_rate_line(_deal_for(_deals(self._google_rate())))
+        self.assertIn("3 bedrooms", html)
+
+    def test_the_hotel_own_site_is_not_called_an_aggregator(self):
+        direct = self._google_rate(
+            prices_shown=[{"unit": "THREE BEDROOM POOL VILLA", "nightly": 190.00,
+                           "provider": "Direct"}],
+            terms=[{"unit": "THREE BEDROOM POOL VILLA", "refundable": True,
+                    "cancellation": "Free cancellation until 19 Jul 2027",
+                    "payment": "Pay at the hotel"}],
+        )
+        html = render_hotel_rate_line(_deal_for(_deals(direct)))
+        self.assertNotIn("online travel agent", html)
+
+    def test_an_unrecognised_provider_is_named_without_a_claim(self):
+        odd = self._google_rate(
+            prices_shown=[{"unit": "THREE BEDROOM POOL VILLA", "nightly": 180.00,
+                           "provider": "Example Aggregator"}],
+        )
+        html = render_hotel_rate_line(_deal_for(_deals(odd)))
+        self.assertIn("Example Aggregator", html)
+        self.assertNotIn("not the hotel", html)
+
+
 if __name__ == "__main__":
     unittest.main()
