@@ -23,7 +23,12 @@ from .config import (
 )
 from .google_flights import build_google_flights_legs_url, build_google_flights_roundtrip_url
 from . import live_verify
-from .live_verify import LiveFareEvidence, evidence_for, priced_date_pair
+from .live_verify import (
+    MIXED_CABIN,
+    LiveFareEvidence,
+    evidence_for,
+    priced_date_pair,
+)
 # ``hotel_evidence`` imports this module lazily (inside its functions, for the
 # priced date pairs and the season tables), so the import is acyclic — the
 # same seam as ``live_verify`` above.
@@ -3529,7 +3534,8 @@ def collect_holiday_deals(
     }
 
     def _best_option(resort, cabin, flight_mult, arch, *, enforce_budget: bool = True,
-                     prefer_evidence: bool = False) -> Optional[dict]:
+                     prefer_evidence: bool = False,
+                     require_evidence: bool = False) -> Optional[dict]:
         """Cheapest (date pair, departure origin) for one resort that clears
         BOTH ceilings, or None when no combination does.
 
@@ -3546,6 +3552,11 @@ def collect_holiday_deals(
         * a benchmark may only price a departure from ``origins[0]`` — flight
           benchmarks carry no origin, so claiming a cheaper LGW departure
           from an LHR benchmark would be a fabricated origin;
+        * ``require_evidence`` refuses the benchmark altogether. It exists for
+          the mixed-cabin row, which describes a fare that was actually READ
+          for a party that did not fly in one cabin: there is no benchmark for
+          "Premium Economy long-haul + Economy hop", and inventing one would
+          be inventing the thing the row is meant to describe.
         * a tie resolves to the first candidate evaluated, and ``pairs`` /
           ``config.origins`` lead with the headline pair and the declared
           origin, so a benchmark-only run still displays the pair the
@@ -3587,6 +3598,8 @@ def collect_holiday_deals(
                     headline=headline,
                 )
                 evidence_used = bool(evidence is not None and evidence.usable)
+                if require_evidence and not evidence_used:
+                    continue
                 if origin_index and not evidence_used:
                     continue
                 flight_cost = (
@@ -3672,8 +3685,8 @@ def collect_holiday_deals(
 
     def _flight_options(resort, arch, business: dict) -> tuple[dict, ...]:
         """(a) Business, (b) Economy, (b2) Premium Economy on the same route,
-        (c) Economy and (c2) Premium Economy with a Gulf stopover each way:
-        every one a whole-party total."""
+        (c) Economy and (c2) Premium Economy with a Gulf stopover each way,
+        plus any mixed-cabin fare: every one a whole-party total."""
         rows = [_option_row("business", "BUSINESS", business,
                             _evidence_words(business, "estimate: economy fare x2.5"))]
         economy = _best_option(resort, "ECONOMY", 1.0, arch, enforce_budget=False,
@@ -3691,6 +3704,22 @@ def collect_holiday_deals(
         if premium_economy is not None:
             rows.append(_option_row("premium_economy", "PREMIUM_ECONOMY", premium_economy,
                                     _evidence_words(premium_economy, "estimate: economy fare x1.6")))
+        # A fare the engine read for a party that did NOT fly in one cabin
+        # (owner brief 2026-10-03, H7). It gets its own row: it can never be
+        # the Business option or the Economy option, and require_evidence
+        # means it is shown only when a real fare was read — there is no
+        # benchmark for a mix of cabins.
+        mixed = _best_option(resort, MIXED_CABIN, 1.0, arch,
+                             enforce_budget=False, prefer_evidence=True,
+                             require_evidence=True)
+        if mixed is not None:
+            mixed_row = _option_row("mixed_cabin", MIXED_CABIN, mixed,
+                                    _evidence_words(mixed, "mixed cabins"))
+            mixed_evidence = mixed.get("evidence")
+            mixed_row["cabin_mix"] = str(
+                getattr(mixed_evidence, "cabin_mix", "") or ""
+            )
+            rows.append(mixed_row)
         # Economy-with-stopover is offered in every season now, not just summer:
         # the fare itself is season-scoped (stopover_fares_for), so a July read
         # never surfaces on a December card and vice versa.
@@ -5080,6 +5109,11 @@ def prices_checked_footer(deal: Any, *, generated_at: str) -> str:
 
 
 def _option_title(option: Mapping[str, Any]) -> str:
+    if option["kind"] == "mixed_cabin":
+        # Its own line, named as a mix: never dressed as (a)/(b), because it is
+        # neither Business nor Economy — the whole party did not fly in one
+        # cabin (owner brief 2026-10-03, H7).
+        return "mixed cabins \u2014 " + str(option.get("cabin_mix", ""))
     if option["kind"] == "business":
         return "(a) Business, normal route"
     if option["kind"] == "economy":
@@ -5158,6 +5192,11 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
     if pe_options:
         cheapest_pe = min(pe_options, key=lambda o: float(o["total_pkg"]))
         out.append(_flight_option_line(cheapest_pe))
+    # A mixed-cabin fare, when one was read: its own line, labelled as a mix,
+    # never folded into the Business or Economy row above (owner brief
+    # 2026-10-03, H7).
+    for mixed in [o for o in options if o["kind"] == "mixed_cabin"]:
+        out.append(_flight_option_line(mixed))
     # Every other stopover collapses into one compact totals line.
     other_stopovers = [o for o in stopovers if o is not expanded]
     if other_stopovers:

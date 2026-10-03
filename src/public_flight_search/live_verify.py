@@ -101,6 +101,15 @@ class LiveFareEvidence:
     cabin_class: str = "ECONOMY"
     #: True when the observation is older than ``EVIDENCE_MAX_AGE_HOURS``.
     stale: bool = False
+    #: Free text from the engine when this fare did NOT put the whole party in
+    #: one cabin — e.g. "Premium Economy long-haul + Economy hop". NOT a
+    #: per-passenger split. Empty means a pure-cabin fare, unchanged.
+    cabin_mix: str = ""
+
+    @property
+    def mixed_cabin(self) -> bool:
+        """True when this fare may not be shown as a pure-cabin option."""
+        return bool(self.cabin_mix.strip())
 
     @property
     def promotable(self) -> bool:
@@ -179,6 +188,14 @@ DEFAULT_EVIDENCE_PATH = "data/holiday_live_evidence.json"
 #: cannot drift. Hardcoding a narrower list here is what made a FIRST fare
 #: consumable by the contract and simultaneously rejected by the loader.
 EVIDENCE_CABINS: frozenset[str] = REPORT_CABINS
+
+#: The key a fare that MIXES cabins is filed under (owner brief 2026-10-03,
+#: H7). Deliberately NOT in ``EVIDENCE_CABINS``: a record carrying a
+#: ``cabin_mix`` is filed here instead of under its ``cabin_class``, so a
+#: lookup for BUSINESS or ECONOMY cannot return it. Without that seam a mixed
+#: total would silently become the price of five people in one cabin — a
+#: different proposition, at a different price, sold without saying so.
+MIXED_CABIN: str = "MIXED"
 
 
 def priced_date_pair(config) -> tuple[str, str]:
@@ -730,17 +747,29 @@ def load_live_flight_evidence(
             )
             continue
 
-        entry_cabin = str(item.get("cabin_class", "ECONOMY")).strip().upper()
-        if entry_cabin not in EVIDENCE_CABINS:
-            _warn_skip(airport, f"cabin {entry_cabin!r} is not a reportable cabin")
-            continue
-        # Legacy records exported before the cabin-aware seam carry no cabin
-        # field. They were whole-party ECONOMY totals by export rule, so
-        # defaulting them to ECONOMY is faithful — and the "legacy" marker
-        # keeps their provenance honest.
-        legacy_record = "cabin_class" not in item
-        if legacy_record:
-            entry_cabin = "ECONOMY"
+        # A ``cabin_mix`` is free text from the private engine saying the party
+        # did NOT fly in one cabin. It is NOT a per-passenger split. Anything
+        # that is not a string is ignored rather than trusted or fatal: an
+        # unreadable field must not take a real fare down with it, and unknown
+        # fields on a record are always ignored.
+        raw_mix = item.get("cabin_mix")
+        entry_mix = raw_mix.strip() if isinstance(raw_mix, str) else ""
+        if entry_mix:
+            # Filed under MIXED, never under cabin_class. This is the seam.
+            entry_cabin = MIXED_CABIN
+            legacy_record = False
+        else:
+            entry_cabin = str(item.get("cabin_class", "ECONOMY")).strip().upper()
+            if entry_cabin not in EVIDENCE_CABINS:
+                _warn_skip(airport, f"cabin {entry_cabin!r} is not a reportable cabin")
+                continue
+            # Legacy records exported before the cabin-aware seam carry no cabin
+            # field. They were whole-party ECONOMY totals by export rule, so
+            # defaulting them to ECONOMY is faithful — and the "legacy" marker
+            # keeps their provenance honest.
+            legacy_record = "cabin_class" not in item
+            if legacy_record:
+                entry_cabin = "ECONOMY"
         entry = LiveFareEvidence(
             airport=airport,
             total_gbp=total,
@@ -754,6 +783,7 @@ def load_live_flight_evidence(
             carrier=str(item.get("carrier", "")).strip(),
             cabin_class=entry_cabin,
             stale=stale,
+            cabin_mix=entry_mix,
         )
         # Keyed by (airport, cabin, outbound, return, origin). The cabin
         # component is the 2026-09-22 seam — an ECONOMY fare must never price
