@@ -37,7 +37,23 @@ ROOT = Path(__file__).parents[1]
 GENERATED_AT = "2026-09-24T00:00:00+00:00"
 
 #: Both example reports must sit under this fraction of the byte budget.
-HEADROOM_FRACTION = 0.75
+#:
+#: This was 0.75 until 2026-10-03, when H6 re-admitted the December resorts
+#: whose one-booking unit had been confirmed (Muscat, Zanzibar, Cancún): the
+#: report went from 9 cards at 72.4 % to 10 at 78.2 %, and a tenth card is
+#: legitimately ~5.6 KB of wanted content, not markup waste.
+#:
+#: 0.75 was a PROXY for "a card is never silently dropped because the report is
+#: full", and that failure is no longer possible or unobserved: the budget now
+#: weighs the card as written, takes it back out if the finished e-mail does not
+#: fit, and says how many deals the size limit cost
+#: (``TestTheBudgetWeighsTheEmailThatShips``,
+#: ``TestDroppedCardsAreAnnounced``). What is left to assert here is the margin
+#: itself: at 0.85 the examples keep ~21 KB spare, which is two more cards, so
+#: enriching a card is still a decision and not an accident. The direct guard —
+#: no example report loses ANY card to the size budget — is
+#: ``test_no_example_report_loses_a_card_to_the_byte_budget`` below.
+HEADROOM_FRACTION = 0.85
 
 
 def _example(name: str) -> str:
@@ -89,6 +105,25 @@ class TestExampleReportsHaveHeadroom(unittest.TestCase):
     def test_july_report_keeps_a_quarter_of_the_budget_free(self):
         self._assert_headroom("july_holiday_config.json")
 
+    def test_no_example_report_loses_a_card_to_the_byte_budget(self):
+        """The direct form of the headroom guard.
+
+        A report that renders every hotel it qualifies and needs no size cut is
+        not relying on the budget at all. This is the property the fraction
+        above stands in for, stated without a magic number, and it is the one
+        that actually matters to the reader: a deal that exists and is not in
+        the e-mail.
+        """
+        for name in ("dec_holiday_config.json", "july_holiday_config.json"):
+            with self.subTest(example=name):
+                html = _render(name)
+                self.assertNotIn(
+                    "not shown",
+                    html,
+                    f"{name} lost deals to the byte budget — the report must "
+                    f"fit its own content without a size cut",
+                )
+
     def test_the_december_report_still_renders_every_card_it_did_before(self):
         """The headroom must come from markup, not from fewer deals.
 
@@ -104,6 +139,55 @@ class TestExampleReportsHaveHeadroom(unittest.TestCase):
             html,
             "the December report must fit without a size truncation — all 10 "
             "cards are rendered, so no card was dropped for size",
+        )
+
+
+class TestTheBudgetWeighsTheEmailThatShips(unittest.TestCase):
+    """The guard must measure the FINISHED e-mail, not the markup before the hoist."""
+
+    def _render_with_budget(self, budget: int) -> str:
+        config = load_holiday_config(_example("dec_holiday_config.json"))
+        deals = collect_holiday_deals(config)
+        original = hol.EMAIL_HTML_BUDGET_BYTES
+        try:
+            hol.EMAIL_HTML_BUDGET_BYTES = budget
+            return render_holiday_report(
+                config, generated_at=GENERATED_AT, deals=deals
+            )
+        finally:
+            hol.EMAIL_HTML_BUDGET_BYTES = original
+
+    def test_the_finished_report_fits_the_budget_that_cut_it(self):
+        """A budget that fires must still produce an e-mail inside it.
+
+        The old guard weighed the chunks BEFORE the style hoist, which counts
+        the markup at roughly a third over its shipped size. It could therefore
+        drop a card from a report that was nowhere near the cap — while, being
+        a check made before the card was written, it never actually guaranteed
+        the result fitted either. Weighing the card as written and taking it
+        back out fixes both halves, and this asserts the strong half: whatever
+        the budget, what comes out is inside it.
+        """
+        # Below ~46 KB the report cannot fit even the MINIMUM number of cards,
+        # and the minimum is a promise the budget is not allowed to break — so
+        # the assertion starts above that floor, where the budget is the thing
+        # doing the cutting.
+        for budget in (50_000, 60_000, 70_000, 80_000, 90_000):
+            with self.subTest(budget=budget):
+                html = self._render_with_budget(budget)
+                size = len(html.encode("utf-8"))
+                self.assertLessEqual(
+                    size,
+                    budget,
+                    f"a {budget} byte budget produced a {size} byte e-mail — "
+                    f"the budget dropped a card and then shipped over it anyway",
+                )
+
+    def test_a_tight_budget_still_honours_the_minimum(self):
+        """The floor that keeps a budget from producing a one-card report."""
+        html = self._render_with_budget(1)
+        self.assertGreaterEqual(
+            html.count("Package operators"), hol.MIN_RENDERED_HOTEL_CARDS
         )
 
 

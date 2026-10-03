@@ -1000,6 +1000,9 @@ class PackageDeal:
     hotel_unit_note: str = ""
     #: The booking shape of the rate that priced this card, when one did.
     booking_shape_seen: str = ""
+    #: A unit bigger than the party needs, e.g. "4-bedroom villa — more space
+    #: than 5 need" (owner brief 2026-10-03, H6).
+    unit_space_note: str = ""
     #: Which value-score inputs came from read facts rather than the registry
     #: or its defaults (owner brief 2026-10-03, H5).
     value_score_from_facts: tuple = ()
@@ -1181,6 +1184,37 @@ _STYLE_HOIST_MIN_LEN: int = 10
 
 _STYLE_ATTR_RE = re.compile(r'style="([^"]*)"')
 
+#: The hoist threshold the BYTE BUDGET is measured against, pinned to the
+#: production value rather than read from ``_STYLE_HOIST_MIN_USES``. The budget
+#: is about the e-mail that ships; a caller that has turned the hoist off is
+#: asking what the report SAYS, and must not be charged a card for markup the
+#: sent e-mail never carries.
+_SHIPPED_STYLE_HOIST_MIN_USES: int = 2
+
+#: Bytes held back for the markup appended AFTER the last card: the
+#: dropped-card notice (at most one table) and the closing tags. Without this
+#: reserve the notice that explains the cut is itself what tips the e-mail over
+#: the cap it exists to describe.
+_CLOSING_TAIL_ALLOWANCE_BYTES: int = 1_200
+
+
+def _shipped_bytes(chunks: Sequence[str]) -> int:
+    """Bytes the e-mail will actually weigh, not the bytes it weighs so far.
+
+    The renderer builds the report as a list of markup chunks and hoists the
+    repeated ``style`` rules into one block at the very end. Measuring the
+    chunks on their own therefore OVER-states the finished e-mail by roughly a
+    third, and a budget fed that number drops a card the sent e-mail would have
+    fitted comfortably. This measures the hoisted string — the payload as it
+    leaves — so the number the budget is compared against is the number that is
+    e-mailed.
+    """
+    return len(
+        _hoist_repeated_styles(
+            "".join(chunks), min_uses=_SHIPPED_STYLE_HOIST_MIN_USES
+        ).encode("utf-8")
+    )
+
 
 def _normalise_style_value(value: str) -> str:
     """Canonical form of a CSS declaration list, so equal rules match.
@@ -1199,7 +1233,7 @@ def _normalise_style_value(value: str) -> str:
     return value.strip()
 
 
-def _hoist_repeated_styles(html: str) -> str:
+def _hoist_repeated_styles(html: str, min_uses: Optional[int] = None) -> str:
     """Move repeated ``style`` values into one ``<style>`` block.
 
     The report's weight was markup, not content: 42.9 % of the December
@@ -1219,10 +1253,15 @@ def _hoist_repeated_styles(html: str) -> str:
     match on the normalised value, so an element's own inline rule wins where
     both exist and no attribute is ever merged or half-rewritten. Anything
     used fewer than ``_STYLE_HOIST_MIN_USES`` times, or too short to be worth
-    a selector, stays inline: a rule with no selector is a rule that silently
-    stops applying, and colour here carries meaning (live vs stale vs
+    a selector, stays inline: a rule with no selector is a rule that    silently stops applying, and colour here carries meaning (live vs stale vs
     unverified), so an unstyled label is a wrong report rather than an ugly one.
+
+    ``min_uses`` overrides the threshold. The byte budget passes the production
+    value rather than the module global (see ``_shipped_bytes``): turning the
+    hoist off is a question about what the report SAYS, not permission to
+    charge the budget for a size saving the shipped e-mail never gets.
     """
+    threshold = _STYLE_HOIST_MIN_USES if min_uses is None else min_uses
     if "</head>" not in html or not _STYLE_ATTR_RE.search(html):
         return html
 
@@ -1239,7 +1278,7 @@ def _hoist_repeated_styles(html: str) -> str:
         (
             value
             for value, uses in counts.items()
-            if uses >= _STYLE_HOIST_MIN_USES and len(value) >= _STYLE_HOIST_MIN_LEN
+            if uses >= threshold and len(value) >= _STYLE_HOIST_MIN_LEN
         ),
         key=lambda value: (-counts[value], value),
     )
@@ -2145,6 +2184,74 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "transfer_gbp": 25.27,  # estimate, as for the Pullman above
             "confidence": "estimate",
         },
+        # ── PROPERTIES WITH NO RATE, ONLY A UNIT (owner brief 2026-10-03, H6).
+        # Added so a card can form once the private engine has READ a rate for
+        # them. There is deliberately no nightly rate here: the collector makes
+        # no card for a resort it cannot price, so these entries are inert
+        # until an exact-date rate arrives, and the report never shows a stay
+        # priced at zero or at a guess. Only the unit name and the public
+        # facts below come from the brief — no prices.
+        {
+            "name": "The Lombok Lodge",
+            "destination_label": "Kuta Mandalika, Lombok, Indonesia",
+            "stars": 5,
+            "board": "Bed & Breakfast",
+            **_LOP_FLIGHT,
+            "highlights": (
+                "Two-Bedroom Villa on the Kuta Mandalika coast",
+                "No rate read yet for these dates — the card appears once one is",
+            ),
+            "hotel_url": "https://www.thelomboklodge.com/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,
+            "beach": "Kuta Mandalika, south Lombok",
+            "transfer_gbp": 25.27,  # estimate, as for the Pullman above
+            # No rate read yet, so no confidence to claim: the card forms only
+            # from an exact-date read rate (see the collector).
+            "confidence": "",
+        },
+        {
+            "name": "TUNAK Resort Lombok",
+            "destination_label": "Kuta Mandalika, Lombok, Indonesia",
+            "stars": 5,
+            "board": "Bed & Breakfast",
+            **_LOP_FLIGHT,
+            "highlights": (
+                "Two-bedroom Cliff Front Private Pool Villa, Kuta Mandalika",
+                "No rate read yet for these dates — the card appears once one is",
+            ),
+            "hotel_url": "https://tunakresort.com/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,
+            "beach": "Cliff-front location above Kuta Mandalika bay",
+            "transfer_gbp": 25.27,
+            # No rate read yet, so no confidence to claim: the card forms only
+            # from an exact-date read rate (see the collector).
+            "confidence": "",
+        },
+        {
+            "name": "Kalandara Resort Lombok",
+            "destination_label": "Kuta Mandalika, Lombok, Indonesia",
+            "stars": 5,
+            # All-inclusive only. The board rule decides whether a rate
+            # qualifies: a breakfast rate for an AI-only resort is a rate that
+            # cannot be had, and the loader drops it as such.
+            "board": "All Inclusive",
+            **_LOP_FLIGHT,
+            "highlights": (
+                "AKASA 2 Bedroom Pool Villa, Kuta Mandalika",
+                "All inclusive only — no breakfast-only rate to buy",
+                "No rate read yet for these dates — the card appears once one is",
+            ),
+            "hotel_url": "https://kalandara-resort.com/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,
+            "beach": "Kuta Mandalika, south Lombok",
+            "transfer_gbp": 25.27,
+            # No rate read yet, so no confidence to claim: the card forms only
+            # from an exact-date read rate (see the collector).
+            "confidence": "",
+        },
     ],
     "koh_samui": [
         {
@@ -2232,19 +2339,18 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "name": "Anantara Rasananda Koh Phangan Villas",
             "destination_label": "Koh Phangan, Thailand (Gulf side)",
             "stars": 5,  # Google Hotels: "5-star hotel"
-            # Google Hotels' listing price does not say what the rate includes:
+            # Google Hotels' listing price did not say what the rate included:
             # board unverified, so it is not a deal (owner rule, 2026-09-30).
+            # The listing price is withdrawn entirely (H6): a figure the page
+            # did not describe is not a rate, and the card now forms only when
+            # the private engine reads one whose board it states.
             "board": "board unverified",
-            # Google Hotels, 20-27 Jul 2027, 5 guests: GBP 1,193 per night,
-            # the listing's cheapest option for 5 (it does not name the unit).
-            "base_nightly_room_rate_gbp": 1193.0,
-            "peak_summer_nightly_room_rate_gbp": 1193.0,
             **_USM_FLIGHT,
             "routing": _USM_FLIGHT["routing"] + ", then the resort's speedboat from Samui (about 40 min)",
             "highlights": (
-                "2-bedroom pool villa: 220 m², up to 6 adults, plunge pool",
+                "Two Bedroom Pool Villa: 220 m², up to 6 adults, plunge pool",
                 "Scheduled resort speedboat from Samui, about 40 min",
-                "Google rating 4.7 (1.3k reviews); TripAdvisor ≥4.5 not verified",
+                "No rate read yet for these dates — the card appears once one is",
             ),
             "hotel_url": "https://www.anantara.com/en/rasananda-koh-phangan",
             "dec_ambient_c": (0, 0),
@@ -2254,7 +2360,9 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # person return, car from USM to the pier included; ++ taken as
             # 10% service + 7% VAT: 5 x 4,000 x 1.177 = THB 23,540.
             "transfer_gbp": 530.22,
-            "confidence": "market-supported",
+            # No rate read yet, so no confidence to claim: the card forms only
+            # from an exact-date read rate whose board the engine states.
+            "confidence": "",
         },
     ],
     "zanzibar": [
@@ -2798,11 +2906,42 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
         "nonstop_from": (),
     },
     "Anantara Rasananda Koh Phangan Villas": {
-        # The price is Google Hotels' cheapest option for 5 guests; the
-        # listing does not name the unit. The two-bedroom pool villa (up to 6
-        # adults) is the likely fit, not a confirmed one.
-        "suite_type": "Cheapest option for 5 on Google Hotels (unit not shown; 2-bedroom pool villa likely)",
-        "suite_nightly_gbp": 1193.0, "suite_peak_nightly_gbp": 1193.0,
+        # Unit corrected 2026-10-03 (H6): the Two Bedroom Pool Villa is the
+        # one-booking unit for 5, confirmed rather than "likely". The Google
+        # Hotels listing price is WITHDRAWN — it said nothing about what the
+        # rate included and named no unit — so the nightly rate is 0 and the
+        # card forms only once an exact-date rate is read.
+        "suite_type": "Two Bedroom Pool Villa (one unit for 5, 220 m², up to 6 adults)",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": 1,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    # ── PROPERTIES WITH A UNIT BUT NO RATE (owner brief 2026-10-03, H6).
+    # ``suite_nightly_gbp`` 0.0 is the "no price" marker: the collector makes
+    # no card for these until the private engine reads an exact-date rate,
+    # because a stay priced at zero and a package total that is really just
+    # the flights are both worse than no card. ``pool_heated_c`` 0 = not
+    # assessed (a December rule; these are summer-only). ``tripadvisor`` None =
+    # could not be read, so the >=4.5 gate is not applied and the report says so.
+    "The Lombok Lodge": {
+        "suite_type": "Two-Bedroom Villa",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": 1,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "TUNAK Resort Lombok": {
+        "suite_type": "Two-bedroom Cliff Front Private Pool Villa",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": 1,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "Kalandara Resort Lombok": {
+        "suite_type": "AKASA 2 Bedroom Pool Villa",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": 1,
         "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
         "nonstop_from": (),
     },
@@ -2823,19 +2962,22 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
         "nonstop_from": ("LHR",),
     },
     "InterContinental Muscat": {
-        "suite_type": "3× King City View room with balcony (2 + 2 + 1 adults) — 3 rooms",
+        "suite_type": "2 rooms on one booking (3 + 2 adults)",
         "suite_nightly_gbp": 748.03, "suite_peak_nightly_gbp": 748.03,
-        "rooms_in_unit": 3,
+        "rooms_in_unit": 2,
         "beach_walkable": True, "pool_heated_c": None, "tripadvisor": None,
         "nonstop_from": ("LHR",),
     },
     "Nungwi Dreams by Mantis": {
-        # Summer and December both price three Standard Rooms; the nightly
-        # rate here is the December half-board one, and the summer entry's
-        # own board_options carry its July rate (see _suite_for).
-        "suite_type": "3× Standard Room (2 + 2 + 1 adults) — 3 rooms",
+        # The one-booking unit for 5 is the four-bedroom Presidential Villa
+        # (owner brief 2026-10-03, H6), not three Standard Rooms. The nightly
+        # rate here is still the December half-board one and the summer entry's
+        # own board_options carry its July rate (see _suite_for); the unit
+        # change is what the brief corrected, and it is flagged on the card
+        # because four bedrooms is more space than five people need.
+        "suite_type": "4-Bedroom Presidential Villa (one unit for 5)",
         "suite_nightly_gbp": 1120.04, "suite_peak_nightly_gbp": 1120.04,
-        "rooms_in_unit": 3,
+        "rooms_in_unit": 1,
         "beach_walkable": True, "pool_heated_c": None, "tripadvisor": None,
         "nonstop_from": (),
     },
@@ -2847,8 +2989,12 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
         "nonstop_from": (),
     },
     "Grand Fiesta Americana Coral Beach Cancún All Inclusive Spa & Resort": {
-        "suite_type": "Cheapest option for 5 on Google Hotels (unit not shown)",
+        # December unit corrected 2026-10-03 (H6): the Ocean Front Two Bedroom
+        # Family & Friends Suite is ONE booking for 5, so this is no longer a
+        # "cheapest option on Google Hotels" of unknown unit.
+        "suite_type": "Ocean Front Two Bedroom Family & Friends Suite (one unit for 5)",
         "suite_nightly_gbp": 2814.0, "suite_peak_nightly_gbp": 2814.0,
+        "rooms_in_unit": 1,
         "beach_walkable": True, "pool_heated_c": None, "tripadvisor": None,
         "nonstop_from": ("LHR",),
     },
@@ -3233,8 +3379,60 @@ def _highlights_with_blocked_sources(
     return tuple(out)
 
 
+def _space_flag(suite_type: str, travellers: int) -> str:
+    """A unit that is bigger than the party needs, said plainly.
+
+    A four-bedroom villa for five people is not a better match, it is a
+    different one, and the reader is entitled to know before they fall for it
+    on the room count. Only stated bedrooms count: the unit name is the
+    hotel's, and nothing here infers a size the hotel did not publish.
+    """
+    text = str(suite_type or "")
+    match = re.search(r"(\d+)[-\s]?bedroom", text, re.IGNORECASE)
+    if not match:
+        return ""
+    bedrooms = int(match.group(1))
+    if bedrooms >= 4:
+        return (f"{bedrooms}-bedroom villa — more space than "
+                f"{int(travellers)} need")
+    return ""
+
+
+def _rate_board_matches(resort: Mapping[str, Any], rate: Any) -> bool:
+    """True when the read rate's board is one this property can actually be had on.
+
+    An all-inclusive-only resort does not sell a breakfast rate, so a BB rate
+    read for it is a rate that cannot be booked and must not price a card. A
+    catalogue board of "unverified" is the opposite case: the property's board
+    is unknown, so a rate that STATES its board settles the question rather
+    than being rejected for the catalogue's silence.
+    """
+    if rate is None:
+        return False
+    catalogue = board_code(resort.get("board"))
+    read = str(getattr(rate, "board", "") or "").strip().upper()
+    if catalogue == BOARD_UNVERIFIED:
+        return read in BREAKFAST_BASES
+    return bool(read) and read == catalogue
+
+
+def _board_for_card(resort: Mapping[str, Any], rate: Any) -> str:
+    """The board the card shows: the read rate's when there is one.
+
+    A rate the engine read states its own board, and that is a measurement;
+    the catalogue's "unverified" is not. Showing the catalogue label beside a
+    priced rate would misdescribe what the card is selling.
+    """
+    read = str(getattr(rate, "board", "") or "").strip().upper()
+    if read and read in BOARD_LABELS:
+        return BOARD_LABELS[read]
+    return str(resort.get("board") or "")
+
+
 def _unit_check_findings(resort_name: str, config) -> tuple[tuple[str, str], ...]:
     """``(finding, dates)`` for this property's unit checks, per date pair.
+
+    A property that refuses five adults for one week may well take them for
 
     A property that refuses five adults for one week may well take them for
     another, so a check only speaks for the dates it was made on.
@@ -3361,11 +3559,21 @@ def collect_holiday_deals(
             # price for the stay the card is offering. It is looked up per pair
             # because a rate for one set of nights is not a rate for another.
             hotel_rate = hotel_rate_for(hotel_evidence, resort["name"], outbound, returning)
+            if hotel_rate is not None and not _rate_board_matches(resort, hotel_rate.cheapest):
+                # A rate for a board this property does not sell (or, when the
+                # catalogue does not know, a rate that did not state its
+                # board) cannot price this card.
+                hotel_rate = None
             if hotel_rate is not None:
                 hotel_cost = round(float(hotel_rate.cheapest.price_gbp), 2)
             else:
                 hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
             peak_hotel = round(arch["suite_peak_nightly_gbp"] * nights, 2)
+            if hotel_rate is None and not arch.get("suite_nightly_gbp"):
+                # NO PRICE, NO CARD. This entry carries a unit and public facts
+                # but no rate: pricing it from nothing would show a stay at
+                # zero and a package total that is really just the flights.
+                continue
             for origin_index, origin in enumerate(config.origins):
                 # Live evidence must be a WHOLE-PARTY, exact-date amount for
                 # THIS pair, THIS origin and THIS cabin, or it prices nothing.
@@ -3628,9 +3836,27 @@ def collect_holiday_deals(
                 if refusal:
                     filtered_out.append((resort["name"], refusal))
                     continue
+                if refusal:
+                    filtered_out.append((resort["name"], refusal))
+                    continue
                 airport = resort["airport"]
                 # ONE family unit pricing (strict mandate) with suite premium.
                 arch = _suite_for(resort)
+                # NO PRICE, NO CARD — and say so. This entry carries a unit
+                # and public facts but no rate, so it makes no card until the
+                # engine reads one. It is announced here rather than silently
+                # absent: a resort the reader expected and did not see is
+                # worse than one we explain.
+                if not arch.get("suite_nightly_gbp") and not any(
+                    hotel_rate_for(hotel_evidence, resort["name"], outbound, returning)
+                    for outbound, returning in priceable_date_pairs(config)
+                ):
+                    filtered_out.append((
+                        resort["name"],
+                        "no rate read for these dates yet — the card appears "
+                        "once one is",
+                    ))
+                    continue
                 # LONG HAUL (Business, over 8 hours): three options side by
                 # side, each a whole-party total, and the budget tested against
                 # each one separately (owner, 2026-09-30). The resort is a card
@@ -3725,7 +3951,7 @@ def collect_holiday_deals(
                             destination_label=resort["destination_label"],
                             destination_key=dest.key,
                             star_rating=resort["stars"],
-                            board_basis=resort["board"],
+                            board_basis=_board_for_card(resort, hotel_rate),
                             outbound_date=target_outbound,
                             return_date=target_return,
                             nights=nights,
@@ -3782,6 +4008,7 @@ def collect_holiday_deals(
                                 hotel_rate.cheapest.booking_shape
                                 if hotel_rate is not None else ""
                             ),
+                            unit_space_note=_space_flag(arch["suite_type"], travellers),
                             uk_ground_gbp=uk_ground,
                             transfer_gbp=transfer,
                             true_d2d_gbp=true_d2d,
@@ -4525,6 +4752,17 @@ HOTEL_FACT_LABELS: dict[str, str] = {
     "transfer_time": "🚐 transfer",
     "transfer_distance": "🚐 transfer",
 }
+
+
+def render_space_note_line(deal: Any) -> str:
+    """The "bigger than the party needs" note, when the unit's name says so."""
+    note = str(getattr(deal, "unit_space_note", "") or "").strip()
+    if not note:
+        return ""
+    return (
+        '<div style="margin:0 0 6px 0; color:#334155; font-size:13px;">'
+        '<span style="color:#b45309;">Unit: ' + escape(note) + '</span></div>'
+    )
 
 
 def render_hotel_unit_note_line(deal: Any) -> str:
@@ -5305,20 +5543,16 @@ def render_holiday_report(
         # when it does fire.
         size_dropped = 0
         for index, entry in enumerate(hotels[:10]):
-            # Deliberately measured on the PRE-hoist chunks. The hoist runs at
-            # the very end, so this count over-states the finished payload by
-            # roughly a third. Erring that way is the safe direction: the
-            # budget may drop a card it strictly need not have, but it can
-            # never ship an e-mail Gmail clips. Measuring the smaller final
-            # size would be tighter, and is the change to make if the headroom
-            # ever proves too thin to afford the conservatism.
-            if len(rendered_hotels) >= MIN_RENDERED_HOTEL_CARDS and sum(
-                len(chunk.encode("utf-8")) for chunk in out
-            ) > EMAIL_HTML_BUDGET_BYTES:
-                # This card and every card after it lost the budget race.
-                size_dropped = len(hotels[:10]) - index
-                break
             rendered_hotels.append(entry)
+            # Where this card's markup starts, so a card that will not fit can
+            # be taken back out again below. The budget is checked on the card
+            # AS WRITTEN — building it, weighing the finished e-mail with it in,
+            # and only then deciding — because a check made before the card
+            # exists can only guess its size, and the guess is either a lie
+            # (too small, and a clipped e-mail ships) or a card thrown away that
+            # would have fitted (what the pre-hoist measurement used to do: it
+            # counted the un-hoisted markup, a third heavier than the e-mail).
+            card_start = len(out)
             deal = entry["base"]
             stars_str = '★' * deal.star_rating + '☆' * (5 - deal.star_rating)
             live = deal.confidence == 'verified-exact-date'
@@ -5496,6 +5730,7 @@ def render_holiday_report(
             out.append(render_hotel_rating_line(deal))
             out.append(render_hotel_facts_line(deal))
             out.append(render_hotel_unit_note_line(deal))
+            out.append(render_space_note_line(deal))
             out.append(render_board_line(deal))
             out.append(render_booking_terms(deal))
             if deal.flight_options:
@@ -5590,6 +5825,22 @@ def render_holiday_report(
             out.append(prices_checked_footer(deal, generated_at=generated_at))
             out.append('</td>')
             out.append('</tr></table>')
+
+            # The card is written. Now weigh the e-mail that would ship with it
+            # and take it back out if that breaks the budget — MIN_RENDERED
+            # cards excepted, because a budget must never produce a one-card
+            # report. The closing tail is reserved so the notice explaining the
+            # cut is not itself what crosses the cap.
+            if (
+                len(rendered_hotels) > MIN_RENDERED_HOTEL_CARDS
+                and _shipped_bytes(out) + _CLOSING_TAIL_ALLOWANCE_BYTES
+                > EMAIL_HTML_BUDGET_BYTES
+            ):
+                del out[card_start:]
+                rendered_hotels.pop()
+                # This card and every card after it lost the budget race.
+                size_dropped = len(hotels[:10]) - index
+                break
 
         if len(hotels) > len(rendered_hotels):
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:10px 0 16px 0;"><tr><td align="center" style="padding:10px; color:#64748b; font-size:13px;">')

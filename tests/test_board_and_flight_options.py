@@ -350,10 +350,14 @@ class FlightOptionTests(unittest.TestCase):
         html = render_holiday_report(december, generated_at="2026-09-30T00:00:00+00:00", deals=deals)
         self.assertIn("Rixos Gulf Hotel Doha", html)
         self.assertIn("Rule not applied — pools heated", html)
-        # Muscat, Zanzibar, Mauritius and Cancún each have one resort the
-        # one-booking rule cannot confirm (three rooms, or a unit not shown);
-        # the transparency list names it so the destination is stated, not
-        # silently absent.
+        # Muscat, Zanzibar, Cancún and Mauritius each have a resort whose
+        # one-booking unit needed saying out loud: Mauritius is three rooms and
+        # the rest were re-admitted on 2026-10-03 (H6) once their real unit was
+        # confirmed — two rooms on one booking for Muscat, a four-bedroom villa
+        # for Zanzibar, a two-bedroom suite for Cancún. All four must be NAMED in
+        # the report, so no destination is silently absent; where they appear is
+        # their business, and the only one still removed is removed for the
+        # three-rooms reason.
         for name in (
             "InterContinental Muscat",
             "Nungwi Dreams by Mantis",
@@ -363,7 +367,22 @@ class FlightOptionTests(unittest.TestCase):
             with self.subTest(resort=name):
                 self.assertIn(name, html)
         self.assertIn("needs 3 rooms — breaks the one-unit rule", html)
-        self.assertIn("unit not verified - cannot confirm one booking for 5", html)
+        # The three re-admitted units are shown on the card, so the reader can
+        # see WHAT the one booking is rather than being told only that one
+        # exists.
+        for unit in (
+            "2 rooms on one booking (3 + 2 adults)",
+            "4-Bedroom Presidential Villa (one unit for 5)",
+            "Ocean Front Two Bedroom Family &amp; Friends Suite (one unit for 5)",
+        ):
+            with self.subTest(unit=unit):
+                self.assertIn(unit, html)
+        self.assertNotIn(
+            "unit not verified - cannot confirm one booking for 5",
+            html,
+            "no December resort is left with an unconfirmed unit — saying one "
+            "was would be a stale claim now that each has a verified one",
+        )
 
     def test_short_haul_cards_are_unchanged(self):
         december = load_holiday_config(DEC.read_text(encoding="utf-8"))

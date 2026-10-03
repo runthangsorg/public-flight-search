@@ -155,11 +155,24 @@ class SummerCatalogueTests(unittest.TestCase):
                 with self.subTest(resort=resort["name"]):
                     self.assertTrue(resort["hotel_url"].startswith("https://"))
                     self.assertIn(resort["stars"], (4, 5))
-                    self.assertIn(resort["confidence"], ("market-supported", "estimate"))
+                    self.assertIn(
+                        resort["confidence"],
+                        # "" is the no-rate entries added 2026-10-03 (H6):
+                        # a unit with no rate yet has no basis to claim, and
+                        # the collector makes no card from it until the engine
+                        # reads one.
+                        ("market-supported", "estimate", ""),
+                    )
+                    if resort["confidence"] == "":
+                        self.assertNotIn("base_nightly_room_rate_gbp", resort,
+                                         "an entry with no confidence must also carry no rate")
                     self.assertTrue(resort["routing"], "a long-haul resort must state its routing")
                     self.assertIn(resort["airport"], hol.BUSINESS_CARRIER_BY_AIRPORT)
                     arch = SUITE_ARCHITECTURE[resort["name"]]
-                    self.assertGreater(arch["suite_nightly_gbp"], 0)
+                    if resort["confidence"] != "":
+                        # An entry that claims a basis must carry a rate.
+                        # The no-rate entries (H6) are exempt by design.
+                        self.assertGreater(arch["suite_nightly_gbp"], 0)
                     # July is the season priced: no peak discount is claimed.
                     self.assertEqual(arch["suite_peak_nightly_gbp"], arch["suite_nightly_gbp"])
                     self.assertEqual(
@@ -181,14 +194,25 @@ class JulyReportHonestyTests(unittest.TestCase):
             row["resort_name"] for row in hol.LAST_OVER_BUDGET
         }
         expected = set()
+        no_rate = set()
         for key in LOMBOK_KEYS | THAILAND_KEYS | {"zanzibar"}:
             kept, _ = filter_resorts(
                 SUMMER_RESORT_CATALOG[key], is_summer=True,
                 island=key in hol.ISLAND_RULE_KEYS,
             )
-            expected |= {r["name"] for r in kept}
+            for resort in kept:
+                # A unit with no rate makes no card until one is read, and is
+                # ANNOUNCED rather than silently absent (H6, 2026-10-03).
+                if not hol._suite_for(resort).get("suite_nightly_gbp"):
+                    no_rate.add(resort["name"])
+                else:
+                    expected.add(resort["name"])
         self.assertEqual(names, expected)
         filtered = {name for name, _reason in hol.LAST_FILTERED_OUT}
+        self.assertTrue(
+            no_rate <= filtered,
+            "a resort with no rate read must be listed as awaiting one",
+        )
         for key in LOMBOK_KEYS | THAILAND_KEYS:
             for resort in SUMMER_RESORT_CATALOG[key]:
                 if resort["name"] not in expected:
