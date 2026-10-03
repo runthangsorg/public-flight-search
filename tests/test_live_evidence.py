@@ -187,12 +187,22 @@ class TestDealLabelling(unittest.TestCase):
 class TestNoFabrication(unittest.TestCase):
     def test_http_path_returns_no_evidence_rather_than_a_derived_figure(self):
         import os
+        import tempfile
 
         previous = os.environ.get("HOLIDAY_LIVE_FLIGHTS")
         os.environ["HOLIDAY_LIVE_FLIGHTS"] = "1"
         try:
             config = load_holiday_config(CONFIG_JSON)
-            offers = try_live_flight_offers(config)
+            # An EXPLICIT absent path, never the default. Calling this with no
+            # path made the test read data/holiday_live_evidence.json: absent
+            # on CI (so green) and present in an operator's checkout, where
+            # the decoy's records were loaded and this honest "no evidence"
+            # answer became a priced deal. See
+            # tests/test_evidence_path_injection.py.
+            with tempfile.TemporaryDirectory() as tmp:
+                offers = try_live_flight_offers(
+                    config, path=os.path.join(tmp, "absent.json")
+                )
         finally:
             if previous is None:
                 os.environ.pop("HOLIDAY_LIVE_FLIGHTS", None)

@@ -524,6 +524,16 @@ def load_live_flight_evidence(
     # clock instead made every fixture a time bomb — a literal observed_at
     # passes until it crosses EVIDENCE_MAX_AGE_HOURS, then the record is
     # skipped as stale and the contract tests fail on a date, not a change.
+    #
+    # The skip log belongs to THIS load. It is module-global because the job
+    # reads it after the fact, but nothing ever cleared it: each load appended,
+    # so the reasons reported were every skip since the process started, not
+    # this run's. Two consequences, both observed: a caller asserting on the
+    # first reason read a previous load's line, and a run that loaded a second
+    # season's evidence (December after July) reported the first season's
+    # reasons as its own. Clearing here makes "skipped" mean this load.
+    _SKIP_LOG.clear()
+
     now_dt = now or datetime.now(timezone.utc)
     if now_dt.tzinfo is None:
         now_dt = now_dt.replace(tzinfo=timezone.utc)
