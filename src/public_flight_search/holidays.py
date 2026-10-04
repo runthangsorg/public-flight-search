@@ -861,6 +861,37 @@ def pricing_order(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
     return pairs
 
 
+def option_evidence_class(option: Mapping[str, Any]) -> int:
+    """How much of one candidate option's price was READ rather than modelled.
+
+    Derived from the two provenance facts an option already carries and nothing
+    else: ``evidence_used`` (the flights came from a whole-party, exact-date
+    fare somebody read) and ``hotel_rate`` (the stay came from a rate read for
+    this property on these dates). It is a count rather than a label because
+    the two are the same kind of claim - a number a reader could go and check -
+    so two read halves outrank one, and one outranks none.
+
+        0  both halves modelled: benchmark flights, catalogue stay
+        1  one half read
+        2  both halves read
+
+    An AGED read still counts as read. ``evidence_used`` is the collector's
+    "may this price a card" test, and an observation too old to be called live
+    is still an observation somebody made; the age is reported separately by
+    the card's own freshness chip. Age is not a reason to prefer a benchmark
+    for the same holiday, which is precisely the "this was read, and here is
+    when" case the chip exists to describe.
+
+    This is the ranking key only. It says which pair a card is built on, never
+    whether the resort makes a card at all: budget filtering, the ranking of
+    one resort against another, and the value score are untouched by it.
+    """
+    return (
+        int(bool(option.get("evidence_used")))
+        + int(option.get("hotel_rate") is not None)
+    )
+
+
 def destination_cabins(
     config: HolidayConfig, destination: HolidayDestination
 ) -> tuple[str, ...]:
@@ -3797,7 +3828,7 @@ def collect_holiday_deals(
     def _best_option(resort, cabin, flight_mult, arch, *, enforce_budget: bool = True,
                      prefer_evidence: bool = False,
                      require_evidence: bool = False) -> Optional[dict]:
-        """Cheapest (date pair, departure origin) for one resort that clears
+        """Best (date pair, departure origin) for one resort that clears
         BOTH ceilings, or None when no combination does.
 
         ``enforce_budget=False`` answers the second question the report asks
@@ -3808,7 +3839,7 @@ def collect_holiday_deals(
         This is the whole of the "wider search": every priceable pair and
         every configured origin is evaluated instead of one middle pair from
         ``origins[0]``, and the reader sees the winner with its own dates,
-        origin, nights and ground cost. Two rules keep the widening honest:
+        origin, nights and ground cost. Three rules keep the widening honest:
 
         * a benchmark may only price a departure from ``origins[0]`` — flight
           benchmarks carry no origin, so claiming a cheaper LGW departure
@@ -3822,7 +3853,29 @@ def collect_holiday_deals(
           ``config.origins`` lead with the headline pair and the declared
           origin, so a benchmark-only run still displays the pair the
           evidence contract states.
+
+        ``prefer_evidence`` ranks the candidates by evidence first and price
+        second (owner brief 2026-10-04, H5). The reader wants real prices: a
+        pair somebody priced for this exact holiday beats a cheaper pair that
+        is only modelled, and within one evidence class the cheapest still
+        wins. The class is ``option_evidence_class`` — a read fare and a read
+        hotel rate are the same kind of claim, and two of them beat one. It
+        changes WHICH PAIR the card is built on and nothing else: the budget
+        test above still admits and rejects exactly the same candidates, a
+        resort that made a card still makes one, and the resorts are still
+        ranked against each other afterwards.
         """
+        def _rank(option: dict) -> tuple[float, ...]:
+            # Strictly less-than below, so a tie keeps the first candidate
+            # evaluated — and ``pairs`` leads with the headline pair.
+            if not prefer_evidence:
+                return (option["total_pkg"], option["true_d2d"])
+            return (
+                -float(option_evidence_class(option)),
+                option["total_pkg"],
+                option["true_d2d"],
+            )
+
         best: Optional[dict] = None
         for outbound, returning in pairs:
             nights = nights_between((outbound, returning))
@@ -3893,17 +3946,7 @@ def collect_holiday_deals(
                     "evidence_used": evidence_used,
                     "hotel_rate": hotel_rate,
                 }
-                if prefer_evidence and best is not None and best["evidence_used"] != evidence_used:
-                    # An observed fare beats a benchmark outright: a x2.5
-                    # estimate on an unobserved date pair must never undercut
-                    # a fare somebody actually read for this resort.
-                    if evidence_used:
-                        best = option
-                    continue
-                if best is None or (option["total_pkg"], option["true_d2d"]) < (
-                    best["total_pkg"],
-                    best["true_d2d"],
-                ):
+                if best is None or _rank(option) < _rank(best):
                     best = option
         return best
 
@@ -4185,7 +4228,14 @@ def collect_holiday_deals(
                             _over_row(resort, dest, cabin, cheapest, arch, flight_options)
                         )
                 else:
-                    option = _best_option(resort, cabin, flight_mult, arch)
+                    # Short haul: the same evidence-first choice the long-haul
+                    # card makes (owner brief 2026-10-04, H5). The candidate set
+                    # is already inside the budget by the time it is ranked, so
+                    # preferring a real price here moves WHICH PAIR the card
+                    # shows and can never add or drop a resort.
+                    option = _best_option(
+                        resort, cabin, flight_mult, arch, prefer_evidence=True
+                    )
                     if option is None:
                         # Held back: listed only if the WHOLE destination ends
                         # with no card (Doha and Muscat at a short-haul budget),
