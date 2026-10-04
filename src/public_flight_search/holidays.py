@@ -4213,16 +4213,42 @@ def collect_holiday_deals(
                 long_haul = cabin.upper() == "BUSINESS"
                 flight_options: tuple[dict[str, Any], ...] = ()
                 if long_haul:
-                    cheapest = _best_option(
+                    # CHOOSE AMONG THE OPTIONS THAT FIT FIRST (owner brief
+                    # 2026-10-04, H7). The card's pair used to be chosen with no
+                    # budget test at all and the budget consulted afterwards, as
+                    # "admit the resort when ANY row fits, then show `cheapest`".
+                    # When the evidence-first pick was the pair that busted the
+                    # ceiling but a cheaper row fitted, the resort was admitted
+                    # AND the card advertised the far dearer option: a read
+                    # GBP 99,000 business fare produced a card totalling
+                    # GBP 111,526 against a GBP 20,000 ceiling, because the
+                    # economy row fitted (REVIEW-H5 P1).
+                    #
+                    # So the business option is first sought among the candidates
+                    # that clear BOTH ceilings - same evidence-first, then
+                    # cheapest ranking (H5), just not allowed to look outside the
+                    # budget. Only when NO business option fits does this fall
+                    # back to exactly the previous behaviour, because then the
+                    # card is honestly over budget and says so on its face.
+                    fitting = _best_option(
                         resort, cabin, flight_mult, arch,
-                        enforce_budget=False, prefer_evidence=True,
+                        enforce_budget=True, prefer_evidence=True,
                     )
-                    flight_options = _flight_options(resort, arch, cheapest) if cheapest else ()
-                    option = (
-                        cheapest
-                        if any(row["within_budget"] for row in flight_options)
-                        else None
-                    )
+                    if fitting is not None:
+                        cheapest = fitting
+                        flight_options = _flight_options(resort, arch, cheapest)
+                        option = cheapest
+                    else:
+                        cheapest = _best_option(
+                            resort, cabin, flight_mult, arch,
+                            enforce_budget=False, prefer_evidence=True,
+                        )
+                        flight_options = _flight_options(resort, arch, cheapest) if cheapest else ()
+                        option = (
+                            cheapest
+                            if any(row["within_budget"] for row in flight_options)
+                            else None
+                        )
                     if option is None and cheapest is not None:
                         over_budget.append(
                             _over_row(resort, dest, cabin, cheapest, arch, flight_options)
