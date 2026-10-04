@@ -2249,7 +2249,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             **_LOP_FLIGHT,
             "highlights": (
                 "Two-Bedroom Villa on the Kuta Mandalika coast",
-                "No rate read yet for these dates — the card appears once one is",
+                "No rate read yet for these dates; the card appears once one is read.",
             ),
             "hotel_url": "https://www.thelomboklodge.com/",
             "dec_ambient_c": (0, 0),
@@ -2268,7 +2268,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             **_LOP_FLIGHT,
             "highlights": (
                 "Two-bedroom Cliff Front Private Pool Villa, Kuta Mandalika",
-                "No rate read yet for these dates — the card appears once one is",
+                "No rate read yet for these dates; the card appears once one is read.",
             ),
             "hotel_url": "https://tunakresort.com/",
             "dec_ambient_c": (0, 0),
@@ -2291,7 +2291,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "highlights": (
                 "AKASA 2 Bedroom Pool Villa, Kuta Mandalika",
                 "All inclusive only — no breakfast-only rate to buy",
-                "No rate read yet for these dates — the card appears once one is",
+                "No rate read yet for these dates; the card appears once one is read.",
             ),
             "hotel_url": "https://kalandara-resort.com/",
             "dec_ambient_c": (0, 0),
@@ -2400,7 +2400,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "highlights": (
                 "Two Bedroom Pool Villa: 220 m², up to 6 adults, plunge pool",
                 "Scheduled resort speedboat from Samui, about 40 min",
-                "No rate read yet for these dates — the card appears once one is",
+                "No rate read yet for these dates; the card appears once one is read.",
             ),
             "hotel_url": "https://www.anantara.com/en/rasananda-koh-phangan",
             "dec_ambient_c": (0, 0),
@@ -4200,8 +4200,8 @@ def collect_holiday_deals(
                 ):
                     filtered_out.append((
                         resort["name"],
-                        "no rate read for these dates yet — the card appears "
-                        "once one is",
+                        "no rate read for these dates yet; the card appears "
+                        "once one is read.",
                     ))
                     continue
                 # LONG HAUL (Business, over 8 hours): three options side by
