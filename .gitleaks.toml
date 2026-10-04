@@ -1,0 +1,16 @@
+# gitleaks configuration for public-flight-search.
+#
+# Keeps every default rule and allows exactly one known false positive: the evidence
+# schemas carry an ``operator_key`` field whose value is a tour-operator slug
+# (``loveholidays``, ``jet2holidays``, ``tui`` ...). gitleaks' generic-api-key rule
+# matches the field name plus a quoted word and reported four such lines on
+# 2026-10-04. Only that field, only a lowercase slug value, is allowed through.
+title = "public-flight-search"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "operator_key is a tour-operator slug, not a credential"
+regexTarget = "line"
+regexes = ['''operator_key["']?\s*[:=,]\s*["'][a-z0-9_]+["']''']
