@@ -164,6 +164,15 @@ jobs:
           else
             echo "::warning::No holiday_hotel_evidence.json in private repo; cards will use catalogue rates."
           fi
+          # The package-price evidence rides the same clone: holiday_package_evidence/1,
+          # written by the private engine's package_hunt, loaded by package_evidence.py.
+          PKG_SRC="$(dirname "${HOTEL_SRC}")/holiday_package_evidence.json"
+          if [[ -f "${PKG_SRC}" ]]; then
+            cp "${PKG_SRC}" data/holiday_package_evidence.json
+            echo "Seeded package evidence: $(python3 -c "import json;e=json.load(open('data/holiday_package_evidence.json'));print(len(e.get('packages',[])),'packages across',len({p.get('operator_key') for p in e.get('packages',[])}),'operators,',len(e.get('blocked',[])),'blocked reads')" 2>/dev/null || echo 'unreadable')"
+          else
+            echo "::warning::No holiday_package_evidence.json in private repo; cards carry no operator package prices."
+          fi
       - name: Build and optionally deliver
         # JULY-SPECIFIC KNOBS ONLY. The generic HOLIDAY_SEARCH_CONFIG_JSON and
         # HOLIDAY_EMAIL_SUBJECT secrets belong to the December planner, and the
