@@ -244,8 +244,23 @@ class OnePricePerCardTests(unittest.TestCase):
             )
 
     def test_the_breakdown_line_prints_the_sum_it_claims(self):
+        # The cabin is named on the flight part (REVIEW-H3 P1): the headline IS
+        # that flight, and nothing else on a short-haul card says which cabin.
         text = visible_text(_render())
-        self.assertIn("flights £2,400 + stay £3,600 + transfers £42 = £6,042", text)
+        self.assertIn(
+            "flights £2,400 (economy) + stay £3,600 + transfers £42 = £6,042", text
+        )
+
+    def test_the_cabin_is_named_on_the_flight_part_for_every_cabin(self):
+        for cabin, word in (
+            ("ECONOMY", "economy"),
+            ("PREMIUM_ECONOMY", "premium economy"),
+            ("BUSINESS", "business"),
+            ("FIRST", "first"),
+        ):
+            with self.subTest(cabin=cabin):
+                text = visible_text(_render(deals=[_deal(cabin_class=cabin)]))
+                self.assertIn(f"flights £2,400 ({word}) +", text)
 
     def test_the_package_only_figure_is_never_printed_as_a_price(self):
         html = _render()
@@ -265,6 +280,132 @@ class OnePricePerCardTests(unittest.TestCase):
         parts, total = breakdown_parts(deal)
         self.assertEqual(parts[-1][0], "other")
         self.assertAlmostEqual(sum(amount for _, amount in parts), total, places=2)
+
+
+class PrintedBreakdownArithmeticTests(unittest.TestCase):
+    """The line's pounds must add up ON THE PAGE (REVIEW-H3 P0).
+
+    ``test_the_breakdown_parts_sum_to_the_headline`` asserts the invariant on
+    the FLOATS, which is a true statement about a representation nobody reads.
+    The line prints whole pounds, each rounded on its own, and two shipped
+    cards printed a headline a pound away from the sum of their own parts -
+    which is why the invariant held in the suite and failed in the e-mail.
+
+    So these parse the printed ``£N`` figures back out of the rendered HTML and
+    out of the text part, over several deals whose parts deliberately carry
+    pence, and add them up as a reader would.
+    """
+
+    #: ``flights £N + stay £N (+ transfers £N | other £N) = £N``, with the
+    #: cabin word the P1 added between the fare and the ``+``.
+    _LINE = re.compile(
+        r"flights £([\d,]+)(?: \([a-z ]+\))?"
+        r" \+ stay £([\d,]+)"
+        r"(?: \+ (?:transfers|other|transfers \+ other) £([\d,]+))?"
+        r" = £([\d,]+)"
+    )
+
+    #: Parts with pence, so independent rounding is actually exercised. The
+    #: first two reproduce the two cards REVIEW-H3 measured as a pound out.
+    _ODD_PARTS = (
+        (623.4, 2399.6, 74.3),
+        (13372.4, 6099.2, 16.5),
+        (2400.0, 3600.0, 41.5),
+        (845.5, 1290.5, 62.4),
+        (4199.5, 2799.5, 39.5),
+        (710.6, 1544.4, 55.6),
+    )
+
+    def _deals_with_pence(self):
+        deals = []
+        for index, (flight, stay, ground) in enumerate(self._ODD_PARTS):
+            deals.append(
+                _deal(
+                    index,
+                    flight_price_total_gbp=flight,
+                    hotel_price_total_gbp=stay,
+                    uk_ground_gbp=ground - 25.0,
+                    transfer_gbp=25.0,
+                    total_package_price_gbp=round(flight + stay, 2),
+                    true_d2d_gbp=round(flight + stay + ground, 2),
+                    cabin_class=("BUSINESS", "ECONOMY", "PREMIUM_ECONOMY")[index % 3],
+                )
+            )
+        return deals
+
+    @staticmethod
+    def _pounds(figure: str) -> int:
+        return int(figure.replace(",", ""))
+
+    def _assert_lines_add_up(self, text: str, expected_cards: int):
+        lines = self._LINE.findall(text)
+        self.assertEqual(
+            len(lines), expected_cards,
+            f"expected one breakdown line per card, parsed {lines}",
+        )
+        for parts in lines:
+            shown = [self._pounds(part) for part in parts[:3] if part]
+            total = self._pounds(parts[3])
+            self.assertEqual(
+                sum(shown), total,
+                f"printed parts {shown} do not add up to the printed headline "
+                f"£{total:,}",
+            )
+
+    def test_the_printed_html_parts_add_up_to_the_printed_headline(self):
+        deals = self._deals_with_pence()
+        self._assert_lines_add_up(visible_text(_render(deals=deals)), len(deals))
+
+    def test_the_printed_text_parts_add_up_to_the_printed_headline(self):
+        deals = self._deals_with_pence()
+        text = render_holiday_report_compact_text(
+            _config(), generated_at=GENERATED_AT, deals=deals
+        )
+        self._assert_lines_add_up(text, len(deals))
+
+    def test_html_and_text_print_the_same_breakdown_for_every_card(self):
+        deals = self._deals_with_pence()
+        html_lines = self._LINE.findall(visible_text(_render(deals=deals)))
+        text_lines = self._LINE.findall(
+            render_holiday_report_compact_text(
+                _config(), generated_at=GENERATED_AT, deals=deals
+            )
+        )
+        self.assertEqual(html_lines, text_lines)
+
+    def test_a_card_with_no_fare_printed_still_balances(self):
+        # A zero fare is not printed at all (``breakdown_parts`` keeps only
+        # positive parts), so the line is ``stay + transfers = total`` - and
+        # the residual then lands on transfers, the only part left to carry it.
+        deal = _deal(
+            flight_price_total_gbp=0.0,
+            hotel_price_total_gbp=2399.6,
+            uk_ground_gbp=16.4,
+            transfer_gbp=57.9,
+            total_package_price_gbp=2399.6,
+            true_d2d_gbp=2473.9,
+        )
+        text = visible_text(_render(deals=[deal]))
+        self.assertNotIn("flights £", text)
+        stay, transfers, total = re.search(
+            r"stay £([\d,]+) \+ transfers £([\d,]+) = £([\d,]+)", text
+        ).groups()
+        self.assertEqual(self._pounds(stay) + self._pounds(transfers), self._pounds(total))
+
+    def test_a_deal_whose_parts_overshoot_its_headline_still_balances(self):
+        # A negative figure is never printed: the shortfall becomes its own
+        # part, and the printed integers still add up.
+        deal = _deal(
+            flight_price_total_gbp=60.4,
+            hotel_price_total_gbp=40.4,
+            uk_ground_gbp=0.4,
+            transfer_gbp=0.0,
+            total_package_price_gbp=100.8,
+            true_d2d_gbp=100.4,
+        )
+        text = visible_text(_render(deals=[deal]))
+        self._assert_lines_add_up(text, 1)
+        self.assertNotRegex(text, r"£-")
 
 
 class MovementTests(unittest.TestCase):
@@ -550,6 +691,56 @@ class NotesAndListsTests(unittest.TestCase):
         text = visible_text(_render(deals=[_deal(resort_name="Test Unread Resort")]))
         self.assertIn("Test Unread Resort — guest rating not checked", text)
 
+    def test_a_reason_cut_off_mid_clause_is_not_printed(self):
+        # The shape that shipped three times (REVIEW-H3 P1). It is only 62
+        # characters, so the 96-character clip cannot catch it and it carries
+        # no ellipsis: verbatim it reads as a broken sentence at the bottom of
+        # the e-mail. It is refused instead - the detailed renderer's strict
+        # filters block still carries it.
+        truncated = "no rate read for these dates yet — the card appears once one is"
+        with patch.object(hol, "LAST_FILTERED_OUT", (("Test Cut Resort", truncated),)):
+            text = visible_text(_render(deals=_deals(1)))
+        self.assertNotIn("Test Cut Resort", text)
+
+    def test_the_refusal_only_catches_reasons_that_stop_on_a_dangling_word(self):
+        # The legitimate reason shapes are lower-case fragments with no full
+        # stop, and a rule that demanded one would delete the whole section.
+        kept = (
+            "user exclusion / waterpark-only",
+            "needs 3 rooms — breaks the one-unit rule",
+            "no verified one-unit room sleeping 5 (2-bed suite / interconnecting)",
+            "no genuine walkable private beach attached",
+            "board unverified — the rate read did not state breakfast, so it is not assumed",
+            "TripAdvisor 4.2 < 4.5",
+            "island resort without each sold board basis priced separately",
+            "room only — not a deal: breakfast is the minimum",
+        )
+        with patch.object(hol, "LAST_FILTERED_OUT", tuple(
+                (f"Kept Resort {index}", reason) for index, reason in enumerate(kept))):
+            text = visible_text(_render(deals=_deals(1)))
+        for reason in kept:
+            with self.subTest(reason=reason):
+                self.assertIn(reason, text)
+
+    def test_a_reason_longer_than_a_line_is_clipped_with_an_ellipsis(self):
+        long_reason = "x" * 140
+        with patch.object(hol, "LAST_FILTERED_OUT", (("Test Long Resort", long_reason),)):
+            text = visible_text(_render(deals=_deals(1)))
+        self.assertIn("…", text)
+        self.assertNotIn("x" * 100, text)
+
+    def test_no_source_reason_literal_ends_mid_clause(self):
+        # The literals themselves, so the guard above stays a backstop rather
+        # than the only thing between a truncated sentence and the reader.
+        source = (ROOT / "src" / "public_flight_search" / "holidays.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("the card appears once one is\"", source)
+        self.assertIn(
+            "the card appears \"\n                        \"once one is read.\"",
+            source,
+        )
+
 
 class TextPartTests(unittest.TestCase):
     def test_the_plain_text_part_mirrors_the_html_order_and_numbers(self):
@@ -622,7 +813,7 @@ class TextPartTests(unittest.TestCase):
     def test_the_text_part_states_the_same_breakdown_and_tag(self):
         deals = [_deal(confidence="stale-cache", live_observed_at="2026-09-29T09:00:00+00:00")]
         text = render_holiday_report_compact_text(_config(), generated_at=GENERATED_AT, deals=deals)
-        self.assertIn("flights £2,400 + stay £3,600 + transfers £42 = £6,042", text)
+        self.assertIn("flights £2,400 (economy) + stay £3,600 + transfers £42 = £6,042", text)
         self.assertIn("Seen 5 days ago", text)
         self.assertIn("total for 5, door to door", visible_text(_render(deals=deals)))
 

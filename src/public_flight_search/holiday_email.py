@@ -237,13 +237,94 @@ def breakdown_parts(deal: PackageDeal) -> tuple[list[tuple[str, float]], float]:
     return parts, total
 
 
-def breakdown_words(deal: PackageDeal) -> str:
-    """``flights £648 + stay £1,200 + transfers £42 = £1,890``."""
+def _pound_int(value: Any) -> int:
+    """The whole-pound figure :func:`_gbp` will PRINT for ``value``.
+
+    The same rounding ``_gbp`` uses - Python's round-half-to-even - so this is
+    the printed number, not a nicer-looking one. Returning an int is the point:
+    the breakdown line ends in ``= £X``, which is an equality claim, and an
+    equality claim has to be true of the digits on the page.
+    """
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return 0
+    if amount != amount or amount in (float("inf"), float("-inf")):
+        # NaN/inf print as "nan"/"inf" through _gbp and cannot be reconciled;
+        # treat them as nothing rather than render a line that cannot add up.
+        return 0
+    return int(round(amount))
+
+
+#: The cabin words a reader knows, keyed by the deal's own ``cabin_class``.
+#: AMEND-H1 §6 allows airport codes on the flight rows; this is the one place
+#: a cabin is named in the compact e-mail, and "business" / "economy" /
+#: "premium economy" are the words the owner uses about them.
+_CABIN_WORDS: dict[str, str] = {
+    "BUSINESS": "business",
+    "ECONOMY": "economy",
+    "PREMIUM_ECONOMY": "premium economy",
+    "FIRST": "first",
+    "MIXED_CABIN": "mixed cabins",
+}
+
+
+def cabin_words(deal: PackageDeal) -> str:
+    """``business`` / ``economy`` / ``premium economy``, or "" if unstated."""
+    return _CABIN_WORDS.get(str(getattr(deal, "cabin_class", "") or "").strip().upper(), "")
+
+
+def breakdown_display_parts(deal: PackageDeal) -> tuple[list[tuple[str, int]], int]:
+    """The breakdown parts AS PRINTED, and the headline AS PRINTED.
+
+    ``breakdown_parts`` is exact - floats that really do sum to the headline -
+    but the line renders each part through ``_gbp``, which rounds every part
+    independently. Two cards shipped a line whose printed parts were a pound
+    short of the printed total (REVIEW-H3 P0): the invariant held on the
+    floats and failed on the page, which is the only place a reader checks it.
+
+    So the arithmetic is done here, on the printed integers: every part but the
+    last is rounded, and the last carries whatever is left over. The line then
+    adds up to the digit.
+    """
     parts, total = breakdown_parts(deal)
+    headline = _pound_int(total)
+    if not parts:
+        return [], headline
+    labels = [label for label, _ in parts]
+    displayed = [_pound_int(amount) for _, amount in parts]
+    # The residual is at most a couple of pounds - it is the sum of the
+    # independent roundings - and it lands on the last part, which is the
+    # smallest and least audited number on the line. The fare itself is never
+    # the part that absorbs it.
+    residual = headline - sum(displayed)
+    amounts = displayed[:-1] + [displayed[-1] + residual]
+    if amounts[-1] <= 0 and len(amounts) > 1:
+        # A last part of a few pence would go negative once the residual lands
+        # on it, and a negative transfer is worse than a merged label. Merging
+        # keeps the sum exact: (a + b) where b <= 0 is still a.
+        labels = labels[:-2] + [f"{labels[-2]} + {labels[-1]}"]
+        amounts = amounts[:-2] + [amounts[-2] + amounts[-1]]
+    return list(zip(labels, amounts)), headline
+
+
+def breakdown_words(deal: PackageDeal) -> str:
+    """``flights £648 (economy) + stay £1,200 + transfers £42 = £1,890``.
+
+    The printed pounds are the ones that were added up, and the cabin is named
+    on the flight line because the headline is that flight: on a Business card
+    the fare is most of the price and nothing else on the card says which
+    cabin it is (REVIEW-H3 P1).
+    """
+    parts, headline = breakdown_display_parts(deal)
     if not parts:
         return ""
-    body = " + ".join(f"{label} {_gbp(amount)}" for label, amount in parts)
-    return f"{body} = {_gbp(total)}"
+    cabin = cabin_words(deal)
+    body = " + ".join(
+        f"{label} £{amount:,}" + (f" ({cabin})" if label == "flights" and cabin else "")
+        for label, amount in parts
+    )
+    return f"{body} = £{headline:,}"
 
 
 def freshness_tag(deal: PackageDeal, *, generated_at: Any) -> tuple[str, str]:
@@ -446,10 +527,13 @@ def board_line(deal: PackageDeal, *, travellers: int) -> str:
         ),
         key=lambda row: row[1],
     )
-    for label, cost in others:
-        words += f" · {label} {_gbp(round(total - stay + cost, 2))}"
-    if others:
-        words += " (each for 5)"
+    for index, (label, cost) in enumerate(others):
+        # The qualifier rides the FIRST alternative figure, not the end of the
+        # line: at the end it reads as governing `£378 each`, which is already
+        # per head, and that is the last position-dependent price in the
+        # e-mail (REVIEW-H3 P2).
+        qualifier = " (each for 5)" if index == 0 else ""
+        words += f" · {label} {_gbp(round(total - stay + cost, 2))}{qualifier}"
     return words
 
 
@@ -879,13 +963,61 @@ def _watch_html(config: HolidayConfig) -> str:
     return "".join(out)
 
 
+#: Words that cannot END an English sentence. A filter reason that stops on one
+#: of them was cut off mid-clause, and a truncated sentence at the bottom of the
+#: e-mail reads as a broken e-mail — three of them shipped that way before the
+#: source literals were completed (REVIEW-H3 P1).
+#:
+#: This is deliberately NOT "must end in a full stop". Thirteen of the fifteen
+#: reason shapes ``holidays`` emits are deliberate lower-case fragments with no
+#: terminal punctuation ("user exclusion / waterpark-only", "needs 3 rooms —
+#: breaks the one-unit rule"), so a full-stop rule would delete the whole Notes
+#: section instead of repairing one sentence. A dangling-word rule catches the
+#: actual defect and leaves every legitimate fragment alone.
+_DANGLING_ENDINGS: frozenset[str] = frozenset({
+    "a", "an", "and", "any", "are", "as", "at", "be", "because", "been", "before",
+    "being", "below", "between", "but", "by", "during", "each", "every", "for",
+    "from", "has", "have", "her", "his", "if", "in", "into", "is", "its", "no",
+    "not", "of", "on", "onto", "or", "over", "per", "so", "than", "that", "the",
+    "their", "then", "there", "these", "this", "those", "to", "under", "unless",
+    "until", "up", "upon", "was", "were", "which", "while", "with", "within",
+    "without", "yet", "you", "your",
+})
+
+
+def _note_reason(reason: Any) -> str:
+    """One filter reason, clipped to a line — or "" if it must not be printed.
+
+    Two guards, in this order:
+
+    * a reason ending on a word that cannot end a sentence was truncated
+      somewhere upstream, and this renderer refuses to reproduce it verbatim
+      (the 96-character clip cannot catch it: the damaged literal was 62
+      characters, comfortably inside the limit, and carried no ellipsis to
+      mark it). The resort is still listed in the DETAILED renderer's strict
+      filters block, so the information is not lost — it is just not printed
+      here in a form that reads as damage;
+    * anything longer than a line is clipped with an explicit ellipsis, so a
+      clip can never be mistaken for the end of the sentence either.
+    """
+    text = str(reason or "").strip()
+    if not text:
+        return ""
+    last = re.split(r"[\s—–:;,/()]+", text)[-1].strip(" .…!?").lower()
+    if last in _DANGLING_ENDINGS:
+        return ""
+    if len(text) > 96:
+        text = text[:93].rstrip() + "…"
+    return text
+
+
 def _notes_html(config: HolidayConfig, deals: Sequence[PackageDeal]) -> str:
     """Strict filters and rules that could not be applied — one line each."""
     lines: list[str] = []
     for name, reason in hol.LAST_FILTERED_OUT:
-        text = str(reason)
-        if len(text) > 96:
-            text = text[:93].rstrip() + "…"
+        text = _note_reason(reason)
+        if not text:
+            continue
         lines.append(f"{_esc(name)} — {_esc(text)}")
     shown = {d.resort_name for d in deals}
     for name in sorted(shown):
@@ -1066,9 +1198,9 @@ def render_holiday_report_compact_text(
 def _notes_lines(config: HolidayConfig, deals: Sequence[PackageDeal]) -> list[str]:
     lines: list[str] = []
     for name, reason in hol.LAST_FILTERED_OUT:
-        text = str(reason)
-        if len(text) > 96:
-            text = text[:93].rstrip() + "…"
+        text = _note_reason(reason)
+        if not text:
+            continue
         lines.append(f"{name} — {text}")
     shown = {d.resort_name for d in deals}
     for name in sorted(shown):
