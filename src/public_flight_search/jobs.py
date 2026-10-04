@@ -18,6 +18,10 @@ from .holidays import (
     load_holiday_config,
     render_holiday_report,
 )
+from .holiday_email import (
+    render_holiday_report_compact,
+    render_holiday_report_compact_text,
+)
 from .holiday_history import (
     append_history,
     build_change_digest,
@@ -42,6 +46,18 @@ def _live_evidence_default_path() -> str:
 
 
 logger = logging.getLogger(__name__)
+
+
+#: The compact e-mail is the default (owner brief 2026-10-04, BRIEF-H1):
+#: one price per card, one at-a-glance table, no benchmark badges.
+#: ``HOLIDAY_REPORT_STYLE=detailed`` selects the previous renderer, which keeps
+#: every price, provenance row and comparison this one drops — so a report can
+#: still be audited end to end without a code change.
+DETAILED_REPORT_STYLE = "detailed"
+
+
+def _report_style() -> str:
+    return os.environ.get("HOLIDAY_REPORT_STYLE", "").strip().lower()
 
 
 def _evidence_path(named: str, env_name: str, default: str) -> str:
@@ -315,12 +331,32 @@ def run_holiday_planner(
     # chips always compare against prior runs only.
     trends = summarize_trends(deals, path=history_path)
     digest = build_change_digest(trends, path=history_path)
-    html = render_holiday_report(
-        config,
-        generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        deals=deals,
-        history_chips=render_history_html(trends),
-        change_digest_html=render_change_digest_html(digest),
+    detailed = _report_style() == DETAILED_REPORT_STYLE
+    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    render_kwargs: dict = {
+        "generated_at": generated_at,
+        "deals": deals,
+        "history_chips": render_history_html(trends),
+        "change_digest_html": render_change_digest_html(digest),
+    }
+    if not detailed:
+        # Movement has to be stated in words against the LAST observation, so
+        # the compact renderer is given the trend rows themselves rather than
+        # the rendered chips (AMEND-H1 §2).
+        render_kwargs.update(
+            trends=trends,
+            digest=digest,
+            last_report_at=str(digest.get("last_report_at") or ""),
+        )
+    render = render_holiday_report if detailed else render_holiday_report_compact
+    html = render(config, **render_kwargs)
+    # The plain-text part the mailer already sends used to say "open this in an
+    # HTML-capable client", which carried none of the decision; it now mirrors
+    # the HTML in the same order with the same numbers.
+    text = (
+        ""
+        if detailed
+        else render_holiday_report_compact_text(config, **render_kwargs)
     )
     # Last PRIOR observation: read BEFORE today's append lands.
     last_prior = "" if dry_run else last_history_observation(path=history_path)
@@ -376,7 +412,7 @@ def run_holiday_planner(
         # holiday, and the cooldown is not the reason it was suppressed.
         send_email = False
     if send_email:
-        send_html(subject, html)
+        send_html(subject, html, text=text)
     date_combination_count = len(_date_pairs(config))
     result = {
         # Which config priced this report. A fallback or a legacy env name
