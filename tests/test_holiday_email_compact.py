@@ -270,7 +270,7 @@ class OnePricePerCardTests(unittest.TestCase):
 
     def test_per_person_appears_once_per_card_in_body_type(self):
         text = visible_text(_render(deals=_deals(1)))
-        self.assertEqual(text.count("£1,208 each"), 1)
+        self.assertEqual(text.count("about £1,208 each"), 1)
         self.assertIsNone(re.search(r"\bpp\b", text))
 
     def test_a_hand_built_deal_whose_parts_do_not_add_up_names_the_gap(self):
@@ -556,7 +556,27 @@ class FlightRowTests(unittest.TestCase):
 class BoardTests(unittest.TestCase):
     def test_the_priced_basis_leads_and_per_person_follows(self):
         text = visible_text(_render(deals=[_deal(board_basis="All Inclusive")]))
-        self.assertIn("All Inclusive · £1,208 each", text)
+        # "about", because round(total / 5) does not multiply back to the
+        # total on any total that is not a multiple of five (REVIEW-H6 P1).
+        self.assertIn("All Inclusive · about £1,208 each", text)
+
+    def test_the_per_head_share_is_never_printed_as_exact(self):
+        # The line is an equality claim the layout invites the reader to check:
+        # total above, share below. GBP 6,042 / 5 = 1,208.4, so GBP 1,208 x 5
+        # is GBP 6,040 - two pounds out. "about" is the honest word for it, and
+        # the only alternative (five different per-head figures on one line) is
+        # worse to read than a rounded share marked as rounded.
+        text = visible_text(_render(deals=[_deal()]))
+        self.assertIn("about £1,208 each", text)
+        self.assertNotRegex(text, r"(?<!about )£1,208 each")
+
+    def test_a_total_that_divides_exactly_is_still_marked_about(self):
+        # 6,040 / 5 = 1,208 exactly. The word does not appear and disappear
+        # depending on the arithmetic: "about" describes the figure, not the
+        # rounding, so a reader is not left wondering why this card differs.
+        deal = _deal(true_d2d_gbp=6040.0, total_package_price_gbp=5998.5)
+        text = visible_text(_render(deals=[deal]))
+        self.assertIn("about £1,208 each", text)
 
     def test_island_board_options_are_each_priced_for_the_party(self):
         deal = _deal(
@@ -568,7 +588,7 @@ class BoardTests(unittest.TestCase):
             ),
         )
         text = visible_text(_render(deals=[deal]))
-        self.assertIn("Bed & Breakfast · £1,208 each", text)
+        self.assertIn("Bed & Breakfast · about £1,208 each", text)
         self.assertIn("Half Board £6,642", text)
         self.assertIn("All Inclusive £7,842", text)
         self.assertIn("(each for 5)", text)

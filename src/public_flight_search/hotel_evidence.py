@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
 import os
+import re
 import sys
 from typing import Optional
 
@@ -270,6 +271,13 @@ def _run_season(config) -> str:
     return ""
 
 
+#: A resort name that spells out the conjunction where the catalogue uses the
+#: ampersand, or the other way round: "Melati Beach Resort and Spa" against
+#: "Melati Beach Resort & Spa". The word form only counts when it stands alone,
+#: so "Banyan Tree" and "Anderson Resort" keep every letter they have.
+_CONJUNCTION = re.compile(r"(?<![a-z0-9])and(?![a-z0-9])")
+
+
 def _normalise_property(name: str) -> str:
     """A hotel name reduced to comparable letters and digits.
 
@@ -277,8 +285,17 @@ def _normalise_property(name: str) -> str:
     ("Pullman Lombok, Merujani Mandalika Beach Resort" vs the same without the
     comma), so matching must not depend on punctuation or spacing or a card
     misses its own rate over a comma.
+
+    ``&`` and a spelled-out ``and`` are the same character of a name, so both
+    are dropped rather than one of them being kept as letters: dropping the
+    ampersand alone left "Melati Beach Resort and Spa" unable to find its own
+    card, because the catalogue's "&" vanished and the exporter's "and" did not.
+    The rule is monotone - it only ever removes MORE from both sides - so it
+    cannot un-match a pair that used to match; measured against both shipped
+    evidence files it moved nothing (0 gained, 0 lost).
     """
-    return "".join(character for character in str(name).lower() if character.isalnum())
+    text = _CONJUNCTION.sub(" ", str(name).lower()).replace("&", " ")
+    return "".join(character for character in text if character.isalnum())
 
 
 def hotel_rate_for(loaded, property_name: str, check_in: str, check_out: str):

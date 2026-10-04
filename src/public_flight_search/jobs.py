@@ -168,6 +168,7 @@ def run_holiday_planner(
     expect_season: str = "",
     hotel_evidence_path: str = "",
     live_evidence_path: str = "",
+    package_evidence_path: str = "",
 ) -> dict[str, int | bool]:
     # WHICH CONFIG THIS RUN USED belongs in the result, not in an operator's
     # guess. Five shapes reach this function — an explicit --config path, two
@@ -269,6 +270,42 @@ def run_holiday_planner(
         print(
             f"hotel-evidence: load failed: {hotel_evidence_error}", file=sys.stderr
         )
+    # OPERATOR PACKAGE PRICES (owner brief 2026-10-04, WP4d D1): the third
+    # evidence seam, loaded where the other two are, with its path pinned at the
+    # call site, the same clock, and the same "a missing file changes nothing
+    # else about the run" rule. It rides the card as information; it never
+    # prices, ranks or filters anything.
+    from . import package_evidence as package_evidence_module
+
+    resolved_package_path = _evidence_path(
+        package_evidence_path, "HOLIDAY_PACKAGE_EVIDENCE_PATH",
+        package_evidence_module.DEFAULT_PACKAGE_EVIDENCE_PATH,
+    )
+    package_prices: dict[tuple[str, str, str, str], object] = {}
+    package_skipped: list[str] = []
+    package_evidence_error: Optional[str] = None
+    package_file_found = False
+    package_newest_observed_at = ""
+    try:
+        package_file_found = os.path.exists(resolved_package_path)
+        package_prices = dict(
+            package_evidence_module.load_package_evidence(
+                config, path=resolved_package_path,
+                now=datetime.now(timezone.utc).isoformat(),
+            )
+        )
+        package_skipped = package_evidence_module.consume_package_skip_log()
+        for entry in package_prices.values():
+            stamp = str(getattr(entry, "observed_at", "") or "")
+            if stamp > package_newest_observed_at:
+                package_newest_observed_at = stamp
+    except Exception as exc:
+        package_prices = {}
+        package_evidence_error = f"{type(exc).__name__}: {exc}"
+        package_skipped = [f"package-evidence load failed: {package_evidence_error}"]
+        print(
+            f"package-evidence: load failed: {package_evidence_error}", file=sys.stderr
+        )
     # CONSUMPTION CONTRACT (2026-09-23): the report prices ONE date pair from
     # ONE origin for a specific set of (airport, cabin) keys, and the private
     # hunt has no other way to learn that set. Before this was recorded, 125
@@ -303,6 +340,7 @@ def run_holiday_planner(
         config, max_budget_gbp=config.max_budget_gbp,
         live_flight_offers=live_offers or None,
         hotel_evidence=hotel_rates or None,
+        package_evidence=package_prices or None,
     )
     # MEMORY BEFORE BUILD: the workflow seeds `history_path` from the
     # private repo in a dedicated bash step (proven transport) BEFORE this
@@ -468,6 +506,19 @@ def run_holiday_planner(
         ),
         "hotel_evidence_skipped": hotel_skipped,
         "hotel_evidence_load_error": hotel_evidence_error,
+        # Operator package prices (WP4d D1). The same question as the two seams
+        # above, and it matters more here: `package_prices_on_cards` counts the
+        # cards that actually show a package, so a non-zero `package_evidence_
+        # record count` with zero on cards means the export describes resorts
+        # this report does not price - which is waste the hunt can be aimed away
+        # from, the same class of finding the consumption contract exists for.
+        "package_evidence_file_found": package_file_found,
+        "package_evidence_newest_observed_at": package_newest_observed_at or None,
+        "package_prices_on_cards": sum(
+            1 for deal in deals if deal.operator_package is not None
+        ),
+        "package_evidence_skipped": package_skipped,
+        "package_evidence_load_error": package_evidence_error,
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
         "send_skipped_no_change": (not dry_run) and not send_email,

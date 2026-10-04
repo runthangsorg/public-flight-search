@@ -13,9 +13,10 @@ honest seam rather than a scraper — the same contract as
 * every accepted price is re-validated here for season, exact dates, party
   size, room count, board basis, confidence and freshness;
 * the price is a GBP figure the operator displayed, or — when the operator
-  quotes per person — the whole-party total the engine derived, carried with
-  its own arithmetic on its face (``price_how``), so a per-person figure can
-  never be read as a whole-party price;
+  quotes per person, or per room for a two-room booking — the whole-party
+  total the engine derived, carried with its own arithmetic on its face
+  (``price_how``), so a per-person or per-room figure can never be read as a
+  whole-party price;
 * each price travels with its source URL and its observation time;
 * a mismatched, room-only, unverified or aged price is dropped **with a stated
   reason** rather than quietly;
@@ -91,8 +92,12 @@ class PackagePrice:
     #: ``whole_party_total`` — a figure the operator displayed for the party.
     #: ``per_person`` — the whole-party total the engine derived from a
     #: per-person figure; ``price_how`` says how.
+    #: ``rooms_sum`` — the whole-party total the engine derived by adding the
+    #: operator's per-room prices for a multi-room booking; ``price_how`` says
+    #: how. This report's party is five, so a two-room booking is the normal
+    #: shape rather than an exception.
     price_basis: str
-    #: The exporter's own words for how a per-person price became a total.
+    #: The exporter's own words for how a displayed figure became the total.
     price_how: str
     read_method: str
     link_kind: str
@@ -121,15 +126,51 @@ def _warn_skip(what: str, reason: str) -> None:
     print(f"package-evidence: skipping {message}", file=sys.stderr)
 
 
+#: The price bases this loader accepts. ``whole_party_total`` is a figure the
+#: operator displayed for the party; ``per_person`` and ``rooms_sum`` are both
+#: only usable through the engine's own ``derived_total_gbp``, which carries the
+#: arithmetic on its face.
+#:
+#: ``rooms_sum`` is the shape a two-room booking arrives in: the operator
+#: displays a price per room and the engine adds them. Five travellers cannot be
+#: one room, so this is not a niche basis for this report's party - as of
+#: 2026-10-04 every real record in the export is this basis.
+_PRICE_BASES: tuple[str, ...] = ("whole_party_total", "per_person", "rooms_sum")
+
+#: Bases whose total is the engine's sum rather than a figure the operator
+#: displayed for the party. Both need ``derived_total_gbp`` to be usable.
+_DERIVED_BASES: frozenset[str] = frozenset({"per_person", "rooms_sum"})
+
+
+def _derived_total(item: dict) -> Optional[tuple[float, str]]:
+    """``(value, how)`` from the engine's own derivation, or None.
+
+    The exporter states the arithmetic and this module never repeats it: a total
+    computed here would be a figure nobody published and nobody checked.
+    """
+    derived = item.get("derived_total_gbp")
+    if not isinstance(derived, dict):
+        return None
+    try:
+        value = float(derived.get("value"))
+    except (TypeError, ValueError):
+        return None
+    how = str(derived.get("how", "")).strip()
+    if value <= 0 or not how:
+        return None
+    return (value, how)
+
+
 def _price_for(item: dict) -> Optional[tuple[float, str, str]]:
     """``(total_gbp, price_basis, price_how)`` for this record, or None.
 
     The card is priced in GBP. A ``whole_party_total`` is a figure the operator
-    displayed for the party, so it is the total as shown. A ``per_person``
-    figure is only usable through the engine's own ``derived_total_gbp``, which
-    carries the arithmetic on its face — this module never multiplies a
-    per-person price itself, because a computed figure must be traceable to the
-    exporter, not re-derived here. Anything else prices nothing.
+    displayed for the party, so it is the total as shown. A ``per_person`` or
+    ``rooms_sum`` figure is only usable through the engine's own
+    ``derived_total_gbp``, which carries the arithmetic on its face — this
+    module never multiplies a per-person price and never adds two room prices
+    itself, because a computed figure must be traceable to the exporter, not
+    re-derived here. Anything else prices nothing.
     """
     shown = item.get("price_shown")
     if not isinstance(shown, dict):
@@ -137,27 +178,25 @@ def _price_for(item: dict) -> Optional[tuple[float, str, str]]:
     currency = str(shown.get("currency", "")).strip().upper()
     if currency != "GBP":
         return None
+    basis = str(shown.get("basis", "")).strip()
+    if basis in _DERIVED_BASES:
+        # Judged on the DERIVATION, not on the displayed figure. A rooms_sum
+        # displays one room's price and the total is the sum, so requiring the
+        # displayed amount to mean "the party" would be the wrong test - and
+        # requiring it to be a positive number would reject a record whose
+        # exporter left the per-room slot empty while still stating the total.
+        derived = _derived_total(item)
+        if derived is None:
+            return None
+        return (derived[0], basis, derived[1])
     try:
         amount = float(shown.get("amount"))
     except (TypeError, ValueError):
         return None
     if amount <= 0:
         return None
-    basis = str(shown.get("basis", "")).strip()
     if basis == "whole_party_total":
         return (amount, basis, "")
-    if basis == "per_person":
-        derived = item.get("derived_total_gbp")
-        if not isinstance(derived, dict):
-            return None
-        try:
-            value = float(derived.get("value"))
-        except (TypeError, ValueError):
-            return None
-        how = str(derived.get("how", "")).strip()
-        if value <= 0 or not how:
-            return None
-        return (value, basis, how)
     return None
 
 
@@ -169,28 +208,24 @@ def _price_problem(item: dict) -> str:
     currency = str(shown.get("currency", "")).strip().upper()
     if currency != "GBP":
         return f"price_shown.currency must be GBP, got {currency or 'nothing'!r}"
+    basis = str(shown.get("basis", "")).strip()
+    if basis in _DERIVED_BASES:
+        noun = "a per-person price" if basis == "per_person" else "a two-room sum"
+        if _derived_total(item) is None:
+            return f"{noun} needs a derived_total_gbp with a positive value and how"
+        return "price could not be read"
     try:
         amount = float(shown.get("amount"))
     except (TypeError, ValueError):
         amount = None
     if amount is None or amount <= 0:
         return "price_shown.amount must be a positive figure as shown"
-    basis = str(shown.get("basis", "")).strip()
-    if basis == "per_person":
-        derived = item.get("derived_total_gbp")
-        if not isinstance(derived, dict):
-            return "per_person price needs a derived_total_gbp with a value and how"
-        value = None
-        try:
-            value = float(derived.get("value"))
-        except (TypeError, ValueError):
-            value = None
-        if value is None or value <= 0 or not str(derived.get("how", "")).strip():
-            return "per_person price needs a derived_total_gbp with a value and how"
-        return "price could not be read"
     if basis == "whole_party_total":
         return "price could not be read"
-    return f"price_shown.basis {basis!r} is neither whole_party_total nor per_person"
+    return (
+        f"price_shown.basis {basis!r} is not one of "
+        + ", ".join(repr(name) for name in _PRICE_BASES)
+    )
 
 
 def load_package_evidence(
@@ -211,7 +246,8 @@ def load_package_evidence(
     * the confidence is ``verified-exact-date``;
     * it has a real http(s) source URL and is observed within ``max_age_hours``;
     * its price is a GBP figure: a displayed whole-party total, or a
-      per-person price with the engine's own ``derived_total_gbp``.
+      per-person or two-room price with the engine's own
+      ``derived_total_gbp``.
 
     Two qualifying records for the same key keep the cheaper total. Anything
     else is skipped with a stated reason on stderr. A missing or unreadable
@@ -224,18 +260,19 @@ def load_package_evidence(
         with open(path, encoding="utf-8") as handle:
             payload = json.load(handle)
     except FileNotFoundError:
+        # A missing file is the normal case and says nothing: no skip entry, so
+        # a non-empty skip log always means something WAS there and was refused.
         return {}
     except (json.JSONDecodeError, OSError) as exc:
-        print(f"package-evidence: unreadable {path}: {exc}", file=sys.stderr)
+        _warn_skip(path, f"unreadable: {type(exc).__name__}: {exc}")
         return {}
 
     if not isinstance(payload, dict) or payload.get("schema") != SCHEMA:
         found = payload.get("schema") if isinstance(payload, dict) else type(payload).__name__
-        print(f"package-evidence: {path} has schema {found!r}, expected {SCHEMA!r}",
-              file=sys.stderr)
+        _warn_skip(path, f"schema is {found!r}, expected {SCHEMA!r}")
         return {}
     if not isinstance(payload.get("packages"), list):
-        print(f"package-evidence: {path} has no packages list", file=sys.stderr)
+        _warn_skip(path, "no packages list")
         return {}
 
     from .holidays import priceable_date_pairs
@@ -395,9 +432,12 @@ def package_provenance(price: PackagePrice) -> str:
         f"{observed.day} {observed.strftime('%b %Y')}" if observed else "date unknown"
     )
     if price.price_basis == "per_person":
-        basis = (
-            f"per-person price x {price.adults + price.children} as shown"
-        )
+        basis = f"per-person price x {price.adults + price.children} as shown"
+    elif price.price_basis == "rooms_sum":
+        # The operator displayed a price per room; the total is the engine's
+        # sum of the rooms, so the sentence must say that rather than claim the
+        # operator displayed a party total.
+        basis = f"{price.rooms} room prices added, as shown"
     else:
         basis = "whole-party total as shown"
     rooms = "room" if price.rooms == 1 else "rooms"

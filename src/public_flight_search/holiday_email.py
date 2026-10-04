@@ -366,6 +366,151 @@ def _checked_words(age: Optional[float]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# The operator's own package price, beside the headline and never instead
+# ---------------------------------------------------------------------------
+
+#: The exporter writes one clause per room into ``derived_total_gbp.how``:
+#: ``room 1 GBP 3,884.24 (2 adults, <room name>) + room 2 GBP 5,509.55 (3 adults,
+#: <room name>)``. Those clauses carry the per-room figures, which is the only
+#: place they exist, so they are lifted out for the card. Prose that does not
+#: match is not guessed at: the card falls back to the exporter's own words,
+#: clipped, because a wrong per-room figure is worse than a long one.
+_ROOM_CLAUSE = re.compile(
+    r"room\s+(\d+)\s*£\s*([\d,]+(?:\.\d+)?)\s*\(\s*(\d+)\s*adults?", re.IGNORECASE
+)
+
+#: Link kinds that carry the operator's own quote for THESE dates. A
+#: ``search-page`` or ``destination-page`` link would drop the reader on a form
+#: with no dates on it, so the operator's name is shown as plain text instead.
+_PACKAGE_LINK_KINDS: frozenset[str] = frozenset({"deep-link", "prefilled-search"})
+
+
+def _rooms_added_words(package: Any) -> str:
+    """``2 rooms added: room 1 GBP 4,113 (2 adults), room 2 GBP 5,848 (3 adults)``.
+
+    Empty when the exporter's wording carries no per-room figures, which is the
+    signal to print nothing here rather than a half-parsed sentence.
+    """
+    clauses = _ROOM_CLAUSE.findall(str(getattr(package, "how", "") or ""))
+    if len(clauses) < 2:
+        return ""
+    rooms = ", ".join(
+        f"room {number} £{_pound_int(amount.replace(',', '')):,} ({adults} adults)"
+        for number, amount, adults in clauses
+    )
+    return f"{len(clauses)} rooms added: {rooms}"
+
+
+def _package_line_html(deal: PackageDeal, *, travellers: int) -> str:
+    """One card's package line as HTML, from the same segments as the text part.
+
+    Only the operator's own name is a link, and only when the link carries this
+    trip's quote. Everything else is escaped plain text.
+    """
+    segments = _package_segments(deal, travellers=travellers)
+    if not segments:
+        return ""
+    url = _package_link(deal)
+    out: list[str] = []
+    for text, is_operator in segments:
+        if is_operator and url:
+            out.append(
+                f'<a href="{escape(url, quote=True)}" style="color:{_ACCENT}; '
+                f'text-decoration:none;">{_esc(text)} ↗</a>'
+            )
+        elif is_operator:
+            # No link that keeps the dates: say so rather than offer a dead end.
+            out.append(_esc(text))
+            out.append(
+                '<span style="color:%s;"> (dates to enter on their site)</span>'
+                % _MUTED
+            )
+        else:
+            out.append(_esc(text))
+    return "".join(out)
+
+
+def package_words(deal: PackageDeal, *, travellers: int) -> str:
+    """``Package deal: £9,394 for 5 - Example Holidays, Bed & Breakfast, 2 rooms``.
+
+    Empty when no qualifying operator package was read for this card's dates,
+    which is the state of every card before the seam existed.
+
+    The line never becomes the headline: it is the operator's own price for one
+    booking on these dates, sitting BESIDE the engine's total so the reader can
+    see the gap. WP4d D2/D3; AMEND-H1's rule that the card carries one headline
+    price is untouched - this is a comparison line with its own subject, not a
+    second headline.
+    """
+    segments = _package_segments(deal, travellers=travellers)
+    if not segments:
+        return ""
+    # Concatenated, not joined: every segment carries its own punctuation (the
+    # em dash after the price, the comma after the operator, the middot before
+    # each tail), so a separator here would print "operator · , board".
+    return "".join(text for text, _ in segments)
+
+
+def _package_segments(
+    deal: PackageDeal, *, travellers: int
+) -> list[tuple[str, bool]]:
+    """``[(text, is_the_operator_name)]`` for one card's package line.
+
+    One list, two renderings. The HTML marks the operator's name as the link
+    (or not) and the plain-text part prints the same words, so the two can never
+    drift into saying different things - which is the failure mode this
+    renderer's other fixes were about.
+    """
+    package = getattr(deal, "operator_package", None)
+    if package is None:
+        return []
+    board = hol.BOARD_LABELS.get(
+        str(getattr(package, "board", "")).strip().upper(),
+        str(getattr(package, "board", "") or ""),
+    )
+    operator = str(getattr(package, "operator", "") or "").strip()
+    rooms = int(getattr(package, "rooms", 0) or 0)
+    lead = (
+        f"Package deal: {_gbp(getattr(package, 'total_gbp', 0.0))} for {int(travellers)}"
+    )
+    detail = f"{board}, {rooms} {'room' if rooms == 1 else 'rooms'}"
+    tail: list[str] = []
+    checked = _day_words(getattr(package, "observed_at", ""), generated_at="")
+    if checked:
+        tail.append(f"checked {checked}")
+    gap = float(getattr(package, "vs_engine_gbp", 0.0) or 0.0)
+    if gap > 0:
+        tail.append(f"{_gbp(gap)} less than booking separately")
+    elif gap < 0:
+        tail.append(f"{_gbp(abs(gap))} more than booking separately")
+    else:
+        tail.append("the same as booking separately")
+    # (text, is_operator_name). The operator's name is its own segment so the
+    # HTML can link exactly that and nothing else.
+    segments = [(f"{lead} — ", False), (operator, True), (f", {detail}", False)]
+    for extra in tail:
+        segments.append((f" · {extra}", False))
+    return segments
+
+
+def _package_link(deal: PackageDeal) -> str:
+    """The operator's own quote URL, or "" when the link would drop the dates.
+
+    A ``search-page`` or ``destination-page`` link lands the reader on a form
+    with nothing filled in, so it is shown as words instead of a link that
+    promises this trip's price and cannot deliver it.
+    """
+    package = getattr(deal, "operator_package", None)
+    if package is None:
+        return ""
+    kind = str(getattr(package, "link_kind", "")).strip().lower()
+    if kind not in _PACKAGE_LINK_KINDS:
+        return ""
+    url = str(getattr(package, "source_url", "") or "")
+    return url if url.startswith(("http://", "https://")) else ""
+
+
+# ---------------------------------------------------------------------------
 # Movement against the LAST observation, never a benchmark
 # ---------------------------------------------------------------------------
 
@@ -493,12 +638,21 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
 
 
 def board_line(deal: PackageDeal, *, travellers: int) -> str:
-    """``All Inclusive · £378 each`` (+ the other boards, each priced for 5).
+    """``All Inclusive · about £378 each`` (+ the other boards, each priced for 5).
 
     AMEND-H5: the priced basis first, then each other basis with its price, in
     words and never as a code. The other bases are re-based onto the same
     door-to-door arithmetic as the headline, so one number means one thing
     across the whole e-mail: the total for the party.
+
+    The per-head share is printed as ``about``, never as an exact figure. It is
+    ``round(total / travellers)``, so on any total that is not a multiple of the
+    party size the reader's one multiplication does not come back to the total
+    above it — measured on 10 of 15 shipped cards, off by up to £2 a head
+    (REVIEW-H6 P1). The same arithmetic the breakdown line already fixed one
+    line higher. "about" is the honest word for a rounded share; a share that
+    multiplies back exactly would need five different per-head figures on one
+    line, which is worse to read than a rounded one clearly marked as rounded.
     """
     priced_basis = hol.BOARD_LABELS.get(board_code(getattr(deal, "board_basis", "")), "")
     words = priced_basis or str(getattr(deal, "board_basis", "") or "")
@@ -508,7 +662,7 @@ def board_line(deal: PackageDeal, *, travellers: int) -> str:
     except (TypeError, ValueError, ZeroDivisionError):
         per_person = 0.0
     if per_person > 0:
-        words += f" · {_gbp(per_person)} each"
+        words += f" · about {_gbp(per_person)} each"
     options = list(getattr(deal, "board_options", ()) or ())
     if not options:
         return words
@@ -668,6 +822,9 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
             "headline": _gbp(headline_total(deal)),
             "headline_words": f"total for {travellers}, door to door",
             "breakdown": breakdown_words(deal),
+            "package": package_words(deal, travellers=travellers),
+            "package_html": _package_line_html(deal, travellers=travellers),
+            "package_how": _rooms_added_words(getattr(deal, "operator_package", None)),
             "board": board_line(deal, travellers=travellers),
             "tag": tag,
             "tag_colour": tag_colour,
@@ -861,13 +1018,28 @@ def _card_html(card: Mapping[str, Any]) -> str:
         _esc(card["headline"]), '</div>',
         f'<div style="font-size:12px; color:{_MUTED};">{_esc(card["headline_words"])}</div>',
         f'<div style="font-size:12px; color:{_MUTED}; margin:2px 0 0 0;">{_esc(card["breakdown"])}</div>',
+    ]
+    if card["package"]:
+        # The operator's own price for one booking on these dates. It sits under
+        # the breakdown because that is where the engine's total is, so the
+        # reader can see which of the two is dearer without hunting.
+        out.append(
+            f'<div style="font-size:12px; color:{_INK}; margin:6px 0 0 0;">'
+            f'{card["package_html"]}</div>'
+        )
+        if card["package_how"]:
+            out.append(
+                f'<div style="font-size:11px; color:{_MUTED}; margin:2px 0 0 0;">'
+                f'{_esc(card["package_how"])}</div>'
+            )
+    out.extend([
         f'<div style="font-size:13px; color:{_INK}; margin:6px 0 0 0;">{_esc(card["board"])}</div>',
         '<div style="font-size:11px; margin:6px 0 0 0;">',
         f'<span style="background:{tag_bg}; color:{tag_fg}; padding:2px 8px; ',
         f'border-radius:9999px;">{_esc(card["tag"])}</span> ',
         f'<span style="color:{_MOVEMENT_COLOURS[movement_colour(str(card["movement"]))]}">',
         _esc(card["movement"]), '</span></div>',
-    ]
+    ])
     if card["flights"]:
         out.append(_flight_table_html(card["flights"]))
     if card["why"]:
@@ -1155,6 +1327,10 @@ def render_holiday_report_compact_text(
         lines.append(f"  {card['headline']} — {card['headline_words']}")
         if card["breakdown"]:
             lines.append(f"  {card['breakdown']}")
+        if card["package"]:
+            lines.append(f"  {card['package']}")
+            if card["package_how"]:
+                lines.append(f"  {card['package_how']}")
         lines.append(f"  {card['board']}")
         lines.append(f"  {card['tag']} · {card['movement']}")
         for cabin, route, total in card["flights"]:

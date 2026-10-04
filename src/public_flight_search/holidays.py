@@ -996,6 +996,75 @@ def card_lookup_keys(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
 
 
 @dataclass(frozen=True)
+class OperatorPackage:
+    """One operator's package price for THIS property on THIS trip's dates.
+
+    Additional information on a card, never a headline. It carries its own
+    provenance and the gap to the engine's own total so the reader can see the
+    two figures side by side and decide which they are being sold.
+    """
+
+    operator: str
+    operator_key: str
+    total_gbp: float
+    board: str
+    rooms: int
+    link_kind: str
+    source_url: str
+    observed_at: str
+    #: ``package_provenance`` on the loader's record: when, from whom, on what
+    #: basis. Never reconstructed here.
+    provenance: str
+    #: ``price_how`` — the exporter's own arithmetic, for a basis whose total is
+    #: a sum rather than a displayed party figure. Empty when the operator
+    #: displayed the total itself.
+    how: str
+    #: The engine's own flights + stay for the same trip, minus this package.
+    #: Positive means the package is CHEAPER than booking the halves separately.
+    vs_engine_gbp: float
+
+
+def _operator_package(
+    package_evidence: Optional[Mapping[Any, Any]],
+    resort_name: str,
+    outbound: str,
+    returning: str,
+    engine_total_gbp: float,
+) -> Optional[OperatorPackage]:
+    """The cheapest qualifying operator package for this card's dates, or None.
+
+    Matched by property name through ``package_price_for`` (which normalises
+    punctuation) and by EXACT dates: a package read for other nights is another
+    package. An operator's price never becomes the card's price — it rides
+    beside it.
+    """
+    if not package_evidence:
+        return None
+    from .package_evidence import package_price_for, package_provenance
+
+    price = package_price_for(package_evidence, resort_name, outbound, returning)
+    if price is None:
+        return None
+    try:
+        engine_total = float(engine_total_gbp)
+    except (TypeError, ValueError):
+        return None
+    return OperatorPackage(
+        operator=str(price.operator),
+        operator_key=str(price.operator_key),
+        total_gbp=round(float(price.total_gbp), 2),
+        board=str(price.board),
+        rooms=int(price.rooms),
+        link_kind=str(price.link_kind),
+        source_url=str(price.source_url),
+        observed_at=str(price.observed_at),
+        provenance=package_provenance(price),
+        how=str(price.price_how or ""),
+        vs_engine_gbp=round(engine_total - float(price.total_gbp), 2),
+    )
+
+
+@dataclass(frozen=True)
 class PackageDeal:
     resort_name: str
     destination_label: str
@@ -1060,6 +1129,13 @@ class PackageDeal:
     #: read (owner brief 2026-10-03, H3). None means the stay is priced from
     #: the catalogue, exactly as before the seam existed.
     hotel_evidence: Any = None
+    #: A real operator package price — flights and hotel, one booking — read for
+    #: THIS property on THIS card's dates (owner brief 2026-10-04, WP4d). It is
+    #: INFORMATION, never a price: it never touches
+    #: ``total_package_price_gbp``, the budget test, the discount, the value
+    #: score or the ordering. None means no qualifying package was read, which
+    #: is the state every card was in before the seam existed.
+    operator_package: Optional[OperatorPackage] = None
     source_url: str = ""
     # When a live whole-party fare is used, the carrier the provider actually
     # displayed (may differ from the benchmark carrier); empty on benchmarks.
@@ -3794,6 +3870,7 @@ def collect_holiday_deals(
     max_budget_gbp: Optional[float] = None,
     live_flight_offers: Optional[Mapping[str, LiveFareEvidence]] = None,
     hotel_evidence: Optional[Mapping[Any, Any]] = None,
+    package_evidence: Optional[Mapping[Any, Any]] = None,
 ) -> tuple[PackageDeal, ...]:
     """Calculate holiday packages, enforcing the budget on BOTH the package
     total (flights + hotel) AND the True D2D total (package + UK ground +
@@ -3804,6 +3881,15 @@ def collect_holiday_deals(
     a card's resort and dates have a qualifying rate, that rate prices the stay
     instead of the catalogue estimate — and the card says so. Absent, or with no
     qualifying rate, nothing changes.
+
+    ``package_evidence`` is the operator-package loader's output (owner brief
+    2026-10-04, WP4d). Where a card's resort and dates have a qualifying
+    operator package, that price rides the card as ``operator_package`` beside
+    the headline. It NEVER prices, ranks, filters or scores anything: the
+    headline stays the engine's own flights + stay, because an operator's price
+    for one booking on one date is information about the market, not a
+    re-ranking of the report. Absent, or with no qualifying package, nothing
+    changes.
     """
     if max_budget_gbp is None:
         max_budget_gbp = getattr(config, "max_budget_gbp", 5000.0)
@@ -4419,6 +4505,18 @@ def collect_holiday_deals(
                                 else str(resort.get("confidence", "market-supported"))
                             ),
                             hotel_evidence=hotel_rate,
+                            # The operator's own package price for these dates,
+                            # when one was read. INFORMATION ONLY: it is
+                            # computed after the headline is fixed and cannot
+                            # reach the total, the budget test, the discount,
+                            # the value score or the ordering.
+                            operator_package=_operator_package(
+                                package_evidence,
+                                str(resort["name"]),
+                                target_outbound,
+                                target_return,
+                                total_pkg,
+                            ),
                             # An aged fare shows its source and observed date too:
                             # the auditability mandate applies to a "this was
                             # observed on <date>" claim as much as to a live one.
@@ -4765,10 +4863,20 @@ def render_diy_block(deal: PackageDeal, *, adults: int) -> str:
         flight_observed_at=deal.live_observed_at,
         airline_booking_url=airline_booking_page(deal.live_carrier or deal.airline),
     )
+    # When an operator's own package price was READ for this card's dates, the
+    # comparison is no longer "nobody has a package price": the read total goes
+    # in, and the sentence becomes a real verdict. Before this it always said
+    # "package price not verified - price the same dates on a vendor link above",
+    # directly under a card that had just been handed one.
+    _package = getattr(deal, "operator_package", None)
     comparison = DiyComparison(
         diy_total_gbp=option.total_gbp,
-        package_total_gbp=None,
-        package_confidence=deal.confidence,
+        package_total_gbp=(round(float(_package.total_gbp), 2)
+                           if _package is not None else None),
+        package_confidence=(
+            str(getattr(_package, "provenance", "") or deal.confidence)
+            if _package is not None else deal.confidence
+        ),
     )
     flight, hotel = option.components[0], option.components[1]
     carrier = escape((deal.live_carrier or deal.airline).split('/')[0].strip())
@@ -5229,6 +5337,107 @@ def render_hotel_rating_line(deal: Any) -> str:
         '<strong style="color:#0f172a;">Ratings read:</strong> '
         + '<span style="color:#cbd5e1;"> · </span>'.join(parts)
         + '</div>'
+    )
+
+
+#: Link kinds that carry the operator's own quote for the dates on the card. A
+#: search-page or destination-page link would drop the reader on a form with
+#: nothing filled in, so the operator's name is shown as words instead.
+PACKAGE_LINK_KINDS: frozenset[str] = frozenset({"deep-link", "prefilled-search"})
+
+
+def render_operator_package_line(deal: Any, *, travellers: int) -> str:
+    """The operator's own package price, beside the engine's total.
+
+    Rendered only when a qualifying operator package was read for THIS property
+    on THIS card's dates; without one the card is exactly what it was before the
+    seam existed. It never replaces the headline: the engine's flights + stay
+    stay the headline, and this is the market's answer to the same question, so
+    the reader sees both and the gap between them (owner brief 2026-10-04,
+    WP4d D3).
+
+    The detailed style's twin of ``holiday_email.package_words``: the same words
+    from the same fields, so choosing a style never changes what the report
+    claims.
+    """
+    package = getattr(deal, "operator_package", None)
+    if package is None:
+        return ""
+    try:
+        total = float(getattr(package, "total_gbp", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return ""
+    if total <= 0:
+        return ""
+    board = BOARD_LABELS.get(
+        str(getattr(package, "board", "")).strip().upper(),
+        str(getattr(package, "board", "") or ""),
+    )
+    rooms = int(getattr(package, "rooms", 0) or 0)
+    observed = getattr(package, "observed_at", "")
+    day = str(observed)[:10]
+    try:
+        shown_day = (
+            datetime.strptime(day, "%Y-%m-%d").strftime("%-d %b %Y")
+            if day else "date unknown"
+        )
+    except (TypeError, ValueError):
+        shown_day = "date unknown"
+    try:
+        gap = float(getattr(package, "vs_engine_gbp", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        gap = 0.0
+    if gap > 0:
+        versus = f"£{abs(gap):,.0f} LESS than booking flights and hotel separately"
+    elif gap < 0:
+        versus = f"£{abs(gap):,.0f} MORE than booking flights and hotel separately"
+    else:
+        versus = "the SAME as booking flights and hotel separately"
+    operator = str(getattr(package, "operator", "") or "").strip()
+    url = str(getattr(package, "source_url", "") or "")
+    kind = str(getattr(package, "link_kind", "")).strip().lower()
+    if kind in PACKAGE_LINK_KINDS and url.startswith(("http://", "https://")):
+        operator_html = (
+            '<a href="' + escape(url, quote=True) + '" '
+            'style="color:#1d4ed8; text-decoration:none;">' + escape(operator)
+            + " ↗</a>"
+        )
+    else:
+        operator_html = escape(operator) + " (dates to enter on their site)"
+    return (
+        '<div style="margin:0 0 6px 0; color:#334155; font-size:13px;">'
+        '<strong style="color:#0f172a;">Operator package:</strong> '
+        f'£{total:,.0f} for {int(travellers)} — {operator_html}, {escape(board)}, '
+        f'{rooms} {"room" if rooms == 1 else "rooms"} · checked {escape(shown_day)}'
+        f' · {versus}</div>'
+        + render_operator_package_how(package)
+    )
+
+
+def render_operator_package_how(package: Any) -> str:
+    """The exporter's own arithmetic for a summed price, in one small line.
+
+    Only for a basis whose total is a sum of displayed figures rather than a
+    displayed party total, so the reader can see that the number is an addition
+    and not a figure the operator printed. Empty for a whole-party total, and
+    empty when the wording carries no per-room figures to show - never a
+    half-parsed sentence.
+    """
+    import re as _re
+
+    how = str(getattr(package, "how", "") or "")
+    clauses = _re.findall(
+        r"room\s+(\d+)\s*£\s*([\d,]+(?:\.\d+)?)\s*\(\s*(\d+)\s*adults?", how, _re.IGNORECASE
+    )
+    if len(clauses) < 2:
+        return ""
+    rooms = ", ".join(
+        f"room {number} £{float(amount.replace(',', '')):,.0f} ({adults} adults)"
+        for number, amount, adults in clauses
+    )
+    return (
+        '<div style="margin:0 0 6px 0; color:#64748b; font-size:11px;">'
+        f'{len(clauses)} rooms added: {escape(rooms)}</div>'
     )
 
 
@@ -6130,6 +6339,7 @@ def render_holiday_report(
             # flight options side by side. The hotel-rate line comes first when
             # a real rate was read for this resort and these dates (H3).
             out.append(render_hotel_rate_line(deal))
+            out.append(render_operator_package_line(deal, travellers=config.travellers))
             out.append(render_hotel_rating_line(deal))
             out.append(render_hotel_facts_line(deal))
             out.append(render_hotel_unit_note_line(deal))
