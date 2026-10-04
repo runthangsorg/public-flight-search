@@ -18,6 +18,7 @@ import public_flight_search.holidays as hol
 from public_flight_search.holidays import (
     collect_holiday_deals,
     load_holiday_config,
+    priceable_date_pairs,
     render_flight_options,
     render_holiday_report,
 )
@@ -73,6 +74,42 @@ JULY_HUBS = [
     _opt("stopover", 6840.0, hub="AUH", hub_label="Abu Dhabi", stop=1029.0),
     _opt("stopover", 8062.0, hub="DXB", hub_label="Dubai", stop=866.0),
 ]
+
+
+def _synthetic_stopover_fares(config, airports=("HKT", "USM"), hubs=("DOH", "MCT")):
+    """Whole-party stopover fares for the pairs THIS config prices.
+
+    ``holidays.STOPOVER_FARES`` holds real multi-city fares read on 2026-09-30
+    for 20 -> 27 July 2027, a pair the owner's July window (moved 2026-10-04)
+    no longer contains, so no card is priced a stopover and every one falls
+    back to the "price this yourself" link instead. The compact line only
+    exists when more than one hub is priced, so this test needs fares for the
+    pairs the report renders: synthetic ones, built here and stamped so they
+    can never be mistaken for a read.
+    """
+    fares: dict[tuple[str, str], list[dict]] = {}
+    for outbound, returning in priceable_date_pairs(config):
+        for hub_index, hub in enumerate(hubs):
+            for airport in airports:
+                legs = (
+                    ("LHR", hub, hol._shift_date(outbound, -2)),
+                    (hub, airport, outbound),
+                    (airport, hub, returning),
+                    (hub, "LHR", hol._shift_date(returning, 2)),
+                )
+                fares.setdefault((hub, airport), []).append({
+                    "pair": (outbound, returning),
+                    "legs": legs,
+                    "origin": "LHR",
+                    "total_gbp": 5000.0 + 1000.0 * hub_index,
+                    "carrier": "SYNTHETIC test carrier",
+                    "observed_at": "synthetic",
+                    "season": "summer",
+                    "source_url": hol.build_google_flights_legs_url(
+                        legs, travellers=5, cabin_class="ECONOMY"
+                    ),
+                })
+    return {key: tuple(value) for key, value in fares.items()}
 
 
 class ShorterFlightOptionsTests(unittest.TestCase):
@@ -146,10 +183,18 @@ class ShorterFlightOptionsTests(unittest.TestCase):
             load_holiday_config(JULY.read_text(encoding="utf-8")),
             max_budget_gbp=60000.0,
         )
-        html = render_holiday_report(
-            config, generated_at="2026-10-02T00:00:00+00:00",
-            deals=collect_holiday_deals(config),
-        )
+        # A priced stopover needs a fare read for a pair this run prices; the
+        # committed ones were read for a pair the window no longer contains
+        # (see _synthetic_stopover_fares).
+        saved = hol.STOPOVER_FARES
+        hol.STOPOVER_FARES = _synthetic_stopover_fares(config)
+        try:
+            html = render_holiday_report(
+                config, generated_at="2026-10-02T00:00:00+00:00",
+                deals=collect_holiday_deals(config),
+            )
+        finally:
+            hol.STOPOVER_FARES = saved
         self.assertIn("Other stopovers:", html)
         self.assertIn("(economy, totals)", html)
 

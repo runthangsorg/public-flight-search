@@ -9,8 +9,8 @@
     ]
   },
   "max_budget_gbp": 12000,
-  "min_nights": 6,
-  "max_nights": 10,
+  "min_nights": 12,
+  "max_nights": 21,
   "departure_window": [
     "06:00",
     "23:59"
@@ -22,14 +22,19 @@
     "STN"
   ],
   "outbound_dates": [
-    "2027-07-17",
-    "2027-07-20",
-    "2027-07-24"
+    "2027-06-26",
+    "2027-06-29",
+    "2027-07-01",
+    "2027-07-03"
   ],
   "return_dates": [
-    "2027-07-24",
-    "2027-07-27",
-    "2027-07-31"
+    "2027-07-10",
+    "2027-07-13",
+    "2027-07-15",
+    "2027-07-17",
+    "2027-07-20",
+    "2027-07-22",
+    "2027-07-24"
   ],
   "destinations": [
     {
@@ -104,24 +109,6 @@
       ],
       "flight_hours": 14.25,
       "flight_hours_source": "BA / JAL / ANA LHR-HND nonstop, scheduled block about 14h-14h30 on the routing that avoids Russian airspace (published schedules, not re-checked live on 2026-09-28)"
-    },
-    {
-      "key": "doha",
-      "label": "Doha, Qatar (private-beach resorts)",
-      "airports": [
-        "DOH"
-      ],
-      "flight_hours": 6.75,
-      "flight_hours_source": "Qatar Airways / BA LHR-DOH nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
-    },
-    {
-      "key": "muscat",
-      "label": "Muscat, Oman (tropical coast & private bay)",
-      "airports": [
-        "MCT"
-      ],
-      "flight_hours": 7.33,
-      "flight_hours_source": "Oman Air LHR-MCT nonstop, typical scheduled block 7h10-7h20 (flightsfrom.com/LHR-MCT and flightconnections.com, checked 2026-09-28); some schedule periods list up to ~8h10, so this is the one destination near the line"
     }
   ]
 }

@@ -832,6 +832,20 @@ def priceable_date_pairs(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
     return pairs
 
 
+def shortlist_date_pairs(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
+    """Three representative pairs, taken from the ones this run can price.
+
+    The shortlist used to be drawn from the whole configured cross product, which
+    is the same thing only while every configured pair happens to sit inside the
+    stay band. The new July window (outbound 5/8/12/15/19, returns 12/15/19/22/26/29,
+    6-10 nights) is not: its cross product holds a 3-night pair, and the shortlist
+    middle became (12 -> 15), which no card ever prices. A headline pair that is
+    not priceable is worse than a stale one - the report says one thing and the
+    evidence hunt spends its reads on another.
+    """
+    return _shortlist_pairs(priceable_date_pairs(config))
+
+
 def pricing_order(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
     """Priceable pairs, with the report's headline pair tried first.
 
@@ -4524,8 +4538,7 @@ def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
     Priced from the watch benchmarks for the same target date pair the cards
     use; a destination listed outside its season carries no price.
     """
-    pairs = _date_pairs(config)
-    shortlist = _shortlist_pairs(pairs)
+    shortlist = shortlist_date_pairs(config)
     if not shortlist:
         return []
     outbound, returning = shortlist[len(shortlist) // 2]
@@ -5338,10 +5351,11 @@ def render_holiday_report(
     change_digest_html: str = "",
 ) -> str:
     out: list[str] = []
-    pairs = _date_pairs(config)
-    shortlist = _shortlist_pairs(pairs)
-    # Every pair in the stay band: what the collector actually prices, and
+    shortlist = shortlist_date_pairs(config)
+    # Every configured pair, for the header's "date combinations" count, and then
+    # every pair in the stay band: what the collector actually prices, and
     # therefore what a reader can expect a deal's dates to come from.
+    pairs = _date_pairs(config)
     priced_pairs = priceable_date_pairs(config)
     room_occupancy = " + ".join(str(value) for value in config.rooms)
     provider_labels = {

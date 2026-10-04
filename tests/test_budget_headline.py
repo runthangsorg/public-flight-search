@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import dataclasses
 from html import escape
+import math
 from pathlib import Path
 import unittest
 
 from public_flight_search.holidays import (
+    HolidayConfig,
     budget_headline,
     collect_holiday_deals,
     far_east_watch_rows,
@@ -78,14 +80,41 @@ class BudgetHeadlineHelperTests(unittest.TestCase):
 
 
 class FarEastWatchBudgetLineTests(unittest.TestCase):
+    def _fitting_budget(self, key: str) -> tuple[HolidayConfig, float, float]:
+        """The July config at a ceiling this watch row's Economy option fits.
+
+        The ceiling and both totals are taken from the row rather than pasted:
+        the stay is priced for the nights of the report's headline pair, and
+        the owner's July window moved twice in a day (7 nights, then 12-21), so
+        a pasted figure here only described one of them. What is under test is
+        the LINE, not the price: lead with the cheapest option that fits, then
+        state the gaps.
+        """
+        rows = {r["key"]: r for r in far_east_watch_rows(_july(12000.0))}
+        row = rows[key]
+        economy = float(row["economy_total_gbp"])
+        business = float(row["indicative_total_gbp"])
+        budget = float(math.ceil(economy))
+        self.assertGreater(budget, 0.0, "the row has no Economy price to fit under")
+        self.assertGreater(
+            business, budget, "the premise needs a Business option over this ceiling"
+        )
+        return _july(budget), economy, business
+
     def test_a_watch_row_that_fits_on_economy_says_so_first(self):
-        config = _july(12000.0)
+        config, economy, business = self._fitting_budget("bali")
+        budget = config.max_budget_gbp
         bali = {r["key"]: r for r in far_east_watch_rows(config)}["bali"]
         line = _watch_line(render_far_east_watch(config), bali["label"])
-        self.assertIn("fits the £12,000 budget on Economy (about £10,950)", line)
-        # The Business gap is still stated, after the option that fits.
-        self.assertIn("Business £10,650 over", line)
-        self.assertLess(line.index("fits the"), line.index("Business £10,650 over"))
+        self.assertIn(
+            f"fits the £{budget:,.0f} budget on Economy (about £{economy:,.0f})", line
+        )
+        # The Business gap is still stated, after the option that fits. (The
+        # anchor is the gap, not the bare word "Business": the row also names
+        # the cabin in its flight line.)
+        gap = f"Business £{business - budget:,.0f} over"
+        self.assertIn(gap, line)
+        self.assertLess(line.index("fits the"), line.index(gap))
 
     def test_a_watch_row_over_on_every_option_keeps_the_over_wording(self):
         # £12,500 keeps Tokyo a full card (its cheapest option is £15,300, under

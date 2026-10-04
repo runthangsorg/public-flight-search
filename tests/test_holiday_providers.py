@@ -32,6 +32,7 @@ from public_flight_search.holidays import (
     build_provider_urls,
     load_holiday_config,
     render_holiday_report,
+    shortlist_date_pairs,
 )
 
 
@@ -295,22 +296,34 @@ class HolidayReportDateConsistencyTests(unittest.TestCase):
         self.assertIn("2026-12-31", html)
 
     def test_provider_urls_preserve_every_return_date(self):
+        # Every return date the config offers must reach the reader with its own
+        # date-encoded links. The dates sit INSIDE the default 6-10 night band on
+        # purpose: a return outside the band is not a pair this run prices, so it
+        # is never shortlisted and (correctly) gets no dated link - the shortlist
+        # is drawn from the priced pairs, not from the raw cross product.
         config = load_holiday_config(json.dumps({
             "report_title": "Test",
             "party": {"travellers": 2, "rooms": [2]},
             "departure_window": ["06:00", "21:00"],
             "origins": ["LHR"],
             "outbound_dates": ["2026-12-20"],
-            "return_dates": ["2026-12-28", "2026-12-30", "2026-12-31"],
+            "return_dates": ["2026-12-28", "2026-12-29", "2026-12-30"],
             "destinations": [{"key": "test", "label": "Test", "airports": ["BBB"], "flight_hours": 4.0}],
         }))
         html = render_holiday_report(config, generated_at="2026-08-31T10:00:00+00:00")
-        self.assertIn("2026-12-28", html)
-        self.assertIn("2026-12-30", html)
-        self.assertIn("2026-12-31", html)
-        # Top Picks (3 dates × 4 dynamic date-encoded links) + one package-hub
-        # row (6 hubs) = 18 links. Hubs render once to stay under Gmail clips.
-        self.assertEqual(html.count('href="'), 18)
+        shortlist = shortlist_date_pairs(config)
+        self.assertEqual(
+            [returning for _outbound, returning in shortlist],
+            ["2026-12-28", "2026-12-29", "2026-12-30"],
+            "every offered return date must be priced and shortlisted",
+        )
+        for _outbound, returning in shortlist:
+            self.assertIn(returning, html)
+        # Top Picks (one dated block per shortlisted pair × 4 dynamic
+        # date-encoded links) + one package-hub row (6 hubs). Hubs render once
+        # to stay under Gmail clips. Derived, so a different window - or a
+        # different number of priced pairs - cannot make this count a guess.
+        self.assertEqual(html.count('href="'), len(shortlist) * 4 + 6)
 
 
 if __name__ == "__main__":

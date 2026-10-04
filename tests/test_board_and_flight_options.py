@@ -37,6 +37,7 @@ from public_flight_search.holidays import (
     collect_holiday_deals,
     filter_resorts,
     load_holiday_config,
+    priceable_date_pairs,
     render_holiday_report,
     resort_catalog,
 )
@@ -262,10 +263,55 @@ def _july_uncapped():
     return dataclasses.replace(config, max_budget_gbp=UNCAPPED_GBP)
 
 
+def _synthetic_stopover_fares(config, airports=("HKT", "USM"), hubs=("DOH", "MCT")):
+    """Whole-party stopover fares for the pairs THIS config prices.
+
+    ``holidays.STOPOVER_FARES`` holds real multi-city fares read on 2026-09-30
+    for 20 -> 27 July 2027. The owner's July window moved on 2026-10-04 and no
+    longer contains that pair, so ``_flight_options`` prices no stopover for
+    any card and every long-haul card falls back to the honest "price this
+    yourself" link. That is the code declining to quote a fare for dates it
+    never read, not a bug; a test of the stopover ROW needs fares for the pairs
+    the report actually renders, and they are built here - synthetic figures,
+    stamped so they can never be mistaken for a read.
+    """
+    fares: dict[tuple[str, str], list[dict]] = {}
+    for outbound, returning in priceable_date_pairs(config):
+        for hub_index, hub in enumerate(hubs):
+            for airport in airports:
+                legs = (
+                    ("LHR", hub, hol._shift_date(outbound, -2)),
+                    (hub, airport, outbound),
+                    (airport, hub, returning),
+                    (hub, "LHR", hol._shift_date(returning, 2)),
+                )
+                fares.setdefault((hub, airport), []).append({
+                    "pair": (outbound, returning),
+                    "legs": legs,
+                    "origin": "LHR",
+                    "total_gbp": 5000.0 + 1000.0 * hub_index,
+                    "carrier": "SYNTHETIC test carrier",
+                    "observed_at": "synthetic",
+                    "season": "summer",
+                    "source_url": hol.build_google_flights_legs_url(
+                        legs, travellers=5, cabin_class="ECONOMY"
+                    ),
+                })
+    return {key: tuple(value) for key, value in fares.items()}
+
+
 class FlightOptionTests(unittest.TestCase):
     def test_every_long_haul_card_carries_business_economy_and_stopover(self):
         config = _july_uncapped()
-        deals = collect_holiday_deals(config)
+        # Priced stopover rows need fares read for the pairs this run prices;
+        # the committed ones were read for a pair the owner's window no longer
+        # contains (see _synthetic_stopover_fares).
+        saved = hol.STOPOVER_FARES
+        hol.STOPOVER_FARES = _synthetic_stopover_fares(config)
+        try:
+            deals = collect_holiday_deals(config)
+        finally:
+            hol.STOPOVER_FARES = saved
         self.assertTrue(deals)
         thai = {"koh_samui", "koh_phangan", "khao_lak"}
         for deal in deals:

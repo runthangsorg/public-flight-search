@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from datetime import date
 from pathlib import Path
 import tempfile
 import unittest
@@ -28,6 +30,7 @@ from public_flight_search.holidays import (
     load_holiday_config,
     render_hotel_unit_note_line,
     render_holiday_report,
+    shortlist_date_pairs,
 )
 from public_flight_search.hotel_evidence import consume_hotel_skip_log, load_hotel_evidence
 
@@ -86,6 +89,66 @@ def _payload(*, include_rate: bool) -> dict:
     return data
 
 
+def _dated_for(data: dict, config) -> dict:
+    """A payload re-dated to a pair THIS config prices.
+
+    The committed fixture is keyed to 20 -> 27 July 2027, which the owner's
+    July window contained until 2026-10-04 and none of its later windows do.
+    The loader then correctly skips every record in the file ("dates ... are
+    not a pair this run prices"), which would leave the July tests below green
+    for the wrong reason: the unit check would never have run. So the pair is
+    derived from the config here rather than pasted, and the fixture file is
+    left alone - the loader tests keep their own 20 -> 27 July config and are
+    written against those dates.
+    """
+    shortlist = shortlist_date_pairs(config)
+    assert shortlist, "the shipped July config prices no pair"
+    outbound, returning = shortlist[len(shortlist) // 2]
+    nights = (date.fromisoformat(returning) - date.fromisoformat(outbound)).days
+    out = json.loads(json.dumps(data))
+    for rate in out["rates"]:
+        if not rate.get("check_in"):
+            continue
+        rate["check_in"] = outbound
+        rate["check_out"] = returning
+        rate["nights"] = nights
+        # Keep the terms consistent with the new check-in date.
+        for term in rate.get("terms") or ():
+            if isinstance(term, dict) and term.get("cancellation"):
+                term["cancellation"] = re.sub(
+                    r"\d{4}-\d{2}-\d{2}", outbound, str(term["cancellation"])
+                )
+    for check in out.get("unit_checks") or ():
+        if check.get("dates"):
+            check["dates"] = [outbound, returning]
+    return out
+
+
+def _july_deals(*, payload: dict):
+    """The shipped July config's deals, on a payload dated to its own pair.
+
+    The budget is uncapped, as everywhere else in this file: what is under test
+    is the unit-check rule, and a resort that is simply over the owner's
+    £12,000 (a 12-21 night stay is) must not be mistaken for one that a unit
+    check removed.
+    """
+    config = load_holiday_config(JULY.read_text(encoding="utf-8"))
+    handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False,
+                                         encoding="utf-8")
+    json.dump(_dated_for(payload, config), handle)
+    handle.close()
+    loaded = load_hotel_evidence(config, path=handle.name, now=NOW)
+    deals = collect_holiday_deals(config, max_budget_gbp=10 ** 9,
+                                  hotel_evidence=loaded)
+    consume_hotel_skip_log()
+    return config, deals
+
+
+def _whole_fixture() -> dict:
+    """The committed synthetic fixture, every property it carries."""
+    return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+
 def _deals(*, include_rate: bool, config_json: str = CONFIG):
     handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False,
                                          encoding="utf-8")
@@ -138,15 +201,7 @@ class ResortGoesWhenItCannotBeBookedTests(unittest.TestCase):
         self.assertIn("no 2-bedroom villa", removed[RESORT])
 
     def test_the_other_resorts_stay(self):
-        config = load_holiday_config(JULY.read_text(encoding="utf-8"))
-        handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False,
-                                             encoding="utf-8")
-        json.dump(_payload(include_rate=False), handle)
-        handle.close()
-        loaded = load_hotel_evidence(config, path=handle.name, now=NOW)
-        deals = collect_holiday_deals(config, max_budget_gbp=config.max_budget_gbp,
-                                      hotel_evidence=loaded)
-        consume_hotel_skip_log()
+        _config, deals = _july_deals(payload=_payload(include_rate=False))
         names = {deal.resort_name for deal in deals}
         self.assertNotIn(RESORT, names)
         self.assertTrue(names, "removing one resort must not empty the report")
@@ -156,11 +211,7 @@ class JulyStillHasItsCardsTests(unittest.TestCase):
     """The regression itself: July is not down to two cards."""
 
     def test_july_keeps_both_two_room_resorts_and_many_cards(self):
-        config = load_holiday_config(JULY.read_text(encoding="utf-8"))
-        loaded = load_hotel_evidence(config, path=str(FIXTURE), now=NOW)
-        deals = collect_holiday_deals(config, max_budget_gbp=config.max_budget_gbp,
-                                      hotel_evidence=loaded)
-        consume_hotel_skip_log()
+        _config, deals = _july_deals(payload=_whole_fixture())
         names = {deal.resort_name for deal in deals}
         self.assertIn("Pullman Khao Lak Resort", names)
         self.assertIn("Garrya Tongsai Bay Samui", names)
@@ -169,11 +220,7 @@ class JulyStillHasItsCardsTests(unittest.TestCase):
                            "must not empty the July report")
 
     def test_the_july_report_renders_those_cards(self):
-        config = load_holiday_config(JULY.read_text(encoding="utf-8"))
-        loaded = load_hotel_evidence(config, path=str(FIXTURE), now=NOW)
-        deals = collect_holiday_deals(config, max_budget_gbp=config.max_budget_gbp,
-                                      hotel_evidence=loaded)
-        consume_hotel_skip_log()
+        config, deals = _july_deals(payload=_whole_fixture())
         html = render_holiday_report(config, generated_at=NOW, deals=deals)
         self.assertIn("Pullman Khao Lak Resort", html)
         self.assertIn("sold as 2 rooms in one booking", html)

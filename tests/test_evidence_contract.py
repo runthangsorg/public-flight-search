@@ -22,7 +22,7 @@ the hunt being re-aimed.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 import json
 import tempfile
@@ -30,10 +30,10 @@ import unittest
 
 from public_flight_search.holidays import (
     _date_pairs,
-    _shortlist_pairs,
     collect_holiday_deals,
     load_holiday_config,
     priceable_date_pairs,
+    shortlist_date_pairs,
 )
 from public_flight_search.live_verify import (
     _target_date_pair,
@@ -103,8 +103,45 @@ class TestPricedPairIsTheSingleSourceOfTruth(unittest.TestCase):
     def test_contract_priced_pair_is_the_shortlist_middle(self):
         config = load_holiday_config(SYNTHETIC)
         contract = evidence_consumption_contract(config)
-        expected = _shortlist_pairs(_date_pairs(config))[1]
+        expected = shortlist_date_pairs(config)[1]
         self.assertEqual((contract.outbound, contract.return_date), expected)
+
+    def test_a_config_whose_cross_product_holds_out_of_band_pairs_never_headlines_one(self):
+        """The rule the new July window exposed.
+
+        Its cross product contains pairs shorter than the stay band (26 June ->
+        3 July is 7 nights; 29 June -> 3 July is 4), and the shortlist used to
+        be drawn from that cross product rather than from the pairs inside the
+        band - so the headline could become a pair no card ever prices, and the
+        hunt would spend its reads on a date the report never shows.
+
+        The out-of-band pairs are DERIVED from the shipped config rather than
+        pasted: the window moves, and a pinned date here turns every window
+        change into a red suite.
+        """
+        config = load_holiday_config(JULY_CONFIG.read_text(encoding="utf-8"))
+        priceable = priceable_date_pairs(config)
+        shortlist = shortlist_date_pairs(config)
+        contract = evidence_consumption_contract(config)
+
+        for pair in shortlist:
+            self.assertIn(pair, priceable, pair)
+            self.assertTrue(
+                config.min_nights
+                <= (date.fromisoformat(pair[1]) - date.fromisoformat(pair[0])).days
+                <= config.max_nights,
+                pair,
+            )
+        self.assertEqual(
+            (contract.outbound, contract.return_date), shortlist[len(shortlist) // 2]
+        )
+        # The premise: this config does offer pairs outside the band...
+        out_of_band = [pair for pair in _date_pairs(config) if pair not in priceable]
+        self.assertTrue(out_of_band, "the window no longer holds an out-of-band pair")
+        # ...and none of them is ever shortlisted, let alone the headline.
+        for pair in out_of_band:
+            with self.subTest(pair=pair):
+                self.assertNotIn(pair, shortlist)
 
     def test_target_date_pair_delegates_to_the_contract(self):
         # One definition, two entry points: if these ever disagree, the hunt
@@ -240,24 +277,35 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         # airports to the contract. ZNZ returned on 2026-10-03 (H6): Nungwi
         # Dreams' one-booking unit for 5 is its four-bedroom Presidential
         # Villa, not three Standard Rooms.
-        contract = evidence_consumption_contract(_load(JULY_CONFIG))
+        #
+        # The pair itself is derived from the shipped config (the shortlist
+        # middle), not pasted: the owner's July window moved twice in a day and
+        # a pinned date turns the next move into a red suite. The cabin rule,
+        # which is what this test is about, stays pinned.
+        config = _load(JULY_CONFIG)
+        contract = evidence_consumption_contract(config)
+        shortlist = shortlist_date_pairs(config)
+        self.assertTrue(shortlist, "the shipped July config prices no pair")
         self.assertEqual(
             (contract.outbound, contract.return_date),
-            ("2027-07-20", "2027-07-27"),
+            shortlist[len(shortlist) // 2],
         )
         self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ"})
         self.assertEqual({cabin for _, cabin in contract.keys}, {"BUSINESS"})
 
     def test_contract_serializes_for_the_hunt(self):
-        contract = evidence_consumption_contract(_load(JULY_CONFIG))
+        config = _load(JULY_CONFIG)
+        contract = evidence_consumption_contract(config)
         payload = contract.as_dict()
+        # The hunt gets the shortlist: three pairs, all of them inside the
+        # nights band, so no read is spent on a date no card prices.
+        shortlist = shortlist_date_pairs(config)
+        self.assertEqual(len(shortlist), 3)
+        for pair in shortlist:
+            with self.subTest(pair=pair):
+                self.assertIn(pair, priceable_date_pairs(config))
         self.assertEqual(
-            payload["hunt_date_pairs"],
-            [
-                ["2027-07-17", "2027-07-24"],
-                ["2027-07-20", "2027-07-27"],
-                ["2027-07-24", "2027-07-31"],
-            ],
+            payload["hunt_date_pairs"], [list(pair) for pair in shortlist]
         )
         self.assertEqual(payload["origin"], "LHR")
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
@@ -388,13 +436,12 @@ class TestEvidenceContractCommand(unittest.TestCase):
             )
         self.assertEqual(code, 0)
         payload = json.loads(buffer.getvalue())
+        # Derived from the shipped config's shortlist, not a pasted window: the
+        # CLI must emit exactly what the contract prices, whenever it moves.
+        config = _load(JULY_CONFIG)
         self.assertEqual(
             payload["date_pairs"],
-            [
-                ["2027-07-17", "2027-07-24"],
-                ["2027-07-20", "2027-07-27"],
-                ["2027-07-24", "2027-07-31"],
-            ],
+            [list(pair) for pair in shortlist_date_pairs(config)],
         )
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
         self.assertEqual(payload["airports"], ["HKT", "LOP", "USM", "ZNZ"])

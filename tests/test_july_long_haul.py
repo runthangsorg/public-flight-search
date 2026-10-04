@@ -32,6 +32,7 @@ from public_flight_search.holidays import (
     render_holiday_report,
     resort_catalog,
 )
+from public_flight_search.hotel_evidence import _run_season
 
 ROOT = Path(__file__).parents[1]
 JULY = ROOT / "examples" / "july_holiday_config.json"
@@ -130,6 +131,30 @@ class SummerCatalogueTests(unittest.TestCase):
             self.assertIn(key, summer)
         for key in hol.BOTH_SEASON_WINTER_KEYS & set(WINTER_RESORT_CATALOG):
             self.assertIs(summer[key], WINTER_RESORT_CATALOG[key])
+
+    def test_a_late_june_departure_is_still_the_summer_trip(self):
+        # The owner's July 2027 window departs 26 and 29 June (2026-10-04). The
+        # shipped config also says "July Summer" in its title, which is what
+        # kept it a summer trip; this pins the DATE half of the rule on its own,
+        # so a title-less config (or a renamed report) cannot quietly turn the
+        # summer trip into a winter one and price the wrong catalogue.
+        june_only = load_holiday_config(json.dumps({
+            "report_title": "Long-haul family trip",
+            "party": {"travellers": 5, "rooms": [2, 2, 1]},
+            "departure_window": ["06:00", "23:59"],
+            "origins": ["LHR"],
+            "outbound_dates": ["2027-06-26", "2027-06-29"],
+            "return_dates": ["2027-07-10", "2027-07-13"],
+            "destinations": [
+                {"key": "koh_samui", "label": "Koh Samui", "airports": ["USM"],
+                 "flight_hours": 14.92},
+            ],
+        }))
+        self.assertTrue(is_summer_trip(june_only))
+        self.assertIs(resort_catalog(june_only), resort_catalog(_july()))
+        # ...and the evidence loader agrees, so a rate read for those dates is
+        # not skipped as "the season this run prices".
+        self.assertEqual(_run_season(june_only), "summer")
 
     def test_december_never_prices_a_summer_resort(self):
         december = load_holiday_config(DEC.read_text(encoding="utf-8"))

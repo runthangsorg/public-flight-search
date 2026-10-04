@@ -141,16 +141,29 @@ class TestNightsBandIsConfigurable(unittest.TestCase):
             )
 
     def test_the_shipped_configs_state_their_band(self):
+        # Two different pins, for two different reasons.
+        #
         # December is pinned to exactly 8 nights: the flight benchmark is the
-        # same on every date, so a 6-10 night band would always hand the
-        # cheapest total to the SHORTEST stay and every card would show
-        # 19 Dec instead of the owner's 20 Dec headline. July keeps the band.
-        expected = {DEC_CONFIG: (8, 8), JULY_CONFIG: (6, 10)}
+        # same on every date, so a band would always hand the cheapest total
+        # to the SHORTEST stay and every card would show 19 Dec instead of the
+        # owner's 20 Dec headline.
+        #
+        # July is a 12-21 night band (owner, 2026-10-04: a two-to-three week
+        # long-haul trip, departing 26 Jun - 3 Jul 2027). It is a band on
+        # purpose, so the cheapest priced stay - the shortest one, since the
+        # benchmark does not move with the date - is the pair every card shows.
+        expected = {DEC_CONFIG: (8, 8), JULY_CONFIG: (12, 21)}
         for path, band in expected.items():
             with self.subTest(config=path.name):
                 config = _load(path.read_text(encoding="utf-8"))
                 self.assertEqual(
                     (config.min_nights, config.max_nights), band
+                )
+                # A band nothing matches must not empty the report, so the
+                # shipped band has to cover at least one configured pair.
+                self.assertTrue(
+                    priceable_date_pairs(config),
+                    "the shipped config prices no pair at its own band",
                 )
 
 

@@ -211,9 +211,11 @@ def priced_date_pair(config) -> tuple[str, str]:
     a hunt that only ever crawls the headline pair wastes two thirds of its
     reads the moment the report prices more than one pair.
     """
-    from .holidays import _date_pairs, _shortlist_pairs
+    from .holidays import shortlist_date_pairs
 
-    pairs = _shortlist_pairs(_date_pairs(config))
+    # From the priceable pairs, not the configured cross product: a headline pair
+    # nothing prices is a contract the collector cannot satisfy.
+    pairs = shortlist_date_pairs(config)
     if not pairs:
         return "", ""
     return pairs[len(pairs) // 2]
@@ -345,10 +347,9 @@ def evidence_consumption_contract(config) -> Optional[EvidenceContract]:
     a hunt would be wasted spend.
     """
     from .holidays import (
-        _date_pairs,
-        _shortlist_pairs,
         card_lookup_keys,
         resort_catalog_name,
+        shortlist_date_pairs,
     )
 
     outbound, returning = priced_date_pair(config)
@@ -358,7 +359,7 @@ def evidence_consumption_contract(config) -> Optional[EvidenceContract]:
     if not keys:
         return None
     origins = tuple(str(value).strip().upper() for value in (getattr(config, "origins", ()) or ()) if str(value).strip())
-    hunt_pairs = _shortlist_pairs(_date_pairs(config)) or ((outbound, returning),)
+    hunt_pairs = shortlist_date_pairs(config) or ((outbound, returning),)
     return EvidenceContract(
         outbound=outbound,
         return_date=returning,

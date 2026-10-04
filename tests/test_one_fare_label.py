@@ -14,10 +14,12 @@ from pathlib import Path
 import re
 import unittest
 
+import public_flight_search.holidays as hol
 from public_flight_search.holidays import (
     _FLIGHT_BASIS_WORDS,
     collect_holiday_deals,
     load_holiday_config,
+    priceable_date_pairs,
     render_holiday_report,
 )
 from public_flight_search.live_verify import LiveFareEvidence
@@ -34,6 +36,41 @@ JULY = ROOT / "examples" / "july_holiday_config.json"
 def _july_uncapped():
     config = load_holiday_config(JULY.read_text(encoding="utf-8"))
     return dataclasses.replace(config, max_budget_gbp=60000.0)
+
+
+def _synthetic_stopover_fares(config, airports=("HKT", "USM"), hubs=("DOH", "MCT")):
+    """Whole-party stopover fares for the pairs THIS config prices.
+
+    The only ``read`` provenance in a July report is a priced multi-city
+    stopover fare, and ``holidays.STOPOVER_FARES`` holds real ones read on
+    2026-09-30 for 20 -> 27 July 2027 - a pair the owner's window (moved
+    2026-10-04) no longer contains, so no card prices a stopover and no label
+    says "read". Synthetic fares for the pairs the run does price, stamped so
+    they can never be mistaken for a read.
+    """
+    fares: dict[tuple[str, str], list[dict]] = {}
+    for outbound, returning in priceable_date_pairs(config):
+        for hub_index, hub in enumerate(hubs):
+            for airport in airports:
+                legs = (
+                    ("LHR", hub, hol._shift_date(outbound, -2)),
+                    (hub, airport, outbound),
+                    (airport, hub, returning),
+                    (hub, "LHR", hol._shift_date(returning, 2)),
+                )
+                fares.setdefault((hub, airport), []).append({
+                    "pair": (outbound, returning),
+                    "legs": legs,
+                    "origin": "LHR",
+                    "total_gbp": 5000.0 + 1000.0 * hub_index,
+                    "carrier": "SYNTHETIC test carrier",
+                    "observed_at": "synthetic",
+                    "season": "summer",
+                    "source_url": hol.build_google_flights_legs_url(
+                        legs, travellers=5, cabin_class="ECONOMY"
+                    ),
+                })
+    return {key: tuple(value) for key, value in fares.items()}
 
 
 class OneFareLabelTests(unittest.TestCase):
@@ -95,10 +132,20 @@ class OneFareLabelTests(unittest.TestCase):
             cabin_class="BUSINESS",
             stale=True,
         )
-        html = render_holiday_report(
-            config, generated_at="2026-10-02T00:00:00+00:00",
-            deals=collect_holiday_deals(config, live_flight_offers={("HKT", "BUSINESS"): aged}),
-        )
+        # A priced stopover is the only source of a "read" label; fares for the
+        # pairs this run prices stand in for the committed ones (see
+        # _synthetic_stopover_fares).
+        saved = hol.STOPOVER_FARES
+        hol.STOPOVER_FARES = _synthetic_stopover_fares(config)
+        try:
+            html = render_holiday_report(
+                config, generated_at="2026-10-02T00:00:00+00:00",
+                deals=collect_holiday_deals(
+                    config, live_flight_offers={("HKT", "BUSINESS"): aged}
+                ),
+            )
+        finally:
+            hol.STOPOVER_FARES = saved
         labels = _FARE_LABEL.findall(html)
         self.assertTrue(labels)
         for label in labels:

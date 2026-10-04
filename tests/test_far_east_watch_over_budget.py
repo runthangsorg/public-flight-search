@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 from html import escape
+import math
 from pathlib import Path
 import unittest
 
@@ -110,19 +111,32 @@ class CheapestOptionCollapseTests(unittest.TestCase):
 
     The owner's rule tests the budget on EACH option, so a watch row that fits
     on Economy is not out of reach. Judging only the Business benchmark
-    collapsed Bali (Economy ~£10,950) and Da Nang (Economy ~£9,050), which both
-    fit inside £12,000; Tokyo (Economy ~£15,300, 27% over) still collapses.
+    collapsed Bali and Da Nang, which both fit inside a ceiling that leaves
+    their Economy option covered; Tokyo, whose cheapest option is over 25% past
+    the same ceiling, still collapses.
     """
 
     def _cheapest_option(self, row) -> float:
         return _cheapest_option(row)
 
     def test_a_watch_row_that_fits_on_economy_keeps_its_full_card(self):
-        config = _july(12000.0)
+        # The ceiling is derived from the rows, not pasted: a watch row is
+        # priced for the nights of the report's headline pair, and the owner's
+        # July window moved to 12-21 nights, so the figures this test used to
+        # quote belonged to a shorter stay. The rule under test is "a row that
+        # fits on the cheapest option keeps its card".
+        rows = {r["key"]: r for r in far_east_watch_rows(_july(12000.0))}
+        bali, da_nang = rows["bali"], rows["da_nang"]
+        # Bali and Da Nang both fit on Economy under this ceiling...
+        budget = float(math.ceil(max(
+            float(bali["economy_total_gbp"]),
+            float(da_nang["economy_total_gbp"]),
+        )))
+        config = _july(budget)
         rows = {r["key"]: r for r in far_east_watch_rows(config)}
-        # Bali and Da Nang both fit on Economy under £12,000.
-        self.assertLessEqual(_cheapest_option(rows["bali"]), 12000.0)
-        self.assertLessEqual(_cheapest_option(rows["da_nang"]), 12000.0)
+        for key in ("bali", "da_nang"):
+            with self.subTest(destination=key):
+                self.assertLessEqual(_cheapest_option(rows[key]), budget)
         html = render_far_east_watch(config)
         self.assertIn("pp Business + suite", html)
         collapsed_block = html.split("Too far over budget to show as a card")[1]
