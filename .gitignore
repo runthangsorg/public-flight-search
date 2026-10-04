@@ -13,3 +13,4 @@ results/
 # repo — never committed.
 data/holiday_hotel_evidence.json
 data/holiday_live_evidence.json
+data/holiday_package_evidence.json
