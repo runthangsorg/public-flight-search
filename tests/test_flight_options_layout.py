@@ -79,25 +79,18 @@ JULY_HUBS = [
 def _synthetic_stopover_fares(config, airports=("HKT", "USM"), hubs=("DOH", "MCT")):
     """Whole-party stopover fares for the pairs THIS config prices.
 
-    ``holidays.STOPOVER_FARES`` holds real multi-city fares read on 2026-09-30
-    for 20 -> 27 July 2027, a pair the owner's July window (moved 2026-10-04)
-    no longer contains, so no card is priced a stopover and every one falls
-    back to the "price this yourself" link instead. The compact line only
-    exists when more than one hub is priced, so this test needs fares for the
-    pairs the report renders: synthetic ones, built here and stamped so they
-    can never be mistaken for a read.
+    A card is priced a stopover only for a read of its own dates (owner brief
+    2026-10-04, H4: reads are keyed per pair). The compact line only exists
+    when more than one hub is priced, so this test needs reads for the pairs the
+    report renders: synthetic ones, built here and stamped so they can never be
+    mistaken for a read.
     """
-    fares: dict[tuple[str, str], list[dict]] = {}
+    fares: dict[tuple[tuple[str, str], str, str], list[dict]] = {}
     for outbound, returning in priceable_date_pairs(config):
         for hub_index, hub in enumerate(hubs):
             for airport in airports:
-                legs = (
-                    ("LHR", hub, hol._shift_date(outbound, -2)),
-                    (hub, airport, outbound),
-                    (airport, hub, returning),
-                    (hub, "LHR", hol._shift_date(returning, 2)),
-                )
-                fares.setdefault((hub, airport), []).append({
+                legs = hol.stopover_legs(hub, airport, outbound, returning)
+                fares.setdefault(((outbound, returning), hub, airport), []).append({
                     "pair": (outbound, returning),
                     "legs": legs,
                     "origin": "LHR",

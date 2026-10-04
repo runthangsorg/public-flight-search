@@ -2562,8 +2562,15 @@ STOPOVER_HUBS: dict[str, dict[str, Any]] = {
 STOPOVER_LINK_HUBS: tuple[str, ...] = ("DOH", "MCT")
 
 #: Stopover itineraries whose whole-trip Economy price for five was read on
-#: Google Flights (multi-city: London - hub on outbound-2, hub - beach on the
-#: outbound date, beach - hub on the return date, hub - London on return+2).
+#: Google Flights (multi-city: London - hub on the outbound date, hub - beach
+#: two days later, beach - hub on the return date, hub - London two days after
+#: that). One read answers exactly one (pair, hub, airport): a fare is only ever
+#: shown for the dates it was read for, so a card priced for another pair says
+#: "price on request" instead of borrowing a number that was never read for it.
+#: ``status`` says what the read produced, and only ``priced`` rows with a
+#: ``total_gbp`` may be committed as a fare — ``no_priced_economy_card``,
+#: ``blocked`` and ``error`` are recorded so the gap is visible, and render as
+#: the price-it-yourself link.
 #: The price is the cheapest "entire trip" figure listed on the first leg —
 #: but ONLY from the pre-expansion card list, confirmed by clicking through
 #: to the second leg and checking the same total still holds. Google's own
@@ -2574,70 +2581,201 @@ STOPOVER_LINK_HUBS: tuple[str, ...] = ("DOH", "MCT")
 #: A clean re-read that never touches the expander is the safer default when
 #: it already contains a plausible fare; an expanded-list price is provisional
 #: until leg 2 confirms it.
-_STOPOVER_READS: tuple[tuple[str, str, float, str, str], ...] = (
-    ("DOH", "HKT", 5538.0, "Qatar Airways / British Airways", "2026-09-29T16:39:13Z"),
-    ("DOH", "USM", 5966.0, "Qatar Airways / British Airways, then Bangkok Airways", "2026-09-29T16:39:44Z"),
-    ("DOH", "ZNZ", 6785.0, "Etihad via Abu Dhabi to Doha, then Qatar Airways", "2026-09-30T08:01:41Z"),
-    ("MCT", "HKT", 6190.0, "Qatar Airways / British Airways via Doha to Muscat, then Oman Air", "2026-09-30T08:01:06Z"),
-    ("MCT", "USM", 7212.0, "Qatar Airways / British Airways via Doha to Muscat, then onward", "2026-09-29T16:41:28Z"),
-    ("MCT", "LOP", 9012.0, "Qatar Airways / British Airways via Doha to Muscat, then onward", "2026-09-29T16:41:56Z"),
-    # Owner preference 2026-09-30: prefer Oman/Doha over UAE stopovers unless
-    # UAE is much cheaper — enforced by listing order (STOPOVER_HUBS is
-    # defined DOH, MCT, then AUH, DXB; _flight_options iterates that dict in
-    # order), not by a price threshold, so every option's real price is shown
-    # and the reader judges "much cheaper" themselves.
-    ("AUH", "HKT", 4676.0, "Etihad", "2026-09-30T13:25:30Z"),
-    ("AUH", "ZNZ", 5337.0, "Etihad", "2026-09-30T13:26:41Z"),
-    ("AUH", "LOP", 8666.0, "Qatar Airways / British Airways via Doha to Abu Dhabi, then onward", "2026-09-30T13:27:17Z"),
-    ("DXB", "HKT", 6061.0, "Emirates / Qantas", "2026-09-30T13:27:51Z"),
-    ("DXB", "ZNZ", 6100.0, "Emirates, then flydubai / Emirates", "2026-09-30T13:32:19Z"),
+_STOPOVER_READS: tuple[dict[str, Any], ...] = (
+    {
+        "pair": ("2027-06-26", "2027-07-10"),
+        "hub": "DOH", "airport": "HKT",
+        "total_gbp": 4266.0,
+        "carrier": "Qatar Airways / British Airways",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T12:56:18+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjZqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA2LTI4agUSA0RPSHIFEgNIS1QaGhIKMjAyNy0wNy0xMGoFEgNIS1RyBRIDRE9IGhoSCjIwMjctMDctMTJqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-26", "2027-07-10"),
+        "hub": "DOH", "airport": "USM",
+        "total_gbp": 4837.0,
+        "carrier": "Qatar Airways / British Airways",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T12:56:39+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjZqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA2LTI4agUSA0RPSHIFEgNVU00aGhIKMjAyNy0wNy0xMGoFEgNVU01yBRIDRE9IGhoSCjIwMjctMDctMTJqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-26", "2027-07-10"),
+        "hub": "MCT", "airport": "HKT",
+        "total_gbp": 4441.0,
+        "carrier": "Oman Air",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T12:57:57+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjZqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA2LTI4agUSA01DVHIFEgNIS1QaGhIKMjAyNy0wNy0xMGoFEgNIS1RyBRIDTUNUGhoSCjIwMjctMDctMTJqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-26", "2027-07-10"),
+        "hub": "AUH", "airport": "HKT",
+        "total_gbp": 3218.0,
+        "carrier": "Etihad",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T12:59:37+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjZqBRIDTEhScgUSA0FVSBoaEgoyMDI3LTA2LTI4agUSA0FVSHIFEgNIS1QaGhIKMjAyNy0wNy0xMGoFEgNIS1RyBRIDQVVIGhoSCjIwMjctMDctMTJqBRIDQVVIcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-26", "2027-07-10"),
+        "hub": "AUH", "airport": "ZNZ",
+        "total_gbp": 4274.0,
+        "carrier": "Etihad",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:00:27+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjZqBRIDTEhScgUSA0FVSBoaEgoyMDI3LTA2LTI4agUSA0FVSHIFEgNaTloaGhIKMjAyNy0wNy0xMGoFEgNaTlpyBRIDQVVIGhoSCjIwMjctMDctMTJqBRIDQVVIcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-26", "2027-07-10"),
+        "hub": "DXB", "airport": "USM",
+        "total_gbp": 5532.0,
+        "carrier": "Emirates",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:01:47+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjZqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA2LTI4agUSA0RYQnIFEgNVU00aGhIKMjAyNy0wNy0xMGoFEgNVU01yBRIDRFhCGhoSCjIwMjctMDctMTJqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-01", "2027-07-15"),
+        "hub": "DOH", "airport": "HKT",
+        "total_gbp": 4321.0,
+        "carrier": "Qatar Airways / British Airways",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:03:01+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDFqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTAzagUSA0RPSHIFEgNIS1QaGhIKMjAyNy0wNy0xNWoFEgNIS1RyBRIDRE9IGhoSCjIwMjctMDctMTdqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-01", "2027-07-15"),
+        "hub": "MCT", "airport": "HKT",
+        "total_gbp": 5113.0,
+        "carrier": "Oman Air",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:04:42+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDFqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA3LTAzagUSA01DVHIFEgNIS1QaGhIKMjAyNy0wNy0xNWoFEgNIS1RyBRIDTUNUGhoSCjIwMjctMDctMTdqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-01", "2027-07-15"),
+        "hub": "MCT", "airport": "USM",
+        "total_gbp": 6500.0,
+        "carrier": "Oman Air",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:05:06+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDFqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA3LTAzagUSA01DVHIFEgNVU00aGhIKMjAyNy0wNy0xNWoFEgNVU01yBRIDTUNUGhoSCjIwMjctMDctMTdqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-01", "2027-07-15"),
+        "hub": "DXB", "airport": "HKT",
+        "total_gbp": 4230.0,
+        "carrier": "Emirates / Qantas",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:08:00+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDFqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA3LTAzagUSA0RYQnIFEgNIS1QaGhIKMjAyNy0wNy0xNWoFEgNIS1RyBRIDRFhCGhoSCjIwMjctMDctMTdqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-03", "2027-07-24"),
+        "hub": "DOH", "airport": "HKT",
+        "total_gbp": 4741.0,
+        "carrier": "Qatar Airways / British Airways",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:09:41+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTA1agUSA0RPSHIFEgNIS1QaGhIKMjAyNy0wNy0yNGoFEgNIS1RyBRIDRE9IGhoSCjIwMjctMDctMjZqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-03", "2027-07-24"),
+        "hub": "DOH", "airport": "USM",
+        "total_gbp": 5297.0,
+        "carrier": "Qatar Airways / British Airways",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:10:08+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTA1agUSA0RPSHIFEgNVU00aGhIKMjAyNy0wNy0yNGoFEgNVU01yBRIDRE9IGhoSCjIwMjctMDctMjZqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-03", "2027-07-24"),
+        "hub": "DOH", "airport": "ZNZ",
+        "total_gbp": 6535.0,
+        "carrier": "Royal Jordanian",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:10:33+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTA1agUSA0RPSHIFEgNaTloaGhIKMjAyNy0wNy0yNGoFEgNaTlpyBRIDRE9IGhoSCjIwMjctMDctMjZqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-03", "2027-07-24"),
+        "hub": "MCT", "airport": "ZNZ",
+        "total_gbp": 6081.0,
+        "carrier": "Etihad",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:12:15+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA3LTA1agUSA01DVHIFEgNaTloaGhIKMjAyNy0wNy0yNGoFEgNaTlpyBRIDTUNUGhoSCjIwMjctMDctMjZqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-03", "2027-07-24"),
+        "hub": "AUH", "airport": "ZNZ",
+        "total_gbp": 4274.0,
+        "carrier": "Etihad",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:13:51+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0FVSBoaEgoyMDI3LTA3LTA1agUSA0FVSHIFEgNaTloaGhIKMjAyNy0wNy0yNGoFEgNaTlpyBRIDQVVIGhoSCjIwMjctMDctMjZqBRIDQVVIcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-03", "2027-07-24"),
+        "hub": "DXB", "airport": "HKT",
+        "total_gbp": 4393.0,
+        "carrier": "Emirates / Qantas",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:14:42+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA3LTA1agUSA0RYQnIFEgNIS1QaGhIKMjAyNy0wNy0yNGoFEgNIS1RyBRIDRFhCGhoSCjIwMjctMDctMjZqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-07-03", "2027-07-24"),
+        "hub": "DXB", "airport": "ZNZ",
+        "total_gbp": 4623.0,
+        "carrier": "ITA",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T13:15:33+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA3LTA1agUSA0RYQnIFEgNaTloaGhIKMjAyNy0wNy0yNGoFEgNaTlpyBRIDRFhCGhoSCjIwMjctMDctMjZqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    }
 )
-_STOPOVER_PAIR = ("2027-07-20", "2027-07-27")
 
 
-def _stopover_fares() -> dict[tuple[str, str], tuple[dict[str, Any], ...]]:
-    fares: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    outbound, returning = _STOPOVER_PAIR
-    for hub, airport, total, carrier, observed in _STOPOVER_READS:
-        legs = (("LHR", hub, "2027-07-18"), (hub, airport, outbound),
-                (airport, hub, returning), (hub, "LHR", "2027-07-29"))
-        fares.setdefault((hub, airport), []).append({
-            "pair": _STOPOVER_PAIR,
-            "legs": legs,
-            "origin": "LHR",
-            "total_gbp": total,
-            "carrier": carrier,
-            "observed_at": observed,
-            # A read is for one season; December reads can be added beside these
-            # July ones without either leaking into the other planner.
-            "season": "summer",
-            "source_url": build_google_flights_legs_url(legs, travellers=5, cabin_class="ECONOMY"),
-        })
-    return {key: tuple(value) for key, value in fares.items()}
-
-
-#: No itinerary was listed for Doha - Lombok, Muscat - Zanzibar, Abu Dhabi -
-#: Koh Samui, Dubai - Koh Samui or Dubai - Lombok (checked 2026-09-30, each a
-#: correctly-formed multi-city search that Google itself returned no options
-#: for); those cards say so rather than inventing a fare.
-STOPOVER_FARES: dict[tuple[str, str], tuple[dict[str, Any], ...]] = _stopover_fares()
-
-
-def stopover_fares_for(hub: str, airport: str, season: str) -> tuple[dict[str, Any], ...]:
-    """Stopover fares for one ``(hub, airport)`` in one season.
-
-    The option is season-scoped so a July read and a December read coexist
-    without one leaking into the other's planner: a fare carries the season it
-    was read for, and only that season's planner sees it. Every destination
-    can now carry an Economy-with-stopover option in EITHER season; today only
-    the July reads exist, so a December card still honestly says a stopover was
-    not priced for its dates rather than reusing a July fare.
-    """
-    wanted = (season or "").strip().lower() or "winter"
-    return tuple(
-        fare for fare in STOPOVER_FARES.get((hub, str(airport).upper()), ())
-        if str(fare.get("season", "summer")).strip().lower() == wanted
-    )
+#: The reads' statuses that may become a fare. Everything else is a gap, not a
+#: price: a search Google answered with no Economy card, a read it refused, or
+#: a read that failed outright, none of which is a number we may print.
+_STOPOVER_PRICED_STATUS = "priced"
 
 
 def _shift_date(day: str, delta_days: int) -> str:
@@ -2648,6 +2786,118 @@ def _shift_date(day: str, delta_days: int) -> str:
         return str(day)
 
 
+#: Days spent flying London -> hub -> resort before the holiday starts, and
+#: again on the way home. Two, because each stopover is two nights: the party
+#: lands in the hub on the pair's outbound date and reaches the resort two days
+#: later, which is also how many fewer nights the resort stay is priced for.
+STOPOVER_FLIGHT_DAYS = 2
+
+
+def stopover_legs(hub: str, airport: str, outbound: str, returning: str, *,
+                  origin: str = "LHR") -> tuple[tuple[str, str, str], ...]:
+    """The four legs of a two-night stopover in `hub` each way.
+
+    The leg shape (owner brief 2026-10-04, H4): leave London on the pair's own
+    outbound date, reach the resort two days later, come back through the hub on
+    the return date and land two days after that. The stay at the resort is
+    therefore the pair's nights less the two days spent flying to it.
+    """
+    return (
+        (origin, hub, str(outbound)),
+        (hub, str(airport).upper(), _shift_date(outbound, STOPOVER_FLIGHT_DAYS)),
+        (str(airport).upper(), hub, str(returning)),
+        (hub, origin, _shift_date(returning, STOPOVER_FLIGHT_DAYS)),
+    )
+
+
+def _display_carrier(raw: Any) -> str:
+    """Carrier names as one readable list, however the read spelled them.
+
+    A read sometimes returns two carriers run together ("Qatar AirwaysBritish
+    Airways") because nothing on the card separates them. A lowercase-to-
+    uppercase letter boundary inside a word is where one name ends and the next
+    begins, so that is where the separator goes. Text that already separates its
+    names ("A / B", "A, then B", "A via B") is left exactly as read.
+    """
+    text = " ".join(str(raw or "").split())
+    if not text:
+        return ""
+    if any(sep in text for sep in (" / ", ", ", " via ", " + ")):
+        return text
+    # "Qatar AirwaysBritish Airways" -> "Qatar Airways / British Airways"
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", " / ", text)
+
+
+def _stopover_fares() -> dict[tuple[tuple[str, str], str, str], tuple[dict[str, Any], ...]]:
+    """Fares keyed by ``(pair, hub, airport)`` from the priced reads only."""
+    fares: dict[tuple[tuple[str, str], str, str], list[dict[str, Any]]] = {}
+    for row in _STOPOVER_READS:
+        if str(row.get("status", "")).strip().lower() != _STOPOVER_PRICED_STATUS:
+            continue
+        total = row.get("total_gbp")
+        if total in (None, ""):
+            continue
+        pair = (str(row["pair"][0]), str(row["pair"][1]))
+        hub = str(row["hub"]).upper()
+        airport = str(row["airport"]).upper()
+        origin = str(row.get("origin", "LHR")).upper()
+        legs = stopover_legs(hub, airport, pair[0], pair[1], origin=origin)
+        fares.setdefault((pair, hub, airport), []).append({
+            "pair": pair,
+            "legs": legs,
+            "origin": origin,
+            "total_gbp": float(total),
+            "carrier": _display_carrier(row.get("carrier")),
+            "observed_at": str(row.get("observed_at", "")),
+            # A read is for one season; December reads can be added beside the
+            # July ones without either leaking into the other planner.
+            "season": str(row.get("season", "summer")).strip().lower() or "summer",
+            "source_url": str(row.get("source_url") or "") or build_google_flights_legs_url(
+                legs, travellers=5, cabin_class="ECONOMY"
+            ),
+        })
+    return {key: tuple(value) for key, value in fares.items()}
+
+
+#: Read fares, keyed by the exact pair, hub and airport they were read for.
+#: Any (pair, hub, airport) with no key here renders as "price on request" with
+#: the multi-city link rather than a borrowed figure. No itinerary was listed
+#: for Doha - Lombok, Muscat - Zanzibar, Dubai - Koh Samui or Dubai - Lombok
+#: either (checked 2026-09-30, each a correctly-formed multi-city search that
+#: Google itself returned no options for); those cards say so rather than
+#: inventing a fare.
+STOPOVER_FARES: dict[tuple[tuple[str, str], str, str], tuple[dict[str, Any], ...]] = _stopover_fares()
+
+
+def stopover_fares_for(hub: str, airport: str, season: str, *,
+                       pair: Optional[tuple[str, str]] = None) -> tuple[dict[str, Any], ...]:
+    """Stopover fares for one ``(hub, airport)`` in one season, optionally one pair.
+
+    The option is season-scoped so a July read and a December read coexist
+    without one leaking into the other's planner: a fare carries the season it
+    was read for, and only that season's planner sees it. Pass ``pair`` to ask
+    the narrower question "was this itinerary read for THESE dates"; a read for
+    any other pair is not an answer.
+    """
+    wanted = (season or "").strip().lower() or "winter"
+    hub_key = str(hub).upper()
+    airport_key = str(airport).upper()
+    pair_key = None
+    if pair is not None:
+        pair_key = (str(pair[0]), str(pair[1]))
+    found = []
+    for (read_pair, read_hub, read_airport), fares in STOPOVER_FARES.items():
+        if (read_hub, read_airport) != (hub_key, airport_key):
+            continue
+        if pair_key is not None and read_pair != pair_key:
+            continue
+        found.extend(
+            fare for fare in fares
+            if str(fare.get("season", "summer")).strip().lower() == wanted
+        )
+    return tuple(found)
+
+
 def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,
                         *, origin: str = "LHR", travellers: int = 5,
                         cabin_class: str = "ECONOMY") -> str:
@@ -2655,14 +2905,11 @@ def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,
 
     A card that has no read whole-party stopover fare for its dates can still
     offer the itinerary for pricing with one click: the reader prices it and the
-    report never invents a number it did not read.
+    report never invents a number it did not read. The legs are
+    ``stopover_legs`` for the pair, so a link and a fare always describe the
+    same journey.
     """
-    legs = (
-        (origin, hub, _shift_date(outbound, -2)),
-        (hub, airport, outbound),
-        (airport, hub, returning),
-        (hub, origin, _shift_date(returning, 2)),
-    )
+    legs = stopover_legs(hub, airport, outbound, returning, origin=origin)
     return build_google_flights_legs_url(legs, travellers=travellers, cabin_class=cabin_class)
 
 
@@ -3738,14 +3985,24 @@ def collect_holiday_deals(
         # the fare itself is season-scoped (stopover_fares_for), so a July read
         # never surfaces on a December card and vice versa.
         stopover_season = "summer" if summer else "winter"
-        if stopover_season:  # both seasons now; a fare only answers for its own
+        # And it is offered only for THIS card's dates. A read is priced for one
+        # pair; a card shows one pair. Quoting a fare read for a different pair
+        # on this card would put a number next to dates it was never read for
+        # (owner brief 2026-10-04, H4).
+        card_pair = (str(cheapest.get("outbound", "")), str(cheapest.get("return", "")))
+        if stopover_season and card_pair in priced_pairs_set:
             for hub, info in STOPOVER_HUBS.items():
-                for fare in stopover_fares_for(hub, str(resort["airport"]).upper(), stopover_season):
+                for fare in stopover_fares_for(hub, str(resort["airport"]).upper(),
+                                               stopover_season, pair=card_pair):
                     pair = tuple(fare["pair"])
-                    if pair not in priced_pairs_set:
-                        continue
                     nights = nights_between(pair)
-                    hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
+                    # The stopover arrives at the resort two days after leaving
+                    # London, so this option's stay is the pair's nights less
+                    # those two days (owner brief 2026-10-04, H4). The other
+                    # options keep the full stay; only this one pays for a
+                    # shorter holiday and two hotel nights in the hub.
+                    resort_nights = max(nights - STOPOVER_FLIGHT_DAYS, 0)
+                    hotel_cost = round(arch["suite_nightly_gbp"] * resort_nights, 2)
                     stop_nights = 2 * int(info["nights_each_way"])
                     stop_hotel = round(float(info["hotel"]["nightly_gbp"]) * stop_nights, 2)
                     uk_ground = UK_GROUND_RETURN_GBP.get(fare["origin"], 16.50)
@@ -3764,6 +4021,8 @@ def collect_holiday_deals(
                         "outbound": pair[0],
                         "return": pair[1],
                         "nights": nights,
+                        "resort_nights": resort_nights,
+                        "hub_nights_each_way": int(info["nights_each_way"]),
                         "origin": fare["origin"],
                         "flight_cost": float(fare["total_gbp"]),
                         "hotel_cost": hotel_cost,
@@ -3806,6 +4065,8 @@ def collect_holiday_deals(
                         "outbound": pair[0],
                         "return": pair[1],
                         "nights": nights,
+                        "resort_nights": resort_nights,
+                        "hub_nights_each_way": int(info["nights_each_way"]),
                         "origin": fare["origin"],
                         "flight_cost": pe_flight_cost,
                         "hotel_cost": hotel_cost,
@@ -5143,9 +5404,22 @@ def _flight_option_line(option: Mapping[str, Any]) -> str:
     """One full option line: flights, stay, any hub hotel, totals and the budget chip."""
     chip = ('<span style="color:#166534; font-weight:700;">within budget</span>' if option["within_budget"]
             else '<span style="color:#b45309; font-weight:700;">over budget</span>')
+    stopover = option["kind"] in ("stopover", "stopover_premium_economy")
+    # The stopover buys two hotel nights in the hub and, because the party
+    # reaches the resort two days after leaving London, two fewer nights there.
+    # The reader is told both numbers on the line: "12 nights at the resort +
+    # 2 in Doha each way" is the whole difference between this option and (b).
+    stay_note = ""
+    if stopover and option.get("resort_nights") is not None:
+        stay_note = ' (' + str(option["resort_nights"]) + ' nights at the resort'
+        hub_each_way = option.get("hub_nights_each_way")
+        if hub_each_way:
+            stay_note += ' + ' + str(hub_each_way) + ' in ' + str(option["hub_label"]) + ' each way'
+        stay_note += ')'
     line = ('<br>' + escape(_option_title(option)) + ': flights £' + f'{float(option["flight_cost"]):,.0f}'
-            + ' (' + escape(str(option["flight_basis"])) + ') + stay £' + f'{float(option["hotel_cost"]):,.0f}')
-    if option["kind"] in ("stopover", "stopover_premium_economy"):
+            + ' (' + escape(str(option["flight_basis"])) + ') + stay £' + f'{float(option["hotel_cost"]):,.0f}'
+            + stay_note)
+    if stopover:
         hotel_note = ', estimate' if option.get("hub_hotel_confidence") == "estimate" else ''
         line += (' + ' + escape(str(option["hub_label"])) + ' hotel £' + f'{float(option["stopover_hotel_cost"]):,.0f}'
                  + ' (' + escape(str(option["hub_hotel"])) + ', ' + str(option["stopover_nights"]) + ' nights, '
@@ -5240,8 +5514,8 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
             if lines:
                 offered = True
                 out.append('<br>(c) Economy + 2 nights in a Gulf hub each way, hotel included: no '
-                           'whole-party fare was read for these dates, so nothing is priced here. '
-                           'One click to price it:')
+                           'whole-party fare was read for these dates, so nothing is priced here — '
+                           'price on request, one click to price it:')
                 out.extend(lines)
         if not offered:
             out.append('<br>(c) Economy + 2 nights Doha or Muscat each way: not priced for these dates '

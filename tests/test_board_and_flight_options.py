@@ -187,9 +187,16 @@ class StopoverSeasonTests(unittest.TestCase):
                     )
 
     def test_a_fare_answers_only_for_its_own_season(self):
-        # The July reads exist; they must never surface on a December card.
-        self.assertTrue(hol.stopover_fares_for("DOH", "HKT", "summer"))
-        self.assertEqual(hol.stopover_fares_for("DOH", "HKT", "winter"), ())
+        # A summer read must never surface on a December card. Synthetic, so the
+        # contract is tested whether or not any read is committed today: the
+        # season gate is not the same thing as "there happens to be a July read".
+        saved = hol.STOPOVER_FARES
+        hol.STOPOVER_FARES = _synthetic_stopover_fares(_july_uncapped())
+        try:
+            self.assertTrue(hol.stopover_fares_for("DOH", "HKT", "summer"))
+            self.assertEqual(hol.stopover_fares_for("DOH", "HKT", "winter"), ())
+        finally:
+            hol.STOPOVER_FARES = saved
 
     def test_december_cards_gain_no_stopover_from_the_july_reads(self):
         december = load_holiday_config(DEC.read_text(encoding="utf-8"))
@@ -200,10 +207,11 @@ class StopoverSeasonTests(unittest.TestCase):
 
     def test_a_card_with_no_read_fare_offers_the_hub_itinerary_to_price(self):
         # A long-haul card with no read stopover fare must offer the itinerary
-        # to price rather than invent one. July has read fares, so the read-
-        # fare map is emptied for this test; the December config no longer has
-        # a long-haul card at all (its only ones were 3-room or unknown units,
-        # filtered by the one-booking rule on 2026-10-02).
+        # to price rather than invent one, and say plainly that it is price on
+        # request. The read-fare map is emptied for this test so the answer does
+        # not depend on which reads happen to be committed; the December config
+        # no longer has a long-haul card at all (its only ones were 3-room or
+        # unknown units, filtered by the one-booking rule on 2026-10-02).
         july = _july_uncapped()
         saved = hol.STOPOVER_FARES
         hol.STOPOVER_FARES = {}
@@ -214,9 +222,10 @@ class StopoverSeasonTests(unittest.TestCase):
             )
         finally:
             hol.STOPOVER_FARES = saved
-        # No invented price: the block says nothing is priced and links the
-        # multi-city itinerary per hub, naming the hub hotel the owner would stay in.
-        self.assertIn("One click to price it:", html)
+        # No invented price: the block says nothing is priced, calls it price on
+        # request, and links the multi-city itinerary per hub, naming the hub
+        # hotel the owner would stay in.
+        self.assertIn("price on request", html)
         self.assertIn("price this multi-city itinerary", html)
         self.assertIn("Rixos Gulf Hotel Doha", html)
         self.assertIn("Mövenpick Hotel and Apartments Ghala Muscat", html)
@@ -266,26 +275,18 @@ def _july_uncapped():
 def _synthetic_stopover_fares(config, airports=("HKT", "USM"), hubs=("DOH", "MCT")):
     """Whole-party stopover fares for the pairs THIS config prices.
 
-    ``holidays.STOPOVER_FARES`` holds real multi-city fares read on 2026-09-30
-    for 20 -> 27 July 2027. The owner's July window moved on 2026-10-04 and no
-    longer contains that pair, so ``_flight_options`` prices no stopover for
-    any card and every long-haul card falls back to the honest "price this
-    yourself" link. That is the code declining to quote a fare for dates it
-    never read, not a bug; a test of the stopover ROW needs fares for the pairs
-    the report actually renders, and they are built here - synthetic figures,
-    stamped so they can never be mistaken for a read.
+    A card is priced a stopover only when a read exists for ITS OWN dates
+    (owner brief 2026-10-04, H4: reads are keyed per pair), so a test of the
+    stopover ROW needs reads for the pairs the report actually renders, and
+    they are built here - synthetic figures, stamped so they can never be
+    mistaken for a read.
     """
-    fares: dict[tuple[str, str], list[dict]] = {}
+    fares: dict[tuple[tuple[str, str], str, str], list[dict]] = {}
     for outbound, returning in priceable_date_pairs(config):
         for hub_index, hub in enumerate(hubs):
             for airport in airports:
-                legs = (
-                    ("LHR", hub, hol._shift_date(outbound, -2)),
-                    (hub, airport, outbound),
-                    (airport, hub, returning),
-                    (hub, "LHR", hol._shift_date(returning, 2)),
-                )
-                fares.setdefault((hub, airport), []).append({
+                legs = hol.stopover_legs(hub, airport, outbound, returning)
+                fares.setdefault(((outbound, returning), hub, airport), []).append({
                     "pair": (outbound, returning),
                     "legs": legs,
                     "origin": "LHR",

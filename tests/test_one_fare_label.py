@@ -42,23 +42,16 @@ def _synthetic_stopover_fares(config, airports=("HKT", "USM"), hubs=("DOH", "MCT
     """Whole-party stopover fares for the pairs THIS config prices.
 
     The only ``read`` provenance in a July report is a priced multi-city
-    stopover fare, and ``holidays.STOPOVER_FARES`` holds real ones read on
-    2026-09-30 for 20 -> 27 July 2027 - a pair the owner's window (moved
-    2026-10-04) no longer contains, so no card prices a stopover and no label
-    says "read". Synthetic fares for the pairs the run does price, stamped so
-    they can never be mistaken for a read.
+    stopover fare, and a card only gets one for a read of its OWN dates (owner
+    brief 2026-10-04, H4: reads are keyed per pair). Synthetic reads for the
+    pairs the run does price, stamped so they can never be mistaken for a read.
     """
-    fares: dict[tuple[str, str], list[dict]] = {}
+    fares: dict[tuple[tuple[str, str], str, str], list[dict]] = {}
     for outbound, returning in priceable_date_pairs(config):
         for hub_index, hub in enumerate(hubs):
             for airport in airports:
-                legs = (
-                    ("LHR", hub, hol._shift_date(outbound, -2)),
-                    (hub, airport, outbound),
-                    (airport, hub, returning),
-                    (hub, "LHR", hol._shift_date(returning, 2)),
-                )
-                fares.setdefault((hub, airport), []).append({
+                legs = hol.stopover_legs(hub, airport, outbound, returning)
+                fares.setdefault(((outbound, returning), hub, airport), []).append({
                     "pair": (outbound, returning),
                     "legs": legs,
                     "origin": "LHR",
