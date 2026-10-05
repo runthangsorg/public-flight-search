@@ -537,6 +537,17 @@ def run_holiday_planner(
         "hotel_rate_properties": len(
             {key[0] for key in hotel_rates}
         ),
+        # Reads kept for a pair OUTSIDE this run's departure window (BRIEF-H15
+        # §1). They can never price a card's own dates — `hotel_rate_for`
+        # refuses them — but each may carry a nightly onto another pair as a
+        # labelled estimate. Read `hotel_rates_priced_cards` with this one:
+        # a non-zero count with nothing new on the cards means the reads are for
+        # pairs the config does not offer, which is waste the hunt can be aimed
+        # away from.
+        "hotel_reads_off_window": sum(
+            1 for entry in hotel_rates.values()
+            if not getattr(entry, "pair_is_priceable", True)
+        ),
         "hotel_rates_priced_cards": sum(
             1 for deal in deals if deal.hotel_evidence is not None
         ),

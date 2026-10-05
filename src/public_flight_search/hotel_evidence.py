@@ -11,9 +11,12 @@ honest seam rather than a scraper — the same contract as
 
 * every accepted rate is re-validated here for season, exact dates, party size,
   booking shape, board basis and freshness;
-* a rate read for ANOTHER priceable pair stays loaded, and ``hotel_rates_near``
-  hands it out nearest-first so a card may be priced from a real nightly rather
-  than a catalogue guess (BRIEF-H14 §1). The caller decides whether the board
+* a rate read for ANOTHER pair stays loaded, and ``hotel_rates_near`` hands it
+  out nearest-first so a card may be priced from a real nightly rather than a
+  catalogue guess (BRIEF-H14 §1). That holds for a pair OUTSIDE the run's own
+  departure window too (BRIEF-H15 §1): such a read is marked
+  ``pair_is_priceable`` False and can never be an exact-date price, because
+  no pair this run prices is that pair; the caller decides whether the board
   and the booking shape are the card's;
 * the price is either a GBP ``public`` figure the site displayed, or a
   ``derived_gbp`` conversion that carries its own arithmetic on its face, so a
@@ -220,6 +223,13 @@ class HotelEvidence:
     ratings: tuple[HotelRating, ...] = ()
     facts: tuple[HotelFact, ...] = ()
     blocked: tuple[BlockedSource, ...] = ()
+    #: False when this read's own pair is not one this run prices (BRIEF-H15
+    #: §1, 2026-10-05). The read is still loaded — same property, same board,
+    #: same unit, same season, read on a real pair — and may carry a nightly
+    #: onto another pair's nights as a labelled estimate. It can never be the
+    #: price for the pair it was read for, because this run does not price
+    #: that pair at all: ``hotel_rate_for`` refuses it, so "exact" stays exact.
+    pair_is_priceable: bool = True
 
 
 #: Skips from the most recent load, surfaced in the job summary so an
@@ -307,12 +317,17 @@ def hotel_rate_for(loaded, property_name: str, check_in: str, check_out: str):
 
     The dates must match exactly: a rate read for other nights is another
     rate, and the loader has already rejected records whose dates were not
-    exact.
+    exact. A read for a pair this run does not PRICE is refused here as well
+    (BRIEF-H15 §1): it is a real nightly for the same room, but "the rate for
+    these dates" can only be a rate read for a pair the report offers, and this
+    one is not one. It stays loaded for ``hotel_rates_near``.
     """
     if not loaded:
         return None
     wanted = _normalise_property(property_name)
     for key, entry in loaded.items():
+        if not entry.pair_is_priceable:
+            continue
         if _normalise_property(entry.property_name) != wanted:
             continue
         if entry.check_in == check_in and entry.check_out == check_out:
@@ -343,9 +358,12 @@ def hotel_rates_near(
     BRIEF-H14 §1 (2026-10-05). A read for a different set of dates is not this
     stay's price, but it is a real nightly for the same room, same party and
     same season — and the card it prices must never fall back to a catalogue
-    guess while that read sits in the same evidence file. The caller decides
-    which of these it may use (same board, same unit); this only answers "how
-    near, and in what order".
+    guess while that read sits in the same evidence file. Since BRIEF-H15 §1
+    that includes a read for a pair outside the run's own departure window: the
+    loader keeps those (marked ``pair_is_priceable`` False, which stops them
+    being an exact-date price) precisely so they can be reached here. The
+    caller decides which of these it may use (same board, same unit); this only
+    answers "how near, and in what order".
 
     Nearness is measured on both ends of the stay — a read that starts and ends
     closest to the pair wanted is the nearest — and ties break on the shorter
@@ -684,11 +702,13 @@ def load_hotel_evidence(
 ) -> dict[tuple[str, str, str], HotelEvidence]:
     """Load the rates this run may price cards with, keyed by property + dates.
 
-    A rate is kept only when every one of the brief's conditions holds:
+A rate is kept only when every one of the brief's conditions holds:
 
     * its season is the season this run prices;
-    * ``exact_date_match`` is true and ``(check_in, check_out)`` is a pair this
-      run prices;
+    * ``exact_date_match`` is true, and ``(check_in, check_out)`` is a pair this
+      run prices OR a pair outside its window — since BRIEF-H15 §1 (2026-10-05)
+      an off-window pair is kept as a DERIVED read only. Every other condition
+      below still applies to it; only ``hotel_rate_for`` will not return it;
     * its party is the report's party — a rate quoted for four people is not a
       rate for five;
     * ``booking_shape`` is one booking (``one_unit`` or two rooms in one
@@ -698,8 +718,9 @@ def load_hotel_evidence(
     * it has a real http(s) source URL and a positive price.
 
     The returned entry carries the cheapest qualifying rate, the refundable
-    rate when that is a *different* rate, and the supplementary records
+    rate when it is a *different* rate, and the supplementary records
     (unit checks, ratings, facts, blocked sources) for the property.
+
 
     Anything else is skipped with a stated reason on stderr. A missing or
     unreadable file returns an empty mapping — today's output is unchanged,
@@ -736,6 +757,10 @@ def load_hotel_evidence(
         return {}
 
     qualifying: dict[tuple[str, str, str], list[HotelRate]] = {}
+    #: Keys whose own pair this run prices, so ``pair_is_priceable`` is recorded
+    #: from the walk rather than recomputed at the end: one source of truth for
+    #: which read may be an exact-date price and which may only be carried.
+    priceable_keys: set[tuple[str, str, str]] = set()
     # Indexed BEFORE the rates are walked, and for every property the file
     # mentions rather than only the priced ones: a unit check for a property we
     # found no rate for is still a fact about the property.
@@ -752,18 +777,36 @@ def load_hotel_evidence(
         check_out = str(item.get("check_out", "")).strip()
 
         record_season = str(item.get("season", "")).strip() or _season_of(check_in)
+        # BRIEF-H15 §1 (2026-10-05). "Same season" is decided by the DATES on the
+        # read, not only by the label the exporter wrote: this gate used to be
+        # the only thing keeping a December read out of a July card, and now that
+        # a read for a pair outside the window is kept, a record that declares
+        # one season and carries the dates of another has more reach than it had.
+        # 0 of the 71 rates in the shipped evidence file disagree; a record that
+        # does is refused rather than asked to carry a nightly five months away.
+        dates_season = _season_of(check_in)
+        if season and dates_season and dates_season != season:
+            _warn_skip(
+                name,
+                f"its own dates {check_in} are {dates_season}, "
+                f"and this run prices {season}",
+            )
+            continue
         if season and record_season and record_season != season:
             _warn_skip(name, f"season {record_season!r} is not the season this run prices ({season})")
             continue
         if not bool(item.get("exact_date_match", False)):
             _warn_skip(name, "exact_date_match is false — nearest dates are not these dates")
             continue
-        if (check_in, check_out) not in priced_pairs:
-            _warn_skip(
-                name,
-                f"dates {check_in}..{check_out} are not a pair this run prices",
-            )
-            continue
+        # BRIEF-H15 §1 (2026-10-05). A read whose pair is NOT one this run
+        # prices used to be dropped here, which meant a read for 20–27 Jul could
+        # never inform a card on a 28 Jun–12 Jul pair: the card fell back to the
+        # catalogue guess while a real nightly for the same property, board,
+        # unit and season sat unread in the same file. Every other gate below
+        # still has to hold — it is a rate read for a real stay, not a
+        # candidate — and the entry is marked so it can never be an exact-date
+        # price (see ``HotelEvidence.pair_is_priceable``).
+        priceable_pair = (check_in, check_out) in priced_pairs
         party = item.get("party") or {}
         adults = int(party.get("adults", 0) or 0) if isinstance(party, dict) else 0
         children = int(party.get("children", 0) or 0) if isinstance(party, dict) else 0
@@ -849,6 +892,8 @@ def load_hotel_evidence(
             party_adults=adults,
         )
         qualifying.setdefault((name, check_in, check_out), []).append(rate)
+        if priceable_pair:
+            priceable_keys.add((name, check_in, check_out))
 
     entries: dict[tuple[str, str, str], HotelEvidence] = {}
     for key, found in qualifying.items():
@@ -874,6 +919,7 @@ def load_hotel_evidence(
             ratings=_ratings(payload, name),
             facts=_facts(payload, name),
             blocked=_blocked(payload, name),
+            pair_is_priceable=(name, check_in, check_out) in priceable_keys,
         )
     return entries
 

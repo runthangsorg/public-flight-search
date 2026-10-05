@@ -5,8 +5,11 @@ Owner brief 2026-10-03 (H2). The private engine writes
 that file may reach a card. Every test below exists so that a rate which
 fails one of the brief's conditions cannot be priced, even by accident:
 
-* the season is the one this run prices;
-* ``exact_date_match`` is true and the dates are a pair this run prices;
+* the season is the one this run prices, by the DATES on the read as well as
+  by the label it carries;
+* ``exact_date_match`` is true, and the dates are a pair this run prices — or,
+  since BRIEF-H15 §1, a pair outside its window, kept for a derived nightly and
+  never as the price for the dates it was read for;
 * the party is the report's party;
 * the booking is one booking (``one_unit`` or two rooms in one booking);
 * the board is breakfast or better (``RO`` is never a deal);
@@ -31,6 +34,7 @@ from public_flight_search.hotel_evidence import (
     HOTEL_EVIDENCE_MAX_AGE_HOURS,
     consume_hotel_skip_log,
     hotel_evidence_max_age_hours,
+    hotel_rate_for,
     load_hotel_evidence,
 )
 
@@ -306,10 +310,40 @@ class TestDisqualifyingConditions(unittest.TestCase):
             "Approx Dates Resort", "exact_date_match is false"
         )
 
-    def test_dates_this_run_does_not_price_are_not_priced(self):
+    def test_a_record_whose_own_dates_are_another_season_is_not_priced(self):
+        # "Unpriced Pair Resort" declares summer and carries 20–27 Dec 2027.
+        # BRIEF-H15 §1 (2026-10-05) keeps a read for a pair this run does not
+        # PRICE, so the pair alone no longer refuses it — but "same season" is
+        # decided by the dates on the read, and December is not this run's
+        # season whichever label the record carries.
         self._assert_not_loaded(
-            "Unpriced Pair Resort", "those dates are not a priced pair"
+            "Unpriced Pair Resort", "its own dates are December"
         )
+
+    def test_a_same_season_pair_this_run_does_not_price_is_kept(self):
+        # The rule itself: a real read of a real stay, for a pair outside this
+        # run's window, is kept and marked so it can never be an exact-date
+        # price. It may carry a nightly onto another pair as BRIEF-H14 §1's
+        # labelled estimate; ``hotel_rate_for`` is what refuses it.
+        payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        kept = dict(payload["rates"][0])
+        kept.update({
+            "property_name": "Off Window Resort",
+            "check_in": "2027-07-24",
+            "check_out": "2027-07-31",
+        })
+        payload["rates"].append(kept)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "hotel.json")
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            loaded = _load(path=path)
+        consume_hotel_skip_log()
+        entry = _properties(loaded).get("Off Window Resort")
+        self.assertIsNotNone(entry, "an off-window same-season read was dropped")
+        self.assertFalse(entry.pair_is_priceable)
+        self.assertIsNone(
+            hotel_rate_for(loaded, "Off Window Resort", "2027-07-24", "2027-07-31"))
 
     def test_rate_without_any_price_is_not_priced(self):
         self._assert_not_loaded(
