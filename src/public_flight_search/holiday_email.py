@@ -1113,15 +1113,43 @@ def _unit_words(deal: PackageDeal, config: HolidayConfig) -> str:
 
 
 def link_row(deal: PackageDeal, config: HolidayConfig) -> list[tuple[str, str]]:
-    """At most three links: book it, compare prices, the hotel page."""
+    """At most three links, the first of them labelled by what it BOOKS.
+
+    BRIEF-H16 §3 (2026-10-06). The first link used to read "Book this package"
+    on every card. On Pullman Lombok Merujani that card is priced from a hotel
+    rate read on Accor plus an economy flight estimate — two halves the engine
+    priced itself — so "this package" was a description of nothing on the card,
+    and a reader who clicked it expected to buy £13,787, which is not what the
+    vendor sells.
+
+    What the old link actually pointed at is worth stating, because it decided
+    the label: a PACKAGE OPERATOR's own search (loveholidays first, then
+    Destination2, Jet2, easyJet). Every one of them sells flights plus a hotel,
+    so "Book this package" described the destination correctly and the card
+    wrongly. That is why the label, not just the words, has to follow the
+    price:
+
+    * an operator package priced the card, so an operator's package search is
+      the thing that can buy it — unchanged, and still first;
+    * nothing did, so the only booking a link on this card can honestly promise
+      is the stay, and it goes to the hotel's OWN site (``hotel_booking_url``)
+      — for Pullman Lombok, ``pullman.accor.com``, the very page the rate was
+      read from. A package search is not relabelled "the hotel": it is not the
+      hotel, and it is not this price.
+    """
     links: list[tuple[str, str]] = []
-    try:
-        vendor = build_vendor_links(trip_from_deal(deal, adults=int(config.travellers),
-                                                   rooms=tuple(config.rooms)))
-    except Exception:
-        vendor = ()
-    if vendor and vendor[0].url:
-        links.append(("Book this package", str(vendor[0].url)))
+    if bool(getattr(deal, "package_priced", False)):
+        try:
+            vendor = build_vendor_links(trip_from_deal(deal, adults=int(config.travellers),
+                                                       rooms=tuple(config.rooms)))
+        except Exception:
+            vendor = ()
+        if vendor and vendor[0].url:
+            links.append(("Book this package", str(vendor[0].url)))
+    else:
+        hotel_site = str(getattr(deal, "hotel_booking_url", "") or "")
+        if hotel_site.startswith(("http://", "https://")):
+            links.append(("Book the hotel", hotel_site))
     for label, attr in (("Compare prices", "compare_url"), ("Hotel page", "booking_deep_url")):
         url = str(getattr(deal, attr, "") or "")
         if url:

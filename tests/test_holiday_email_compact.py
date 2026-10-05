@@ -668,7 +668,10 @@ class CompactnessTests(unittest.TestCase):
         self.assertLess(len(html.encode("utf-8")), hol.EMAIL_HTML_BUDGET_BYTES)
 
     def test_three_links_per_card_at_most(self):
-        deal = _deal()
+        # The first link is labelled by what it books (BRIEF-H16 §3), so both
+        # branches are pinned here: a package-priced card keeps the operator's
+        # package search, and a card the engine priced keeps the hotel.
+        deal = _deal(package_priced=True)
         links = link_row(deal, _config())
         self.assertEqual([label for label, _ in links],
                          ["Book this package", "Compare prices", "Hotel page"])
@@ -676,6 +679,14 @@ class CompactnessTests(unittest.TestCase):
         for label, _ in links:
             self.assertEqual(html.count(f">{label} ↗<"), 1)
         self.assertEqual(html.count(">Hotel page ↗<"), 1)
+
+    def test_a_card_the_engine_priced_books_the_hotel_not_a_package(self):
+        links = link_row(_deal(), _config())
+        self.assertEqual([label for label, _ in links],
+                         ["Book the hotel", "Compare prices", "Hotel page"])
+        html = _render(deals=[_deal()])
+        self.assertEqual(html.count(">Book the hotel ↗<"), 1)
+        self.assertNotIn("Book this package", html)
 
 
 class NotesAndListsTests(unittest.TestCase):
