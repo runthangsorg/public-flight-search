@@ -206,6 +206,22 @@ class TheFieldDecidesTests(unittest.TestCase):
         deal = next(deal for deal in deals if deal.resort_name == GARRYA)
         self.assertIn("5 adults in one room refused", deal.hotel_unit_note)
 
+    def test_the_real_refusal_is_removed_on_its_field_alone(self):
+        # The shipped file's one true refusal, in its own shape: a check that
+        # also reports "no priced row", for a pair this run prices, with no rate
+        # for it. The absence sentence is about the price and is not what removes
+        # the resort; the exporter's answer is, and it removes it.
+        config, _loaded, deals, _basis = _run([
+            _check(finding=("Google Hotels, 5 adults, 2027-06-28..2027-07-12: "
+                            "no priced row at all - the page says 'Call or visit "
+                            "website for rates and availability'"),
+                   refuses_party=True)])
+        self.assertNotIn(GARRYA, _names(deals))
+        saved = hol.LAST_FILTERED_OUT
+        reasons = dict(saved)
+        self.assertIn(GARRYA, reasons)
+        self.assertIn("no priced row at all", reasons[GARRYA])
+
     def test_the_field_reaches_the_record(self):
         _config, _loaded, _deals, _basis = _run(
             [_check(refuses_party=True), _check(finding=SOLD_OUT,
