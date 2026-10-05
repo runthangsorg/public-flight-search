@@ -10,7 +10,7 @@ import json
 import re
 import statistics
 import sys
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Mapping, NamedTuple, Optional, Sequence
 from urllib.parse import urlencode
 
 from .cabin import (
@@ -43,6 +43,7 @@ from .live_verify import (
 from .hotel_evidence import (
     hotel_rate_for,
     hotel_rate_provenance,
+    hotel_rates_near,
     supplemental_for,
     unit_check_blocks_party,
 )
@@ -1137,6 +1138,15 @@ class OperatorPackage:
     #: so rather than implying the row's own — far dearer — dates.
     outbound_date: str = ""
     return_date: str = ""
+    #: The property the operator quoted, in the exporter's spelling. Carried so
+    #: a room description can be read without the hotel's own name repeated in
+    #: every one of them (BRIEF-H14 §3).
+    property_name: str = ""
+    #: What the operator put in each room, in the exporter's own words (BRIEF-H14
+    #: §3, 2026-10-05). On a package-priced card these ARE the card's rooms: the
+    #: headline is the operator's booking, so the description beside it has to
+    #: be that booking and not the catalogue's unit.
+    room_descriptions: tuple[str, ...] = ()
 
 
 def _qualifying_package(
@@ -1239,6 +1249,7 @@ def _promoting_package(
         total_gbp=round(float(price.total_gbp), 2),
         board=str(price.board),
         rooms=int(price.rooms),
+        property_name=str(price.property_name),
         link_kind=str(price.link_kind),
         source_url=str(price.source_url),
         observed_at=str(price.observed_at),
@@ -1250,6 +1261,7 @@ def _promoting_package(
         vs_engine_gbp=round(engine_total - float(price.total_gbp), 2),
         outbound_date=str(price.outbound_date),
         return_date=str(price.return_date),
+        room_descriptions=tuple(getattr(price, "room_descriptions", ()) or ()),
     )
 
 
@@ -1302,6 +1314,7 @@ def _operator_package(
         total_gbp=round(float(price.total_gbp), 2),
         board=str(price.board),
         rooms=int(price.rooms),
+        property_name=str(price.property_name),
         link_kind=str(price.link_kind),
         source_url=str(price.source_url),
         observed_at=str(price.observed_at),
@@ -1310,6 +1323,7 @@ def _operator_package(
         vs_engine_gbp=round(engine_total - float(price.total_gbp), 2),
         outbound_date=str(price.outbound_date),
         return_date=str(price.return_date),
+        room_descriptions=tuple(getattr(price, "room_descriptions", ()) or ()),
     )
 
 
@@ -1364,6 +1378,7 @@ def _over_operator_package(
         total_gbp=round(float(price.total_gbp), 2),
         board=str(price.board),
         rooms=int(price.rooms),
+        property_name=str(price.property_name),
         link_kind=str(price.link_kind),
         source_url=str(price.source_url),
         observed_at=str(price.observed_at),
@@ -1372,7 +1387,83 @@ def _over_operator_package(
         vs_engine_gbp=round(engine_total - float(price.total_gbp), 2),
         outbound_date=str(price.outbound_date),
         return_date=str(price.return_date),
+        room_descriptions=tuple(getattr(price, "room_descriptions", ()) or ()),
     )
+
+
+#: The exporter writes each room as ``room 1: 2 adults, <property> - <room name>
+#: - <board>``; the ``room N:`` prefix and the property's own name are
+#: navigation, not description, and the board is already on the card.
+_ROOM_PREFIX = re.compile(r"^\s*rooms?\s*\d+\s*[:\-]\s*", re.IGNORECASE)
+_ROOM_BOARD = re.compile(
+    r"\s*[-–|]\s*(bed\s*(and|&)\s*breakfast|b\s*&\s*b|b&b|half\s*board|"
+    r"full\s*board|all[\s-]*inclusive|room[\s-]*only|self[\s-]*catering)\s*$",
+    re.IGNORECASE,
+)
+_ROOM_ADULTS = re.compile(r"(\d+)\s*adults?", re.IGNORECASE)
+#: Filler an exporter writes to say a room is part of the same booking. It is
+#: not a room name, so it never becomes one.
+_ROOM_NAVIGATION = frozenset({
+    "", "and", "same booking", "same reservation", "same booking as above",
+    "as above", "included",
+})
+
+
+def _one_room_words(description: str, property_name: str) -> str:
+    """One room of an operator package, in the card's own words.
+
+    ``Grand Deluxe (2 adults)``, or ``3 adults`` when the record names no room
+    type, or ``""`` when it says nothing usable. Nothing is invented: the room
+    name and the occupant count are lifted out of what the operator's page
+    said, and a record that states neither contributes nothing rather than a
+    guess.
+    """
+    text = _ROOM_BOARD.sub("", str(description or "").strip())
+    text = _ROOM_PREFIX.sub("", text).strip(" ,;-–|")
+    for word in sorted((property_name, property_name.replace(" and ", " & ")),
+                       key=len, reverse=True):
+        if word and word.lower() in text.lower():
+            text = re.sub(re.escape(word), " ", text, flags=re.IGNORECASE)
+            break
+    text = re.sub(r"\s{2,}", " ", text).strip(" ,;-–|")
+    adults = _ROOM_ADULTS.search(text)
+    room = text if not adults else (
+        text[:adults.start()] + text[adults.end():]).strip(" ,;-–|")
+    if room.lower() in _ROOM_NAVIGATION:
+        # "room 2: 2 adults, same booking" says who, not what: the count is the
+        # whole of what this record states about that room.
+        room = ""
+    if room and adults:
+        return f"{room} ({adults.group(1)} adults)"
+    return room or (f"{adults.group(1)} adults" if adults else "")
+
+
+def package_rooms_words(deal: Any) -> str:
+    """``2 rooms: Grand Deluxe (2 adults), Grand Deluxe (3 adults)``, or ``""``.
+
+    A card priced at an operator's package is priced at ONE booking: that
+    operator's rooms, on those dates, for that party. So the sleeping line on
+    such a card describes those rooms and not the catalogue's unit — BRIEF-H14
+    §3: Melati's card carried the package's £9,374 for two Grand Deluxe rooms
+    above "Presidential Suite, one unit for 5", which is a different booking.
+
+    Empty when no package priced the card (the catalogue's unit is still that
+    card's unit) or when the operator's record named no rooms, because saying
+    less is better than describing rooms nobody quoted.
+    """
+    package = getattr(deal, "operator_package", None)
+    if package is None or not getattr(deal, "package_priced", False):
+        return ""
+    names = tuple(getattr(package, "room_descriptions", ()) or ())
+    rooms = [words for words in (
+        _one_room_words(name, str(getattr(package, "property_name", "") or ""))
+        for name in names
+    ) if words]
+    if not rooms:
+        return ""
+    count = int(getattr(package, "rooms", 0) or 0) or len(rooms)
+    plural = "room" if count == 1 else "rooms"
+    return f"{count} {plural}: " + ", ".join(rooms)
 
 
 @dataclass(frozen=True)
@@ -1418,6 +1509,13 @@ class PackageDeal:
     # ``confidence`` field above is the FLIGHT basis whenever live evidence
     # is used, so the hotel's own basis needs its own field (F4, 2026-10-03).
     hotel_rate_basis: str = ""
+    #: The ``(check_in, check_out)`` of the read this stay's nightly was derived
+    #: from, when that read was for ANOTHER pair — ``read-rate-estimate``
+    #: (owner brief 2026-10-05, H14 §1). Empty when the rate was read for these
+    #: dates (``exact-date-rate``) or when no read was used at all. The card
+    #: names these dates, because a nightly carried from a neighbouring pair is
+    #: an estimate and has to read as one.
+    hotel_rate_read_dates: tuple[str, str] = ()
     #: Google (or another named site's) rating read for this property, with
     #: its source and review count (owner brief 2026-10-03, H4).
     hotel_ratings: tuple = ()
@@ -4702,7 +4800,8 @@ def _space_flag(suite_type: str, travellers: int) -> str:
     return ""
 
 
-def _rate_board_matches(resort: Mapping[str, Any], rate: Any) -> bool:
+def _rate_board_matches(resort: Mapping[str, Any], rate: Any,
+                        *, island: bool = False) -> bool:
     """True when the read rate's board is one this property can actually be had on.
 
     An all-inclusive-only resort does not sell a breakfast rate, so a BB rate
@@ -4710,14 +4809,138 @@ def _rate_board_matches(resort: Mapping[str, Any], rate: Any) -> bool:
     catalogue board of "unverified" is the opposite case: the property's board
     is unknown, so a rate that STATES its board settles the question rather
     than being rejected for the catalogue's silence.
+
+    An ISLAND card is the third case, and the rule is the owner's (2026-10-05,
+    BRIEF-H14 §2): it shows every board the hotel sells, each priced, so each
+    board of a read is priced rather than refused. A board nobody stated is
+    still not priced — the loader never admits one — so nothing is assumed.
     """
     if rate is None:
         return False
+    if island:
+        return True
     catalogue = board_code(resort.get("board"))
     read = str(getattr(rate, "board", "") or "").strip().upper()
     if catalogue == BOARD_UNVERIFIED:
         return read in BREAKFAST_BASES
     return bool(read) and read == catalogue
+
+
+def read_nightly(rate: Any) -> Optional[float]:
+    """A read's price per night, or None when it does not divide.
+
+    A total for a stated number of nights IS a nightly: no seasonal curve, no
+    tiering by week and nothing else is invented, which is the only honest way
+    to carry one stay's price onto another's dates.
+    """
+    try:
+        nights = int(getattr(rate, "nights", 0) or 0)
+        price = float(getattr(rate, "price_gbp", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return None
+    if nights < 1 or price <= 0:
+        return None
+    return price / nights
+
+
+def _read_board_rows(entry: Any, nights: int) -> tuple[dict[str, Any], ...]:
+    """Each board a read window priced, cheapest first, for ``nights`` nights.
+
+    One window is one property, one set of dates, one party. Its rates differ by
+    board basis, so each basis's per-night figure prices that basis for the
+    card's nights. The cheapest becomes the headline; the rest are rows on the
+    same card (BRIEF-H14 §2). No board that was not read is ever added here.
+    """
+    nightlies: dict[str, float] = {}
+    for rate in getattr(entry, "rates", ()) or ():
+        board = str(getattr(rate, "board", "") or "").strip().upper()
+        nightly = read_nightly(rate)
+        if board not in BREAKFAST_BASES or nightly is None:
+            continue
+        if board not in nightlies or nightly < nightlies[board]:
+            nightlies[board] = nightly
+    return tuple(sorted(
+        (
+            {
+                "basis": board,
+                "label": BOARD_LABELS.get(board, board),
+                "nightly_gbp": round(nightly, 2),
+                "hotel_cost": round(nightly * int(nights), 2),
+            }
+            for board, nightly in nightlies.items()
+        ),
+        key=lambda row: row["hotel_cost"],
+    ))
+
+
+class _StayPrice(NamedTuple):
+    """What one pair's stay costs, and what it is a price OF."""
+
+    #: The stay for this pair's nights.
+    total: float
+    #: The read window it came from — exact for this pair, or the nearest read
+    #: for this property in this season. None means the catalogue nightly.
+    window: Any
+    #: The board this card prices, as a code, or "" when nothing was read.
+    basis: str
+    #: Each board the read priced, cheapest first (island cards only).
+    rows: tuple[dict[str, Any], ...] = ()
+    #: True when ``window`` is a read for THESE dates, false when it is the
+    #: nearest read. Only an exact read is this card's hotel evidence; a
+    #: derived nightly is named by its dates instead (BRIEF-H14 §1).
+    exact: bool = False
+
+
+def _stay_price(resort: Mapping[str, Any], loaded: Any, check_in: str,
+                check_out: str, nights: int, *, island: bool,
+                arch: Mapping[str, Any]) -> _StayPrice:
+    """The stay for one pair: this pair's read, else the nearest read, else the
+    catalogue (BRIEF-H14 §1, 2026-10-05).
+
+    The order is a strength order and nothing else: a rate read for THESE dates
+    is the price for the stay being offered; a rate read for this property,
+    this board and this unit on another pair in the same season is a real
+    nightly for the same room, and beats a catalogue figure by an order of
+    magnitude on the properties where the two disagree; the catalogue nightly is
+    used only when no read exists at all.
+
+    An island card prices each board its read carries, cheapest first, because
+    there the board IS the price (BRIEF-H14 §2). Every other card prices the
+    board the catalogue names, so a half-board read can never be passed off as
+    the price of a bed & breakfast holiday.
+    """
+    catalogue = float(arch.get("suite_nightly_gbp") or 0.0)
+
+    def _catalogue_stay() -> _StayPrice:
+        return _StayPrice(round(catalogue * int(nights), 2), None, "", ())
+
+    exact = hotel_rate_for(loaded, resort["name"], check_in, check_out)
+    if exact is not None:
+        if island:
+            rows = _read_board_rows(exact, nights)
+            if rows:
+                return _StayPrice(float(rows[0]["hotel_cost"]), exact,
+                                  str(rows[0]["basis"]), rows, True)
+        elif _rate_board_matches(resort, exact.cheapest):
+            return _StayPrice(round(float(exact.cheapest.price_gbp), 2), exact,
+                              str(exact.cheapest.board or ""), (), True)
+    shape = "single_unit" if int(_unit_rooms(arch) or 1) == 1 else "two_rooms_one_booking"
+    for near in hotel_rates_near(loaded, resort["name"], check_in, check_out,
+                                 booking_shape=shape):
+        if island:
+            rows = _read_board_rows(near, nights)
+            if not rows:
+                continue
+            return _StayPrice(float(rows[0]["hotel_cost"]), near,
+                              str(rows[0]["basis"]), rows)
+        if not _rate_board_matches(resort, near.cheapest):
+            continue
+        nightly = read_nightly(near.cheapest)
+        if nightly is None:
+            continue
+        return _StayPrice(round(nightly * int(nights), 2), near,
+                          str(near.cheapest.board or ""), ())
+    return _catalogue_stay()
 
 
 def _board_for_card(resort: Mapping[str, Any], rate: Any) -> str:
@@ -4861,7 +5084,8 @@ the cards' own prices.
     def _best_option(resort, cabin, flight_mult, arch, *, enforce_budget: bool = True,
                      prefer_evidence: bool = False,
                      require_evidence: bool = False,
-                     prefer_packages: bool = False) -> Optional[dict]:
+                     prefer_packages: bool = False,
+                     island: bool = False) -> Optional[dict]:
         """Best (date pair, departure origin) for one resort that clears
         BOTH ceilings, or None when no combination does.
 
@@ -4934,20 +5158,18 @@ the cards' own prices.
         best: Optional[dict] = None
         for outbound, returning in pairs:
             nights = nights_between((outbound, returning))
-            # A rate read for THIS resort on THESE dates beats the catalogue
-            # estimate or nearest-date figure for the same property: it is the
-            # price for the stay the card is offering. It is looked up per pair
-            # because a rate for one set of nights is not a rate for another.
-            hotel_rate = hotel_rate_for(hotel_evidence, resort["name"], outbound, returning)
-            if hotel_rate is not None and not _rate_board_matches(resort, hotel_rate.cheapest):
-                # A rate for a board this property does not sell (or, when the
-                # catalogue does not know, a rate that did not state its
-                # board) cannot price this card.
-                hotel_rate = None
-            if hotel_rate is not None:
-                hotel_cost = round(float(hotel_rate.cheapest.price_gbp), 2)
-            else:
-                hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
+            # THE STAY (BRIEF-H14 §1). A rate read for THIS resort on THESE
+            # dates beats the catalogue estimate; failing that, a read for the
+            # same property, board and unit on another pair in this season is a
+            # real nightly for the same room and beats the catalogue figure by
+            # an order of magnitude where the two disagree; the catalogue
+            # nightly is the last resort, not the first choice. It is looked up
+            # per pair because a rate for one set of nights is not a rate for
+            # another. An island card takes every board its read priced (§2).
+            stay = _stay_price(resort, hotel_evidence, outbound, returning,
+                               nights, island=island, arch=arch)
+            hotel_rate = stay.window if stay.exact else None
+            hotel_cost = stay.total
             peak_hotel = round(arch["suite_peak_nightly_gbp"] * nights, 2)
             # THE OPERATOR'S OWN PRICE FOR THIS PAIR (BRIEF-H12 §1). Asked per
             # pair, under the same gates a card's own rescue uses, so the pair a
@@ -4962,10 +5184,11 @@ the cards' own prices.
                     package_evidence, str(resort["name"]), outbound, returning,
                     max_budget_gbp, nights=nights,
                 )
-            if hotel_rate is None and not arch.get("suite_nightly_gbp"):
+            if stay.window is None and not arch.get("suite_nightly_gbp"):
                 # NO PRICE, NO CARD. This entry carries a unit and public facts
-                # but no rate: pricing it from nothing would show a stay at
-                # zero and a package total that is really just the flights.
+                # but no rate for these dates or any other: pricing it from
+                # nothing would show a stay at zero and a package total that is
+                # really just the flights.
                 continue
             for origin_index, origin in enumerate(config.origins):
                 # Live evidence must be a WHOLE-PARTY, exact-date amount for
@@ -5021,6 +5244,10 @@ the cards' own prices.
                     "evidence": evidence,
                     "evidence_used": evidence_used,
                     "hotel_rate": hotel_rate,
+                    # The read the stay was priced from when it is not a read for
+                    # THIS pair, plus the board that read priced. Nothing here
+                    # can price anything: it is the provenance the card states.
+                    "hotel_read": stay,
                     "package": package,
                 }
                 if best is None or _rank(option) < _rank(best):
@@ -5083,7 +5310,8 @@ the cards' own prices.
         return fallback
 
     def _flight_options(resort, arch, business: Optional[dict],
-                    headline: Optional[dict] = None) -> tuple[dict, ...]:
+                    headline: Optional[dict] = None,
+                    island: bool = False) -> tuple[dict, ...]:
         """(a) Business, (b) Economy, (b2) Premium Economy on the same route,
         (c) Economy and (c2) Premium Economy with a Gulf stopover each way,
         plus any mixed-cabin fare: every one a whole-party total.
@@ -5110,7 +5338,7 @@ the cards' own prices.
                                     _evidence_words(business, "estimate: economy fare x2.5")))
         economy = headline if headline is not None else _best_option(
             resort, "ECONOMY", 1.0, arch, enforce_budget=False,
-            prefer_evidence=True,
+            prefer_evidence=True, island=island,
         )
         if economy is not None:
             # No evidence read for these dates: exactly "benchmark", never
@@ -5121,7 +5349,7 @@ the cards' own prices.
         # requests it per destination) and was previously discarded as an "unused key" —
         # this is the same _best_option seam Economy uses, just a different cabin/multiplier.
         premium_economy = _best_option(resort, "PREMIUM_ECONOMY", 1.6, arch, enforce_budget=False,
-                                       prefer_evidence=True)
+                                       prefer_evidence=True, island=island)
         if premium_economy is not None:
             rows.append(_option_row("premium_economy", "PREMIUM_ECONOMY", premium_economy,
                                     _evidence_words(premium_economy, "estimate: economy fare x1.6")))
@@ -5132,7 +5360,7 @@ the cards' own prices.
         # benchmark for a mix of cabins.
         mixed = _best_option(resort, MIXED_CABIN, 1.0, arch,
                              enforce_budget=False, prefer_evidence=True,
-                             require_evidence=True)
+                             require_evidence=True, island=island)
         if mixed is not None:
             mixed_row = _option_row("mixed_cabin", MIXED_CABIN, mixed,
                                     _evidence_words(mixed, "mixed cabins"))
@@ -5163,7 +5391,15 @@ the cards' own prices.
                     # options keep the full stay; only this one pays for a
                     # shorter holiday and two hotel nights in the hub.
                     resort_nights = max(nights - STOPOVER_FLIGHT_DAYS, 0)
-                    hotel_cost = round(arch["suite_nightly_gbp"] * resort_nights, 2)
+                    # The SAME nightly the card's own option was priced at —
+                    # a read rate's nightly when the property has one (BRIEF-H14
+                    # §1), the catalogue's otherwise — for two nights fewer. A
+                    # stopover row that fell back to the catalogue nightly while
+                    # the card above it carried a read rate would price the same
+                    # room two different ways on one card.
+                    nightly = float(cheapest.get("hotel_cost") or 0.0) / max(
+                        1, int(cheapest.get("nights") or 1))
+                    hotel_cost = round(nightly * resort_nights, 2)
                     stop_nights = 2 * int(info["nights_each_way"])
                     stop_hotel = round(float(info["hotel"]["nightly_gbp"]) * stop_nights, 2)
                     uk_ground = UK_GROUND_RETURN_GBP.get(fare["origin"], 16.50)
@@ -5285,16 +5521,35 @@ the cards' own prices.
             ),
             "hotel_confidence": resort.get("confidence", "market-supported"),
             "unit": arch["suite_type"],
-            "board": resort.get("board", ""),
-            "board_options": board_totals(resort, cheapest["nights"]),
+            # An island row's boards come from the read that priced its stay, as
+            # its card's do (BRIEF-H14 §2): a row that printed "every basis the
+            # hotel sells" and then listed the catalogue's one bed & breakfast
+            # at a fifth of the stay above it would be describing two different
+            # holidays.
+            "board": (
+                BOARD_LABELS.get(
+                    (cheapest.get("hotel_read") or _StayPrice(0.0, None, "")).basis,
+                    resort.get("board", ""),
+                )
+                if (cheapest.get("hotel_read") or _StayPrice(0.0, None, "")).rows
+                else resort.get("board", "")
+            ),
+            "board_options": (
+                (cheapest.get("hotel_read") or _StayPrice(0.0, None, "")).rows
+                or board_totals(resort, cheapest["nights"])
+            ),
             "flight_options": flight_options,
             "max_budget_gbp": float(max_budget_gbp),
             "package": package,
         }
     for dest in config.destinations:
+        # Islands where eating out is not realistic: every board the hotel sells
+        # is shown, each priced (BRIEF-H14 §2, 2026-10-05). Resolved once per
+        # destination, beside the filter that already asks the same question.
+        island = dest.key.lower() in ISLAND_RULE_KEYS
         resorts, dropped = filter_resorts(
             catalog.get(dest.key.lower(), []), is_summer=summer,
-            island=dest.key.lower() in ISLAND_RULE_KEYS,
+            island=island,
         )
         filtered_out.extend(dropped)
         dest_cabins = destination_cabins(config, dest)
@@ -5325,7 +5580,9 @@ the cards' own prices.
                 # absent: a resort the reader expected and did not see is
                 # worse than one we explain.
                 if not arch.get("suite_nightly_gbp") and not any(
-                    hotel_rate_for(hotel_evidence, resort["name"], outbound, returning)
+                    _stay_price(resort, hotel_evidence, outbound, returning,
+                                nights_between((outbound, returning)),
+                                island=island, arch=arch).window is not None
                     for outbound, returning in priceable_date_pairs(config)
                 ):
                     filtered_out.append((
@@ -5373,7 +5630,7 @@ the cards' own prices.
                     fitting = _best_option(
                         resort, cabin, flight_mult, arch,
                         enforce_budget=True, prefer_evidence=True,
-                        prefer_packages=True,
+                        prefer_packages=True, island=island,
                     )
                     if fitting is not None:
                         cheapest = fitting
@@ -5385,17 +5642,20 @@ the cards' own prices.
                             # can be shown as over budget beside a card that
                             # exists because it fits.
                             headline=cheapest if not business_cabin else None,
+                            island=island,
                         )
                         option = cheapest
                     else:
                         cheapest = _best_option(
                             resort, cabin, flight_mult, arch,
                             enforce_budget=False, prefer_evidence=True,
+                            island=island,
                         )
                         flight_options = (
                             _flight_options(
                                 resort, arch, cheapest if business_cabin else None,
                                 headline=cheapest if not business_cabin else None,
+                                island=island,
                             )
                             if cheapest else ()
                         )
@@ -5444,13 +5704,14 @@ the cards' own prices.
                     # has quoted a qualifying package for (see below).
                     option = _best_option(
                         resort, cabin, flight_mult, arch, prefer_evidence=True,
-                        prefer_packages=True,
+                        prefer_packages=True, island=island,
                     )
                     if option is None:
                         # Held back: listed only if the WHOLE destination ends
                         # with no card (Doha and Muscat at a short-haul budget),
                         # so a destination the owner asked for never vanishes.
-                        cheapest = _best_option(resort, cabin, flight_mult, arch, enforce_budget=False)
+                        cheapest = _best_option(resort, cabin, flight_mult, arch,
+                                                enforce_budget=False, island=island)
                         if cheapest is not None:
                             # ...and the package rescue gets its chance here too.
                             # An economy route is exactly where an operator's
@@ -5486,6 +5747,17 @@ the cards' own prices.
                     evidence = option["evidence"]
                     evidence_used = option["evidence_used"]
                     hotel_rate = option.get("hotel_rate")
+                    # The read the stay was priced from when it was not a read
+                    # for this pair, and the board it priced. Both are
+                    # provenance for a figure already fixed above; neither can
+                    # change it.
+                    stay_read = option.get("hotel_read") or _StayPrice(0.0, None, "", ())
+                    hotel_read_dates = (
+                        (stay_read.window.check_in, stay_read.window.check_out)
+                        if stay_read.window is not None and not stay_read.exact
+                        else ()
+                    )
+                    hotel_read_board = stay_read.basis if stay_read.window is not None else ""
                     # PACKAGE-PRICED CARD (owner decision 2, 2026-10-04). The
                     # headline is now the operator's own total for this exact
                     # trip, so the engine's split of it is no longer a fact
@@ -5499,6 +5771,13 @@ the cards' own prices.
                     rescue = option.get("rescue")
                     package_priced = rescue is not None
                     if package_priced:
+                        # The operator's quote IS this stay: not the engine's
+                        # split of it, and not a nightly carried from any read.
+                        # So the read's dates and board come off the card with
+                        # it — naming a read that priced nothing would be a
+                        # worse lie than naming none (BRIEF-H14 §1).
+                        hotel_read_dates = ()
+                        stay_read = _StayPrice(0.0, None, "", ())
                         engine_total = true_d2d
                         total_pkg = round(float(rescue.total_gbp), 2)
                         true_d2d = total_pkg
@@ -5552,7 +5831,16 @@ the cards' own prices.
                             destination_label=resort["destination_label"],
                             destination_key=dest.key,
                             star_rating=resort["stars"],
-                            board_basis=_board_for_card(resort, hotel_rate),
+                            # The board this card prices. A read's own board
+                            # wins (BRIEF-H14 §2 for an island card, which
+                            # prices the cheapest board its read carries);
+                            # otherwise the catalogue's, as before.
+                            board_basis=(
+                                _board_for_card(resort, hotel_rate)
+                                if package_priced
+                                else (BOARD_LABELS.get(hotel_read_board, "")
+                                      or _board_for_card(resort, hotel_rate))
+                            ),
                             outbound_date=target_outbound,
                             return_date=target_return,
                             nights=nights,
@@ -5580,7 +5868,12 @@ the cards' own prices.
                                 # the operator quoted is on the card; the ones
                                 # they did not quote are not ours to price.
                                 () if package_priced
-                                else board_totals(resort, nights)
+                                # An island card's boards come from the READ
+                                # that priced its stay, each one a board the
+                                # hotel was seen to sell (BRIEF-H14 §2). The
+                                # catalogue's board_options are the fallback,
+                                # and stay exactly as they were.
+                                else (stay_read.rows or board_totals(resort, nights))
                             ),
                             monsoon_months=tuple(resort.get("monsoon_months", ()) or ()),
                             # Booking terms: carried from the resort data only
@@ -5661,11 +5954,21 @@ the cards' own prices.
                                 "operator package"
                                 if package_priced
                                 else (
-                                    "exact-date-rate"
-                                    if hotel_rate is not None
-                                    else str(resort.get("confidence", "market-supported"))
+                                    "read-rate-estimate"
+                                    if hotel_read_dates
+                                    else (
+                                        "exact-date-rate"
+                                        if hotel_rate is not None
+                                        else str(resort.get("confidence", "market-supported"))
+                                    )
                                 )
                             ),
+                            # The dates of the read this stay was derived from,
+                            # empty when the read was for these dates or when no
+                            # read was used. The card names them, because a
+                            # nightly carried from another pair is an estimate
+                            # and must read as one.
+                            hotel_rate_read_dates=hotel_read_dates,
                             hotel_evidence=hotel_rate,
                             # The operator's own package price for these dates,
                             # when one was read. On an engine-priced card it is
@@ -6901,6 +7204,15 @@ def hotel_rate_age_words(deal: Any, *, generated_at: str) -> str:
     basis = str(getattr(deal, "hotel_rate_basis", "") or "market-supported")
     if basis == "estimate":
         return "hotel rate from nearest dates, not your exact dates"
+    if basis == "read-rate-estimate":
+        # BRIEF-H14 §1. This stay is not a catalogue estimate and not a read for
+        # these dates: its nightly came from a read for a neighbouring pair, and
+        # the footer names the pair so nobody reads it as this trip's rate.
+        read_dates = tuple(getattr(deal, "hotel_rate_read_dates", ()) or ())
+        if len(read_dates) == 2:
+            return ("hotel rate estimate from a read for "
+                    f"{read_dates[0]} to {read_dates[1]}")
+        return "hotel rate estimate from a read for other dates"
     return "hotel rate read for these dates"
 
 
@@ -7714,7 +8026,15 @@ def render_holiday_report(
                     airport=deal.destination_airport, origin=deal.origin))
             # Deal rationale callout: explain WHY this is a great deal for this party
             rationale_points: list[str] = []
-            if deal.unit_architecture and int(deal.rooms_in_unit or 1) < 3:
+            # BRIEF-H14 §3: when an operator's package priced this card, the
+            # rooms are the ones the operator quoted. The catalogue's unit beside
+            # them describes a booking nobody is being offered.
+            package_rooms = package_rooms_words(deal)
+            if package_rooms:
+                rationale_points.append(
+                    '<strong>Package rooms for ' + str(config.travellers) + ':</strong> '
+                    + escape(package_rooms) + ', on one booking — the rooms the operator quoted.')
+            elif deal.unit_architecture and int(deal.rooms_in_unit or 1) < 3:
                 # Never claim a three-room quote is one unit: the collector
                 # filters those out, and a hand-built deal must not slip one
                 # through here either.

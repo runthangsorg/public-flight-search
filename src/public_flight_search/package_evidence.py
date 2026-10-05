@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 import json
 import os
 import sys
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 from .hotel_evidence import (
     DEAL_BOARDS,
@@ -116,6 +116,13 @@ class PackagePrice:
     #: (destination2.py)". Shown on the card so the claim is checkable rather
     #: than taken on trust.
     flight_cabin_basis: str = ""
+    #: What the operator put in each room of this booking, in the exporter's
+    #: own words: ``"room 1: 2 adults, Melati Beach Resort and Spa - Grand
+    #: Deluxe - Bed and Breakfast"``. Carried because a package-priced card has
+    #: to describe the PACKAGE's rooms (BRIEF-H14 §3, 2026-10-05): the rooms
+    #: the operator sold are the rooms the reader gets, and the catalogue's
+    #: unit beside them described a different booking.
+    room_descriptions: tuple[str, ...] = ()
 
 
 #: Skips from the most recent load, surfaced in the job summary so an operator
@@ -400,11 +407,25 @@ def load_package_evidence(
             includes=tuple(str(value) for value in includes),
             flight_cabin=str(item.get("flight_cabin", "") or "").strip().upper(),
             flight_cabin_basis=str(item.get("flight_cabin_basis", "") or "").strip(),
+            room_descriptions=_room_descriptions(item),
         )
         previous = qualifying.get(key)
         if previous is None or entry.total_gbp < previous.total_gbp:
             qualifying[key] = entry
     return qualifying
+
+
+def _room_descriptions(item: Mapping[str, Any]) -> tuple[str, ...]:
+    """The exporter's per-room words, or () when it recorded none.
+
+    Anything that is not a list of strings is dropped rather than coerced: this
+    is the card's own description of the rooms it is selling, so a malformed
+    record must not reach the page as text nobody wrote.
+    """
+    raw = item.get("room_descriptions")
+    if not isinstance(raw, list):
+        return ()
+    return tuple(str(value).strip() for value in raw if str(value or "").strip())
 
 
 def package_price_for(

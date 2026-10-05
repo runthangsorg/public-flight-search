@@ -11,6 +11,10 @@ honest seam rather than a scraper — the same contract as
 
 * every accepted rate is re-validated here for season, exact dates, party size,
   booking shape, board basis and freshness;
+* a rate read for ANOTHER priceable pair stays loaded, and ``hotel_rates_near``
+  hands it out nearest-first so a card may be priced from a real nightly rather
+  than a catalogue guess (BRIEF-H14 §1). The caller decides whether the board
+  and the booking shape are the card's;
 * the price is either a GBP ``public`` figure the site displayed, or a
   ``derived_gbp`` conversion that carries its own arithmetic on its face, so a
   converted amount can never be read as a GBP price;
@@ -28,7 +32,7 @@ import json
 import os
 import re
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 #: Where the workflow lands the private engine's export. Same path both
 #: planner workflows seed (H1, 2026-10-03).
@@ -314,6 +318,72 @@ def hotel_rate_for(loaded, property_name: str, check_in: str, check_out: str):
         if entry.check_in == check_in and entry.check_out == check_out:
             return entry
     return None
+
+
+def _day_gap(first: Any, second: Any) -> Optional[int]:
+    """Days between two ISO dates, or None when either will not parse."""
+    try:
+        left = datetime.fromisoformat(str(first)[:10])
+        right = datetime.fromisoformat(str(second)[:10])
+    except (TypeError, ValueError):
+        return None
+    return abs((left - right).days)
+
+
+def hotel_rates_near(
+    loaded,
+    property_name: str,
+    check_in: str,
+    check_out: str,
+    *,
+    booking_shape: Optional[str] = None,
+):
+    """This property's reads for OTHER pairs, nearest first.
+
+    BRIEF-H14 §1 (2026-10-05). A read for a different set of dates is not this
+    stay's price, but it is a real nightly for the same room, same party and
+    same season — and the card it prices must never fall back to a catalogue
+    guess while that read sits in the same evidence file. The caller decides
+    which of these it may use (same board, same unit); this only answers "how
+    near, and in what order".
+
+    Nearness is measured on both ends of the stay — a read that starts and ends
+    closest to the pair wanted is the nearest — and ties break on the shorter
+    difference in nights, then on the earlier check-in, so the order is a
+    property of the evidence and never of the dict's iteration order.
+    """
+    if not loaded:
+        return ()
+    wanted = _normalise_property(property_name)
+    found = []
+    for entry in loaded.values():
+        if _normalise_property(entry.property_name) != wanted:
+            continue
+        if entry.check_in == check_in and entry.check_out == check_out:
+            continue
+        if booking_shape and str(entry.cheapest.booking_shape or "") != booking_shape:
+            continue
+        rate = entry.cheapest
+        if int(getattr(rate, "nights", 0) or 0) < 1:
+            continue
+        if not float(getattr(rate, "price_gbp", 0.0) or 0.0) > 0:
+            continue
+        start_gap = _day_gap(entry.check_in, check_in)
+        end_gap = _day_gap(entry.check_out, check_out)
+        if start_gap is None or end_gap is None:
+            continue
+        found.append((start_gap + end_gap, abs(int(rate.nights) - _nights_between(
+            check_in, check_out)), entry.check_in, entry))
+    return tuple(row[3] for row in sorted(found, key=lambda row: row[:3]))
+
+
+def _nights_between(check_in: str, check_out: str) -> int:
+    try:
+        left = datetime.fromisoformat(str(check_in)[:10])
+        right = datetime.fromisoformat(str(check_out)[:10])
+    except (TypeError, ValueError):
+        return 0
+    return max(0, (right - left).days)
 
 
 def hotel_rate_provenance(rate: HotelRate) -> str:

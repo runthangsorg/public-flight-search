@@ -361,12 +361,22 @@ def freshness_tag(deal: PackageDeal, *, generated_at: Any) -> tuple[str, str]:
         live, stale = False, True
     hotel_estimated = str(getattr(deal, "hotel_rate_basis", "")) == "estimate"
     hotel_read = getattr(deal, "hotel_evidence", None) is not None
+    # A stay whose nightly came from a read for ANOTHER pair (BRIEF-H14 §1). It
+    # is not a catalogue guess, and it is not a read for these dates either: the
+    # card names the read on its board line, and the tag here says only that the
+    # stay is from a read rate. "checked today" would be claiming both halves
+    # were read for this trip, which is the claim the owner's report caught.
+    stay_from_read = str(getattr(deal, "hotel_rate_basis", "")) == "read-rate-estimate"
     if live:
+        if stay_from_read:
+            return "Live price · stay from a read rate", "green"
         if hotel_estimated:
             return "Live price · stay estimated", "green"
         return f"Live price · checked {_checked_words(age)}", "green"
     if stale:
         return f"Seen {relative_age_label(age) or 'earlier'}", "amber"
+    if stay_from_read:
+        return "Stay read for other dates", "grey"
     if hotel_read and not hotel_estimated:
         return "Hotel rate read", "grey"
     return "Estimate — no live price", "amber"
@@ -901,6 +911,14 @@ def board_line(deal: PackageDeal, *, travellers: int) -> str:
         per_person = 0.0
     if per_person > 0:
         words += f" · about {_gbp(per_person)} each"
+    # A stay derived from a read for another pair says so HERE, on the line that
+    # names the board and the per-head share, because this is where a reader
+    # looks for what the stay costs (BRIEF-H14 §1). After the board, before the
+    # other boards: the clause belongs to this card's stay, not to any row.
+    read_dates = tuple(getattr(deal, "hotel_rate_read_dates", ()) or ())
+    if len(read_dates) == 2:
+        words += (f" · estimate from a read rate for "
+                  f"{_range_words(read_dates[0], read_dates[1])}")
     options = list(getattr(deal, "board_options", ()) or ())
     if not options:
         return words
@@ -972,7 +990,19 @@ def _climate_words(deal: PackageDeal, config: HolidayConfig) -> str:
 
 
 def _unit_words(deal: PackageDeal, config: HolidayConfig) -> str:
+    """The one line that says where five people actually sleep.
+
+    On a card priced at an operator's package that is the PACKAGE's rooms
+    (BRIEF-H14 §3, 2026-10-05): the headline is the operator's booking, so the
+    catalogue's unit must not describe it — "Presidential Suite, one unit for 5"
+    under a price for two Grand Deluxe rooms is a room nobody would get. When
+    the engine priced the card itself the catalogue's unit is the card's unit,
+    exactly as before.
+    """
     travellers = int(config.travellers)
+    rooms_words = hol.package_rooms_words(deal)
+    if rooms_words:
+        return f"Sleeps {travellers} in one booking — {rooms_words}"
     unit = str(getattr(deal, "unit_architecture", "") or "").strip()
     rooms = getattr(deal, "rooms_in_unit", None)
     if unit and rooms is not None and int(rooms) < 3:
