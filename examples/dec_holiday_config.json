@@ -47,7 +47,8 @@
         "HKT"
       ],
       "flight_hours": 12.17,
-      "flight_hours_source": "Virgin Atlantic LHR-HKT seasonal nonstop from 2026-10-18, scheduled 12h10 (flightconnections.com/flights-from-lhr-to-hkt, checked 2026-09-28)"
+      "flight_hours_source": "Virgin Atlantic LHR-HKT seasonal nonstop from 2026-10-18, scheduled 12h10 (flightconnections.com/flights-from-lhr-to-hkt, checked 2026-09-28)",
+      "nonstop_source": "Virgin Atlantic's LHR-HKT service is SEASONAL and starts 18 Oct 2026 (flightconnections.com/flights-from-lhr-to-hkt, checked 2026-09-28). No source in this repository or in the 2026-10-04 research gives its season END, so the 17-23 Dec 2026 departures cannot be confirmed nonstop. UNKNOWN, and unknown is priced economy (owner rule 2026-10-04: business only for a direct flight)."
     },
     {
       "key": "krabi",
@@ -56,7 +57,9 @@
         "KBV"
       ],
       "flight_hours": 14.5,
-      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK: LHR-BKK nonstop ~11h45 + connection + BKK-KBV ~1h20, about 14h30 (estimate from published schedules, not live-checked)"
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK: LHR-BKK nonstop ~11h45 + connection + BKK-KBV ~1h20, about 14h30 (estimate from published schedules, not live-checked)",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to KBV; every London-Krabi itinerary connects (1 stop via Bangkok). No nonstop listed on Google Flights for LHR 20 Dec 2026 (read 2026-09-29), so not nonstop."
     },
     {
       "key": "phu_quoc",
@@ -65,7 +68,9 @@
         "PQC"
       ],
       "flight_hours": 15.0,
-      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK or SGN: London leg ~11h45-12h45 + connection + ~1h-1h30, about 15h (estimate from published schedules, not live-checked)"
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK or SGN: London leg ~11h45-12h45 + connection + ~1h-1h30, about 15h (estimate from published schedules, not live-checked)",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to PQC; every London-Phu Quoc itinerary connects (via Bangkok or Ho Chi Minh City). No nonstop listed on Google Flights for LHR 20 Dec 2026 (read 2026-09-29), so not nonstop."
     },
     {
       "key": "zanzibar",
@@ -74,7 +79,9 @@
         "ZNZ"
       ],
       "flight_hours": 11.67,
-      "flight_hours_source": "No London nonstop. Fastest 1-stop on Google Flights for LHR 20 Dec 2026 (read 2026-09-29): Ethiopian via ADD, 11h40; EgyptAir via CAI 12h20. For 20 Jul 2027: Ethiopian via ADD 11h55"
+      "flight_hours_source": "No London nonstop. Fastest 1-stop on Google Flights for LHR 20 Dec 2026 (read 2026-09-29): Ethiopian via ADD, 11h40; EgyptAir via CAI 12h20. For 20 Jul 2027: Ethiopian via ADD 11h55",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to ZNZ; the fastest listed journey is Ethiopian via Addis Ababa, 1 stop (Google Flights LHR 20 Dec 2026, read 2026-09-29). Not nonstop."
     },
     {
       "key": "mauritius",
@@ -83,7 +90,9 @@
         "MRU"
       ],
       "flight_hours": 14.42,
-      "flight_hours_source": "No nonstop listed on Google Flights for LHR 20 Dec 2026 (read 2026-09-29). Fastest 1-stop: Air France + Air Mauritius via CDG, 14h25; Emirates via DXB, 15h10"
+      "flight_hours_source": "No nonstop listed on Google Flights for LHR 20 Dec 2026 (read 2026-09-29). Fastest 1-stop: Air France + Air Mauritius via CDG, 14h25; Emirates via DXB, 15h10",
+      "nonstop_from_london": false,
+      "nonstop_source": "Google Flights lists NO nonstop for LHR-MRU (read 2026-09-29); the fastest listed journey is Air France + Air Mauritius via CDG, 14h25. Not nonstop."
     },
     {
       "key": "riviera_maya",
@@ -92,7 +101,20 @@
         "CUN"
       ],
       "flight_hours": 11.02,
-      "flight_hours_source": "Virgin Atlantic / Delta LHR-CUN nonstop, 11h01, listed on Google Flights for 20 Dec 2026 (read 2026-09-29)"
+      "flight_hours_source": "Virgin Atlantic / Delta LHR-CUN nonstop, 11h01, listed on Google Flights for 20 Dec 2026 (read 2026-09-29)",
+      "nonstop_from_london": true,
+      "nonstop_source": "Virgin Atlantic operates LHR-CUN nonstop, 11h01, 18 Oct 2026 - 11 Apr 2027 (read from Virgin Atlantic's own Mexico page and listed on Google Flights for 20 Dec 2026, read 2026-09-29; restated in the 2026-10-04 Mexico/Japan research). December 2026 sits inside that season, so these departures ARE nonstop."
+    },
+    {
+      "key": "okinawa",
+      "label": "Onna Village, Okinawa, Japan (watch: mainland Japan is about 17°C in December; this beach is 21-26°C)",
+      "airports": [
+        "OKA"
+      ],
+      "flight_hours": 16.5,
+      "flight_hours_source": "No London nonstop (read 2026-10-04). LHR-HND on ANA, JAL or BA, then a 2h40 domestic hop to Naha; fastest listed itinerary 16h30",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to OKA: London to Tokyo (HND/NRT) then a 2h40 domestic hop to Naha. Read 2026-10-04. Not nonstop, in either season."
     },
     {
       "key": "antalya",
@@ -101,7 +123,9 @@
         "AYT"
       ],
       "flight_hours": 4.5,
-      "flight_hours_source": "BA / SunExpress LHR/LGW/STN-AYT nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / SunExpress LHR/LGW/STN-AYT nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / SunExpress LHR/LGW/STN-AYT nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "malta",
@@ -110,7 +134,9 @@
         "MLA"
       ],
       "flight_hours": 3.25,
-      "flight_hours_source": "BA / Air Malta LHR/LGW-MLA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / Air Malta LHR/LGW-MLA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / Air Malta LHR/LGW-MLA nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "taghazout",
@@ -119,7 +145,9 @@
         "AGA"
       ],
       "flight_hours": 3.75,
-      "flight_hours_source": "BA / easyJet LGW-AGA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / easyJet LGW-AGA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / easyJet LGW-AGA nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "hurghada",
@@ -128,7 +156,9 @@
         "HRG"
       ],
       "flight_hours": 5.25,
-      "flight_hours_source": "easyJet / TUI LGW/LTN-HRG nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "easyJet / TUI LGW/LTN-HRG nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "easyJet / TUI LGW/LTN-HRG nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "cairo",
@@ -137,7 +167,9 @@
         "CAI"
       ],
       "flight_hours": 5.0,
-      "flight_hours_source": "BA / EgyptAir LHR-CAI nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / EgyptAir LHR-CAI nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / EgyptAir LHR-CAI nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "muscat",
@@ -146,7 +178,9 @@
         "MCT"
       ],
       "flight_hours": 7.33,
-      "flight_hours_source": "Oman Air LHR-MCT nonstop, typical scheduled block 7h10-7h20 (flightsfrom.com/LHR-MCT and flightconnections.com, checked 2026-09-28); some schedule periods list up to ~8h10, so this is the one destination near the line"
+      "flight_hours_source": "Oman Air LHR-MCT nonstop, typical scheduled block 7h10-7h20 (flightsfrom.com/LHR-MCT and flightconnections.com, checked 2026-09-28); some schedule periods list up to ~8h10, so this is the one destination near the line",
+      "nonstop_from_london": true,
+      "nonstop_source": "Oman Air LHR-MCT nonstop, year-round service, typical scheduled block 7h10-7h20 (flightsfrom.com/LHR-MCT and flightconnections.com, checked 2026-09-28)."
     },
     {
       "key": "doha",
@@ -155,7 +189,9 @@
         "DOH"
       ],
       "flight_hours": 6.75,
-      "flight_hours_source": "Qatar Airways / BA LHR-DOH nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "Qatar Airways / BA LHR-DOH nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "Qatar Airways / BA LHR-DOH nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "tenerife",
@@ -164,7 +200,9 @@
         "TFS"
       ],
       "flight_hours": 4.5,
-      "flight_hours_source": "BA / easyJet LHR/LGW-TFS nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / easyJet LHR/LGW-TFS nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / easyJet LHR/LGW-TFS nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "madeira",
@@ -173,7 +211,9 @@
         "FNC"
       ],
       "flight_hours": 3.75,
-      "flight_hours_source": "BA / easyJet LHR/LGW-FNC nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / easyJet LHR/LGW-FNC nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / easyJet LHR/LGW-FNC nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "lanzarote",
@@ -182,7 +222,9 @@
         "ACE"
       ],
       "flight_hours": 4.0,
-      "flight_hours_source": "BA / easyJet LGW-ACE nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / easyJet LGW-ACE nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / easyJet LGW-ACE nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "cape_verde",
@@ -191,7 +233,9 @@
         "SID"
       ],
       "flight_hours": 6.0,
-      "flight_hours_source": "TUI / BA LGW-SID nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "TUI / BA LGW-SID nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "TUI / BA LGW-SID nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "fuerteventura",
@@ -200,7 +244,9 @@
         "FUE"
       ],
       "flight_hours": 4.25,
-      "flight_hours_source": "BA / easyJet LGW-FUE nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / easyJet LGW-FUE nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / easyJet LGW-FUE nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "gran_canaria",
@@ -209,7 +255,9 @@
         "LPA"
       ],
       "flight_hours": 4.5,
-      "flight_hours_source": "BA / easyJet LHR/LGW-LPA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / easyJet LHR/LGW-LPA nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / easyJet LHR/LGW-LPA nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     },
     {
       "key": "paphos",
@@ -218,7 +266,9 @@
         "PFO"
       ],
       "flight_hours": 4.75,
-      "flight_hours_source": "BA / easyJet LHR/LGW-PFO nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)"
+      "flight_hours_source": "BA / easyJet LHR/LGW-PFO nonstop, scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)",
+      "nonstop_from_london": true,
+      "nonstop_source": "BA / easyJet LHR/LGW-PFO nonstop, year-round service; scheduled block time from published airline schedules (approximate; not re-checked against a live timetable on 2026-09-28)."
     }
   ]
 }

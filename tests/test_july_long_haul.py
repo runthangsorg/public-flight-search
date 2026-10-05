@@ -99,11 +99,14 @@ class JulyScopeTests(unittest.TestCase):
                 self.assertIn("monsoon", resort["beach"].lower())
                 self.assertIn("MONSOON", resort["destination_label"])
 
-    def test_every_long_haul_cabin_is_business(self):
+    def test_every_long_haul_destination_prices_economy(self):
+        # Owner rule 2026-10-04: business class is quoted only for a DIRECT
+        # flight. None of the July destinations has a London nonstop on these
+        # dates, so every one of them — however far — is Economy.
         for dest in _july().destinations:
             if dest.key in LOMBOK_KEYS | THAILAND_KEYS:
                 with self.subTest(dest=dest.key):
-                    self.assertEqual(dest.cabin_class, "BUSINESS")
+                    self.assertEqual(dest.cabin_class, "ECONOMY")
 
 
 class SummerCatalogueTests(unittest.TestCase):
@@ -220,7 +223,10 @@ class JulyReportHonestyTests(unittest.TestCase):
         }
         expected = set()
         no_rate = set()
-        for key in LOMBOK_KEYS | THAILAND_KEYS | {"zanzibar"}:
+        # Derived from the keys the July config actually carries with
+        # resort entries (H9 added the Riviera Maya and Okinawa), not from a
+        # pasted list that could drift from the config.
+        for key in (LOMBOK_KEYS | THAILAND_KEYS | {"zanzibar", "riviera_maya", "okinawa"}):
             kept, _ = filter_resorts(
                 SUMMER_RESORT_CATALOG[key], is_summer=True,
                 island=key in hol.ISLAND_RULE_KEYS,
@@ -286,10 +292,15 @@ class JulyReportHonestyTests(unittest.TestCase):
         self.assertTrue(deals)
         for deal in deals:
             with self.subTest(resort=deal.resort_name):
-                self.assertEqual(deal.cabin_class, "BUSINESS")
+                self.assertEqual(deal.cabin_class, "ECONOMY")
                 self.assertTrue(deal.routing)
-                # Business priced from the economy benchmark is an estimate.
-                self.assertEqual(deal.confidence, "estimate")
+                # Every July route connects, so with no live fare in this run the
+                # FLIGHT half of the headline is a benchmark. Asserted on the
+                # flight's own basis rather than on ``confidence``, which is the
+                # weaker of the two legs for the freshness tag and says
+                # "market-supported" when it is a hotel rate that was read.
+                self.assertEqual(deal.flight_price_basis, "benchmark_supplied")
+                self.assertNotIn(deal.confidence, ("verified-exact-date", "stale-cache"))
         html = render_holiday_report(config, generated_at="2026-09-29T00:00:00+00:00", deals=deals)
         self.assertIn("Routing:", html)
         self.assertNotIn("Nonstop Logistics", html)

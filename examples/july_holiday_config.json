@@ -22,19 +22,22 @@
     "STN"
   ],
   "outbound_dates": [
+    "2027-06-25",
     "2027-06-26",
+    "2027-06-27",
+    "2027-06-28",
     "2027-06-29",
-    "2027-07-01",
-    "2027-07-03"
+    "2027-06-30"
   ],
   "return_dates": [
+    "2027-07-09",
     "2027-07-10",
+    "2027-07-11",
+    "2027-07-12",
     "2027-07-13",
-    "2027-07-15",
+    "2027-07-14",
     "2027-07-17",
-    "2027-07-20",
-    "2027-07-22",
-    "2027-07-24"
+    "2027-07-20"
   ],
   "destinations": [
     {
@@ -44,7 +47,9 @@
         "LOP"
       ],
       "flight_hours": 24.0,
-      "flight_hours_source": "No London nonstop and no Business cabin into Lombok. Fastest 1-stop listed on Google Flights for LHR 20 Jul 2027 (read 2026-09-29): Singapore Airlines + Scoot via SIN, 24h with an 8h connection; 2-stop Qatar Airways + Garuda via DOH and CGK, 22h55"
+      "flight_hours_source": "No London nonstop and no Business cabin into Lombok. Fastest 1-stop listed on Google Flights for LHR 20 Jul 2027 (read 2026-09-29): Singapore Airlines + Scoot via SIN, 24h with an 8h connection; 2-stop Qatar Airways + Garuda via DOH and CGK, 22h55",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to LOP: every listed London-Lombok itinerary connects, the fastest being Singapore Airlines + Scoot via SIN. Google Flights LHR 20 Jul 2027 (read 2026-09-29) lists no nonstop. Not nonstop."
     },
     {
       "key": "koh_samui",
@@ -53,7 +58,9 @@
         "USM"
       ],
       "flight_hours": 14.92,
-      "flight_hours_source": "No London nonstop. Fastest protected 1-stop listed on Google Flights for LHR 20 Jul 2027 (read 2026-09-29): EVA Air + Bangkok Airways via BKK, 14h55; BA + Bangkok Airways via SIN, 16h50"
+      "flight_hours_source": "No London nonstop. Fastest protected 1-stop listed on Google Flights for LHR 20 Jul 2027 (read 2026-09-29): EVA Air + Bangkok Airways via BKK, 14h55; BA + Bangkok Airways via SIN, 16h50",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to USM: the fastest listed journey is EVA Air + Bangkok Airways via BKK, 14h55 (Google Flights LHR 20 Jul 2027, read 2026-09-29). Not nonstop."
     },
     {
       "key": "koh_phangan",
@@ -62,7 +69,9 @@
         "USM"
       ],
       "flight_hours": 14.92,
-      "flight_hours_source": "No airport on Koh Phangan: fly to Koh Samui (USM; fastest protected 1-stop on Google Flights for LHR 20 Jul 2027, read 2026-09-29, EVA Air + Bangkok Airways via BKK, 14h55), then the resort speedboat, about 40 min"
+      "flight_hours_source": "No airport on Koh Phangan: fly to Koh Samui (USM; fastest protected 1-stop on Google Flights for LHR 20 Jul 2027, read 2026-09-29, EVA Air + Bangkok Airways via BKK, 14h55), then the resort speedboat, about 40 min",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop and no airport on Koh Phangan at all: fly to Koh Samui (USM, fastest listed 1-stop 14h55 via BKK, Google Flights LHR 20 Jul 2027, read 2026-09-29) and take the resort speedboat. Not nonstop."
     },
     {
       "key": "khao_lak",
@@ -71,7 +80,8 @@
         "HKT"
       ],
       "flight_hours": 14.5,
-      "flight_hours_source": "No nonstop listed for 20 Jul 2027. Fastest 1-stop on Google Flights for LHR-HKT (read 2026-09-29): THAI via BKK, 14h30; Etihad via AUH, 14h35. Then about 1h40 by road from Phuket airport"
+      "flight_hours_source": "No nonstop listed for 20 Jul 2027. Fastest 1-stop on Google Flights for LHR-HKT (read 2026-09-29): THAI via BKK, 14h30; Etihad via AUH, 14h35. Then about 1h40 by road from Phuket airport",
+      "nonstop_source": "Khao Lak is served from HKT. Google Flights lists NO nonstop for LHR-HKT on 20 Jul 2027 (read 2026-09-29), and Virgin Atlantic's HKT service is SEASONAL (it starts 18 Oct 2026) with no season end given by any source in this repository or the 2026-10-04 research, so the June/July 2027 season cannot be confirmed from here either. UNKNOWN, and unknown is priced economy (owner rule 2026-10-04: business only for a direct flight)."
     },
     {
       "key": "zanzibar",
@@ -80,7 +90,9 @@
         "ZNZ"
       ],
       "flight_hours": 11.67,
-      "flight_hours_source": "No London nonstop. Fastest 1-stop on Google Flights for LHR 20 Dec 2026 (read 2026-09-29): Ethiopian via ADD, 11h40; EgyptAir via CAI 12h20. For 20 Jul 2027: Ethiopian via ADD 11h55"
+      "flight_hours_source": "No London nonstop. Fastest 1-stop on Google Flights for LHR 20 Dec 2026 (read 2026-09-29): Ethiopian via ADD, 11h40; EgyptAir via CAI 12h20. For 20 Jul 2027: Ethiopian via ADD 11h55",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to ZNZ: the fastest listed journey for 20 Jul 2027 is Ethiopian via Addis Ababa, 11h55, 1 stop. Not nonstop."
     },
     {
       "key": "bali",
@@ -89,7 +101,9 @@
         "DPS"
       ],
       "flight_hours": 17.25,
-      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via SIN: LHR-SIN nonstop ~13h + connection + SIN-DPS ~2h45, about 17h15 (estimate from published schedules, not live-checked)"
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via SIN: LHR-SIN nonstop ~13h + connection + SIN-DPS ~2h45, about 17h15 (estimate from published schedules, not live-checked)",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to DPS: the fastest standard journey is 1 stop via SIN, about 17h15 (estimate from published schedules, not live-checked). Not nonstop."
     },
     {
       "key": "da_nang",
@@ -98,17 +112,31 @@
         "DAD"
       ],
       "flight_hours": 15.0,
-      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK, HAN or SGN: London leg ~11h45-12h45 + connection + ~1h15-1h45, about 15h (estimate from published schedules, not live-checked)"
+      "flight_hours_source": "No London nonstop. Fastest standard 1-stop via BKK, HAN or SGN: London leg ~11h45-12h45 + connection + ~1h15-1h45, about 15h (estimate from published schedules, not live-checked)",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to DAD: every London-Da Nang itinerary connects, via BKK, HAN or SGN. Not nonstop."
     },
     {
-      "key": "japan",
-      "label": "Tokyo & Hakone, Japan (city + hot springs; 30-33C and humid, rainy season usually over by mid-July)",
+      "key": "okinawa",
+      "label": "Onna Village, Okinawa, Japan (warmest Japanese beach: 27-32°C in July; typhoon season)",
       "airports": [
-        "HND",
-        "NRT"
+        "OKA"
       ],
-      "flight_hours": 14.25,
-      "flight_hours_source": "BA / JAL / ANA LHR-HND nonstop, scheduled block about 14h-14h30 on the routing that avoids Russian airspace (published schedules, not re-checked live on 2026-09-28)"
+      "flight_hours": 16.5,
+      "flight_hours_source": "No London nonstop: Google Flights states 'There are no direct flights on this route' (read 2026-10-04). LHR-HND on ANA, JAL or BA, then a 2h40 domestic hop to Naha on ANA / JAL / Skymark / Solaseed; fastest listed itinerary 16h30",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop exists to OKA: Google Flights states 'There are no direct flights on this route' (read 2026-10-04). LHR-HND on ANA, JAL or BA, then a 2h40 domestic hop to Naha. Not nonstop, in either season."
+    },
+    {
+      "key": "riviera_maya",
+      "label": "Riviera Maya & Tulum, Mexico (Caribbean; 24-34°C in July, but hurricane and sargassum season)",
+      "airports": [
+        "CUN"
+      ],
+      "flight_hours": 17.0,
+      "flight_hours_source": "No London nonstop in July 2027: Virgin Atlantic's CUN service runs 18 Oct 2026 - 11 Apr 2027, verified on Virgin Atlantic's own Mexico page (read 2026-10-04). 1 stop via AUH, DOH or IST, about 17h with the connection",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop to CUN in July 2027: Virgin Atlantic's Cancun service runs 18 Oct 2026 - 11 Apr 2027, verified on Virgin Atlantic's own Mexico page (read 2026-10-04), so it has ended by these dates. Every London-Cancun journey in June/July 2027 connects (about 17h via AUH, DOH or IST). Not nonstop."
     }
   ]
 }

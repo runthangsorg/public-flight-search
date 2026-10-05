@@ -106,6 +106,16 @@ class PackagePrice:
     observed_at: str
     flight_summary: str
     includes: tuple[str, ...]
+    #: The cabin the PACKAGE's flights were searched in, as the exporter
+    #: recorded it, or "" when it recorded none. Since dealsearch ``ff26b7a``
+    #: the Destination2 adapter writes both this and ``flight_cabin_basis``;
+    #: other adapters carry neither, and a record without this field can never
+    #: promote a card's headline (owner brief 2026-10-04, H10 §2).
+    flight_cabin: str = ""
+    #: The exporter's own words for that choice, e.g. "searched as Class=E
+    #: (destination2.py)". Shown on the card so the claim is checkable rather
+    #: than taken on trust.
+    flight_cabin_basis: str = ""
 
 
 #: Skips from the most recent load, surfaced in the job summary so an operator
@@ -388,6 +398,8 @@ def load_package_evidence(
             observed_at=observed_raw,
             flight_summary=flight_summary,
             includes=tuple(str(value) for value in includes),
+            flight_cabin=str(item.get("flight_cabin", "") or "").strip().upper(),
+            flight_cabin_basis=str(item.get("flight_cabin_basis", "") or "").strip(),
         )
         previous = qualifying.get(key)
         if previous is None or entry.total_gbp < previous.total_gbp:
@@ -425,8 +437,135 @@ def package_price_for(
     return min(matches, key=lambda entry: entry.total_gbp)
 
 
+def cheapest_package_for_property(
+    loaded,
+    property_name: str,
+    date_pairs=None,
+    operator_key: Optional[str] = None,
+) -> Optional[PackagePrice]:
+    """The cheapest qualifying price for this property on ANY priced pair, or None.
+
+    An exact-date lookup (``package_price_for``) is the right question for a
+    card: the card has dates and the package must be for those dates. The
+    OVER-BUDGET list asks a different question. Its rows are the resorts no
+    option fits, so their own pair is by definition the expensive one — and the
+    whole point of showing an operator's price there (brief H9, 2026-10-04) is
+    to say "this property, on a nearby pair this run also prices, fits the
+    budget". Refusing a read because it was for the neighbouring fortnight
+    would delete exactly the sentence the owner asked for.
+
+    So this helper matches on the property alone and lets the caller say which
+    pairs count (``date_pairs``), defaulting to every pair the loader kept —
+    the loader has already rejected records whose dates no run prices. The
+    cheapest qualifying read wins, so one property can only ever be quoted once
+    and never at its dearest.
+    """
+    if not loaded:
+        return None
+    wanted = _normalise_property(property_name)
+    pairs = None if date_pairs is None else {tuple(pair) for pair in date_pairs}
+    matches = [
+        entry
+        for entry in loaded.values()
+        if _normalise_property(entry.property_name) == wanted
+        and (
+            pairs is None
+            or (entry.outbound_date, entry.return_date) in pairs
+        )
+        and (operator_key is None or entry.operator_key == operator_key)
+    ]
+    if not matches:
+        return None
+    return min(matches, key=lambda entry: entry.total_gbp)
+
+
+#: The only cabin a package may be promoted at (owner brief 2026-10-04, H10
+#: §2). The owner's rule is business class for a direct flight and economy for
+#: a one-stop, and an operator's package is a one-stop by construction — so a
+#: package whose flights were searched in Business is NOT the holiday the card
+#: now quotes, and promoting it would put a business price on an economy card.
+PACKAGE_PROMOTABLE_CABIN = "ECONOMY"
+
+#: A package whose flights are at least this many nights shorter than the row's
+#: own trip is a different holiday, so the over-budget note must not say "fits
+#: the budget" beside the row's own price: the reader would be comparing a
+#: three-week holiday with a fortnight (owner brief, H10 addendum 2 P2-7). It
+#: stays quotable, with its own nights named.
+PACKAGE_NIGHTS_TOLERANCE = 2
+
+
+def package_flown_economy(price: PackagePrice) -> bool:
+    """True only when the record STATES the package's flights were economy.
+
+    A missing ``flight_cabin`` is UNKNOWN, and unknown does not promote: a
+    price whose cabin nobody recorded is not evidence of an economy fare, and
+    promoting it is how a business package ends up as an economy headline.
+    """
+    return str(getattr(price, "flight_cabin", "") or "").strip().upper() == PACKAGE_PROMOTABLE_CABIN
+
+
+def package_within_budget(price: PackagePrice, max_budget_gbp: Any) -> bool:
+    """True when the whole-party total clears the run's ceiling."""
+    try:
+        return float(price.total_gbp) <= float(max_budget_gbp)
+    except (TypeError, ValueError):
+        return False
+
+
+def package_nights(price: Any) -> Optional[int]:
+    """How many nights this package is for, or None when it cannot be told.
+
+    The exporter's stated ``nights`` wins, because disagreeing with it is
+    exactly the failure this module is guarding: a record whose number and
+    whose dates tell different stories is refused rather than believed. The
+    dates are the fallback, and they are all a card's ``OperatorPackage``
+    carries (it has no ``nights`` field of its own).
+    """
+    try:
+        stated = int(getattr(price, "nights", 0) or 0)
+    except (TypeError, ValueError):
+        stated = 0
+    if stated > 0:
+        return stated
+    from datetime import datetime as _datetime
+
+    try:
+        start = _datetime.strptime(
+            str(getattr(price, "outbound_date", "") or ""), "%Y-%m-%d")
+        end = _datetime.strptime(
+            str(getattr(price, "return_date", "") or ""), "%Y-%m-%d")
+        return (end - start).days
+    except (TypeError, ValueError):
+        return None
+
+
+def package_covers_nights(price: Any, nights: Any) -> bool:
+    """True when the package is for the SAME number of nights as the row.
+
+    The loader already requires the exact date pair, so this is a belt-and-
+    braces check: an exporter that disagreed with its own dates must not
+    promote a card.
+    """
+    got = package_nights(price)
+    try:
+        return got is not None and got == int(nights)
+    except (TypeError, ValueError):
+        return False
+
+
+def package_shortfall_nights(price: Any, nights: Any) -> Optional[int]:
+    """How many nights SHORTER than the row's trip this package is, or None."""
+    got = package_nights(price)
+    try:
+        if got is None:
+            return None
+        shortfall = int(nights) - got
+    except (TypeError, ValueError):
+        return None
+    return shortfall if shortfall > 0 else None
+
+
 def package_provenance(price: PackagePrice) -> str:
-    """One sentence a reader can check: when, from whom, and on what basis."""
     observed = _parse_observed_at(price.observed_at)
     when = (
         f"{observed.day} {observed.strftime('%b %Y')}" if observed else "date unknown"

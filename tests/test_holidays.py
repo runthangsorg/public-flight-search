@@ -92,10 +92,13 @@ class HolidayPlannerTests(unittest.TestCase):
                 "phuket",
                 "krabi",
                 "phu_quoc",
-                # Africa and Mexico, added 2026-09-30 after the Far East.
+                # Africa and Mexico, added 2026-09-30 after the Far East,
+                # plus Okinawa as a December watch (2026-10-04): mainland
+                # Japan is about 17°C then, so it is watched, not carded.
                 "zanzibar",
                 "mauritius",
                 "riviera_maya",
+                "okinawa",
             },
         )
         self.assertEqual(
@@ -411,9 +414,16 @@ class HolidayPlannerTests(unittest.TestCase):
         config = load_holiday_config(july_path.read_text(encoding="utf-8"))
         # A July config that yields deals (the short-haul fixture: the live
         # July example became long-haul on 2026-09-29 and may price nothing
-        # under its public budget). 2026-09-28 rule: these cards are all 4-5 h
-        # hops, so they price ECONOMY; the Far East watch keys are Business.
-        self.assertEqual(config.cabin_classes, ("BUSINESS", "ECONOMY"))
+        # under its public budget).
+        #
+        # 2026-10-04 rule: BUSINESS needs a NONSTOP London flight over 8 hours.
+        # This fixture is deliberately left in the LEGACY shape — it carries no
+        # ``nonstop_from_london`` at all, which is exactly the shape the live
+        # December secret still has — so every destination here is UNKNOWN and
+        # therefore ECONOMY. That is the rule's safe default and the reason it
+        # is a default: a config that does not answer the question must not be
+        # quoted in the cabin nobody confirmed.
+        self.assertEqual(config.cabin_classes, ("ECONOMY",))
         self.assertEqual(config.max_budget_gbp, 12000.0)
         self.assertEqual(config.travellers, 5)
 
@@ -424,11 +434,11 @@ class HolidayPlannerTests(unittest.TestCase):
             self.assertLessEqual(deal.total_package_price_gbp, 12000.0)
 
         html = render_holiday_report(config, generated_at="2026-07-01T10:00:00+00:00", deals=deals)
-        # Business appears only in the Far East watch, which leads the report;
-        # every ECONOMY-cabin card here is short-haul, so none carries a
-        # flight_options block (long_haul-gated) and "Premium Economy" can
-        # only come from the watch's own Business/Economy/Premium Economy
-        # comparison (owner direction 2026-09-30).
+        # Every card here is a 4-5 h hop, so none is a long-haul ROUTE and none
+        # carries a flight_options block; "Premium Economy" can therefore only
+        # come from the watch's own cabin comparison (owner direction
+        # 2026-09-30), which survives on an Economy-headed row as the named
+        # alternative it has always been.
         self.assertIn("Far East first", html)
         self.assertLess(html.index("Far East first"), html.index("Summer Luxury Deals"))
         watch_block = html[html.index("Far East first"):html.index("Summer Luxury Deals")]

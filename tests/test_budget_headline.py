@@ -117,13 +117,17 @@ class FarEastWatchBudgetLineTests(unittest.TestCase):
         self.assertLess(line.index("fits the"), line.index(gap))
 
     def test_a_watch_row_over_on_every_option_keeps_the_over_wording(self):
-        # £12,500 keeps Tokyo a full card (its cheapest option is £15,300, under
-        # the 25% collapse limit of £15,625) while it is over on EVERY cabin.
-        config = _july(12500.0)
-        tokyo = {r["key"]: r for r in far_east_watch_rows(config)}["japan"]
-        line = _watch_line(render_far_east_watch(config), tokyo["label"])
+        # The budget here is synthetic — never the owner's, which is not
+        # committed to this PUBLIC repo. At that ceiling Bali still holds a full
+        # card (its cheapest option stays under the watch collapse limit,
+        # budget * (1 + FAR_EAST_WATCH_COLLAPSE_RATIO)) while it is over on
+        # EVERY cabin.
+        budget = 12000.0
+        config = _july(budget)
+        bali = {r["key"]: r for r in far_east_watch_rows(config)}["bali"]
+        line = _watch_line(render_far_east_watch(config), bali["label"])
         self.assertNotIn("fits the", line)
-        self.assertIn("over the £12,500 budget", line)
+        self.assertIn(f"over the £{budget:,.0f} budget", line)
 
     def test_a_watch_row_within_budget_on_every_cabin_says_nothing_about_budget(self):
         config = _july(200000.0)
@@ -136,35 +140,71 @@ class ResortCardBudgetLineTests(unittest.TestCase):
     """A long-haul card's headline price is Business; its budget line is not."""
 
     def test_a_resort_card_whose_economy_option_fits_says_so(self):
-        config = _july(12000.0)
-        deals = collect_holiday_deals(config)
-        self.assertTrue(deals)
-        html = render_holiday_report(
-            config, generated_at="2026-10-02T00:00:00+00:00", deals=deals,
+        # The December Riviera Maya card: the one route the owner still quotes
+        # Business on (a nonstop, 18 Oct 2026 - 11 Apr 2027), so it is the only
+        # card left where "the headline is over but Economy fits" is a question
+        # with two answers. Since 2026-10-04 a July card has no Business row at
+        # all, so this cannot be asked of one.
+        root = Path(__file__).parents[1]
+        base = load_holiday_config(
+            (root / "examples" / "dec_holiday_config.json").read_text(encoding="utf-8"))
+        # The ceiling is DERIVED from the cards, not pasted: it has to sit
+        # between a card's Economy and Business totals for either to breach,
+        # and those totals move with the window, the rates and the party.
+        uncapped = dataclasses.replace(base, max_budget_gbp=60000.0)
+        cards = [
+            deal for deal in collect_holiday_deals(uncapped, max_budget_gbp=60000.0)
+            if any(o["kind"] == "business" for o in deal.flight_options)
+        ]
+        self.assertTrue(cards, "no December business card")
+        widest = max(
+            float(o["economy"]["true_d2d"]) + float(o["business"]["true_d2d"])
+            for card in cards
+            for o in [{k: v for k, v in (
+                (x["kind"], x) for x in card.flight_options if x.get("hub") is None)}]
+            if {"business", "economy"} <= set(o)
         )
+        ceiling = round(widest / 2.0, 2)
+        config = dataclasses.replace(base, max_budget_gbp=ceiling)
+        deals = collect_holiday_deals(config, max_budget_gbp=ceiling)
+        business_cards = [
+            deal for deal in deals
+            if any(o["kind"] == "business" for o in deal.flight_options)
+        ]
         checked = 0
-        for deal in deals:
+        for deal in business_cards:
             options = {
                 str(o["kind"]): o for o in deal.flight_options
-                if o["kind"] in ("business", "economy", "premium_economy")
+                if o["kind"] in ("business", "economy")
             }
             if not options or all(o["within_budget"] for o in options.values()):
                 continue
             checked += 1
-            line = html[html.index(escape(deal.resort_name)):]
-            economy = options["economy"]
-            business = options["business"]
+            economy, business = options["economy"], options["business"]
+            self.assertFalse(business["within_budget"])
+            self.assertTrue(economy["within_budget"])
+            # ``budget_headline`` is the shared helper both card types render,
+            # so the rule is asserted on it directly rather than through a
+            # page layout that also has to fit the report's byte budget.
+            line = budget_headline(
+                [
+                    ("Business", float(business["true_d2d"]), bool(business["within_budget"])),
+                    ("Economy", float(economy["true_d2d"]), bool(economy["within_budget"])),
+                ],
+                ceiling,
+            )
             self.assertIn(
-                "fits the £12,000 budget on Economy (about £"
+                f"fits the £{ceiling:,.0f} budget on Economy (about £"
                 + f'{float(economy["true_d2d"]):,.0f}' + ")",
                 line,
             )
-            if not business["within_budget"]:
-                self.assertIn(
-                    "Business £" + f'{float(business["true_d2d"]) - 12000.0:,.0f}' + " over",
-                    line,
-                )
-        self.assertGreater(checked, 0, "no July card mixes a fitting and a breaching cabin")
+            self.assertIn(
+                "Business £" + f'{float(business["true_d2d"]) - ceiling:,.0f}' + " over",
+                line,
+            )
+        self.assertGreater(
+            checked, 0, "no December business card mixes a fitting and a breaching cabin"
+        )
 
 
 if __name__ == "__main__":

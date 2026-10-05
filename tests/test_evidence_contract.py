@@ -290,8 +290,17 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
             (contract.outbound, contract.return_date),
             shortlist[len(shortlist) // 2],
         )
-        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ"})
-        self.assertEqual({cabin for _, cabin in contract.keys}, {"BUSINESS"})
+        # H9 (2026-10-04) added the Riviera Maya, whose Grand Velas entry
+        # cards, so CUN is hunted too. OKA is NOT here: Halekulani is
+        # filtered out (no confirmed 5-adult single unit), and a resort
+        # with no card has no evidence to hunt.
+        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ", "CUN"})
+        self.assertNotIn("OKA", contract.airports)
+        # Owner rule 2026-10-04: business class only for a DIRECT flight, and
+        # no July destination has a London nonstop on these dates — so the whole
+        # July hunt is aimed at ECONOMY. Cancun is in the airport list as a
+        # carded destination, but its July route is a connection.
+        self.assertEqual({cabin for _, cabin in contract.keys}, {"ECONOMY"})
 
     def test_contract_serializes_for_the_hunt(self):
         config = _load(JULY_CONFIG)
@@ -309,8 +318,10 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         )
         self.assertEqual(payload["origin"], "LHR")
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
-        self.assertIn("USM/BUSINESS", payload["keys"])
-        self.assertNotIn("USM/ECONOMY", payload["keys"])
+        # Economy, for the reason above: a Business key here would send the
+        # hunt after fares this report will never quote.
+        self.assertIn("USM/ECONOMY", payload["keys"])
+        self.assertNotIn("USM/BUSINESS", payload["keys"])
         # Self-contained: everything `python -m live --config` reads, plus
         # the four things the hunt gets wrong if it is handed the report's
         # own config (which pairs/origins/cabins/airports are priced).
@@ -363,12 +374,13 @@ class TestContractGaps(unittest.TestCase):
         self.assertNotIn("AYT/ECONOMY", gaps["missing"])
         self.assertIn("ACE/ECONOMY", gaps["missing"])
         self.assertIn("PFO/ECONOMY", gaps["missing"])
-        # Since 2026-10-03 (H6) the December report has three long-haul cards again:
-        # Muscat, Nungwi and Cancun each have a confirmed one-booking unit, so
-        # their keys are Business. Everything else is still Economy.
+        # Since 2026-10-04 a card is quoted BUSINESS only when a London NONSTOP
+        # runs on its dates. In December that is Cancun alone (Virgin Atlantic,
+        # 18 Oct 2026 - 11 Apr 2027); Zanzibar connects via Addis, so its key is
+        # Economy. Everything else here is Economy too.
         self.assertEqual(
             sorted(k for k in gaps["missing"] if not k.endswith("/ECONOMY")),
-            ["CUN/BUSINESS", "ZNZ/BUSINESS"],
+            ["CUN/BUSINESS"],
         )
 
     def test_evidence_for_an_airport_with_no_card_is_reported_unused(self):
@@ -444,7 +456,7 @@ class TestEvidenceContractCommand(unittest.TestCase):
             [list(pair) for pair in shortlist_date_pairs(config)],
         )
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
-        self.assertEqual(payload["airports"], ["HKT", "LOP", "USM", "ZNZ"])
+        self.assertEqual(payload["airports"], ["CUN", "HKT", "LOP", "USM", "ZNZ"])
 
     def test_hunt_config_drives_the_hunt_on_its_own(self):
         # Regression: the fragment carried only origins/date_pairs/cabins/
@@ -560,9 +572,14 @@ class TestCatalogProvenance(unittest.TestCase):
             self.assertNotIn(december_only, resort_catalog(july), december_only)
 
         contract = evidence_consumption_contract(july)
-        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ"})
+        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ", "CUN"})
         for dead in ("MLA", "DOH", "AGA"):
             self.assertNotIn(dead, contract.airports, dead)
+        # OKA is a July destination key (H9) but must not be a hunt target:
+        # its only resort is filtered out, so there is no card for evidence
+        # to price. A destination watch is not a hunt either.
+        self.assertIn("okinawa", [d.key for d in july.destinations])
+        self.assertNotIn("OKA", contract.airports)
 
     def test_december_never_hunts_a_summer_resort_airport(self):
         # The December config lists phuket and krabi; if the July Thai

@@ -48,17 +48,18 @@ class HolidayJobTests(unittest.TestCase):
         )
         with patch.dict(os.environ, {"HOLIDAY_SEARCH_CONFIG_JSON": payload}):
             result = run_holiday_planner(dry_run=True, **_no_evidence())
-        self.assertEqual(result["destination_count"], 20)
+        self.assertEqual(result["destination_count"], 21)
         self.assertEqual(result["date_combination_count"], 49)
         # 10 destinations x 49 pairs x 10 providers (6 package + 4 dynamic)
         # + 4 destinations (cairo/muscat/doha/cape_verde, no Jet2 product)
         # x 49 pairs x 9
         # + 3 Far East destinations (no Jet2 product; Langkawi/Penang/Singapore
         # removed 2026-10-02) x 49 pairs x 9
-        # + 3 Africa/Mexico destinations (2026-09-30, no Jet2 product) x 49 x 9.
+        # + 4 Africa/Mexico/Japan destinations (2026-09-30; okinawa added
+        # 2026-10-04, no Jet2 product) x 49 x 9.
         self.assertEqual(
             result["provider_entry_count"],
-            10 * 49 * 10 + 4 * 49 * 9 + 3 * 49 * 9 + 3 * 49 * 9,
+            10 * 49 * 10 + 4 * 49 * 9 + 3 * 49 * 9 + 4 * 49 * 9,
         )
         self.assertFalse(result["email_sent"])
 

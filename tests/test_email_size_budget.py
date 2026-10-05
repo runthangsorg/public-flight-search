@@ -168,11 +168,22 @@ class TestTheBudgetWeighsTheEmailThatShips(unittest.TestCase):
         back out fixes both halves, and this asserts the strong half: whatever
         the budget, what comes out is inside it.
         """
-        # Below ~46 KB the report cannot fit even the MINIMUM number of cards,
-        # and the minimum is a promise the budget is not allowed to break — so
-        # the assertion starts above that floor, where the budget is the thing
-        # doing the cutting.
-        for budget in (50_000, 60_000, 70_000, 80_000, 90_000):
+        # The list starts where the budget can still be obeyed. The fixed shell
+        # around the cards — the watch block, the over-budget list, the
+        # "rule not applied" transparency block and the notes — renders at
+        # 49,927 B for the December example on 2026-10-05, measured with
+        # ``_render_with_budget(1)``: that is the smallest report this config
+        # can produce, because MIN_RENDERED_HOTEL_CARDS (5) is a promise the
+        # budget is not allowed to break. So no budget under that shell can be
+        # met and the guard would be testing nothing below it.
+        #
+        # 55,000 is the first round figure above that shell. H9 (2026-10-04)
+        # raised this list's floor from ~46 KB to 60 KB — about 14 KB, not the
+        # 1.4 KB an earlier comment here claimed — because the December report
+        # grew a fourth watch row (Okinawa) and the two Riviera Maya resorts.
+        # 55,000 replaces that 60,000: the shell has since shrunk by ~10 KB, so
+        # 60,000 skipped a budget the guard could in fact have held.
+        for budget in (55_000, 60_000, 70_000, 80_000, 90_000):
             with self.subTest(budget=budget):
                 html = self._render_with_budget(budget)
                 size = len(html.encode("utf-8"))
@@ -189,6 +200,17 @@ class TestTheBudgetWeighsTheEmailThatShips(unittest.TestCase):
         self.assertGreaterEqual(
             html.count("Package operators"), hol.MIN_RENDERED_HOTEL_CARDS
         )
+
+    def test_the_first_budget_in_the_list_is_above_the_rendered_shell(self):
+        """The loop above starts at 55,000; that is only meaningful if the
+        shell really is smaller than it.
+
+        Stated as the property the list depends on rather than as a comment, so
+        a future edit to the shell that outgrows 55,000 fails here instead of
+        quietly making the first entry of the list untestable.
+        """
+        shell = len(self._render_with_budget(1).encode("utf-8"))
+        self.assertLess(shell, 55_000)
 
 
 class TestNoContentLostToTheHoist(unittest.TestCase):

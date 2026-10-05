@@ -115,6 +115,11 @@ class OneFareLabelTests(unittest.TestCase):
         # read multi-city stopover fare, an aged observed headline fare, and an
         # x1.6 estimate. Each label must pick exactly one of the four words.
         config = _july_uncapped()
+        # An AGED ECONOMY fare. Since 2026-10-04 a July route is quoted
+        # Economy (no London nonstop on these dates), so a BUSINESS read could
+        # never price one of these cards and the "observed" provenance would
+        # never be exercised. The cabin is the one the card is priced in,
+        # because a fare label is only ever rendered for a cabin that card uses.
         aged = LiveFareEvidence(
             airport="HKT",
             total_gbp=11100.0,
@@ -122,7 +127,7 @@ class OneFareLabelTests(unittest.TestCase):
             source_url="https://example.invalid/hkt",
             observed_at="2026-09-01T00:00:00+00:00",
             exact_date_match=True,
-            cabin_class="BUSINESS",
+            cabin_class="ECONOMY",
             stale=True,
         )
         # A priced stopover is the only source of a "read" label; fares for the
@@ -134,7 +139,7 @@ class OneFareLabelTests(unittest.TestCase):
             html = render_holiday_report(
                 config, generated_at="2026-10-02T00:00:00+00:00",
                 deals=collect_holiday_deals(
-                    config, live_flight_offers={("HKT", "BUSINESS"): aged}
+                    config, live_flight_offers={("HKT", "ECONOMY"): aged}
                 ),
             )
         finally:

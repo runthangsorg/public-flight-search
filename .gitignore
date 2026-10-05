@@ -14,3 +14,6 @@ results/
 data/holiday_hotel_evidence.json
 data/holiday_live_evidence.json
 data/holiday_package_evidence.json
+# Stopover reads are PRIVATE too: real multi-city fares and the provider
+# search URLs they were read from. Never committed to this public repo.
+data/stopover_reads*.json

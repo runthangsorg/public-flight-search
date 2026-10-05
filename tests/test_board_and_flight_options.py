@@ -302,7 +302,12 @@ def _synthetic_stopover_fares(config, airports=("HKT", "USM"), hubs=("DOH", "MCT
 
 
 class FlightOptionTests(unittest.TestCase):
-    def test_every_long_haul_card_carries_business_economy_and_stopover(self):
+    def test_every_long_haul_card_carries_economy_and_stopover_and_no_business_row(self):
+        # Owner rule 2026-10-04: "only quote business class for direct flights".
+        # No July destination has a London nonstop on these dates, so no July
+        # card may carry a Business row — while the Economy row and the Gulf
+        # stopover rows stay exactly as they were, because the owner's own rule
+        # is to fly the one-stop with two nights at the hub.
         config = _july_uncapped()
         # Priced stopover rows need fares read for the pairs this run prices;
         # the committed ones were read for a pair the owner's window no longer
@@ -318,14 +323,33 @@ class FlightOptionTests(unittest.TestCase):
         for deal in deals:
             with self.subTest(resort=deal.resort_name):
                 kinds = [o["kind"] for o in deal.flight_options]
-                self.assertEqual(kinds[:2], ["business", "economy"])
-                self.assertEqual(deal.flight_options[0]["cabin"], "BUSINESS")
-                self.assertEqual(deal.flight_options[1]["cabin"], "ECONOMY")
-                # The headline stays Business.
-                self.assertEqual(deal.cabin_class, "BUSINESS")
+                self.assertNotIn("business", kinds)
+                self.assertEqual(kinds[0], "economy")
+                self.assertEqual(deal.flight_options[0]["cabin"], "ECONOMY")
+                # The headline is the Economy option, priced as Economy.
+                self.assertEqual(deal.cabin_class, "ECONOMY")
                 self.assertEqual(deal.total_package_price_gbp, deal.flight_options[0]["total_pkg"])
                 if deal.destination_key in thai:
                     self.assertIn("stopover", kinds, "Thailand cards carry at least one Gulf-hub stopover option")
+
+    def test_a_business_route_still_carries_its_business_row(self):
+        # The other half of the rule: Cancún flies nonstop 18 Oct 2026 - 11 Apr
+        # 2027, so a December card for it is quoted Business and keeps (a)
+        # Business, (b) Economy, (c) the stopover. Without this the first test
+        # would also pass if the Business row had simply been deleted.
+        config = load_holiday_config(DEC.read_text(encoding="utf-8"))
+        cancun = next(d for d in config.destinations if d.key == "riviera_maya")
+        self.assertEqual(cancun.cabin_class, "BUSINESS")
+        deals = collect_holiday_deals(
+            dataclasses.replace(config, max_budget_gbp=UNCAPPED_GBP))
+        carded = [d for d in deals if d.destination_key == "riviera_maya"]
+        self.assertTrue(carded, "the December Riviera Maya resort cards as Business")
+        for deal in carded:
+            with self.subTest(resort=deal.resort_name):
+                kinds = [o["kind"] for o in deal.flight_options]
+                self.assertEqual(kinds[:2], ["business", "economy"])
+                self.assertEqual(deal.flight_options[0]["cabin"], "BUSINESS")
+                self.assertEqual(deal.cabin_class, "BUSINESS")
 
     def test_each_option_total_adds_up(self):
         for deal in collect_holiday_deals(_july_uncapped()):
@@ -355,24 +379,36 @@ class FlightOptionTests(unittest.TestCase):
                         self.assertEqual(option["stopover_hotel_cost"], 0)
 
     def test_the_budget_is_tested_per_option_and_no_option_is_hidden(self):
-        config = _july_uncapped()
-        deals = collect_holiday_deals(config)
-        khao_lak = next(d for d in deals if d.destination_key == "khao_lak")
-        business = khao_lak.flight_options[0]["true_d2d"]
-        economy = khao_lak.flight_options[1]["true_d2d"]
+        # Cancelled's December card is the one route the owner still quotes
+        # Business on, so it is where "each option is tested on its own" is
+        # still a question with two answers.
+        config = dataclasses.replace(
+            load_holiday_config(DEC.read_text(encoding="utf-8")),
+            max_budget_gbp=UNCAPPED_GBP,
+        )
+        cancun = next(d for d in collect_holiday_deals(config)
+                      if d.destination_key == "riviera_maya")
+        options = {o["kind"]: o for o in cancun.flight_options}
+        self.assertIn("business", options)
+        self.assertIn("economy", options)
+        business = options["business"]["true_d2d"]
+        economy = options["economy"]["true_d2d"]
         self.assertLess(economy, business)
         # A ceiling between the two: Business over, Economy within. The resort
         # is still a card and still shows its Business option, flagged over.
         ceiling = round((economy + business) / 2, 2)
         squeezed = dataclasses.replace(config, max_budget_gbp=ceiling)
         card = next(
-            d for d in collect_holiday_deals(squeezed) if d.resort_name == khao_lak.resort_name
+            d for d in collect_holiday_deals(squeezed)
+            if d.resort_name == cancun.resort_name
         )
         flags = {o["kind"]: o["within_budget"] for o in card.flight_options if o.get("hub") is None}
         self.assertFalse(flags["business"])
         self.assertTrue(flags["economy"])
-        html = render_holiday_report(squeezed, generated_at="2026-09-30T00:00:00+00:00",
-                                     deals=collect_holiday_deals(squeezed))
+        html = hol.render_flight_options(
+            card.flight_options, travellers=5,
+            dates=(card.outbound_date, card.return_date),
+            airport=card.destination_airport, origin=card.origin)
         self.assertIn("Flight options for 5", html)
         self.assertIn("over budget", html)
         self.assertIn("within budget", html)
@@ -438,13 +474,35 @@ class FlightOptionTests(unittest.TestCase):
                 self.assertEqual(deal.flight_options, ())
 
     def test_the_card_labels_the_board_and_every_option(self):
+        # An economy card (one-stop, July) numbers from (a): Economy, then the
+        # Gulf stopover. No dangling "(b)" with nothing above it.
         config = _july_uncapped()
         deals = collect_holiday_deals(config)
         html = render_holiday_report(config, generated_at="2026-09-30T00:00:00+00:00", deals=deals)
-        self.assertIn("(a) Business", html)
-        self.assertIn("(b) Economy", html)
-        self.assertIn("(c) Economy + 2 nights", html)
+        self.assertIn("(a) Economy, same route", html)
+        self.assertIn("(b) Economy + 2 nights", html)
+        self.assertNotIn("(b) Economy, same route", html)
+        self.assertNotIn("(a) Business", html)
         self.assertIn("Board:", html)
+
+    def test_a_business_card_still_numbers_from_a_business(self):
+        # Rendered directly rather than through the whole report: the detailed
+        # renderer caps at ten hotels cheapest-first, and now that every other
+        # December destination is economy the business cards fall outside that
+        # cut. The letters are a property of the options block, not of where a
+        # card happens to sort.
+        config = dataclasses.replace(
+            load_holiday_config(DEC.read_text(encoding="utf-8")),
+            max_budget_gbp=UNCAPPED_GBP,
+        )
+        card = next(d for d in collect_holiday_deals(config)
+                    if d.destination_key == "riviera_maya")
+        html = hol.render_flight_options(
+            card.flight_options, travellers=5,
+            dates=(card.outbound_date, card.return_date),
+            airport=card.destination_airport, origin=card.origin)
+        self.assertIn("(a) Business, normal route", html)
+        self.assertIn("(b) Economy, same route", html)
 
 
 class SeasonCatalogueTests(unittest.TestCase):

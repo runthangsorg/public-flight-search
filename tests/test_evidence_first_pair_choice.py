@@ -410,17 +410,22 @@ class TestTheEvidenceClassItself(unittest.TestCase):
 # The long-haul branch, which is a DIFFERENT path with a DIFFERENT bug
 # ---------------------------------------------------------------------------
 
-#: Zanzibar at 11.67 hours, so ``destination_cabins`` derives BUSINESS and the
-#: card goes down the long-haul path rather than the economy one the tests above
-#: exercise. Two priced pairs:
+#: Zanzibar at 11.67 hours: a long-haul ROUTE, so the card goes down the
+#: long-haul branch rather than the short-haul one the tests above exercise.
+#: Two priced pairs:
 #:
 #:     19 Dec -> 31 Dec   12 nights   the HEADLINE pair
 #:     17 Dec -> 31 Dec   14 nights
 #:
-#: The resort's modelled business fare is GBP 5,954 x 2.5 = 14,885 either way,
-#: and the suite is GBP 1,120.04 a night, so a business option lands at
-#: 28,341.98 for twelve nights and 30,582.06 for fourteen. A GBP 35,000 ceiling
-#: admits both; GBP 20,000 admits neither.
+#: Since 2026-10-04 this route is quoted ECONOMY, not Business: it has no London
+#: nonstop (Ethiopian via Addis Ababa), and the owner's rule is business class
+#: for a direct flight only. That does not weaken what these tests check.
+#: "Long haul" is now a statement about the ROUTE, so the branch under repair
+#: is still the one exercised — and it is the branch every July card now takes.
+#: The modelled fare is the GBP 5,954 economy benchmark used as-is and the
+#: suite is GBP 1,120.04 a night, so an economy option lands at 28,341.98 for
+#: twelve nights and 30,582.06 for fourteen. A GBP 35,000 ceiling admits both;
+#: GBP 20,000 admits neither.
 LONG_HAUL_CONFIG = """
 {
   "report_title": "Long haul budget first",
@@ -433,7 +438,9 @@ LONG_HAUL_CONFIG = """
   "outbound_dates": ["2026-12-17", "2026-12-19"],
   "return_dates": ["2026-12-31"],
   "destinations": [
-    {"key": "zanzibar", "label": "Zanzibar", "airports": ["ZNZ"], "flight_hours": 11.67}
+    {"key": "zanzibar", "label": "Zanzibar", "airports": ["ZNZ"],
+     "flight_hours": 11.67, "nonstop_from_london": false,
+     "nonstop_source": "synthetic fixture: no London nonstop, Ethiopian via ADD"}
   ]
 }
 """
@@ -441,27 +448,42 @@ LONG_HAUL_CONFIG = """
 LONG_PAIR_14N = ("2026-12-17", "2026-12-31")
 SHORT_PAIR_12N = ("2026-12-19", "2026-12-31")
 
-#: The review's case (REVIEW-H5 P1): a whole-party business fare read for the
-#: fourteen-night pair that no budget could ever absorb.
-READ_BUSINESS_FARE = 99_000.0
+#: The review's case (REVIEW-H5 P1): a whole-party fare read for the
+#: fourteen-night pair that no budget could ever absorb. It was a Business fare
+#: in 2026-10-03 and is an Economy fare now, because that is the cabin this
+#: route is quoted in; the failure it guards is the same either way.
+READ_FARE = 99_000.0
 
 
-def _business_fares(*pairs_and_totals: tuple[tuple, float]) -> dict:
+def _economy_fares(*pairs_and_totals: tuple[tuple, float]) -> dict:
+    """Whole-party ECONOMY fares for one route and its pairs."""
     return {
-        ("ZNZ", "BUSINESS", pair[0], pair[1], "LHR"): LiveFareEvidence(
+        ("ZNZ", "ECONOMY", pair[0], pair[1], "LHR"): LiveFareEvidence(
             airport="ZNZ",
             total_gbp=total,
             basis="whole_party_return_total",
             source_url="https://example.invalid/hunt",
             observed_at=OBSERVED_AT,
-            cabin_class="BUSINESS",
+            cabin_class="ECONOMY",
         )
         for pair, total in pairs_and_totals
     }
 
 
-#: The one Zanzibar property in the catalogue this config reaches.
-ZANZIBAR_RESORT = "Nungwi Dreams by Mantis"
+#: The one Zanzibar property in the catalogue this config reaches. Its modelled
+#: fare is derived from the catalogue rather than pasted, so a rate change
+#: cannot make these tests lie.
+LONG_HAUL_AIRPORT = "ZNZ"
+LONG_HAUL_RESORT = "Nungwi Dreams by Mantis"
+
+
+def _modelled_fare() -> float:
+    """The card's flight figure with no read fare: the economy benchmark."""
+    resort = next(
+        r for rs in holidays.resort_catalog().values() for r in rs
+        if r["name"] == LONG_HAUL_RESORT
+    )
+    return round(resort["flight_benchmark_5pax_gbp"], 2)
 
 
 #: The ceiling this file reasons about. ``_deals`` defaults to a billion so the
@@ -472,12 +494,12 @@ LONG_HAUL_BUDGET = 35_000.0
 
 def _long_haul_deals(*pairs_and_totals: tuple[tuple, float], **kwargs):
     kwargs.setdefault("max_budget_gbp", LONG_HAUL_BUDGET)
-    return _deals(LONG_HAUL_CONFIG, offers=_business_fares(*pairs_and_totals), **kwargs)
+    return _deals(LONG_HAUL_CONFIG, offers=_economy_fares(*pairs_and_totals), **kwargs)
 
 
 def _zcard(deals):
-    """The Zanzibar card, or a failure that names what was actually built."""
-    return _card(deals, ZANZIBAR_RESORT)
+    """The long-haul card, or a failure that names what was actually built."""
+    return _card(deals, LONG_HAUL_RESORT)
 
 
 class TestALongHaulCardChoosesAmongTheOptionsThatFit(unittest.TestCase):
@@ -487,7 +509,7 @@ class TestALongHaulCardChoosesAmongTheOptionsThatFit(unittest.TestCase):
     and consult the budget afterwards, as "admit the resort when ANY option row
     fits, then show ``cheapest``". When the evidence-first pick was the pair
     that busted the ceiling but a cheaper row fitted, the resort was admitted
-    AND the card advertised the far dearer option - a read GBP 99,000 business
+    AND the card advertised the far dearer option - a read GBP 99,000
     fare produced a GBP 114,697 card against a GBP 35,000 ceiling, because the
     economy row fitted. The card was not lying (``is_under_budget`` was False
     and the amber chip rendered); the SELECTION was wrong, and the reason it
@@ -502,13 +524,17 @@ class TestALongHaulCardChoosesAmongTheOptionsThatFit(unittest.TestCase):
         # If this config ever stopped deriving BUSINESS the tests below would
         # pass for the wrong reason, so the premise is asserted, not assumed.
         config = load_holiday_config(LONG_HAUL_CONFIG)
-        self.assertEqual(destination_cabins(config, config.destinations[0]), ("BUSINESS",))
+        # A long-haul ROUTE, quoted Economy because there is no London nonstop:
+        # since 2026-10-04 the branch is chosen on hours and the cabin on
+        # nonstopness, and these tests need the branch, not the cabin.
+        self.assertGreater(config.destinations[0].flight_hours, 8.0)
+        self.assertEqual(destination_cabins(config, config.destinations[0]), ("ECONOMY",))
         self.assertEqual(
             priceable_date_pairs(config), (LONG_PAIR_14N, SHORT_PAIR_12N)
         )
 
     def test_a_read_fare_the_budget_cannot_absorb_never_becomes_the_card(self):
-        deal = _zcard(_long_haul_deals((LONG_PAIR_14N, READ_BUSINESS_FARE)))
+        deal = _zcard(_long_haul_deals((LONG_PAIR_14N, READ_FARE)))
         self.assertEqual((deal.outbound_date, deal.return_date), SHORT_PAIR_12N)
         self.assertEqual(deal.nights, 12)
         self.assertTrue(deal.is_under_budget)
@@ -520,20 +546,30 @@ class TestALongHaulCardChoosesAmongTheOptionsThatFit(unittest.TestCase):
         # dropped the record would make the same assertion true for a
         # different and wrong reason.
         config = load_holiday_config(LONG_HAUL_CONFIG)
-        loaded = _business_fares((LONG_PAIR_14N, READ_BUSINESS_FARE))
+        loaded = _economy_fares((LONG_PAIR_14N, READ_FARE))
         self.assertIsNotNone(
-            evidence_for(loaded, "ZNZ", "BUSINESS", *LONG_PAIR_14N, "LHR")
+            evidence_for(loaded, LONG_HAUL_AIRPORT, "ECONOMY", *LONG_PAIR_14N, "LHR")
         )
-        deal = _zcard(_long_haul_deals((LONG_PAIR_14N, READ_BUSINESS_FARE)))
-        self.assertEqual(deal.confidence, "estimate")
-        self.assertEqual(deal.cabin_class, "BUSINESS")
+        deal = _zcard(_long_haul_deals((LONG_PAIR_14N, READ_FARE)))
+        # The flight half of the card is modelled, not read: ``confidence``
+        # names the weaker leg for the freshness tag and falls back to the
+        # hotel's own basis on an ECONOMY card, so the flight's own basis is
+        # what this asserts.
+        self.assertEqual(deal.flight_price_basis, "benchmark_supplied")
+        self.assertNotIn(deal.confidence, ("verified-exact-date", "stale-cache"))
+        self.assertEqual(deal.cabin_class, "ECONOMY")
+        self.assertEqual(deal.destination_airport, LONG_HAUL_AIRPORT)
 
     def test_the_card_is_no_longer_a_five_figure_price_under_a_ceiling(self):
         # The headline number the review objected to, asserted directly: the
         # card's door-to-door total is nowhere near the read fare.
-        deal = _zcard(_long_haul_deals((LONG_PAIR_14N, READ_BUSINESS_FARE)))
-        self.assertLess(deal.true_d2d_gbp, READ_BUSINESS_FARE / 2)
-        self.assertAlmostEqual(deal.flight_price_total_gbp, 14_885.0, places=2)
+        deal = _zcard(_long_haul_deals((LONG_PAIR_14N, READ_FARE)))
+        self.assertLess(deal.true_d2d_gbp, READ_FARE / 2)
+        # The modelled Business fare, derived from the catalogue rather than
+        # pasted: this number is the complaint in REVIEW-H5 P1 made concrete.
+        self.assertAlmostEqual(
+            deal.flight_price_total_gbp, _modelled_fare(), places=2
+        )
 
     def test_an_in_budget_read_is_still_preferred_over_a_cheaper_modelled_pair(self):
         # The fix filters candidates; it must not demote a read that FITS. A
@@ -556,22 +592,21 @@ class TestALongHaulCardChoosesAmongTheOptionsThatFit(unittest.TestCase):
         self.assertEqual((deal.outbound_date, deal.return_date), SHORT_PAIR_12N)
         self.assertEqual(deal.flight_price_total_gbp, 21_000.0)
 
-    def test_when_no_business_option_fits_todays_behaviour_still_stands(self):
-        # The fallback, and it is deliberately the OLD behaviour: with a
-        # GBP 20,000 ceiling no business option clears it, so the resort is
-        # admitted because its ECONOMY row fits and the card shows the business
-        # option, over budget and flagged as such on its face
-        # (``is_under_budget`` False, and the renderer prints the amber chip).
-        # Nothing is invented and nothing is hidden; the brief sanctions this
-        # rather than dropping a destination the owner asked for.
+    def test_when_no_headline_option_fits_todays_behaviour_still_stands(self):
+        # The fallback, and it is deliberately the OLD behaviour. A
+        # GBP 20,000 ceiling clears the read Economy fare on the TWELVE-night
+        # pair but not the modelled fourteen-night option, so the card is built
+        # on the pair whose option fits rather than on the pair the evidence
+        # pointed at. Nothing is invented and nothing is hidden: the brief
+        # sanctions this rather than dropping a destination the owner asked for.
         deal = _zcard(
-            _long_haul_deals((LONG_PAIR_14N, READ_BUSINESS_FARE),
+            _long_haul_deals((LONG_PAIR_14N, READ_FARE),
                              max_budget_gbp=20_000.0)
         )
-        self.assertEqual((deal.outbound_date, deal.return_date), LONG_PAIR_14N)
-        self.assertEqual(deal.cabin_class, "BUSINESS")
-        self.assertFalse(deal.is_under_budget)
-        self.assertGreater(deal.true_d2d_gbp, 20_000.0)
+        self.assertEqual((deal.outbound_date, deal.return_date), SHORT_PAIR_12N)
+        self.assertEqual(deal.cabin_class, "ECONOMY")
+        self.assertTrue(deal.is_under_budget)
+        self.assertLessEqual(deal.true_d2d_gbp, 20_000.0)
         self.assertTrue(
             any(row.get("within_budget") for row in deal.flight_options),
             "the resort is admitted on a row that fits, which is the point",
@@ -580,23 +615,35 @@ class TestALongHaulCardChoosesAmongTheOptionsThatFit(unittest.TestCase):
     def test_when_not_even_an_economy_row_fits_there_is_no_card_at_all(self):
         # Below every option the resort is not priced into the report as a
         # deal; it is stated in the over-budget list instead of vanishing.
-        deals = _long_haul_deals((LONG_PAIR_14N, READ_BUSINESS_FARE),
+        deals = _long_haul_deals((LONG_PAIR_14N, READ_FARE),
                                  max_budget_gbp=10_000.0)
         self.assertEqual(deals, ())
         self.assertEqual(
             [row["resort_name"] for row in holidays.LAST_OVER_BUDGET],
-            [ZANZIBAR_RESORT],
+            [LONG_HAUL_RESORT],
         )
         self.assertGreater(
             float(holidays.LAST_OVER_BUDGET[0]["true_d2d"]), 10_000.0
         )
 
-    def test_the_card_keeps_its_business_headline_and_its_option_rows(self):
-        # The repair is about WHICH option leads, not about turning a long-haul
-        # card into a short-haul one: Business is still the headline, and the
-        # option rows beside it are still there.
-        deal = _zcard(_long_haul_deals((LONG_PAIR_14N, READ_BUSINESS_FARE)))
-        self.assertEqual(deal.cabin_class, "BUSINESS")
-        kinds = {str(row.get("kind")) for row in deal.flight_options}
-        self.assertIn("business", kinds)
-        self.assertIn("economy", kinds)
+    def test_the_card_keeps_its_option_rows(self):
+        # The repair is about WHICH option leads, not about stripping the
+        # comparison: the card still carries its option rows, and on this
+        # one-stop route the Economy row leads because that is the cabin the
+        # owner is quoted (2026-10-04). There is no Business row, and a Business
+        # row here would be the exact bug the rule fixes.
+        deal = _zcard(_long_haul_deals((LONG_PAIR_14N, READ_FARE)))
+        self.assertEqual(deal.cabin_class, "ECONOMY")
+        kinds = [str(row.get("kind")) for row in deal.flight_options]
+        self.assertNotIn("business", kinds)
+        self.assertEqual(kinds[0], "economy")
+        self.assertIn("premium_economy", kinds)
+        # The headline IS the Economy option, priced as one. Before 2026-10-04
+        # the Economy row was re-derived without the budget test, so on an
+        # economy card it could be a DIFFERENT option from the card and read
+        # "over budget" on a card the report calls affordable.
+        self.assertEqual(deal.total_package_price_gbp, deal.flight_options[0]["total_pkg"])
+        self.assertEqual(
+            (deal.flight_options[0]["outbound"], deal.flight_options[0]["return"]),
+            (deal.outbound_date, deal.return_date),
+        )

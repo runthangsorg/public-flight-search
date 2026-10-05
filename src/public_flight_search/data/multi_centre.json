@@ -1,0 +1,342 @@
+{
+  "schema": "multi_centre/1",
+  "compiled_on": "2026-10-04",
+  "party": "5 travellers, ONE booking per stop: a 2-bedroom unit, or 2 rooms (2+3 adults)",
+  "read_only_confirmation": "Compiled from public pages and the private evidence file on 2026-10-04. No rate in this file was invented: every cost range is a line-by-line build whose dated lines are named in cost_basis, and the rest are estimates. No budget figure appears here — whether a range fits is decided at render time against the configured budget.",
+  "notes": [
+    "legs are (origin, destination) airport pairs with no dates: the dates are derived at render time from the report's own priceable date pair, so a search link always matches the trip being priced.",
+    "cabin is what the engine prices for these routes (all of them are over eight hours from London, so BUSINESS).",
+    "confidence is 'dated-rate' only where a dated public rate or fare backs the figure, 'estimate' where every line is a build."
+  ],
+  "itineraries": [
+    {
+      "id": "MC-01",
+      "title": "Bali 7 nights + Lombok 7 nights",
+      "season": "summer",
+      "stops": [
+        {
+          "place": "Bali (south or east coast)",
+          "nights": 7,
+          "airport": "DPS",
+          "hotel": "2-bedroom villa, B&B (no dated Bali rate was readable — pick one on the property's own engine)",
+          "basis": "estimate"
+        },
+        {
+          "place": "Lombok (Senggigi)",
+          "nights": 7,
+          "airport": "LOP",
+          "hotel": "Kalandara Resort Lombok — AKASA 2-bedroom pool villa stated for 5",
+          "basis": "dated rate, Google Hotels, 7 nights from 20 Jul 2027"
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DPS"
+        ],
+        [
+          "DPS",
+          "LOP"
+        ],
+        [
+          "LOP",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "open-jaw: London to Bali, home from Lombok. One internal hop of under an hour, about 11 flights a day (Lion Air, Citilink, Garuda, Batik Air). NOT PRICED as an open-jaw — no dated multi-city fare was readable.",
+      "cost_low_gbp": 13032,
+      "cost_high_gbp": 17682,
+      "cost_basis": "built line by line; the only dated line is the Lombok villa (GBP 376 x 7). Flights, the Bali half and transfers are estimates.",
+      "why": "the only pairing where a real 2-bedroom unit for 5 carries a dated price, and Lombok is 50 minutes from Bali so no day is lost",
+      "catch": "the Bali half is entirely an estimate, and the two stops use different food models",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://www.flightsfrom.com/DPS-LOP",
+        "https://kalandararesortlombok.com/"
+      ]
+    },
+    {
+      "id": "MC-02",
+      "title": "Khao Lak 7 nights + Koh Phangan 7 nights",
+      "season": "summer",
+      "stops": [
+        {
+          "place": "Khao Lak, Phuket province",
+          "nights": 7,
+          "airport": "HKT",
+          "hotel": "Pullman Khao Lak Resort — Family Suite for 3 plus a Deluxe Room for 2, one booking",
+          "basis": "dated rate: GBP 1,141.42 for 7 nights B&B, both rooms"
+        },
+        {
+          "place": "Koh Phangan (Nathon)",
+          "nights": 7,
+          "airport": "USM",
+          "hotel": "Anantara Rasananda Two Bedroom Pool Villa stated for 5 — Panviman is the cheaper option but its 2-bedroom unit for 5 is unverified",
+          "basis": "dated nightly for Anantara at GBP 1,657, which pushes this pair over the ceiling whatever the ceiling is; the cheaper alternative is an estimate"
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "HKT"
+        ],
+        [
+          "HKT",
+          "BKK"
+        ],
+        [
+          "BKK",
+          "USM"
+        ],
+        [
+          "USM",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "open-jaw into Phuket, home via Samui. Koh Phangan has NO airport: the repositioning is the Surat Thani ferry (about 5-6 hours with the road) or a flight into Samui and the 30-minute Lomprayah catamaran. NOT PRICED as an open-jaw.",
+      "cost_low_gbp": 11757,
+      "cost_high_gbp": 15607,
+      "cost_basis": "built line by line; two dated lines (the LHR-HKT fare for 5 and the Pullman 7-night total). The Phangan half is an estimate.",
+      "why": "the cheapest dated 5-person rate in the evidence, and one bag for two different islands",
+      "catch": "the second stop costs a ferry day, and July is the west-coast wet season",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://www.insidesamui.com/getting-here/koh-samui-to-koh-phangan/",
+        "https://www.pullmankhaolakresort.com/"
+      ]
+    },
+    {
+      "id": "MC-04",
+      "title": "Bangkok 3 nights + Koh Samui 7 nights + Khao Lak 7 nights",
+      "season": "summer",
+      "stops": [
+        {
+          "place": "Bangkok (city)",
+          "nights": 3,
+          "airport": "BKK",
+          "hotel": "two rooms or a suite for 5 on one booking, B&B (no dated rate was readable)",
+          "basis": "estimate"
+        },
+        {
+          "place": "Koh Samui (Tongsai Bay)",
+          "nights": 7,
+          "airport": "USM",
+          "hotel": "Garrya Tongsai Bay Samui — two Beachfront Suites (3+2 adults) in one 2-room search",
+          "basis": "dated rate: GBP 4,589.98 for 7 nights B&B"
+        },
+        {
+          "place": "Khao Lak, Phuket province",
+          "nights": 7,
+          "airport": "HKT",
+          "hotel": "Pullman Khao Lak Resort — Family Suite plus Deluxe Room, one booking",
+          "basis": "dated rate: GBP 1,141.42 for 7 nights B&B"
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "BKK"
+        ],
+        [
+          "BKK",
+          "USM"
+        ],
+        [
+          "USM",
+          "HKT"
+        ],
+        [
+          "HKT",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "three-stop multi-city: Bangkok out and back, with Bangkok Airways on both island hops (about 1h05 and about 1h). NOT PRICED as a multi-city ticket — costed as two dated round trips, which OVER-states it by an open-jaw's worth.",
+      "cost_low_gbp": 16774,
+      "cost_high_gbp": 17494,
+      "cost_basis": "built line by line; four dated lines (both long-haul fares for 5 and both hotel totals). A single multi-city ticket would likely cut GBP 1,000-1,500 of flying.",
+      "why": "three genuinely different stops in 17 nights, on short daily domestic legs",
+      "catch": "three check-ins and two internal flights, even on dated rates",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://www.flightconnections.com/flights-from-bkk-to-usm",
+        "https://www.garrya.com/en/destinations/samui"
+      ]
+    },
+    {
+      "id": "MC-05",
+      "title": "Da Nang 7 nights + Hoi An 6 nights",
+      "season": "summer",
+      "stops": [
+        {
+          "place": "Da Nang (My Khe or Non Nuoc beach)",
+          "nights": 7,
+          "airport": "DAD",
+          "hotel": "a 2-bedroom villa or two connecting rooms for 5 on one booking (no dated rate was readable)",
+          "basis": "estimate"
+        },
+        {
+          "place": "Hoi An (An Bang beach, 15 km from the old town)",
+          "nights": 6,
+          "airport": "DAD",
+          "hotel": "2-bedroom villa for 5, B&B (no dated rate was readable)",
+          "basis": "estimate"
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DAD"
+        ],
+        [
+          "DAD",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "a single round trip into Da Nang — Da Nang is the airport for BOTH stops, so this is the one pairing here with no internal travel leg at all. Hoi An is 30-45 minutes by road, twice.",
+      "cost_low_gbp": 12500,
+      "cost_high_gbp": 19300,
+      "cost_basis": "ALL estimate, including the flights — this is a shape, not a quote. Do not read it as a price.",
+      "why": "no internal flight and no airport change: the same flights as a single-centre trip",
+      "catch": "nothing in it is sourced, and July is Vietnam's wet season",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://hoiantransportservice.com/danang-airport-transfers/",
+        "https://www.kkday.com/en/blog/61743/asia-vietnam-traveling-from-da-nang-to-hoi-an-vice-versa"
+      ]
+    },
+    {
+      "id": "MC-07",
+      "title": "Tokyo 5 nights + Okinawa 7 nights",
+      "season": "summer",
+      "stops": [
+        {
+          "place": "Tokyo (city)",
+          "nights": 5,
+          "airport": "HND",
+          "hotel": "two rooms or a 5-person suite, B&B (no dated rate was readable)",
+          "basis": "estimate"
+        },
+        {
+          "place": "Okinawa main island, Onna Village",
+          "nights": 7,
+          "airport": "OKA",
+          "hotel": "Halekulani Okinawa — 50 m² rooms with terrace, or one of five villas. A 5-adult single unit is NOT confirmed",
+          "basis": "estimate: an aggregator showed an undated \"$288 nightly\", which is not a rate for these dates"
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "HND"
+        ],
+        [
+          "HND",
+          "OKA"
+        ],
+        [
+          "OKA",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "multi-city: London to Tokyo, then ANA, JAL, Skymark or Solaseed to Naha (2h40, about 17 flights a day), home from Okinawa. No London nonstop to Okinawa exists; the whole journey is about 16h30 door to door. NOT PRICED.",
+      "cost_low_gbp": 17700,
+      "cost_high_gbp": 26200,
+      "cost_basis": "built line by line and nothing in it is priced — flights and both hotels are estimates.",
+      "why": "the strongest July weather case, and the only pairing with a real internal flight",
+      "catch": "nothing is priced, food for 5 is unbudgeted, and it is 16h30 from home",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://www.flightconnections.com/flights-from-hnd-to-oka",
+        "https://www.okinawa.halekulani.com/en/stay/"
+      ]
+    },
+    {
+      "id": "MC-11",
+      "title": "Muscat 4 nights + Abu Dhabi or Dubai 4 nights",
+      "season": "winter",
+      "stops": [
+        {
+          "place": "Muscat, Oman (Al Khuwair)",
+          "nights": 4,
+          "airport": "MCT",
+          "hotel": "InterContinental Muscat — two City View Balcony rooms (3+2 adults) in one 2-room search",
+          "basis": "dated rate: GBP 2,120-2,832 for 8 nights B&B"
+        },
+        {
+          "place": "Abu Dhabi or Dubai",
+          "nights": 4,
+          "airport": "AUH",
+          "hotel": "two rooms or a 5-person suite, B&B (no dated rate was readable)",
+          "basis": "estimate"
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "MCT"
+        ],
+        [
+          "MCT",
+          "AUH"
+        ],
+        [
+          "AUH",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "open-jaw into Muscat, home from Abu Dhabi or Dubai, with a 1h15 hop between them on Etihad or Oman Air (up to four a day). NOT PRICED as an open-jaw.",
+      "cost_low_gbp": 6360,
+      "cost_high_gbp": 9116,
+      "cost_basis": "built line by line; the Muscat line is dated. This is the cheapest pairing in this research by a wide margin, with the most headroom — whether it fits the configured budget is decided at render time.",
+      "why": "the cheapest pairing here by far: two short-hop Gulf cities, warm in December",
+      "catch": "NOT a beach holiday — beach access, not a beach to lie on",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://www.flightsfrom.com/MCT-AUH",
+        "https://www.etihad.com/en/flights/flights-from-muscat-to-abu-dhabi"
+      ]
+    },
+    {
+      "id": "MC-12",
+      "title": "Zanzibar 5 nights + Muscat 3 nights",
+      "season": "winter",
+      "stops": [
+        {
+          "place": "Zanzibar (Nungwi)",
+          "nights": 5,
+          "airport": "ZNZ",
+          "hotel": "Nungwi Dreams by Mantis — the Presidential Villa is the ONLY unit that sleeps 5 on one booking; there is no 2-bedroom or connecting unit on sale",
+          "basis": "dated rate, Google Hotels, nightly GBP 1,735 including breakfast"
+        },
+        {
+          "place": "Muscat, Oman (Al Khuwair)",
+          "nights": 3,
+          "airport": "MCT",
+          "hotel": "InterContinental Muscat — two City View Balcony rooms (3+2 adults), one booking",
+          "basis": "dated rate: GBP 2,120-2,832 for 8 nights B&B"
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "ZNZ"
+        ],
+        [
+          "ZNZ",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "open-jaw into Zanzibar and home from Muscat, with Muscat as the routing point rather than a separate ticket. Costed on the dated London-Muscat-Zanzibar routing, which OVER-states an open-jaw.",
+      "cost_low_gbp": 16451,
+      "cost_high_gbp": 17118,
+      "cost_basis": "three dated lines of four: the routing fare for 5, the villa (GBP 1,735 x 5) and the Muscat rooms.",
+      "why": "the only December option with a real beach, and 3 of its 4 lines are dated",
+      "catch": "the villa books a year ahead, and Nungwi rates 4.4",
+      "confidence": "dated-rate",
+      "source_urls": [
+        "https://www.mantiscollection.com/hotel/nungwi-dreams-zanzibar/",
+        "https://www.ihg.com/intercontinental/hotels/gb/en/find-hotels/select-roomrate"
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from html import escape
@@ -11,7 +12,13 @@ import sys
 from typing import Any, Mapping, Optional, Sequence
 from urllib.parse import urlencode
 
-from .cabin import cabin_for_flight_hours, destination_cabin, resolve_flight_hours
+from .cabin import (
+    cabin_for_flight_hours,
+    destination_cabin,
+    is_long_haul_destination,
+    resolve_flight_hours,
+    resolve_nonstop_from_london,
+)
 from .config import (
     REPORT_CABINS,
     ConfigError,
@@ -66,9 +73,16 @@ class HolidayDestination:
     airports: tuple[str, ...]
     # London flight hours (nonstop block time, or the fastest one-stop
     # through journey where no nonstop exists). The cabin is DERIVED from it
-    # by cabin.py; cabin_class below stores that derived answer.
+    # and from nonstop_from_london by cabin.py; cabin_class below stores that
+    # derived answer.
     flight_hours: Optional[float] = None
     flight_hours_source: str = ""
+    # Whether a London NONSTOP service exists on the trip's dates, and who
+    # said so. Seasonal, so it belongs to the config and not only to
+    # cabin.py's year-round table; unknown (None) means NOT nonstop, which
+    # prices ECONOMY (owner rule 2026-10-04).
+    nonstop_from_london: Optional[bool] = None
+    nonstop_source: str = ""
     cabin_class: str = "ECONOMY"
     cabin_classes: tuple[str, ...] = ()
 
@@ -160,10 +174,11 @@ HOLIDAY_SEARCH_QUERIES: dict[str, str] = {
     "koh_samui": "Koh Samui, Thailand",
     "koh_phangan": "Koh Phangan, Thailand",
     "khao_lak": "Khao Lak, Thailand",
-    # Africa and Mexico (2026-09-30)
+    # Africa, Mexico and Japan (2026-09-30; okinawa 2026-10-04)
     "zanzibar": "Nungwi, Zanzibar, Tanzania",
     "mauritius": "Flic en Flac, Mauritius",
     "riviera_maya": "Cancún, Mexico",
+    "okinawa": "Onna Village, Okinawa, Japan",
 }
 
 # Destination airport per holiday key (for Google Flights parametric links).
@@ -180,6 +195,9 @@ HOLIDAY_AIRPORTS: dict[str, str] = {
     # Khao Lak is served from HKT (about 1h40 by road).
     "lombok": "LOP", "koh_samui": "USM", "koh_phangan": "USM", "khao_lak": "HKT",
     "zanzibar": "ZNZ", "mauritius": "MRU", "riviera_maya": "CUN",
+    # Okinawa has no London airport: fly to Tokyo (HND) and take the domestic
+    # hop to Naha (OKA), 2h40 (research, read 2026-10-04).
+    "okinawa": "OKA",
 }
 
 #: Far East watch (owner preference, 2026-09-28): long-haul destinations
@@ -215,6 +233,22 @@ FAR_EAST_WATCH: dict[str, dict[str, Any]] = {
                       "routing": "1 stop via Kuala Lumpur", "climate": "31-32°C, drier west coast"},
     "japan": {"months": (7, 8), "business_pp_gbp": 5200, "suite_night_gbp": 700,
               "routing": "BA / JAL / ANA nonstop", "climate": "30-33°C, humid; rainy season usually over by mid-July"},
+    # Japan is 17°C in December, so it is a winter-sun watch there, not a card
+    # (H9, owner direction 2026-10-04). Okinawa is 25-26°C and is the one
+    # Japanese beach in this engine's December reach; it carries a resort
+    # catalogue entry in SUMMER_RESORT_CATALOG, so in July the watch row is
+    # suppressed and the real cards stand instead. The two figures are
+    # editorial benchmarks like every other watch row, sized from the research's
+    # 16h30 routing (read 2026-10-04) and its undated "$288 nightly" aggregator
+    # figure for Halekulani — never an observed fare.
+    "okinawa": {
+        "months": (6, 7, 8, 9, 10),
+        "business_pp_gbp": 3900, "suite_night_gbp": 600,
+        "routing": "no London nonstop: LHR-HND (BA / ANA / JAL) then ANA or JAL to OKA, 2h40",
+        "climate": "27-32°C, humid; July is typhoon season",
+        "reason": ("mainland Japan is about 17°C in December — too cool for winter sun — "
+                   "so its warm beach is watched instead"),
+    },
 }
 
 #: The exact label every Far East watch figure carries.
@@ -705,6 +739,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     dest_allowed = {
         "key", "label", "airports", "cabin_class", "cabin_classes",
         "flight_hours", "flight_hours_source",
+        "nonstop_from_london", "nonstop_source",
     }
     # 24, not 16: the Far East additions of 2026-09-28 took the December
     # watch to 20 destinations without dropping any existing one.
@@ -724,8 +759,19 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         ):
             raise ConfigError(f"destination '{key}' flight_hours must be a number")
         hours = resolve_flight_hours(key, hours_raw)
+        # The nonstop flag is a BOOLEAN or absent. A truthy string is a typo,
+        # and a typo that reads as "yes, nonstop" would quote Business on a
+        # one-stop route — the exact failure this rule exists to prevent — so
+        # it is rejected here rather than silently coerced.
+        nonstop_raw = item.get("nonstop_from_london")
+        if nonstop_raw is not None and not isinstance(nonstop_raw, bool):
+            raise ConfigError(
+                f"destination '{key}' nonstop_from_london must be true or false"
+            )
         try:
-            derived = cabin_for_flight_hours(hours)
+            derived = cabin_for_flight_hours(
+                hours, resolve_nonstop_from_london(key, nonstop_raw)
+            )
         except ValueError as exc:
             raise ConfigError(
                 f"destination '{key}' needs flight_hours (London block time in "
@@ -738,6 +784,8 @@ def load_holiday_config(payload: str) -> HolidayConfig:
                 airports=_airports(item.get("airports"), "destination airports"),
                 flight_hours=hours,
                 flight_hours_source=str(item.get("flight_hours_source", "")),
+                nonstop_from_london=nonstop_raw,
+                nonstop_source=str(item.get("nonstop_source", "")),
                 # The DERIVED cabin, never the config's: every consumer
                 # (report, evidence contract, provider links) reads the rule.
                 cabin_class=derived,
@@ -837,11 +885,18 @@ def shortlist_date_pairs(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
 
     The shortlist used to be drawn from the whole configured cross product, which
     is the same thing only while every configured pair happens to sit inside the
-    stay band. The new July window (outbound 5/8/12/15/19, returns 12/15/19/22/26/29,
-    6-10 nights) is not: its cross product holds a 3-night pair, and the shortlist
-    middle became (12 -> 15), which no card ever prices. A headline pair that is
-    not priceable is worse than a stale one - the report says one thing and the
+    stay band. The owner's window has outrun that twice since — it moved on
+    2026-10-04 to depart 25-30 June 2027 (12-21 nights), and the cross product
+    again holds pairs the band excludes — so the shortlist is taken from
+    ``priceable_date_pairs`` rather than from the grid. A headline pair that is
+    not priceable is worse than a stale one: the report says one thing and the
     evidence hunt spends its reads on another.
+
+    For the committed July example that yields 25 Jun->9 Jul (14 nights),
+    27 Jun->14 Jul (17, the headline) and 30 Jun->20 Jul (20). Those dates are
+    not restated as literals anywhere in this function on purpose: the window is
+    the owner's and lives in the config, so a test asserts them by deriving them
+    from it rather than by pasting them here.
     """
     return _shortlist_pairs(priceable_date_pairs(config))
 
@@ -903,9 +958,10 @@ def destination_cabins(
     cabin the report will never price.
 
     Since the 2026-09-28 rule the answer is DERIVED, one cabin per
-    destination: BUSINESS only when the destination's London flight time is
-    over 8 hours, else ECONOMY, and never premium economy (``cabin.py``).
-    A config's own cabin fields are legacy and never consulted here.
+    destination: BUSINESS only when a London NONSTOP exists on the trip's
+    dates AND its block time is over 8 hours, else ECONOMY, and never premium
+    economy (``cabin.py``, owner rule 2026-10-04). Unknown nonstop means
+    ECONOMY. A config's own cabin fields are legacy and never consulted here.
     """
     return (destination_cabin(destination),)
 
@@ -1022,6 +1078,110 @@ class OperatorPackage:
     #: The engine's own flights + stay for the same trip, minus this package.
     #: Positive means the package is CHEAPER than booking the halves separately.
     vs_engine_gbp: float
+    #: The dates the operator actually quoted. On a card they are the card's
+    #: dates, matched exactly. On an over-budget row (brief H9, 2026-10-04)
+    #: they are usually a NEARBY pair this run also prices, and the note says
+    #: so rather than implying the row's own — far dearer — dates.
+    outbound_date: str = ""
+    return_date: str = ""
+
+
+def _promoting_package(
+    package_evidence: Optional[Mapping[Any, Any]],
+    resort_name: str,
+    outbound: str,
+    returning: str,
+    engine_total_gbp: float,
+    max_budget_gbp: float,
+    *,
+    nights: Optional[int] = None,
+) -> Optional[OperatorPackage]:
+    """An operator package that may BECOME this card's price, or None.
+
+    Owner decision 2, 2026-10-04 ("ok go ahead"): when a resort's own headline
+    is over the ceiling but an operator package for the card's OWN trip comes
+    in under it, the card stays and its headline is the package total. H9's
+    rule — the package is only ever a sentence beside an over-budget row —
+    is superseded for exactly this case.
+
+    Every condition, and none of them is optional:
+
+    * the package is for this card's own outbound and return dates, matched
+      exactly by ``package_price_for``. A package read for the neighbouring
+      fortnight is a different holiday;
+    * it is for the SAME number of nights, from the record's own field;
+    * its flights are ECONOMY, read from ``flight_cabin``. A missing cabin is
+      UNKNOWN and unknown does not promote (see ``package_flown_economy``).
+      An operator's package is a one-stop by construction, and the owner
+      quotes business only for a direct flight, so a package whose flights
+      were searched in Business is not this holiday;
+    * its whole-party total is within ``config.max_budget_gbp``.
+
+    The board, party and room-count gates are the loader's, and the resort has
+    already cleared ``filter_resorts`` and the one-booking unit check by the
+    time this is asked — so a package that reaches here has passed every
+    gate its own headline did.
+
+    Anything else returns ``None`` and the card is priced exactly as before,
+    with the package still riding it as a comparison line.
+    """
+    if not package_evidence:
+        return None
+    from .package_evidence import (
+        package_covers_nights,
+        package_flown_economy,
+        package_price_for,
+        package_provenance,
+        package_within_budget,
+    )
+
+    price = package_price_for(package_evidence, resort_name, outbound, returning)
+    if price is None or not package_flown_economy(price):
+        return None
+    if nights is not None and not package_covers_nights(price, nights):
+        return None
+    if not package_within_budget(price, max_budget_gbp):
+        return None
+    try:
+        engine_total = float(engine_total_gbp)
+    except (TypeError, ValueError):
+        engine_total = float(price.total_gbp)
+    return OperatorPackage(
+        operator=str(price.operator),
+        operator_key=str(price.operator_key),
+        total_gbp=round(float(price.total_gbp), 2),
+        board=str(price.board),
+        rooms=int(price.rooms),
+        link_kind=str(price.link_kind),
+        source_url=str(price.source_url),
+        observed_at=str(price.observed_at),
+        provenance=package_provenance(price),
+        how=str(price.price_how or ""),
+        # The gap is against the ENGINE's own flights + stay for the same trip,
+        # which is what makes "£X less than booking the halves separately" a
+        # true sentence.
+        vs_engine_gbp=round(engine_total - float(price.total_gbp), 2),
+        outbound_date=str(price.outbound_date),
+        return_date=str(price.return_date),
+    )
+
+
+def _OperatorPackageWithGap(package: OperatorPackage, engine_total_gbp: float) -> OperatorPackage:
+    """``package`` with its gap re-measured against the ENGINE's own total.
+
+    The rescue was chosen against the engine's flights + stay for the same
+    trip, and "£X less than booking flights and hotel separately" is only true
+    against that figure. Comparing it with itself would say "the same as
+    booking separately" about a price that came from somewhere else entirely.
+    """
+    try:
+        engine_total = float(engine_total_gbp)
+    except (TypeError, ValueError):
+        engine_total = float(package.total_gbp)
+    return dataclasses.replace(
+        package,
+        vs_engine_gbp=round(engine_total - float(package.total_gbp), 2),
+    )
 
 
 def _operator_package(
@@ -1061,6 +1221,66 @@ def _operator_package(
         provenance=package_provenance(price),
         how=str(price.price_how or ""),
         vs_engine_gbp=round(engine_total - float(price.total_gbp), 2),
+        outbound_date=str(price.outbound_date),
+        return_date=str(price.return_date),
+    )
+
+
+def _over_operator_package(
+    package_evidence: Optional[Mapping[Any, Any]],
+    resort_name: str,
+    date_pairs,
+    engine_total_gbp: float,
+    max_budget_gbp: float,
+) -> Optional[OperatorPackage]:
+    """An IN-BUDGET operator package for an over-budget row, or None.
+
+    Owner brief H9, 2026-10-04: when a resort is over the ceiling on every
+    option but the operator's own package for the same trip fits, the reader
+    must be told — the row above is otherwise the only sentence about that
+    resort and it says nothing affordable exists.
+
+    Matched on the property across ANY pair this run prices
+    (``cheapest_package_for_property``), not on the row's own dates: the row's
+    pair is by definition the expensive one, which is exactly why the row is on
+    this list. The package's own dates ride along so the note can state them.
+
+    It never prices, ranks, filters or admits anything (same rule as on a
+    card): it is a sentence beside the row, not a second deal.
+    """
+    if not package_evidence:
+        return None
+    from .package_evidence import cheapest_package_for_property, package_provenance
+
+    price = cheapest_package_for_property(package_evidence, resort_name, date_pairs)
+    if price is None:
+        return None
+    try:
+        budget = float(max_budget_gbp)
+    except (TypeError, ValueError):
+        return None
+    if float(price.total_gbp) > budget:
+        # Over the ceiling on its own terms: the note would say the opposite
+        # of the truth, so there is no note.
+        return None
+    try:
+        engine_total = float(engine_total_gbp)
+    except (TypeError, ValueError):
+        engine_total = float(price.total_gbp)
+    return OperatorPackage(
+        operator=str(price.operator),
+        operator_key=str(price.operator_key),
+        total_gbp=round(float(price.total_gbp), 2),
+        board=str(price.board),
+        rooms=int(price.rooms),
+        link_kind=str(price.link_kind),
+        source_url=str(price.source_url),
+        observed_at=str(price.observed_at),
+        provenance=package_provenance(price),
+        how=str(price.price_how or ""),
+        vs_engine_gbp=round(engine_total - float(price.total_gbp), 2),
+        outbound_date=str(price.outbound_date),
+        return_date=str(price.return_date),
     )
 
 
@@ -1136,6 +1356,13 @@ class PackageDeal:
     #: score or the ordering. None means no qualifying package was read, which
     #: is the state every card was in before the seam existed.
     operator_package: Optional[OperatorPackage] = None
+    #: True when ``total_package_price_gbp`` IS ``operator_package.total_gbp``
+    #: (owner decision 2, 2026-10-04): the resort's own flights + stay came
+    #: over the ceiling and an operator package for this card's exact dates,
+    #: with economy flights, came in under it, so the package became the price.
+    #: False on every card that was already in budget, where the package stays
+    #: the comparison line beside the headline it never replaced.
+    package_priced: bool = False
     source_url: str = ""
     # When a live whole-party fare is used, the carrier the provider actually
     # displayed (may differ from the benchmark carrier); empty on benchmarks.
@@ -1486,7 +1713,60 @@ WET_MONTHS_BY_DESTINATION: dict[str, tuple[int, ...]] = {
     "da_nang": (9, 10, 11, 12),
     "kota_kinabalu": (1, 2, 10, 11, 12),  # Sabah north-east monsoon
     "japan": (),                     # no single wet-season flag for the watch
+    "okinawa": (6, 7, 8, 9),         # typhoon season; July is also the Baiu tail
 }
+
+#: The season a destination's wet months actually are, and what it does to the
+#: trip. The default monsoon wording is right for Asia and wrong for a
+#: Caribbean hurricane season, so a destination in a different season names
+#: itself here rather than borrowing the monsoon label (H9, 2026-10-04).
+WET_SEASON_BY_DESTINATION: dict[str, tuple[str, str]] = {
+    # (season name, what a reader should expect that month)
+    "riviera_maya": (
+        "Hurricane season",
+        "the Atlantic season runs Jun-Nov; storms are rare but sargassum drifts "
+        "onto the beach",
+    ),
+}
+
+#: The compact twin of each season: (name, what it means for the trip).
+WET_SEASON_COMPACT_BY_DESTINATION: dict[str, tuple[str, str]] = {
+    "riviera_maya": (
+        "Hurricane season",
+        "storms are rare, but sargassum drifts onto the beach",
+    ),
+}
+
+#: Default wording: a wet month the reader cannot plan around.
+DEFAULT_WET_SEASON = (
+    "Monsoon season (approximate climatology)",
+    "expect heavy rain and rough seas; pool and beach days may be rained off",
+)
+
+#: The compact twin of ``DEFAULT_WET_SEASON``.
+DEFAULT_WET_SEASON_COMPACT = ("Monsoon", "heavy rain, rough seas")
+
+
+def wet_season_words(deal: Any) -> tuple[str, str]:
+    """(season name, what it means for the trip) for this deal's wet month.
+
+    A resort's own ``monsoon_months`` is the monsoon; a destination that names
+    its own season (a Caribbean hurricane season is not a monsoon) says so.
+    """
+    key = str(getattr(deal, "destination_key", "") or "").lower()
+    own = tuple(getattr(deal, "monsoon_months", ()) or ())
+    if key in WET_SEASON_BY_DESTINATION and not own:
+        return WET_SEASON_BY_DESTINATION[key]
+    return DEFAULT_WET_SEASON
+
+
+def wet_season_words_compact(deal: Any) -> tuple[str, str]:
+    """The same warning in the handful of words the compact e-mail allows."""
+    key = str(getattr(deal, "destination_key", "") or "").lower()
+    own = tuple(getattr(deal, "monsoon_months", ()) or ())
+    if key in WET_SEASON_COMPACT_BY_DESTINATION and not own:
+        return WET_SEASON_COMPACT_BY_DESTINATION[key]
+    return DEFAULT_WET_SEASON_COMPACT
 
 
 def _parse_iso_instant(value: Any) -> Optional[datetime]:
@@ -1646,6 +1926,9 @@ SUMMER_WEATHER: dict[str, tuple[tuple[int, int], int]] = {
     "koh_phangan": ((25, 32), 30),   # Ko Samui station
     "khao_lak": ((25, 32), 30),      # Takua Pa 24.6-31.5°C but 466 mm / 19.7 rain days: SW monsoon
     "zanzibar": ((22, 29), 26),      # Zanzibar City 22.1-29.0°C, 31 mm (WMO 1991-2020); sea Nungwi 25.9°C
+    # Mexico and Japan (Wikipedia climate tables, read 2026-10-04).
+    "riviera_maya": ((24, 34), 29),  # Cancún Airport 24.5-34.0°C; sea 29°C (84°F)
+    "okinawa": ((27, 32), 28),       # Naha 27.0-31.9°C (JMA 1991-2020); sea 28.2°C (seatemperature.org Naha)
 }
 
 
@@ -2181,14 +2464,53 @@ WINTER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "peak_summer_flight_5pax_gbp": 6073.0,
             "highlights": (
                 "All-inclusive beach resort at Punta Cancún, Hotel Zone",
+                "Its own site says the lagoon pools are heated \"from now until March\", which covers December",
                 "Google rating 4.5 (6.6k reviews); TripAdvisor ≥4.5 not verified",
             ),
             "hotel_url": "https://www.fiestamericanatravelty.com/en/grand-fiesta-americana/hotels/grand-fiesta-americana-coral-beach-cancun-all-inclusive-spa-resort",
             "dec_ambient_c": (28, 29),  # Cancún December mean daily max 28.9°C (SMN 1991-2020)
             "sea_temp_c": 27,           # Cancún December sea 27°C (Wikipedia climate table)
-            "beach": "Caribbean beachfront; December is the dry season (80 mm)",
+            "beach": "Caribbean beachfront; December is the dry season (80 mm); its own site says the lagoon pools are heated until March",
             "transfer_gbp": 0.0,
             "confidence": "market-supported",
+        },
+        {
+            "name": "Grand Velas Riviera Maya",
+            "destination_label": "Cancún, Mexico (Caribbean coast)",
+            "stars": 5,  # the resort's own site: five-star
+            "board": "All Inclusive",  # Ultra All Inclusive is the only basis it sells
+            # DERIVED, not read (H9): the research's multi-centre file prices
+            # the Ambassador Two-Bedroom Family Suite for 7 nights at GBP
+            # 9,800-15,400 for 5 (read 2026-10-04), so the mid-point over 7
+            # nights is GBP 1,800 a night. No dated public December rate was
+            # readable on 2026-10-04; the hotel publishes only an undated
+            # "from $596 per person per night" floor. Its pools are NOT stated
+            # as heated, so the December heated-pool gate is left to decide:
+            # SUITE_ARCHITECTURE carries pool_heated_c None (not read), which
+            # does not apply the gate and is reported as unverified.
+            "base_nightly_room_rate_gbp": 1800.0,
+            "peak_summer_nightly_room_rate_gbp": 1800.0,
+            "airport": "CUN",
+            "airline": "Virgin Atlantic (nonstop)",
+            # Virgin Atlantic's own Mexico page, read 2026-10-04: LHR-CUN
+            # nonstop VS93, 10-11h, three times a week, 18 Oct 2026 - 11 Apr
+            # 2027 — which covers the December window (the July one it does
+            # not). Block time, not a fare: see the summer entry's derived
+            # benchmark for the July window.
+            "flight_benchmark_5pax_gbp": 6073.0,
+            "peak_summer_flight_5pax_gbp": 4850.0,
+            "highlights": (
+                "Ambassador Two-Bedroom Family Suite Ocean View: officially rated for 6 adults, 2,540 sq ft",
+                "Ultra All Inclusive on a private Caribbean beach at Playa del Carmen",
+                "Riviera Maya is warm and dry in December, outside the hurricane season",
+                "TripAdvisor 4.6 (1,607 reviews, allinclusiveoutlet); TripAdvisor direct not read",
+            ),
+            "hotel_url": "https://rivieramaya.grandvelas.com/suites/ambassador-suites/ambassador-two-bedroom-family-suite-ocean-view",
+            "dec_ambient_c": (27, 28),  # Playa del Carmen December ~27-28°C (Cancún normals)
+            "sea_temp_c": 27,           # Cancún December sea 27°C (Wikipedia climate table)
+            "beach": "Private Caribbean beach at Playa del Carmen; December is the dry season, outside the hurricane season",
+            "transfer_gbp": 0.0,
+            "confidence": "estimate",
         },
     ],
 }
@@ -2254,6 +2576,39 @@ _HKT_FLIGHT = {
     "peak_summer_flight_5pax_gbp": 4695.0,
     "routing": ("no nonstop on these dates: 1 stop via Bangkok (THAI, 14h30), Abu Dhabi "
                 "(Etihad) or Doha (Qatar Airways), then about 1h40 by road"),
+}
+# LHR-CUN and LHR-OKA July benchmarks (research read 2026-10-04). NEITHER is a
+# live quote: both are the mid-point of the research's own dated multi-centre
+# fare lines for the same routing, which is why the July Riviera Maya and
+# Okinawa entries are marked estimates end to end.
+_CUN_FLIGHT = {
+    "airport": "CUN",
+    "airline": "Etihad / Qatar Airways / Turkish Airlines (1 stop)",
+    # DERIVED, not read: research/multi_centre.json's Cancun + Tulum/Holbox
+    # routing prices LHR-CUN for 5 adults at GBP 4,200-5,500 for the July 2027
+    # window (read 2026-10-04); the mid-point is GBP 4,850. No nonstop exists
+    # for July 2027: Virgin Atlantic's Cancun service runs 18 Oct 2026 - 11 Apr
+    # 2027, so a July trip must connect (research, verified on Virgin Atlantic's
+    # own Mexico page). That service publishes a 10-11h block time; a connection
+    # makes the door-to-door longer.
+    "flight_benchmark_5pax_gbp": 4850.0,
+    "peak_summer_flight_5pax_gbp": 4850.0,
+    "routing": ("no London nonstop in July 2027 — Virgin Atlantic's Cancun service ends "
+                "11 Apr 2027 — so 1 stop (Etihad via AUH, Qatar via DOH or Turkish via IST), "
+                "about 16-18h"),
+}
+_OKA_FLIGHT = {
+    "airport": "OKA",
+    "airline": "ANA / Japan Airlines / British Airways (via Tokyo, then a domestic hop)",
+    # DERIVED, not read: research/multi_centre.json's Tokyo + Okinawa routing
+    # prices LHR-OKA for 5 adults at GBP 5,000-6,500 for the July 2027 window
+    # (read 2026-10-04); the mid-point is GBP 5,750. Google Flights states
+    # "There are no direct flights on this route": Tokyo (HND or NRT) then
+    # 2h40 to Naha, door to door about 16h30.
+    "flight_benchmark_5pax_gbp": 5750.0,
+    "peak_summer_flight_5pax_gbp": 5750.0,
+    "routing": ("no London nonstop: LHR-HND (BA, ANA or JAL) then ANA / JAL / Skymark / "
+                "Solaseed to OKA, 2h40; door to door about 16h30"),
 }
 
 SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
@@ -2459,6 +2814,33 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "transfer_gbp": 36.04,  # estimate, as for Garrya above
             "confidence": "market-supported",
         },
+        {
+            "name": "Melati Beach Resort & Spa",
+            "destination_label": "Koh Samui, Thailand (Gulf side)",
+            "stars": 5,  # Google Hotels: "5-star hotel"
+            "board": "Bed & Breakfast",
+            # Google Hotels (Booking.com as listed), 5 adults, Presidential
+            # Suite, 20-27 Jul 2027: GBP 960 per night, breakfast, free
+            # cancellation until 7 Jun 2027 — an exact-date read for the brief's
+            # own window (evidence read 2026-10-02). The suite is 347 m2 by the
+            # hotel's own site but its bedroom count was NOT read, so it is not
+            # yet proven to meet the 2-bedroom rule: one unit, one booking.
+            "base_nightly_room_rate_gbp": 960.0,
+            "peak_summer_nightly_room_rate_gbp": 960.0,
+            **_USM_FLIGHT,
+            "highlights": (
+                "Beachfront on Maenam Beach, north-west Samui",
+                "Presidential Suite 347 m² for 5 on one booking",
+                "Adults-only pool area; Samui centre 3 km",
+                "Google rating 4.5 (1.2k reviews); TripAdvisor ≥4.5 not verified",
+            ),
+            "hotel_url": "https://www.melatiresort.com/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 30,
+            "beach": "Maenam Beach, north-west Samui — Gulf side, the drier coast in July",
+            "transfer_gbp": 36.04,  # estimate, as for Garrya above
+            "confidence": "market-supported",
+        },
     ],
     "koh_phangan": [
         {
@@ -2564,6 +2946,116 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # people (a Khao Lak airport-transfer operator's price list).
             "transfer_gbp": 76.58,
             "confidence": "market-supported",
+        },
+    ],
+    # ── MEXICO AND JAPAN (H9, owner direction 2026-10-04: "ensure mexico,
+    # japan ... are also considered too"). Research read 2026-10-04
+    # (research/mexico_japan.md); every figure below is sourced in its comment.
+    #
+    # NO dated public rate was readable for any of these three properties on
+    # 2026-10-04 — Grand Velas publishes only an undated "from $596 pp per
+    # night", Dreams Tulum an undated aggregator floor, Halekulani an undated
+    # "$288 nightly". The nightlies here are therefore DERIVED: the mid-point of
+    # the research's own dated multi-centre cost lines for the property
+    # (research/multi_centre.json), divided by the nights those lines cover,
+    # rounded to whole pounds. They are estimates, never quotes, and each says
+    # so in confidence and in the card's own basis line.
+    "riviera_maya": [
+        {
+            "name": "Grand Velas Riviera Maya",
+            "destination_label": "Playa del Carmen, Riviera Maya, Mexico (Caribbean coast)",
+            "stars": 5,  # the resort's own site: five-star
+            "board": "All Inclusive",  # Ultra All Inclusive is the only basis it sells
+            # DERIVED, not read: research/multi_centre.json prices the Ambass-
+            # ador Two-Bedroom Family Suite for 7 nights at GBP 9,800-15,400
+            # for the party of 5 (read 2026-10-04); the mid-point GBP 12,600
+            # over 7 nights is GBP 1,800 a night. The hotel's own site showed
+            # only an undated "from $596 per person per night, double
+            # occupancy" floor for its Zen suite on 2026-10-04, so no dated
+            # public rate exists to quote. All-inclusive for 5 here is cheaper
+            # per head than that floor implies because the figure is the
+            # two-bedroom family's whole-stay cost, not a per-person floor.
+            "base_nightly_room_rate_gbp": 1800.0,
+            "peak_summer_nightly_room_rate_gbp": 1800.0,
+            **_CUN_FLIGHT,
+            "highlights": (
+                "Ambassador Two-Bedroom Family Suite Ocean View: officially rated for 6 adults, 2,540 sq ft",
+                "Ultra All Inclusive on a private Caribbean beach at Playa del Carmen",
+                "Three-tiered infinity pool complex; pool heating not published",
+                "TripAdvisor 4.6 (1,607 reviews, allinclusiveoutlet); TripAdvisor direct not read",
+            ),
+            "hotel_url": "https://rivieramaya.grandvelas.com/suites/ambassador-suites/ambassador-two-bedroom-family-suite-ocean-view",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 29,
+            "beach": ("Private Caribbean beach at Playa del Carmen; July sits inside the Atlantic "
+                      "hurricane season (Jun-Nov) and in the sargassum season, which is the honest "
+                      "catch on a July Riviera Maya trip"),
+            "transfer_gbp": 0.0,  # airport transfer not priced (no source read)
+            "confidence": "estimate",
+        },
+        {
+            "name": "Dreams Tulum Resort & Spa",
+            "destination_label": "Tulum, Riviera Maya, Mexico (Caribbean coast)",
+            "stars": 5,  # the resort's own listing: five-star
+            "board": "All Inclusive",  # Dreamer basis, Hyatt Inclusive Collection
+            # DERIVED, not read: research/multi_centre.json prices the Two-
+            # Bedroom Family Suite Deluxe Garden View for 6 nights at GBP
+            # 5,400-8,400 for the party of 5 (read 2026-10-04); the mid-point
+            # GBP 6,900 over 6 nights is GBP 1,150 a night. Hyatt's own pages
+            # returned HTTP 403 to automated reads on 2026-10-04 and no dated
+            # public rate was readable; the suite's occupancy is from
+            # Booking.com, not Hyatt, so it is likely but not officially
+            # confirmed.
+            "base_nightly_room_rate_gbp": 1150.0,
+            "peak_summer_nightly_room_rate_gbp": 1150.0,
+            **_CUN_FLIGHT,
+            "highlights": (
+                "Two-bedroom family suite, about 1,312 sq ft, listed for up to six guests",
+                "All-inclusive on Tulum's Caribbean beachfront",
+                "Two outdoor pools plus a children's pool; heated-pool temperature not published",
+                "Guest rating not read; TripAdvisor ≥4.5 not verified",
+            ),
+            "hotel_url": "https://www.hyattinclusivecollection.com/en/resorts-hotels/dreams/mexico/tulum-resort-spa/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 29,
+            "beach": ("Caribbean beachfront at Tulum — the exposed southern end of the Riviera Maya, "
+                      "the stretch most likely to see sargassum; July is hurricane season"),
+            "transfer_gbp": 0.0,  # airport transfer not priced (no source read)
+            "confidence": "estimate",
+        },
+    ],
+    "okinawa": [
+        {
+            "name": "Halekulani Okinawa",
+            "destination_label": "Onna Village, Okinawa main island, Japan",
+            "stars": 5,  # the hotel's own site: five-star
+            # The hotel sells room-only and bed & breakfast, never all-inclusive:
+            # food for 5 across a 12-21 night trip is a separate, unbudgeted
+            # line and the card says so rather than implying a meal cost.
+            "board": "Bed & Breakfast",
+            # DERIVED, not read: research/multi_centre.json prices 7 nights B&B
+            # for the party of 5 at GBP 8,400-12,600 (read 2026-10-04); the
+            # mid-point GBP 10,500 over 7 nights is GBP 1,500 a night. No dated
+            # public rate was readable on 2026-10-04 (an aggregator showed an
+            # undated "$288 nightly"), and no single-unit category for 5 adults
+            # was confirmed: 50 m² standard rooms take a king bed, so two
+            # connecting rooms or one of the five villas is the likely route.
+            "base_nightly_room_rate_gbp": 1500.0,
+            "peak_summer_nightly_room_rate_gbp": 1500.0,
+            **_OKA_FLIGHT,
+            "highlights": (
+                "Private beach in the hotel's beach wing at Onna Village",
+                "50 m² rooms with a private terrace; five villas on site",
+                "TripAdvisor 4.6 (1,833 reviews) — the only Okinawa property researched that clears the ≥4.5 gate",
+                "Room-only or B&B only; no all-inclusive",
+            ),
+            "hotel_url": "https://www.okinawa.halekulani.com/en/stay/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 28,
+            "beach": ("Private beach at Onna Village, east coast; July is typhoon season and the tail of "
+                      "the Baiu rains — the most likely disruption of the whole trip"),
+            "transfer_gbp": 0.0,  # airport transfer not priced (no source read)
+            "confidence": "estimate",
         },
     ],
 }
@@ -2688,7 +3180,101 @@ STOPOVER_LINK_HUBS: tuple[str, ...] = ("DOH", "MCT")
 #: A clean re-read that never touches the expander is the safer default when
 #: it already contains a plausible fare; an expanded-list price is provisional
 #: until leg 2 confirms it.
+#: The priced whole-party Economy stopover reads, one per (pair, hub,
+#: airport), kept in date order and in the hub order STOPOVER_HUBS declares.
+#: Outliers are NOT committed: a read more than three times its own pair's
+#: median is a mis-read card, not an option worth showing. From the June
+#: session that excluded exactly one row — Muscat to Zanzibar (MCT-ZNZ) on
+#: 27 Jun-14 Jul at GBP 32,858, which is 6.4x that pair's GBP 5,135 median
+#: and 6x the next dearest fare in the set. The two reads already left out
+#: of the 26 Jun-10 Jul export by e92e9d8 were the same shape (GBP 32,808
+#: and GBP 32,688, each about 6x its pair's median), so this is one rule,
+#: not three lucky calls.
+#: Reads whose pair the July config can no longer price were removed:
+#: 2027-07-01 -> 2027-07-15 (neither date is a priceable pair).
+#: 2027-07-03 -> 2027-07-24 (neither date is a priceable pair).
+#: The December planner reads nothing from this tuple and keeps its own
+#: path, so nothing else referenced them.
 _STOPOVER_READS: tuple[dict[str, Any], ...] = (
+    # 2027-06-25 -> 2027-07-09: 7 reads, cheapest AUH-HKT GBP 3,218
+    {
+        "pair": ("2027-06-25", "2027-07-09"),
+        "hub": "DOH", "airport": "HKT",
+        "total_gbp": 4266.0,
+        "carrier": "Qatar Airways / British Airways",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T19:50:58+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjVqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA2LTI3agUSA0RPSHIFEgNIS1QaGhIKMjAyNy0wNy0wOWoFEgNIS1RyBRIDRE9IGhoSCjIwMjctMDctMTFqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-25", "2027-07-09"),
+        "hub": "DOH", "airport": "USM",
+        "total_gbp": 4837.0,
+        "carrier": "Qatar Airways / British Airways",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T19:51:25+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjVqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA2LTI3agUSA0RPSHIFEgNVU00aGhIKMjAyNy0wNy0wOWoFEgNVU01yBRIDRE9IGhoSCjIwMjctMDctMTFqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-25", "2027-07-09"),
+        "hub": "MCT", "airport": "ZNZ",
+        "total_gbp": 5060.0,
+        "carrier": "Etihad",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T19:53:56+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjVqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA2LTI3agUSA01DVHIFEgNaTloaGhIKMjAyNy0wNy0wOWoFEgNaTlpyBRIDTUNUGhoSCjIwMjctMDctMTFqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-25", "2027-07-09"),
+        "hub": "AUH", "airport": "HKT",
+        "total_gbp": 3218.0,
+        "carrier": "Etihad",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T19:54:55+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjVqBRIDTEhScgUSA0FVSBoaEgoyMDI3LTA2LTI3agUSA0FVSHIFEgNIS1QaGhIKMjAyNy0wNy0wOWoFEgNIS1RyBRIDQVVIGhoSCjIwMjctMDctMTFqBRIDQVVIcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-25", "2027-07-09"),
+        "hub": "DXB", "airport": "HKT",
+        "total_gbp": 4630.0,
+        "carrier": "Emirates / Qantas",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T19:56:51+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjVqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA2LTI3agUSA0RYQnIFEgNIS1QaGhIKMjAyNy0wNy0wOWoFEgNIS1RyBRIDRFhCGhoSCjIwMjctMDctMTFqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-25", "2027-07-09"),
+        "hub": "DXB", "airport": "USM",
+        "total_gbp": 5837.0,
+        "carrier": "Emirates",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T19:57:21+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjVqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA2LTI3agUSA0RYQnIFEgNVU00aGhIKMjAyNy0wNy0wOWoFEgNVU01yBRIDRFhCGhoSCjIwMjctMDctMTFqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-25", "2027-07-09"),
+        "hub": "DXB", "airport": "ZNZ",
+        "total_gbp": 5011.0,
+        "carrier": "SWISS",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T19:57:54+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjVqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA2LTI3agUSA0RYQnIFEgNaTloaGhIKMjAyNy0wNy0wOWoFEgNaTlpyBRIDRFhCGhoSCjIwMjctMDctMTFqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    # 2027-06-26 -> 2027-07-10: 6 reads, cheapest AUH-HKT GBP 3,218
     {
         "pair": ("2027-06-26", "2027-07-10"),
         "hub": "DOH", "airport": "HKT",
@@ -2755,130 +3341,119 @@ _STOPOVER_READS: tuple[dict[str, Any], ...] = (
             "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjZqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA2LTI4agUSA0RYQnIFEgNVU00aGhIKMjAyNy0wNy0xMGoFEgNVU01yBRIDRFhCGhoSCjIwMjctMDctMTJqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
         ),
     },
+    # 2027-06-27 -> 2027-07-14: 4 reads, cheapest AUH-HKT GBP 3,218
     {
-        "pair": ("2027-07-01", "2027-07-15"),
-        "hub": "DOH", "airport": "HKT",
-        "total_gbp": 4321.0,
-        "carrier": "Qatar Airways / British Airways",
+        "pair": ("2027-06-27", "2027-07-14"),
+        "hub": "AUH", "airport": "HKT",
+        "total_gbp": 3218.0,
+        "carrier": "Etihad",
         "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:03:01+00:00",
+        "observed_at": "2026-10-04T20:02:46+00:00",
         "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDFqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTAzagUSA0RPSHIFEgNIS1QaGhIKMjAyNy0wNy0xNWoFEgNIS1RyBRIDRE9IGhoSCjIwMjctMDctMTdqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjdqBRIDTEhScgUSA0FVSBoaEgoyMDI3LTA2LTI5agUSA0FVSHIFEgNIS1QaGhIKMjAyNy0wNy0xNGoFEgNIS1RyBRIDQVVIGhoSCjIwMjctMDctMTZqBRIDQVVIcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
         ),
     },
     {
-        "pair": ("2027-07-01", "2027-07-15"),
-        "hub": "MCT", "airport": "HKT",
-        "total_gbp": 5113.0,
-        "carrier": "Oman Air",
-        "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:04:42+00:00",
-        "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDFqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA3LTAzagUSA01DVHIFEgNIS1QaGhIKMjAyNy0wNy0xNWoFEgNIS1RyBRIDTUNUGhoSCjIwMjctMDctMTdqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
-        ),
-    },
-    {
-        "pair": ("2027-07-01", "2027-07-15"),
-        "hub": "MCT", "airport": "USM",
-        "total_gbp": 6500.0,
-        "carrier": "Oman Air",
-        "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:05:06+00:00",
-        "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDFqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA3LTAzagUSA01DVHIFEgNVU00aGhIKMjAyNy0wNy0xNWoFEgNVU01yBRIDTUNUGhoSCjIwMjctMDctMTdqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
-        ),
-    },
-    {
-        "pair": ("2027-07-01", "2027-07-15"),
+        "pair": ("2027-06-27", "2027-07-14"),
         "hub": "DXB", "airport": "HKT",
         "total_gbp": 4230.0,
         "carrier": "Emirates / Qantas",
         "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:08:00+00:00",
+        "observed_at": "2026-10-04T20:04:40+00:00",
         "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDFqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA3LTAzagUSA0RYQnIFEgNIS1QaGhIKMjAyNy0wNy0xNWoFEgNIS1RyBRIDRFhCGhoSCjIwMjctMDctMTdqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjdqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA2LTI5agUSA0RYQnIFEgNIS1QaGhIKMjAyNy0wNy0xNGoFEgNIS1RyBRIDRFhCGhoSCjIwMjctMDctMTZqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
         ),
     },
     {
-        "pair": ("2027-07-03", "2027-07-24"),
-        "hub": "DOH", "airport": "HKT",
-        "total_gbp": 4741.0,
-        "carrier": "Qatar Airways / British Airways",
+        "pair": ("2027-06-27", "2027-07-14"),
+        "hub": "DXB", "airport": "USM",
+        "total_gbp": 5339.0,
+        "carrier": "Emirates",
         "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:09:41+00:00",
+        "observed_at": "2026-10-04T20:05:13+00:00",
         "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTA1agUSA0RPSHIFEgNIS1QaGhIKMjAyNy0wNy0yNGoFEgNIS1RyBRIDRE9IGhoSCjIwMjctMDctMjZqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjdqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA2LTI5agUSA0RYQnIFEgNVU00aGhIKMjAyNy0wNy0xNGoFEgNVU01yBRIDRFhCGhoSCjIwMjctMDctMTZqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
         ),
     },
     {
-        "pair": ("2027-07-03", "2027-07-24"),
-        "hub": "DOH", "airport": "USM",
-        "total_gbp": 5297.0,
-        "carrier": "Qatar Airways / British Airways",
-        "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:10:08+00:00",
-        "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTA1agUSA0RPSHIFEgNVU00aGhIKMjAyNy0wNy0yNGoFEgNVU01yBRIDRE9IGhoSCjIwMjctMDctMjZqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
-        ),
-    },
-    {
-        "pair": ("2027-07-03", "2027-07-24"),
-        "hub": "DOH", "airport": "ZNZ",
-        "total_gbp": 6535.0,
-        "carrier": "Royal Jordanian",
-        "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:10:33+00:00",
-        "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTA1agUSA0RPSHIFEgNaTloaGhIKMjAyNy0wNy0yNGoFEgNaTlpyBRIDRE9IGhoSCjIwMjctMDctMjZqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
-        ),
-    },
-    {
-        "pair": ("2027-07-03", "2027-07-24"),
-        "hub": "MCT", "airport": "ZNZ",
-        "total_gbp": 6081.0,
-        "carrier": "Etihad",
-        "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:12:15+00:00",
-        "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA3LTA1agUSA01DVHIFEgNaTloaGhIKMjAyNy0wNy0yNGoFEgNaTlpyBRIDTUNUGhoSCjIwMjctMDctMjZqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
-        ),
-    },
-    {
-        "pair": ("2027-07-03", "2027-07-24"),
-        "hub": "AUH", "airport": "ZNZ",
-        "total_gbp": 4274.0,
-        "carrier": "Etihad",
-        "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:13:51+00:00",
-        "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0FVSBoaEgoyMDI3LTA3LTA1agUSA0FVSHIFEgNaTloaGhIKMjAyNy0wNy0yNGoFEgNaTlpyBRIDQVVIGhoSCjIwMjctMDctMjZqBRIDQVVIcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
-        ),
-    },
-    {
-        "pair": ("2027-07-03", "2027-07-24"),
-        "hub": "DXB", "airport": "HKT",
-        "total_gbp": 4393.0,
-        "carrier": "Emirates / Qantas",
-        "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:14:42+00:00",
-        "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA3LTA1agUSA0RYQnIFEgNIS1QaGhIKMjAyNy0wNy0yNGoFEgNIS1RyBRIDRFhCGhoSCjIwMjctMDctMjZqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
-        ),
-    },
-    {
-        "pair": ("2027-07-03", "2027-07-24"),
+        "pair": ("2027-06-27", "2027-07-14"),
         "hub": "DXB", "airport": "ZNZ",
-        "total_gbp": 4623.0,
+        "total_gbp": 5135.0,
+        "carrier": "Emirates",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T20:05:46+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMjdqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA2LTI5agUSA0RYQnIFEgNaTloaGhIKMjAyNy0wNy0xNGoFEgNaTlpyBRIDRFhCGhoSCjIwMjctMDctMTZqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    # 2027-06-30 -> 2027-07-20: 6 reads, cheapest DXB-ZNZ GBP 4,615
+    {
+        "pair": ("2027-06-30", "2027-07-20"),
+        "hub": "DOH", "airport": "USM",
+        "total_gbp": 5052.0,
+        "carrier": "Qatar Airways / British Airways",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T20:07:14+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMzBqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTAyagUSA0RPSHIFEgNVU00aGhIKMjAyNy0wNy0yMGoFEgNVU01yBRIDRE9IGhoSCjIwMjctMDctMjJqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-30", "2027-07-20"),
+        "hub": "DOH", "airport": "ZNZ",
+        "total_gbp": 6401.0,
+        "carrier": "Qatar Airways / British Airways",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T20:07:44+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMzBqBRIDTEhScgUSA0RPSBoaEgoyMDI3LTA3LTAyagUSA0RPSHIFEgNaTloaGhIKMjAyNy0wNy0yMGoFEgNaTlpyBRIDRE9IGhoSCjIwMjctMDctMjJqBRIDRE9IcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-30", "2027-07-20"),
+        "hub": "MCT", "airport": "HKT",
+        "total_gbp": 5678.0,
+        "carrier": "Oman Air",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T20:08:47+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMzBqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA3LTAyagUSA01DVHIFEgNIS1QaGhIKMjAyNy0wNy0yMGoFEgNIS1RyBRIDTUNUGhoSCjIwMjctMDctMjJqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-30", "2027-07-20"),
+        "hub": "MCT", "airport": "USM",
+        "total_gbp": 6967.0,
+        "carrier": "Etihad",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T20:09:20+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMzBqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA3LTAyagUSA01DVHIFEgNVU00aGhIKMjAyNy0wNy0yMGoFEgNVU01yBRIDTUNUGhoSCjIwMjctMDctMjJqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-30", "2027-07-20"),
+        "hub": "MCT", "airport": "ZNZ",
+        "total_gbp": 6234.0,
+        "carrier": "Oman Air",
+        "status": "priced", "season": "summer",
+        "observed_at": "2026-10-04T20:09:51+00:00",
+        "source_url": (
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMzBqBRIDTEhScgUSA01DVBoaEgoyMDI3LTA3LTAyagUSA01DVHIFEgNaTloaGhIKMjAyNy0wNy0yMGoFEgNaTlpyBRIDTUNUGhoSCjIwMjctMDctMjJqBRIDTUNUcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+        ),
+    },
+    {
+        "pair": ("2027-06-30", "2027-07-20"),
+        "hub": "DXB", "airport": "ZNZ",
+        "total_gbp": 4615.0,
         "carrier": "ITA",
         "status": "priced", "season": "summer",
-        "observed_at": "2026-10-04T13:15:33+00:00",
+        "observed_at": "2026-10-04T20:14:07+00:00",
         "source_url": (
-            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDctMDNqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA3LTA1agUSA0RYQnIFEgNaTloaGhIKMjAyNy0wNy0yNGoFEgNaTlpyBRIDRFhCGhoSCjIwMjctMDctMjZqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
+            "https://www.google.com/travel/flights/search?tfs=GhoSCjIwMjctMDYtMzBqBRIDTEhScgUSA0RYQhoaEgoyMDI3LTA3LTAyagUSA0RYQnIFEgNaTloaGhIKMjAyNy0wNy0yMGoFEgNaTlpyBRIDRFhCGhoSCjIwMjctMDctMjJqBRIDRFhCcgUSA0xIUkIFAQEBAQFIAZgBAw%3D%3D&curr=GBP&hl=en-GB"
         ),
-    }
+    },
 )
-
-
 #: The reads' statuses that may become a fare. Everything else is a gap, not a
 #: price: a search Google answered with no Economy card, a read it refused, or
 #: a read that failed outright, none of which is a number we may print.
@@ -2935,10 +3510,18 @@ def _display_carrier(raw: Any) -> str:
     return re.sub(r"(?<=[a-z])(?=[A-Z])", " / ", text)
 
 
-def _stopover_fares() -> dict[tuple[tuple[str, str], str, str], tuple[dict[str, Any], ...]]:
-    """Fares keyed by ``(pair, hub, airport)`` from the priced reads only."""
+def _stopover_fares(
+    reads: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> dict[tuple[tuple[str, str], str, str], tuple[dict[str, Any], ...]]:
+    """Fares keyed by ``(pair, hub, airport)`` from the priced reads only.
+
+    One itinerary can only ever be quoted once, at its CHEAPEST read: two
+    exports covering the same (pair, hub, airport) are two looks at one
+    journey, and quoting the dearer of them would be a worse price for the
+    same trip. The same rule the package loader applies.
+    """
     fares: dict[tuple[tuple[str, str], str, str], list[dict[str, Any]]] = {}
-    for row in _STOPOVER_READS:
+    for row in (_STOPOVER_READS if reads is None else reads):
         if str(row.get("status", "")).strip().lower() != _STOPOVER_PRICED_STATUS:
             continue
         total = row.get("total_gbp")
@@ -2949,7 +3532,11 @@ def _stopover_fares() -> dict[tuple[tuple[str, str], str, str], tuple[dict[str, 
         airport = str(row["airport"]).upper()
         origin = str(row.get("origin", "LHR")).upper()
         legs = stopover_legs(hub, airport, pair[0], pair[1], origin=origin)
-        fares.setdefault((pair, hub, airport), []).append({
+        key = (pair, hub, airport)
+        existing = fares.get(key)
+        if existing and float(total) >= min(f["total_gbp"] for f in existing):
+            continue
+        fares[key] = [{
             "pair": pair,
             "legs": legs,
             "origin": origin,
@@ -2962,8 +3549,94 @@ def _stopover_fares() -> dict[tuple[tuple[str, str], str, str], tuple[dict[str, 
             "source_url": str(row.get("source_url") or "") or build_google_flights_legs_url(
                 legs, travellers=5, cabin_class="ECONOMY"
             ),
-        })
+        }]
     return {key: tuple(value) for key, value in fares.items()}
+
+
+# ---------------------------------------------------------------------------
+# Private stopover reads: the same honest seam as the other evidence files
+# ---------------------------------------------------------------------------
+
+#: Where the private engine lands its stopover exports. Globbed, because the
+#: reads arrive one batch at a time and a planner must use every batch it has
+#: rather than only the newest filename.
+DEFAULT_STOPOVER_READS_GLOB = "data/stopover_reads*.json"
+
+#: The document shape the private engine writes.
+STOPOVER_READS_SCHEMA = "stopover_reads/1"
+
+#: Skips from the most recent load, surfaced in the job summary.
+_STOPOVER_SKIP_LOG: list[str] = []
+
+
+def consume_stopover_skip_log() -> list[str]:
+    """Return and clear the skip reasons recorded by the last load."""
+    items = list(_STOPOVER_SKIP_LOG)
+    _STOPOVER_SKIP_LOG.clear()
+    return items
+
+
+def _warn_stopover_skip(what: str, reason: str) -> None:
+    message = f"{what or '?'}: {reason}"
+    _STOPOVER_SKIP_LOG.append(message)
+    print(f"stopover-evidence: skipping {message}", file=sys.stderr)
+
+
+def load_stopover_reads(path: str = "") -> tuple[dict[str, Any], ...]:
+    """Stopover fares read for THIS run's date pairs, or nothing.
+
+    The private engine reads a whole-party multi-city fare per
+    ``(pair, hub, airport)`` and exports ``stopover_reads/1`` documents. They
+    are PRIVATE: provider search URLs and real fares, so they are never
+    committed (``.gitignore``) and are seeded by the workflow beside the other
+    evidence files.
+
+    Same contract as ``live_verify`` and ``package_evidence``:
+
+    * only rows whose ``status`` is ``priced`` and that carry a
+      ``total_gbp`` may become a fare. ``no_priced_economy_card``,
+      ``blocked`` and ``error`` are recorded so the gap is visible, and they
+      render as the price-it-yourself link rather than a number;
+    * a fare is only ever shown for the dates it was read for, and
+      ``stopover_fares_for`` asks for the card's own pair, so a read for a
+      neighbouring fortnight can never appear on a card;
+    * a missing file, an unreadable file, or a file with the wrong schema
+      changes nothing about today's output — never a crash, never an invented
+      figure.
+    """
+    import glob as _glob
+
+    _STOPOVER_SKIP_LOG.clear()
+    pattern = path or DEFAULT_STOPOVER_READS_GLOB
+    names = sorted(_glob.glob(pattern)) if not path.endswith(".json") else [path]
+    rows: list[dict[str, Any]] = []
+    for name in names:
+        try:
+            with open(name, encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except FileNotFoundError:
+            # The normal case: a run with no stopover export simply has none.
+            continue
+        except (json.JSONDecodeError, OSError) as exc:
+            _warn_stopover_skip(name, f"unreadable: {type(exc).__name__}: {exc}")
+            continue
+        if not isinstance(payload, dict) or payload.get("schema") != STOPOVER_READS_SCHEMA:
+            found = payload.get("schema") if isinstance(payload, dict) else type(payload).__name__
+            _warn_stopover_skip(name, f"schema is {found!r}, expected {STOPOVER_READS_SCHEMA!r}")
+            continue
+        for index, item in enumerate(payload.get("rows") or ()):
+            if not isinstance(item, dict):
+                _warn_stopover_skip(f"{name}#{index}", "not an object")
+                continue
+            pair = item.get("pair")
+            if not (isinstance(pair, (list, tuple)) and len(pair) == 2):
+                _warn_stopover_skip(f"{name}#{index}", "no date pair")
+                continue
+            if not str(item.get("hub", "")).strip() or not str(item.get("airport", "")).strip():
+                _warn_stopover_skip(f"{name}#{index}", "no hub or airport")
+                continue
+            rows.append(dict(item))
+    return tuple(rows)
 
 
 #: Read fares, keyed by the exact pair, hub and airport they were read for.
@@ -2977,7 +3650,8 @@ STOPOVER_FARES: dict[tuple[tuple[str, str], str, str], tuple[dict[str, Any], ...
 
 
 def stopover_fares_for(hub: str, airport: str, season: str, *,
-                       pair: Optional[tuple[str, str]] = None) -> tuple[dict[str, Any], ...]:
+                       pair: Optional[tuple[str, str]] = None,
+                       fares: Optional[Mapping[Any, Any]] = None) -> tuple[dict[str, Any], ...]:
     """Stopover fares for one ``(hub, airport)`` in one season, optionally one pair.
 
     The option is season-scoped so a July read and a December read coexist
@@ -2985,6 +3659,9 @@ def stopover_fares_for(hub: str, airport: str, season: str, *,
     was read for, and only that season's planner sees it. Pass ``pair`` to ask
     the narrower question "was this itinerary read for THESE dates"; a read for
     any other pair is not an answer.
+
+    ``fares`` overrides the module's committed reads, so one run can price
+    from the private exports without mutating shared state.
     """
     wanted = (season or "").strip().lower() or "winter"
     hub_key = str(hub).upper()
@@ -2992,14 +3669,15 @@ def stopover_fares_for(hub: str, airport: str, season: str, *,
     pair_key = None
     if pair is not None:
         pair_key = (str(pair[0]), str(pair[1]))
+    source = STOPOVER_FARES if fares is None else fares
     found = []
-    for (read_pair, read_hub, read_airport), fares in STOPOVER_FARES.items():
+    for (read_pair, read_hub, read_airport), fares_for_key in source.items():
         if (read_hub, read_airport) != (hub_key, airport_key):
             continue
         if pair_key is not None and read_pair != pair_key:
             continue
         found.extend(
-            fare for fare in fares
+            fare for fare in fares_for_key
             if str(fare.get("season", "summer")).strip().lower() == wanted
         )
     return tuple(found)
@@ -3365,11 +4043,68 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
         # December unit corrected 2026-10-03 (H6): the Ocean Front Two Bedroom
         # Family & Friends Suite is ONE booking for 5, so this is no longer a
         # "cheapest option on Google Hotels" of unknown unit.
+        # pool_heated_c stays None (H9, 2026-10-04): the hotel's OWN site says
+        # the lagoon pools are heated "from now until March", which covers
+        # December, but it states no temperature — so the >= 28°C gate is NOT
+        # applied and the report names it as unverified rather than claiming a
+        # number no source published.
         "suite_type": "Ocean Front Two Bedroom Family & Friends Suite (one unit for 5)",
         "suite_nightly_gbp": 2814.0, "suite_peak_nightly_gbp": 2814.0,
         "rooms_in_unit": 1,
         "beach_walkable": True, "pool_heated_c": None, "tripadvisor": None,
         "nonstop_from": ("LHR",),
+    },
+    # ── MEXICO AND JAPAN (H9, 2026-10-04). ``pool_heated_c`` 0 = not stated
+    # and NOT gated: the >= 28°C heated-pool rule is a DECEMBER rule, and these
+    # are July entries priced from derived (estimate) nightlies. ``tripadvisor``
+    # stays None on every row: the field records what THIS ENGINE has read, and
+    # the engine has read no TripAdvisor score — the research's own figures
+    # (Grand Velas 4.6, Halekulani 4.6) are quoted in the catalogue comments.
+    "Grand Velas Riviera Maya": {
+        # The one-booking unit is official: the hotel's own suite page states
+        # "Ideal for 6 adults and 2 minors". This is the ONLY researched
+        # Riviera Maya property that satisfies the one-booking rule outright.
+        # pool_heated_c None, not 0: this row prices BOTH seasons (Grand Velas
+        # is in the winter catalogue too) and the pool temperature was not
+        # published, so the December >= 28°C gate must NOT be applied — a 0
+        # would filter it as "not heated", which is a claim no source makes.
+        "suite_type": "Ambassador Two-Bedroom Family Suite Ocean View (one unit, rated for 6 adults)",
+        "suite_nightly_gbp": 1800.0, "suite_peak_nightly_gbp": 1800.0,
+        "rooms_in_unit": 1,
+        "beach_walkable": True, "pool_heated_c": None, "tripadvisor": None,
+        "nonstop_from": (),  # no LHR-CUN nonstop in July 2027 (ends 11 Apr 2027)
+    },
+    "Dreams Tulum Resort & Spa": {
+        # Occupancy NOT officially confirmed: Hyatt's pages returned HTTP 403 to
+        # automated reads on 2026-10-04 and "up to six guests" is Booking.com's
+        # wording. rooms_in_unit None fails the one-unit check honestly rather
+        # than claiming a suite the hotel did not confirm sleeps 5.
+        "suite_type": "Two-Bedroom Family Suite Deluxe Garden View (occupancy from Booking.com, not Hyatt)",
+        "suite_nightly_gbp": 1150.0, "suite_peak_nightly_gbp": 1150.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "Halekulani Okinawa": {
+        # Same honest refusal: no single-unit category for 5 adults was
+        # confirmed (50 m² standard rooms take a king; connecting rooms or a
+        # villa is the likely route), so the one-booking rule cannot be claimed.
+        "suite_type": "50 m² standard room with terrace, or one of five villas (5-adult single unit not confirmed)",
+        "suite_nightly_gbp": 1500.0, "suite_peak_nightly_gbp": 1500.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    "Melati Beach Resort & Spa": {
+        # One unit, one booking: the Presidential Suite was read for exactly 5
+        # guests at GBP 960 a night (Google Hotels, 20-27 Jul 2027, read
+        # 2026-10-02). Its bedroom count was NOT read (347 m², no breakdown),
+        # so the 2-BEDROOM part of the rule is not claimed — the card says so.
+        "suite_type": "Presidential Suite, 347 m² (one unit for 5; bedroom count not read)",
+        "suite_nightly_gbp": 960.0, "suite_peak_nightly_gbp": 960.0,
+        "rooms_in_unit": 1,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
     },
 }
 
@@ -3594,7 +4329,11 @@ BUSINESS_CARRIER_BY_AIRPORT: dict[str, str] = {
             "(Scoot / Garuda Economy on the final leg; unpriced combination)"),
     "ZNZ": "Ethiopian / EgyptAir / Etihad Business (1 stop)",
     "MRU": "Air France + Air Mauritius / Emirates Business (1 stop)",
-    "CUN": "Virgin Atlantic Upper Class (nonstop)",
+    "CUN": ("Virgin Atlantic Upper Class (nonstop, 18 Oct 2026 - 11 Apr 2027 only — a "
+        "July trip connects, so a Gulf or Turkish long-haul Business cabin with "
+        "an Economy hop)"),
+    "OKA": ("ANA / Japan Airlines business-class-cabin long-haul on LHR-HND, then "
+            "Economy or ANA domestic to OKA (2h40)"),
 }
 
 PREMIUM_CARRIER_BY_AIRPORT: dict[str, str] = {
@@ -3871,6 +4610,7 @@ def collect_holiday_deals(
     live_flight_offers: Optional[Mapping[str, LiveFareEvidence]] = None,
     hotel_evidence: Optional[Mapping[Any, Any]] = None,
     package_evidence: Optional[Mapping[Any, Any]] = None,
+    stopover_reads: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> tuple[PackageDeal, ...]:
     """Calculate holiday packages, enforcing the budget on BOTH the package
     total (flights + hotel) AND the True D2D total (package + UK ground +
@@ -3890,9 +4630,22 @@ def collect_holiday_deals(
     for one booking on one date is information about the market, not a
     re-ranking of the report. Absent, or with no qualifying package, nothing
     changes.
+
+    ``stopover_reads`` is the private stopover export (``load_stopover_reads``):
+    whole-party multi-city fares read for the hub-stopover itineraries. They
+    join the committed reads for this run only, and still only ever appear on a
+    card whose OWN dates were read, so a run whose config has moved on shows
+    the price-it-yourself link instead of a borrowed number.
     """
     if max_budget_gbp is None:
         max_budget_gbp = getattr(config, "max_budget_gbp", 5000.0)
+    # This run's stopover fares: the committed reads plus whatever the private
+    # engine exported. Resolved once here, so one run is internally consistent
+    # and the module's committed table is never mutated.
+    stopover_fares = (
+        STOPOVER_FARES if not stopover_reads
+        else _stopover_fares(tuple(_STOPOVER_READS) + tuple(stopover_reads))
+    )
     pairs = pricing_order(config)
     priced_pairs_set = set(pairs)
     headline = priced_date_pair(config)
@@ -4073,14 +4826,36 @@ def collect_holiday_deals(
             return "observed fare"
         return fallback
 
-    def _flight_options(resort, arch, business: dict) -> tuple[dict, ...]:
+    def _flight_options(resort, arch, business: Optional[dict],
+                    headline: Optional[dict] = None) -> tuple[dict, ...]:
         """(a) Business, (b) Economy, (b2) Premium Economy on the same route,
         (c) Economy and (c2) Premium Economy with a Gulf stopover each way,
-        plus any mixed-cabin fare: every one a whole-party total."""
-        rows = [_option_row("business", "BUSINESS", business,
-                            _evidence_words(business, "estimate: economy fare x2.5"))]
-        economy = _best_option(resort, "ECONOMY", 1.0, arch, enforce_budget=False,
-                               prefer_evidence=True)
+        plus any mixed-cabin fare: every one a whole-party total.
+
+        ``business`` is ``None`` on a route the report prices as ECONOMY, and
+        then there is no Business row at all (owner rule 2026-10-04, "only
+        quote business class for direct flights"). Every other row is
+        unchanged: Economy, the Gulf stopovers, Premium Economy and a mixed-cabin
+        fare are comparisons a reader chooses between, not quotes for a cabin
+        the destination is not sold in.
+
+        ``headline`` is the card's own chosen option, and it is the Economy row
+        when the card is priced Economy. That row was otherwise re-derived
+        WITHOUT the budget test, which on an economy long-haul card is a
+        different option from the card itself: a card priced on a fitting
+        twelve-night pair would show an Economy row built from an unaffordable
+        fourteen-night read, so the card's own option would read "over budget"
+        on a card the report calls affordable. A comparison must never
+        contradict the headline it sits beside.
+        """
+        rows: list[dict] = []
+        if business is not None:
+            rows.append(_option_row("business", "BUSINESS", business,
+                                    _evidence_words(business, "estimate: economy fare x2.5")))
+        economy = headline if headline is not None else _best_option(
+            resort, "ECONOMY", 1.0, arch, enforce_budget=False,
+            prefer_evidence=True,
+        )
         if economy is not None:
             # No evidence read for these dates: exactly "benchmark", never
             # "read" and never a second provenance word (2026-10-02).
@@ -4122,7 +4897,8 @@ def collect_holiday_deals(
         if stopover_season and card_pair in priced_pairs_set:
             for hub, info in STOPOVER_HUBS.items():
                 for fare in stopover_fares_for(hub, str(resort["airport"]).upper(),
-                                               stopover_season, pair=card_pair):
+                                               stopover_season, pair=card_pair,
+                                               fares=stopover_fares):
                     pair = tuple(fare["pair"])
                     nights = nights_between(pair)
                     # The stopover arrives at the resort two days after leaving
@@ -4221,6 +4997,17 @@ def collect_holiday_deals(
 
     def _over_row(resort, dest, cabin, cheapest, arch, flight_options) -> dict[str, Any]:
         evidence = cheapest["evidence"]
+        # An operator's own package for this property, if it fits the ceiling
+        # (brief H9, 2026-10-04). The row says "nothing fits"; this says what
+        # an operator would charge for a pair this run also prices. None when
+        # no read qualifies, or when the read is itself over the ceiling.
+        package = _over_operator_package(
+            package_evidence,
+            resort["name"],
+            priceable_date_pairs(config),
+            cheapest["true_d2d"],
+            max_budget_gbp,
+        )
         return {
             "resort_name": resort["name"],
             "destination_key": dest.key,
@@ -4246,6 +5033,7 @@ def collect_holiday_deals(
             "board_options": board_totals(resort, cheapest["nights"]),
             "flight_options": flight_options,
             "max_budget_gbp": float(max_budget_gbp),
+            "package": package,
         }
     for dest in config.destinations:
         resorts, dropped = filter_resorts(
@@ -4290,13 +5078,23 @@ def collect_holiday_deals(
                         "once one is read.",
                     ))
                     continue
-                # LONG HAUL (Business, over 8 hours): three options side by
-                # side, each a whole-party total, and the budget tested against
-                # each one separately (owner, 2026-09-30). The resort is a card
-                # when ANY option fits; Business stays its headline. Only when
-                # no option fits is it listed over budget, with every option
-                # shown. Short haul keeps its old single-option gate.
-                long_haul = cabin.upper() == "BUSINESS"
+                # LONG HAUL ROUTE (the London journey over 8 hours): three
+                # options side by side, each a whole-party total, and the
+                # budget tested against each one separately (owner,
+                # 2026-09-30). The resort is a card when ANY option fits.
+                # Only when no option fits is it listed over budget, with
+                # every option shown. Short haul keeps its old single-option
+                # gate.
+                #
+                # "Long haul" is a statement about the ROUTE, not about the
+                # cabin, since 2026-10-04: a one-stop Zanzibar at 11h40 is a
+                # long haul, and its card still carries the Economy row and
+                # the two-nights-at-the-hub stopover rows the owner asked for
+                # ("stop at oman on way out 2d... or maybe doha 2d"). What
+                # changed is the Business ROW, which now appears only on a
+                # route priced Business — that is, a nonstop over 8 hours.
+                long_haul = is_long_haul_destination(dest)
+                business_cabin = cabin.upper() == "BUSINESS"
                 flight_options: tuple[dict[str, Any], ...] = ()
                 if long_haul:
                     # CHOOSE AMONG THE OPTIONS THAT FIT FIRST (owner brief
@@ -4310,35 +5108,67 @@ def collect_holiday_deals(
                     # GBP 111,526 against a GBP 20,000 ceiling, because the
                     # economy row fitted (REVIEW-H5 P1).
                     #
-                    # So the business option is first sought among the candidates
-                    # that clear BOTH ceilings - same evidence-first, then
-                    # cheapest ranking (H5), just not allowed to look outside the
-                    # budget. Only when NO business option fits does this fall
-                    # back to exactly the previous behaviour, because then the
-                    # card is honestly over budget and says so on its face.
+                    # So the headline cabin's option is first sought among the
+                    # candidates that clear BOTH ceilings - same evidence-first,
+                    # then cheapest ranking (H5), just not allowed to look
+                    # outside the budget. Only when NO option fits does this
+                    # fall back to exactly the previous behaviour, because then
+                    # the card is honestly over budget and says so on its face.
                     fitting = _best_option(
                         resort, cabin, flight_mult, arch,
                         enforce_budget=True, prefer_evidence=True,
                     )
                     if fitting is not None:
                         cheapest = fitting
-                        flight_options = _flight_options(resort, arch, cheapest)
+                        flight_options = _flight_options(
+                            resort, arch, cheapest if business_cabin else None,
+                            # Only when the card IS the Economy option. On a
+                            # Business card the Economy row stays an independent
+                            # comparison priced without the budget test, so it
+                            # can be shown as over budget beside a card that
+                            # exists because it fits.
+                            headline=cheapest if not business_cabin else None,
+                        )
                         option = cheapest
                     else:
                         cheapest = _best_option(
                             resort, cabin, flight_mult, arch,
                             enforce_budget=False, prefer_evidence=True,
                         )
-                        flight_options = _flight_options(resort, arch, cheapest) if cheapest else ()
+                        flight_options = (
+                            _flight_options(
+                                resort, arch, cheapest if business_cabin else None,
+                                headline=cheapest if not business_cabin else None,
+                            )
+                            if cheapest else ()
+                        )
                         option = (
                             cheapest
                             if any(row["within_budget"] for row in flight_options)
                             else None
                         )
                     if option is None and cheapest is not None:
-                        over_budget.append(
-                            _over_row(resort, dest, cabin, cheapest, arch, flight_options)
+                        # THE PACKAGE RESCUE (owner decision 2, 2026-10-04).
+                        # The resort's own flights + stay cleared no option,
+                        # so it was about to be listed over budget. Before
+                        # that happens: is there an operator package for the
+                        # card's OWN dates, with economy flights, inside the
+                        # ceiling? If there is, the card stays and the
+                        # package total becomes its headline. This is the one
+                        # place an operator's price may price anything.
+                        rescue = _promoting_package(
+                            package_evidence, str(resort["name"]),
+                            str(cheapest["outbound"]), str(cheapest["return"]),
+                            cheapest["true_d2d"], max_budget_gbp,
+                            nights=int(cheapest["nights"]),
                         )
+                        if rescue is not None:
+                            option = dict(cheapest)
+                            option["rescue"] = rescue
+                        else:
+                            over_budget.append(
+                                _over_row(resort, dest, cabin, cheapest, arch, flight_options)
+                            )
                 else:
                     # Short haul: the same evidence-first choice the long-haul
                     # card makes (owner brief 2026-10-04, H5). The candidate set
@@ -4354,9 +5184,24 @@ def collect_holiday_deals(
                         # so a destination the owner asked for never vanishes.
                         cheapest = _best_option(resort, cabin, flight_mult, arch, enforce_budget=False)
                         if cheapest is not None:
-                            held_short_haul.setdefault(dest.key, []).append(
-                                _over_row(resort, dest, cabin, cheapest, arch, ())
+                            # ...and the package rescue gets its chance here too.
+                            # An economy route is exactly where an operator's
+                            # economy package can out-price the engine's own
+                            # flights + stay, so it is the case the rule was
+                            # written for.
+                            rescue = _promoting_package(
+                                package_evidence, str(resort["name"]),
+                                str(cheapest["outbound"]), str(cheapest["return"]),
+                                cheapest["true_d2d"], max_budget_gbp,
+                                nights=int(cheapest["nights"]),
                             )
+                            if rescue is not None:
+                                option = dict(cheapest)
+                                option["rescue"] = rescue
+                            else:
+                                held_short_haul.setdefault(dest.key, []).append(
+                                    _over_row(resort, dest, cabin, cheapest, arch, ())
+                                )
                 if option is not None:
                     target_outbound = option["outbound"]
                     target_return = option["return"]
@@ -4372,6 +5217,27 @@ def collect_holiday_deals(
                     evidence = option["evidence"]
                     evidence_used = option["evidence_used"]
                     hotel_rate = option.get("hotel_rate")
+                    # PACKAGE-PRICED CARD (owner decision 2, 2026-10-04). The
+                    # headline is now the operator's own total for this exact
+                    # trip, so the engine's split of it is no longer a fact
+                    # about anything: the operator displayed ONE price for
+                    # flights + board + rooms, and dividing it ourselves would
+                    # be a split nobody published. So the two halves are zeroed
+                    # — never a guess — the UK ground and transfer go with them
+                    # (they are inside the operator's price), and the breakdown
+                    # prints the package as its single part, which is what makes
+                    # it add up to the headline.
+                    rescue = option.get("rescue")
+                    package_priced = rescue is not None
+                    if package_priced:
+                        engine_total = true_d2d
+                        total_pkg = round(float(rescue.total_gbp), 2)
+                        true_d2d = total_pkg
+                        flight_cost = 0.0
+                        hotel_cost = 0.0
+                        uk_ground = 0.0
+                        transfer = 0.0
+                        hotel_rate = None
                     price_pp = round(total_pkg / travellers, 2)
                     # REAL discount baseline: the SAME suite, same nights/party,
                     # at the resort's summer peak (Jul/Aug school-holiday highs),
@@ -4436,7 +5302,17 @@ def collect_holiday_deals(
                             hotel_booking_url=resort["hotel_url"],
                             is_under_budget=_within(total_pkg, true_d2d),
                             flight_options=flight_options,
-                            board_options=board_totals(resort, nights),
+                            board_options=(
+                                # No re-basing on a package-priced card: the
+                                # renderer computes each other board by
+                                # swapping this card's stay for that board's
+                                # nightly rate, and this card's stay is the
+                                # operator's undivided package total. The board
+                                # the operator quoted is on the card; the ones
+                                # they did not quote are not ours to price.
+                                () if package_priced
+                                else board_totals(resort, nights)
+                            ),
                             monsoon_months=tuple(resort.get("monsoon_months", ()) or ()),
                             # Booking terms: carried from the resort data only
                             # when it is actually there. A key that is absent
@@ -4489,20 +5365,37 @@ def collect_holiday_deals(
                             # economy benchmark x2.5: that total is an estimate,
                             # whatever the provenance of the room rate beside it.
                             confidence=(
-                                evidence.confidence
-                                if (evidence_used and evidence is not None)
+                                # A package-priced card's headline IS a price
+                                # somebody displayed for these exact dates,
+                                # read recently. Saying so is honest; labelling
+                                # it with the engine's benchmark confidence
+                                # would understate the card, and labelling it
+                                # with the ENGINE's flight evidence would
+                                # describe a number that is no longer on it.
+                                "verified-exact-date"
+                                if package_priced
                                 else (
-                                    "estimate"
-                                    if cabin.upper() != "ECONOMY"
-                                    else resort.get("confidence", "market-supported")
+                                    evidence.confidence
+                                    if (evidence_used and evidence is not None)
+                                    else (
+                                        "estimate"
+                                        if cabin.upper() != "ECONOMY"
+                                        else resort.get("confidence", "market-supported")
+                                    )
                                 )
                             ),
                             # The hotel rate's own basis, kept apart from the
-                            # flight basis above (F4, 2026-10-03).
+                            # flight basis above (F4, 2026-10-03). A
+                            # package-priced card has no separate hotel read:
+                            # the operator's own quote is the stay.
                             hotel_rate_basis=(
-                                "exact-date-rate"
-                                if hotel_rate is not None
-                                else str(resort.get("confidence", "market-supported"))
+                                "operator package"
+                                if package_priced
+                                else (
+                                    "exact-date-rate"
+                                    if hotel_rate is not None
+                                    else str(resort.get("confidence", "market-supported"))
+                                )
                             ),
                             hotel_evidence=hotel_rate,
                             # The operator's own package price for these dates,
@@ -4510,20 +5403,38 @@ def collect_holiday_deals(
                             # computed after the headline is fixed and cannot
                             # reach the total, the budget test, the discount,
                             # the value score or the ordering.
-                            operator_package=_operator_package(
-                                package_evidence,
-                                str(resort["name"]),
-                                target_outbound,
-                                target_return,
-                                total_pkg,
+                            operator_package=(
+                                # On a package-priced card this IS the price,
+                                # so it is the object already chosen (and
+                                # already gated) rather than a fresh lookup.
+                                # The gap stays measured against the engine's
+                                # own flights + stay, which is what
+                                # "£X less than booking separately" means.
+                                _OperatorPackageWithGap(rescue, engine_total)
+                                if package_priced
+                                else _operator_package(
+                                    package_evidence,
+                                    str(resort["name"]),
+                                    target_outbound,
+                                    target_return,
+                                    total_pkg,
+                                )
                             ),
+                            package_priced=package_priced,
                             # An aged fare shows its source and observed date too:
                             # the auditability mandate applies to a "this was
                             # observed on <date>" claim as much as to a live one.
                             source_url=(
-                                evidence.source_url
-                                if (evidence_used and evidence is not None)
-                                else resort.get("hotel_url", "")
+                                # On a package-priced card the auditable source
+                                # of the headline is the operator's own quote,
+                                # so that is what the reader is linked to.
+                                str(rescue.source_url)
+                                if package_priced
+                                else (
+                                    evidence.source_url
+                                    if (evidence_used and evidence is not None)
+                                    else resort.get("hotel_url", "")
+                                )
                             ),
                             live_carrier=(
                                 evidence.carrier
@@ -4531,9 +5442,13 @@ def collect_holiday_deals(
                                 else ""
                             ),
                             live_observed_at=(
-                                evidence.observed_at
-                                if (evidence_used and evidence is not None)
-                                else ""
+                                str(rescue.observed_at)
+                                if package_priced
+                                else (
+                                    evidence.observed_at
+                                    if (evidence_used and evidence is not None)
+                                    else ""
+                                )
                             ),
                             peak_summer_total_gbp=peak_total,
                             unit_architecture=arch["suite_type"],
@@ -4842,7 +5757,16 @@ def render_diy_block(deal: PackageDeal, *, adults: int) -> str:
     observed for this card, so the comparison declares no winner and says so,
     rather than comparing the report's own benchmark against itself and calling
     the difference a saving.
+
+    A card priced FROM an operator package renders nothing here. Its flights and
+    stay were never split on our side — the operator displayed one figure — so
+    a DIY comparison built from those fields would be a total of two zeros,
+    set against the card's own headline and reporting a saving of the whole
+    holiday. The card's package line already says what the price covers and
+    what it saves against the engine's own quote.
     """
+    if bool(getattr(deal, "package_priced", False)):
+        return ""
     option = build_diy_option(
         flight_total_gbp=deal.flight_price_total_gbp,
         flight_carrier=deal.live_carrier or deal.airline,
@@ -4981,8 +5905,12 @@ def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
 
     One row per configured destination that has a ``FAR_EAST_WATCH`` entry.
     Priced from the watch benchmarks for the same target date pair the cards
-    use; a destination listed outside its season carries no price.
+    use; a destination listed outside its season carries no price. A key that
+    has resort entries in the catalogue being priced is NOT watched as well:
+    the real cards stand in its place rather than a benchmark beside them
+    (H9, 2026-10-04 — Okinawa in July).
     """
+    catalog = resort_catalog(config)
     shortlist = shortlist_date_pairs(config)
     if not shortlist:
         return []
@@ -4996,6 +5924,9 @@ def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
     for dest in config.destinations:
         watch = FAR_EAST_WATCH.get(dest.key.lower())
         if watch is None:
+            continue
+        if catalog.get(dest.key.lower()):
+            # Real resorts are priced for this destination this season.
             continue
         cabin = destination_cabin(dest)
         in_season = month in watch["months"]
@@ -5014,15 +5945,33 @@ def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
             total = float(business_pp * config.travellers + suite)
             economy_total = float(economy_pp * config.travellers + suite)
             premium_economy_total = float(premium_economy_pp * config.travellers + suite)
+        # The cabin this row is HEADLINED at. One figure per cabin, so the
+        # headline follows the derived cabin and the other two are named
+        # comparisons beside it. Before 2026-10-04 every row was headed at
+        # Business; on a one-stop route that quoted, as a headline, a cabin the
+        # owner does not buy.
+        headline_total = {
+            "BUSINESS": total, "PREMIUM_ECONOMY": premium_economy_total,
+        }.get(cabin, economy_total)
+        headline_pp = {
+            "BUSINESS": business_pp, "PREMIUM_ECONOMY": premium_economy_pp,
+        }.get(cabin, economy_pp)
         rows.append({
             "key": dest.key,
             "label": dest.label,
             "airport": HOLIDAY_AIRPORTS.get(dest.key.lower(), dest.airports[0]),
             "flight_hours": dest.flight_hours,
             "flight_hours_source": dest.flight_hours_source,
+            "nonstop_from_london": dest.nonstop_from_london,
+            "nonstop_source": dest.nonstop_source,
             "cabin": cabin,
+            "headline_total_gbp": headline_total,
+            "headline_pp_gbp": headline_pp,
             "routing": watch["routing"],
             "climate": watch["climate"],
+            # Why a season the watch does not cover is still watched, when the
+            # destination has one thing to say (H9: Okinawa in December).
+            "reason": watch.get("reason", ""),
             "in_season": in_season,
             "outbound": outbound,
             "return": returning,
@@ -5034,9 +5983,14 @@ def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
             "indicative_total_gbp": total,
             "economy_total_gbp": economy_total,
             "premium_economy_total_gbp": premium_economy_total,
+            # Judged on the row's OWN headline, not on the Business benchmark:
+            # a one-stop row headed at Economy that fits the ceiling is not
+            # "over budget", and saying so would hide an affordable trip
+            # (owner rule 2026-10-04).
             "over_budget_gbp": (
-                round(total - config.max_budget_gbp, 2)
-                if total is not None and total > config.max_budget_gbp
+                round(headline_total - config.max_budget_gbp, 2)
+                if headline_total is not None
+                and headline_total > config.max_budget_gbp
                 else 0.0
             ),
             "price_basis": FAR_EAST_PRICE_LABEL,
@@ -5099,12 +6053,13 @@ def render_far_east_watch(config: HolidayConfig) -> str:
 
     out = [
         '<h2 style="margin:6px 0 4px 0; color:#0f172a; font-size:22px; font-weight:800;">'
-        '🌏 Far East first — long haul, Business (over 8 h from London)</h2>',
+        '🌏 Far East first — long haul (over 8 h from London)</h2>',
         '<p style="margin:0 0 8px 0; color:#475569; font-size:13px;">Every figure in this block is '
-        '<strong>' + FAR_EAST_PRICE_LABEL + '</strong>: an estimate of a peak-season Business fare '
+        '<strong>' + FAR_EAST_PRICE_LABEL + '</strong>: an estimate of a peak-season fare '
         'and a 5-star family-suite night, not an observed or quoted price. These destinations have no '
         'resort in the catalogue, so they are destination watches, not '
-        'hotel cards. Cabin rule: Business only when the flight is over 8 hours, otherwise Economy.</p>',
+        'hotel cards. Cabin rule: Business only on a NONSTOP London flight over 8 hours; a '
+        'one-stop route is quoted Economy, whatever its journey time.</p>',
     ]
     if full:
         out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
@@ -5114,10 +6069,14 @@ def render_far_east_watch(config: HolidayConfig) -> str:
             out.append('<strong style="color:#0f172a; font-size:14px;">' + escape(row["label"]) + '</strong><br>')
             out.append('✈ ' + escape(_hours_text(row["flight_hours"])) + ' · ' + escape(row["routing"])
                        + ' · <strong>' + escape(row["cabin"].title()) + '</strong> · ' + escape(row["climate"]))
-            if row["in_season"] and row["indicative_total_gbp"] is not None:
-                out.append('<br>≈ £' + f'{row["fare_pp_gbp"]:,.0f}' + 'pp Business + suite ≈ £'
+            headline_total = row.get("headline_total_gbp")
+            if row["in_season"] and headline_total is not None:
+                # The headline is the DERIVED cabin's figure. The others are
+                # named as comparisons beneath it, never in its place.
+                out.append('<br>≈ £' + f'{row["headline_pp_gbp"]:,.0f}' + 'pp '
+                           + escape(row["cabin"].title()) + ' + suite ≈ £'
                            + f'{row["suite_night_gbp"]:,.0f}' + '/night → <strong style="color:#0f172a;">≈ £'
-                           + f'{row["indicative_total_gbp"]:,.0f}' + '</strong> for ' + str(config.travellers)
+                           + f'{headline_total:,.0f}' + '</strong> for ' + str(config.travellers)
                            + ', ' + str(row["nights"]) + ' nights — <em>' + FAR_EAST_PRICE_LABEL + '</em>')
                 # The budget line leads with the cheapest option that FITS and
                 # only then names the cabins that do not (owner rule 2026-10-02):
@@ -5138,10 +6097,22 @@ def render_far_east_watch(config: HolidayConfig) -> str:
                 )
                 if budget_line:
                     out.append(' · ' + budget_line)
-                out.append('<br>&nbsp;&nbsp;also ≈ £' + f'{row["economy_total_gbp"]:,.0f}' + ' Economy · ≈ £'
-                           + f'{row["premium_economy_total_gbp"]:,.0f}' + ' Premium Economy — same suite, same basis')
+                others = ' · '.join(
+                    escape(_BUDGET_CABIN_LABELS[kind].title()) + ' ≈ £'
+                    + f'{float(row[key]):,.0f}'
+                    for kind, key in (
+                        ("business", "indicative_total_gbp"),
+                        ("economy", "economy_total_gbp"),
+                        ("premium_economy", "premium_economy_total_gbp"),
+                    )
+                    if kind != row["cabin"].lower()
+                )
+                if others:
+                    out.append('<br>&nbsp;&nbsp;also ' + others + ' — same suite, same basis')
             else:
                 out.append('<br><span style="color:#b45309;">Outside its season for these dates — no price shown.</span>')
+                if row.get("reason"):
+                    out.append(' ' + escape(row["reason"]) + '.')
             out.append('<br>' + _links(row))
             out.append('</td></tr>')
         out.append('</table>')
@@ -5164,16 +6135,34 @@ def render_far_east_watch(config: HolidayConfig) -> str:
                 if row.get(key) is not None
             )
             gap = cheapest - budget
+            # The row leads with its OWN cabin's figure, which on a one-stop
+            # route is Economy; the other cabins are named beside it, so the
+            # headline is never a cabin this destination is not sold in.
+            own = {
+                "business": "indicative_total_gbp",
+                "economy": "economy_total_gbp",
+                "premium_economy": "premium_economy_total_gbp",
+            }.get(str(row["cabin"]).lower(), "economy_total_gbp")
+            others = ' · '.join(
+                escape(_BUDGET_CABIN_LABELS[kind].title()) + ' ≈ £'
+                + f'{float(row[key]):,.0f}'
+                for kind, key in (
+                    ("business", "indicative_total_gbp"),
+                    ("economy", "economy_total_gbp"),
+                    ("premium_economy", "premium_economy_total_gbp"),
+                )
+                if key != own
+            )
             out.append('<tr><td style="padding:7px 12px; border-bottom:1px solid #f1f5f9; font-size:13px; color:#475569;">'
                        '<strong style="color:#0f172a;">' + escape(row["label"]) + '</strong> · '
-                       + escape(_hours_text(row["flight_hours"])) + ' · cheapest benchmark ≈ £'
-                       + f'{cheapest:,.0f}' + ' for ' + str(config.travellers)
+                       + escape(_hours_text(row["flight_hours"])) + ' · ≈ £'
+                       + f'{cheapest:,.0f}' + ' ' + escape(row["cabin"].title()) + ' for '
+                       + str(config.travellers)
                        + ' <em>' + FAR_EAST_PRICE_LABEL + '</em>'
-                       # The Economy / Premium Economy comparison stays even
-                       # on a collapsed row: it is an owner direction
-                       # (2026-09-30), and compaction must not drop it.
-                       + ' · also ≈ £' + f'{row["economy_total_gbp"]:,.0f}' + ' Economy · ≈ £'
-                       + f'{row["premium_economy_total_gbp"]:,.0f}' + ' Premium Economy'
+                       # The other cabins stay on a collapsed row: they are an
+                       # owner direction (2026-09-30), and compaction must not
+                       # drop them.
+                       + ' · also ' + others
                        + ' · gap to budget '
                        + '<span style="color:#b45309;">£' + f'{gap:,.0f}' + ' over the £'
                        + f'{budget:,.0f}' + ' budget</span> · ' + _links(row) + '</td></tr>')
@@ -5667,25 +6656,47 @@ def prices_checked_footer(deal: Any, *, generated_at: str) -> str:
     )
 
 
-def _option_title(option: Mapping[str, Any]) -> str:
-    if option["kind"] == "mixed_cabin":
+#: The letter each option line carries, keyed by its kind, for a card that
+#: quotes Business. On a card that does not (a one-stop route, where the owner
+#: quotes Economy) the letters renumber down, so a reader is never shown a
+#: "(b)" with no "(a)" above it.
+_OPTION_LETTERS: dict[str, str] = {
+    "business": "a", "economy": "b", "premium_economy": "b2",
+    "stopover": "c", "stopover_premium_economy": "c2",
+}
+#: The letters vacated when a card carries no Business row: Economy takes (a),
+#: and the stopover takes (b). Premium Economy keeps its own suffix, which is
+#: a comparison line rather than one of the numbered route options.
+_OPTION_LETTERS_NO_BUSINESS: dict[str, str] = {
+    "business": "a", "economy": "a", "premium_economy": "b2",
+    "stopover": "b", "stopover_premium_economy": "b2",
+}
+
+
+def _option_title(option: Mapping[str, Any], *, has_business: bool = True) -> str:
+    kind = str(option.get("kind", ""))
+    if kind == "mixed_cabin":
         # Its own line, named as a mix: never dressed as (a)/(b), because it is
         # neither Business nor Economy — the whole party did not fly in one
         # cabin (owner brief 2026-10-03, H7).
-        return "mixed cabins \u2014 " + str(option.get("cabin_mix", ""))
-    if option["kind"] == "business":
-        return "(a) Business, normal route"
-    if option["kind"] == "economy":
-        return "(b) Economy, same route"
-    if option["kind"] == "premium_economy":
-        return "(b2) Premium Economy, same route"
+        return "mixed cabins — " + str(option.get("cabin_mix", ""))
+    letters = _OPTION_LETTERS if has_business else _OPTION_LETTERS_NO_BUSINESS
+    letter = letters.get(kind)
+    if letter is None:
+        return kind
+    if kind == "business":
+        return f"({letter}) Business, normal route"
+    if kind == "economy":
+        return f"({letter}) Economy, same route"
+    if kind == "premium_economy":
+        return f"({letter}) Premium Economy, same route"
     hub_label = str(option.get("hub_label", option.get("hub")))
-    if option["kind"] == "stopover_premium_economy":
-        return "(c2) Premium Economy + 2 nights " + hub_label + " each way"
-    return "(c) Economy + 2 nights " + hub_label + " each way"
+    if kind == "stopover_premium_economy":
+        return f"({letter}) Premium Economy + 2 nights {hub_label} each way"
+    return f"({letter}) Economy + 2 nights {hub_label} each way"
 
 
-def _flight_option_line(option: Mapping[str, Any]) -> str:
+def _flight_option_line(option: Mapping[str, Any], *, has_business: bool = True) -> str:
     """One full option line: flights, stay, any hub hotel, totals and the budget chip."""
     chip = ('<span style="color:#166534; font-weight:700;">within budget</span>' if option["within_budget"]
             else '<span style="color:#b45309; font-weight:700;">over budget</span>')
@@ -5701,7 +6712,7 @@ def _flight_option_line(option: Mapping[str, Any]) -> str:
         if hub_each_way:
             stay_note += ' + ' + str(hub_each_way) + ' in ' + str(option["hub_label"]) + ' each way'
         stay_note += ')'
-    line = ('<br>' + escape(_option_title(option)) + ': flights £' + f'{float(option["flight_cost"]):,.0f}'
+    line = ('<br>' + escape(_option_title(option, has_business=has_business)) + ': flights £' + f'{float(option["flight_cost"]):,.0f}'
             + ' (' + escape(str(option["flight_basis"])) + ') + stay £' + f'{float(option["hotel_cost"]):,.0f}'
             + stay_note)
     if stopover:
@@ -5749,13 +6760,20 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
     ]
     stopovers = [o for o in options if o["kind"] == "stopover"]
     expanded = _cheapest_stopover(stopovers)
+    # A card that quotes no Business renumbers its options down from (a), so a
+    # reader is never shown a "(b)" with nothing above it (owner rule
+    # 2026-10-04: business only for a direct flight).
+    has_business = any(o["kind"] == "business" for o in options)
 
-    # (a) Business and (b) Economy always.
+    # (a) Business and (b) Economy, when the card has them.
     for kind in ("business", "economy"):
-        out.extend(_flight_option_line(o) for o in options if o["kind"] == kind)
+        out.extend(
+            _flight_option_line(o, has_business=has_business)
+            for o in options if o["kind"] == kind
+        )
     # (c) the cheapest Economy stopover, in full.
     if expanded is not None:
-        out.append(_flight_option_line(expanded))
+        out.append(_flight_option_line(expanded, has_business=has_business))
     # ONE Premium Economy line: the cheapest PE option (same route or stopover),
     # whichever it is, carrying its in/over-budget mark — never a line per
     # cabin variant.
@@ -5763,7 +6781,7 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
                   if o["kind"] in ("premium_economy", "stopover_premium_economy")]
     if pe_options:
         cheapest_pe = min(pe_options, key=lambda o: float(o["total_pkg"]))
-        out.append(_flight_option_line(cheapest_pe))
+        out.append(_flight_option_line(cheapest_pe, has_business=has_business))
     # A mixed-cabin fare, when one was read: its own line, labelled as a mix,
     # never folded into the Business or Economy row above (owner brief
     # 2026-10-03, H7).
@@ -5798,12 +6816,15 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
                     + '" style="color:#2563eb;text-decoration:none;">price this multi-city itinerary ↗</a>')
             if lines:
                 offered = True
-                out.append('<br>(c) Economy + 2 nights in a Gulf hub each way, hotel included: no '
+                out.append(
+                    '<br>(' + ('c' if has_business else 'b')
+                    + ') Economy + 2 nights in a Gulf hub each way, hotel included: no '
                            'whole-party fare was read for these dates, so nothing is priced here — '
                            'price on request, one click to price it:')
                 out.extend(lines)
         if not offered:
-            out.append('<br>(c) Economy + 2 nights Doha or Muscat each way: not priced for these dates '
+            letter = 'c' if has_business else 'b'
+            out.append('<br>(' + letter + ') Economy + 2 nights Doha or Muscat each way: not priced for these dates '
                        '(no multi-city fare was read).')
     out.append('</div>')
     return ''.join(out)
@@ -5879,6 +6900,12 @@ def render_over_budget(rows: Sequence[Mapping[str, Any]], *, travellers: int) ->
         over = max(float(row["true_d2d"]) - budget, 0.0)
         flight_words = _FLIGHT_BASIS_WORDS.get(str(row.get("flight_confidence")), "benchmark estimate")
         hotel_words = _HOTEL_BASIS_WORDS.get(str(row.get("hotel_confidence")), "rate estimate")
+        # The operator's own package, when it fits the ceiling (brief H9).
+        # Imported here, not at module load: ``holiday_email`` imports THIS
+        # module, so the seam has to be lazy or neither can be imported first.
+        from .holiday_email import over_package_html
+
+        package_note = over_package_html(row, travellers=travellers)
         out.append(
             '<tr><td style="padding:8px 12px; border-bottom:1px solid #f1f5f9; font-size:13px; color:#475569;">'
             '<strong style="color:#0f172a;">' + escape(str(row["resort_name"])) + '</strong> · '
@@ -5895,6 +6922,7 @@ def render_over_budget(rows: Sequence[Mapping[str, Any]], *, travellers: int) ->
                                      dates=(row["outbound"], row["return"]),
                                      airport=row["airport"], origin=row["origin"])
                if row.get("flight_options") else '')
+            + (f'<br><span style="color:#0f172a;">{package_note}</span>' if package_note else '')
             + '</td></tr>'
         )
     out.append('</table>')
@@ -6231,11 +7259,13 @@ def render_holiday_report(
                 out.append(' ' + history_chip)
             out.append('</div>')
             if deal_in_monsoon(deal):
-                # Visible, on the card header itself: a monsoon-month trip can
-                # still be priced, but never without this warning.
+                # Visible, on the card header itself: a wet-month trip can
+                # still be priced, but never without this warning. The season
+                # names itself where "monsoon" would be the wrong word.
                 month = deal_travel_month(deal)
                 month_name = escape(_MONTH_NAMES[month - 1]) if month else "your travel"
-                out.append('<div style="margin:0 0 8px 0; padding:7px 11px; background:#fff7ed; border:1px solid #fdba74; border-radius:6px; color:#9a3412; font-size:13px; font-weight:600;">⚠️ Monsoon season (approximate climatology) for your ' + month_name + ' travel month — expect heavy rain and rough seas; pool and beach days may be rained off.</div>')
+                season, hazard = wet_season_words(deal)
+                out.append('<div style="margin:0 0 8px 0; padding:7px 11px; background:#fff7ed; border:1px solid #fdba74; border-radius:6px; color:#9a3412; font-size:13px; font-weight:600;">⚠️ ' + escape(season) + ' for your ' + month_name + ' travel month — ' + escape(hazard) + '.</div>')
             out.append('<div style="color:#64748b; font-size:14px; margin-bottom:7px;">📍 ' + escape(deal.destination_label) + ' (' + escape(deal.destination_airport) + ') · ' + escape(deal.outbound_date) + ' → ' + escape(deal.return_date) + ' · ' + str(deal.nights) + ' nights</div>')
             if deal.highlights:
                 out.append('<div style="color:#475569; font-size:14px; margin-bottom:8px;">✨ ' + escape(' · '.join(deal.highlights)) + '</div>')
@@ -6291,9 +7321,27 @@ def render_holiday_report(
             else:
                 flight_note = "<br><span style=\"font-size:11px;\">estimate — live cabin check required</span>" if cabin_is_premium else ""
             out.append('<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; background:#f8fafc; border-radius:8px; margin-bottom:10px;"><tr>')
-            out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights' + cabin_label + '<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + flight_carrier_display + '</span>' + flight_note + '</td>')
-            suite_label = deal.unit_architecture or (str(rooms_n) + ' rooms')
-            out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🏨 Stay<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(suite_label) + ' · ' + str(deal.nights) + 'n</span></td>')
+            if getattr(deal, "package_priced", False):
+                # One cell, because there is no split to show: the operator
+                # displayed a single figure covering flights, board and rooms.
+                # Printing "Flights £0 / Stay £0" beside it would be the worst
+                # kind of wrong — a card whose parts do not sum to its price.
+                package = deal.operator_package
+                out.append(
+                    '<td colspan="2" style="padding:10px 12px; color:#64748b; font-size:13px;">'
+                    '✈️🏨 Operator package<br><strong style="color:#0f172a; font-size:16px;">£'
+                    + f'{deal.total_package_price_gbp:,.0f}' + '</strong><br>'
+                    '<span style="font-size:12px;">'
+                    + escape(str(getattr(package, "operator", "") or "")) + ' — flights + '
+                    + escape(BOARD_LABELS.get(board_code(getattr(package, "board", "")), str(getattr(package, "board", "") or "")))
+                    + ', ' + str(int(getattr(package, "rooms", 0) or 0))
+                    + (' room' if int(getattr(package, "rooms", 0) or 0) == 1 else ' rooms')
+                    + ' · ' + str(deal.nights) + 'n · quoted as one booking</span></td>'
+                )
+            else:
+                out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px;">✈️ Flights' + cabin_label + '<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.flight_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + flight_carrier_display + '</span>' + flight_note + '</td>')
+                suite_label = deal.unit_architecture or (str(rooms_n) + ' rooms')
+                out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🏨 Stay<br><strong style="color:#0f172a; font-size:16px;">£' + f'{deal.hotel_price_total_gbp:,.0f}' + '</strong><br><span style="font-size:12px;">' + escape(suite_label) + ' · ' + str(deal.nights) + 'n</span></td>')
             if is_summer:
                 climate = SUMMER_WEATHER.get(deal.destination_key.lower(), ((28, 33), 25))
                 out.append('<td style="padding:10px 12px; color:#64748b; font-size:13px; border-left:1px solid #e2e8f0;">🌡️ Summer<br><strong style="color:#0f172a; font-size:16px;">' + str(climate[0][0]) + '–' + str(climate[0][1]) + '°C</strong><br><span style="font-size:12px;">sea ' + str(climate[1]) + '°C</span></td>')

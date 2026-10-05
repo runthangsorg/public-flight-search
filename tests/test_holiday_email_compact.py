@@ -30,7 +30,9 @@ from unittest.mock import patch
 from public_flight_search import holidays as hol
 from public_flight_search.holiday_email import (
     breakdown_parts,
+    departure_range_words,
     freshness_tag,
+    nights_words,
     link_row,
     movement_words,
     render_holiday_report_compact,
@@ -184,8 +186,17 @@ class HeaderTests(unittest.TestCase):
         text = visible_text(_render())
         self.assertIn("5 travellers", text)
         self.assertIn("one booking", text)
-        self.assertIn("departing 26 Jun – 3 Jul", text)
-        self.assertIn("12–21 nights", text)
+        # DERIVED from the config, never pasted. The header's whole job is to
+        # state the window this config prices, and the owner's window moved on
+        # 2026-10-04 (depart 25-30 June 2027), so a header test that quotes the
+        # dates breaks on every window change without testing anything new. It
+        # is asserted against the shared helper the header itself calls.
+        config = _config()
+        self.assertIn(
+            f"departing {departure_range_words(config, generated_at=GENERATED_AT)}",
+            text,
+        )
+        self.assertIn(nights_words(config), text)
 
     def test_december_states_its_own_window_not_july_s(self):
         text = visible_text(_render(config=load_holiday_config(DEC.read_text(encoding="utf-8"))))
@@ -618,9 +629,15 @@ class WarningTests(unittest.TestCase):
 
 
 class CompactnessTests(unittest.TestCase):
-    def test_twelve_deals_stay_under_fifteen_hundred_words(self):
+    def test_twelve_deals_stay_under_the_word_cap(self):
+        # 1,800, raised from 1,500 on 2026-10-04 (H9). The Two-centre section
+        # the owner asked for is about 300 words of REQUIRED content — five
+        # itineraries, each a title, a cost range, a budget verdict, one line of
+        # why and one of catch — and it is not decoration that can be cut to
+        # hit a number. What the cap still does is bound the whole e-mail: a
+        # report that grows past it is a report nobody reads on a phone.
         html = _render(deals=_deals(12))
-        self.assertLess(word_count(html), 1500)
+        self.assertLess(word_count(html), 1800)
 
     def test_the_dropped_sections_cannot_come_back(self):
         text = visible_text(_render(deals=_deals(12)))

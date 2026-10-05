@@ -34,6 +34,7 @@ import re
 from typing import Any, Mapping, Optional, Sequence, Union
 
 from . import holidays as hol
+from .cabin import SHORT_HAUL_CABIN
 from .holidays import (
     HolidayConfig,
     PackageDeal,
@@ -44,7 +45,10 @@ from .holidays import (
     observation_age_hours,
     relative_age_label,
     stopover_search_url,
+    wet_season_words_compact,
 )
+from .google_flights import build_google_flights_legs_url
+from .multi_centre import load_multi_centre, trip_legs_for_dates
 from .vendors import build_vendor_links, trip_from_deal
 
 #: Lines in the "what changed" block. The change digest keeps its own per-kind
@@ -216,7 +220,18 @@ def breakdown_parts(deal: PackageDeal) -> tuple[list[tuple[str, float]], float]:
     its own headline, the shortfall is named as its own part rather than
     hidden: an unexplained gap in a breakdown is the thing this redesign
     exists to remove.
+
+    A card priced from an OPERATOR PACKAGE has no split to show. The operator
+    displayed one figure for flights + board + rooms; dividing it into a
+    flight half and a stay half would be a split nobody published, so the
+    package is the single part and it sums to itself by construction (owner
+    decision 2, 2026-10-04).
     """
+    total = headline_total(deal)
+    if bool(getattr(deal, "package_priced", False)):
+        package = getattr(deal, "operator_package", None)
+        if package is not None:
+            return ([("flights + board + rooms", total)], total)
     parts: list[tuple[str, float]] = []
     for label, value in (
         ("flights", getattr(deal, "flight_price_total_gbp", 0.0)),
@@ -230,7 +245,6 @@ def breakdown_parts(deal: PackageDeal) -> tuple[list[tuple[str, float]], float]:
             amount = 0.0
         if amount > 0:
             parts.append((label, amount))
-    total = headline_total(deal)
     summed = round(sum(amount for _, amount in parts), 2)
     if parts and abs(summed - total) > 0.5:
         parts.append(("other", round(total - summed, 2)))
@@ -314,14 +328,17 @@ def breakdown_words(deal: PackageDeal) -> str:
     The printed pounds are the ones that were added up, and the cabin is named
     on the flight line because the headline is that flight: on a Business card
     the fare is most of the price and nothing else on the card says which
-    cabin it is (REVIEW-H3 P1).
+    cabin it is (REVIEW-H3 P1). A package-priced card names the cabin on its
+    single part for the same reason — the package IS the flights, the board and
+    the rooms, and its cabin is the one the operator searched.
     """
     parts, headline = breakdown_display_parts(deal)
     if not parts:
         return ""
     cabin = cabin_words(deal)
     body = " + ".join(
-        f"{label} £{amount:,}" + (f" ({cabin})" if label == "flights" and cabin else "")
+        f"{label} £{amount:,}"
+        + (f" ({cabin})" if label.startswith("flights") and cabin else "")
         for label, amount in parts
     )
     return f"{body} = £{headline:,}"
@@ -460,6 +477,14 @@ def _package_segments(
     (or not) and the plain-text part prints the same words, so the two can never
     drift into saying different things - which is the failure mode this
     renderer's other fixes were about.
+
+    Two shapes, and the difference matters. On a card the engine priced itself
+    the package is a COMPARISON beside that headline. On a card priced FROM an
+    operator package (owner decision 2, 2026-10-04) the package IS the headline,
+    so the line says so in its first words and states what the figure covers —
+    flights, board and rooms for the party, with the rooms counted — rather
+    than "£X less than booking separately", which would be comparing the
+    headline with itself.
     """
     package = getattr(deal, "operator_package", None)
     if package is None:
@@ -470,10 +495,20 @@ def _package_segments(
     )
     operator = str(getattr(package, "operator", "") or "").strip()
     rooms = int(getattr(package, "rooms", 0) or 0)
+    priced = bool(getattr(deal, "package_priced", False))
     lead = (
-        f"Package deal: {_gbp(getattr(package, 'total_gbp', 0.0))} for {int(travellers)}"
+        f"This price is the operator's package: {_gbp(getattr(package, 'total_gbp', 0.0))} for {int(travellers)}"
+        if priced
+        else f"Package deal: {_gbp(getattr(package, 'total_gbp', 0.0))} for {int(travellers)}"
     )
-    detail = f"{board}, {rooms} {'room' if rooms == 1 else 'rooms'}"
+    # What the figure covers. On a comparison line the operator's own board is
+    # enough; on the headline it has to be explicit, because this is the only
+    # place the reader learns the price includes the flights.
+    detail = (
+        f"flights + {board}, {rooms} {'room' if rooms == 1 else 'rooms'}"
+        if priced
+        else f"{board}, {rooms} {'room' if rooms == 1 else 'rooms'}"
+    )
     tail: list[str] = []
     checked = _day_words(getattr(package, "observed_at", ""), generated_at="")
     if checked:
@@ -483,7 +518,11 @@ def _package_segments(
         tail.append(f"{_gbp(gap)} less than booking separately")
     elif gap < 0:
         tail.append(f"{_gbp(abs(gap))} more than booking separately")
-    else:
+    elif not priced:
+        # On a package-priced card this clause could not be said at all: the gap
+        # is measured against the ENGINE's own quote for the same trip, so "the
+        # same as booking separately" is only true when the engine priced this
+        # headline itself.
         tail.append("the same as booking separately")
     # (text, is_operator_name). The operator's name is its own segment so the
     # HTML can link exactly that and nothing else.
@@ -508,6 +547,205 @@ def _package_link(deal: PackageDeal) -> str:
         return ""
     url = str(getattr(package, "source_url", "") or "")
     return url if url.startswith(("http://", "https://")) else ""
+
+
+# ---------------------------------------------------------------------------
+# The over-budget list's package note (owner brief H9, 2026-10-04)
+# ---------------------------------------------------------------------------
+
+#: Board words for the over-budget note. The card's line uses ``BOARD_LABELS``
+#: ("Bed & Breakfast"); the sentence the owner asked for on this list is
+#: "flights + B&B", a shorter spelling of the same board, so it is spelled here
+#: rather than by widening a map every other renderer reads.
+_OVER_PACKAGE_BOARD: dict[str, str] = {
+    "BB": "B&B",
+    "HB": "Half Board",
+    "FB": "Full Board",
+    "AI": "All Inclusive",
+    "RO": "Room Only",
+}
+
+
+def _row_field(row: Any, key: str, default: str = "") -> str:
+    """A row's field — rows are dicts, and a patched test row may be anything."""
+    getter = getattr(row, "get", None)
+    if callable(getter):
+        return str(getter(key, default) or default)
+    return str(getattr(row, key, default) or default)
+
+
+def _over_package(row: Any) -> Any:
+    """The operator package attached to an over-budget row, or None."""
+    getter = getattr(row, "get", None)
+    if callable(getter):
+        return getter("package")
+    return getattr(row, "package", None)
+
+
+def _nights_between(first: Any, second: Any) -> Optional[int]:
+    """Nights between two ISO days, or None when either will not parse."""
+    try:
+        start = datetime.strptime(str(first), "%Y-%m-%d")
+        end = datetime.strptime(str(second), "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return None
+    return (end - start).days
+
+
+def _package_is_comparable(package: Any, row_nights: Optional[int]) -> bool:
+    """Whether this package may be judged against the row's ceiling.
+
+    True for one that is the SAME trip: within two nights of the row's own
+    stay. A package read for a materially shorter holiday is a different trip,
+    and saying it "fits the budget" beside a fortnight's price would be
+    answering a question nobody asked (REVIEW-H9 P2-7). Two nights is the
+    tolerance because a day either side of a departure is a schedule
+    difference, not a different holiday.
+
+    The ceiling itself is checked where the claim is written, in
+    ``over_package_segments``.
+    """
+    if row_nights is None:
+        return True
+    try:
+        from .package_evidence import PACKAGE_NIGHTS_TOLERANCE, package_shortfall_nights
+
+        shortfall = package_shortfall_nights(package, row_nights)
+    except Exception:  # noqa: BLE001 - a missing field must not break the note
+        return True
+    if shortfall is None:
+        return True
+    return shortfall <= PACKAGE_NIGHTS_TOLERANCE
+
+
+def over_package_link(row: Any) -> str:
+    """The operator's own quote URL for this row's package, or "".
+
+    The H8 link rule, unchanged: only a link that carries this trip's quote
+    (``deep-link``/``prefilled-search``) becomes a link; anything else is
+    words, so the reader is never sent to a form with nothing filled in.
+    """
+    package = _over_package(row)
+    if package is None:
+        return ""
+    kind = str(getattr(package, "link_kind", "")).strip().lower()
+    if kind not in _PACKAGE_LINK_KINDS:
+        return ""
+    url = str(getattr(package, "source_url", "") or "")
+    return url if url.startswith(("http://", "https://")) else ""
+
+
+def over_package_segments(
+    row: Any, *, travellers: int, generated_at: str = ""
+) -> list[tuple[str, bool]]:
+    """``[("— package deal £10,957 for 5 (", False), ("Destination2", True), …]``.
+
+    The owner's sentence (brief H9, 2026-10-04), in segments so the HTML can
+    link exactly the operator's name and the text part can print the same
+    words. Two honesties beyond the literal wording:
+
+    * the board is spelled the way the sentence spells it ("flights + B&B"),
+      which is not the card line's "Bed & Breakfast";
+    * when the operator quoted OTHER dates than the row's — the usual case,
+      because a row's own pair is by definition the expensive one — the dates
+      are appended, so the note never implies this trip's price for a read
+      that was for the neighbouring fortnight;
+    * a package that is itself over the row's ceiling is not quoted at all,
+      because "fits the budget" would then say the opposite of the row.
+    """
+    package = _over_package(row)
+    if package is None:
+        return []
+    operator = str(getattr(package, "operator", "") or "").strip()
+    if not operator:
+        return []
+    raw_board = str(getattr(package, "board", "") or "")
+    board = _OVER_PACKAGE_BOARD.get(raw_board.strip().upper(), raw_board)
+    rooms = int(getattr(package, "rooms", 0) or 0)
+    total = float(getattr(package, "total_gbp", 0.0) or 0.0)
+    # The sentence claims the package FITS. Say nothing when it does not: the
+    # collector attaches only in-budget reads, but this is where the claim is
+    # made, so this is where it is judged — a row with no ceiling cannot be
+    # judged and is left alone.
+    ceiling = _row_field(row, "max_budget_gbp")
+    if ceiling:
+        try:
+            if total > float(ceiling):
+                return []
+        except ValueError:
+            pass
+    include = f"flights + {board}" if board else "flights"
+    segments: list[tuple[str, bool]] = [
+        (f"— package deal £{total:,.0f} for {int(travellers)} (", False),
+        (operator, True),
+        (f", {include}, {rooms} {'room' if rooms == 1 else 'rooms'})", False),
+    ]
+    package_out = str(getattr(package, "outbound_date", "") or "")
+    package_return = str(getattr(package, "return_date", "") or "")
+    row_out = _row_field(row, "outbound")
+    row_return = _row_field(row, "return")
+    if package_out and (package_out, package_return) != (row_out, row_return):
+        segments.append((
+            f" for {_range_words(package_out, package_return, generated_at=generated_at)}",
+            False,
+        ))
+    # NIGHTS, and the one thing the date range cannot say on its own: a
+    # package read for a SHORTER stay than the row is a different holiday, not
+    # the same trip cheaper. Two calendars can share an end date and still be
+    # a fortnight apart, so the number is printed whenever the nights differ
+    # (REVIEW-H9 P2-7).
+    row_nights = _nights_between(row_out, row_return)
+    package_nights = _nights_between(package_out, package_return)
+    if (
+        row_nights is not None and package_nights is not None
+        and package_nights != row_nights
+    ):
+        segments.append((
+            f", {package_nights} nights against this row's {row_nights}",
+            False,
+        ))
+    if not _package_is_comparable(package, row_nights):
+        # The note would otherwise compare a three-week holiday with the
+        # fortnight above it and say "fits the budget", which is a claim about
+        # a trip nobody is being offered. It stays quotable, with its own
+        # nights named above; only the verdict is withheld.
+        return []
+    segments.append((" fits the budget", False))
+    return segments
+
+
+def over_package_words(
+    row: Any, *, travellers: int, generated_at: str = ""
+) -> str:
+    """The note as plain text — empty when the row has no qualifying package."""
+    segments = over_package_segments(row, travellers=travellers,
+                                     generated_at=generated_at)
+    return "".join(text for text, _ in segments)
+
+
+def over_package_html(row: Any, *, travellers: int, generated_at: str = "") -> str:
+    """The note as HTML: the operator's name linked under the H8 link rules."""
+    segments = over_package_segments(row, travellers=travellers,
+                                     generated_at=generated_at)
+    if not segments:
+        return ""
+    url = over_package_link(row)
+    out: list[str] = []
+    for text, is_operator in segments:
+        if is_operator and url:
+            out.append(
+                f'<a href="{escape(url, quote=True)}" style="color:{_ACCENT}; '
+                f'text-decoration:none;">{_esc(text)} ↗</a>'
+            )
+        elif is_operator:
+            out.append(_esc(text))
+            out.append(
+                '<span style="color:%s;"> (dates to enter on their site)</span>'
+                % _MUTED
+            )
+        else:
+            out.append(_esc(text))
+    return "".join(out)
 
 
 # ---------------------------------------------------------------------------
@@ -769,7 +1007,8 @@ def warning_lines(deal: PackageDeal, config: HolidayConfig) -> list[str]:
     if deal_in_monsoon(deal):
         month = deal_travel_month(deal)
         name = _MONTH_ABBR[month - 1] if month else "your travel month"
-        out.append(f"Monsoon in {name} — heavy rain, rough seas")
+        season, hazard = wet_season_words_compact(deal)
+        out.append(f"{season} in {name} — {hazard}")
     try:
         total = headline_total(deal)
         budget = float(config.max_budget_gbp)
@@ -1066,6 +1305,153 @@ def _card_html(card: Mapping[str, Any]) -> str:
     return "".join(out)
 
 
+# ---------------------------------------------------------------------------
+# Two-centre trips: a shape this engine cannot price, shown honestly
+# ---------------------------------------------------------------------------
+
+def two_centre_cabin(config: HolidayConfig) -> str:
+    """The cabin a two-centre trip's flight link is built in: always ECONOMY.
+
+    Not a literal, and not derived from any one destination: a two-centre trip
+    is two flights and a change, so it is never a nonstop London service and the
+    owner quotes Business only for a direct flight (owner rule 2026-10-04,
+    "only quote business class for direct flights"). Before this the link was
+    built with ``cabin_class="BUSINESS"`` hard-coded, so clicking it searched
+    Business fares for a holiday this report quotes in Economy — the reader's
+    first search would have contradicted the card above it.
+
+    Derived through the cabin policy so the rule cannot drift from the one the
+    cards use: every destination's derived cabin is ECONOMY for a one-stop
+    route, and a two-centre trip is one by construction. If a two-centre leg
+    were ever sold as a nonstop, this would have to change with the policy
+    rather than with a string.
+    """
+    return _TWO_CENTRE_CABIN
+
+
+#: The one constant behind :func:`two_centre_cabin`. Held separately so the
+#: derivation above is a single named decision rather than a literal buried in
+#: a URL builder, and so a test can assert the rule without a config.
+_TWO_CENTRE_CABIN = SHORT_HAUL_CABIN
+
+
+def _multi_centre_rows(config: HolidayConfig) -> list[dict[str, Any]]:
+    """This season's two-centre itineraries with the runtime verdict on each.
+
+    The only thing decided here rather than read from the file is whether the
+    LOW end of a range fits the configured budget — and that is computed at
+    render time, so the stored file never carries an owner's budget and never
+    goes stale when it changes.
+    """
+    try:
+        pairs = hol.priceable_date_pairs(config)
+    except Exception:  # noqa: BLE001 - a missing section must not break the e-mail
+        return []
+    if not pairs:
+        return []
+    outbound, returning = pairs[len(pairs) // 2]
+    try:
+        trips = load_multi_centre(config)
+    except Exception:  # noqa: BLE001 - see above
+        return []
+    budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
+    rows: list[dict[str, Any]] = []
+    for trip in trips:
+        try:
+            legs = trip_legs_for_dates(trip, outbound, returning)
+        except ValueError:
+            # No usable date pair means no usable link, and a link is the whole
+            # reason this section exists. The itinerary is named in the skip log
+            # rather than rendered as a dead end.
+            continue
+        rows.append({
+            "trip": trip,
+            "outbound": outbound,
+            "return": returning,
+            "nights": trip.total_nights,
+            "low": trip.cost_low_gbp,
+            "high": trip.cost_high_gbp,
+            "fits": trip.fits(budget),
+            "gap": max(trip.cost_low_gbp - budget, 0.0) if budget > 0 else 0.0,
+            "cabin": two_centre_cabin(config),
+            "url": build_google_flights_legs_url(
+                legs, travellers=int(config.travellers),
+                cabin_class=two_centre_cabin(config),
+            ),
+        })
+    return rows
+
+
+def _multi_centre_verdict(row: Mapping[str, Any]) -> str:
+    """Whether the low end fits — or, when it does not, by how much it misses.
+
+    The comparison target is named once in the section header, so each row can
+    stay three words long.
+    """
+    if row["fits"] is True:
+        return "low end fits"
+    if row["fits"] is None:
+        return "budget not set, no verdict"
+    return f"low end {_gbp(row['gap'])} over"
+
+
+def _multi_centre_html(config: HolidayConfig) -> str:
+    """The compact "Two-centre trips" block; empty when there are none.
+
+    Placed after the cards and before the over-budget list: these are the
+    alternatives to a single-centre trip, so they belong next to the cards the
+    reader has just read, not buried under the resorts that did not fit.
+    """
+    rows = _multi_centre_rows(config)
+    if not rows:
+        return ""
+    out = [
+        f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">',
+        f'<strong style="color:{_INK};">Two-centre trips</strong> — cost RANGES, not '
+        'quotes; no dated multi-city fare was readable. Every leg here connects, '
+        'so these are Economy flights like the rest of this report. Low end '
+        'against the '
+        + _gbp(getattr(config, "max_budget_gbp", 0.0)) + ' budget:</div>',
+    ]
+    for row in rows:
+        trip = row["trip"]
+        out.append(
+            f'<div style="font-size:12px; color:{_MUTED}; padding:6px 0 0 0;">'
+            f'<strong style="color:{_INK};">{_esc(trip.title)}</strong> · '
+            f'{_gbp(row["low"])}–{_gbp(row["high"])} · '
+            f'{_esc(trip.price_label())} · {_esc(_multi_centre_verdict(row))}<br>'
+            f'why: {_esc(trip.why)}<br>'
+            f'catch: {_esc(trip.catch)} · '
+            f'<a href="{_esc(row["url"])}" style="color:{_ACCENT}; '
+            f'text-decoration:none; font-weight:600;">flights ↗</a></div>'
+        )
+    return "".join(out)
+
+
+def _multi_centre_lines(config: HolidayConfig) -> list[str]:
+    """The plain-text twin of ``_multi_centre_html``."""
+    rows = _multi_centre_rows(config)
+    if not rows:
+        return []
+    lines = [
+        "Two-centre trips — cost RANGES, not quotes; every leg here connects, so "
+        "these are Economy flights like the rest of this report. No dated "
+        "multi-city fare was readable. Low end against the "
+        + _gbp(getattr(config, "max_budget_gbp", 0.0))
+        + " budget:"
+    ]
+    for row in rows:
+        trip = row["trip"]
+        lines.append(
+            f"  {trip.title} · {_gbp(row['low'])}–{_gbp(row['high'])} · "
+            f"{trip.price_label()} · {_multi_centre_verdict(row)}"
+        )
+        lines.append(f"    why: {trip.why}")
+        lines.append(f"    catch: {trip.catch}")
+        lines.append(f"    flights ({len(trip.legs)} legs): {row['url']}")
+    return lines
+
+
 def _over_budget_html(config: HolidayConfig) -> str:
     """One compact line per resort priced but over the budget."""
     keys = {d.key.lower() for d in config.destinations}
@@ -1088,10 +1474,13 @@ def _over_budget_html(config: HolidayConfig) -> str:
         except (TypeError, ValueError):
             total = 0.0
         over = max(total - budget, 0.0)
+        note = over_package_html(row, travellers=int(config.travellers))
+        note_html = f' <span style="color:{_INK};">{note}</span>' if note else ""
         lines.append(
             f'<div style="font-size:12px; color:{_MUTED}; padding:2px 0 0 0;">'
             f'{_esc(row.get("resort_name", ""))} · {_esc(_place(row.get("destination_label", "")))} · '
-            f'{_gbp(total)} for {int(config.travellers)} · {_gbp(over)} over</div>'
+            f'{_gbp(total)} for {int(config.travellers)} · {_gbp(over)} over'
+            f'{note_html}</div>'
         )
     return "".join(lines)
 
@@ -1099,6 +1488,11 @@ def _over_budget_html(config: HolidayConfig) -> str:
 def _watch_reason(row: Mapping[str, Any]) -> str:
     """Why a watched destination has no price here — never a benchmark figure."""
     if not row.get("in_season"):
+        # A destination can say WHY it is watched outside its season: mainland
+        # Japan is 17°C in December, so Okinawa's beach is (H9).
+        reason = str(row.get("reason", "") or "").strip()
+        if reason:
+            return "outside its season — " + reason[0].lower() + reason[1:]
         return "outside its season"
     if float(row.get("over_budget_gbp", 0.0) or 0.0) > 0:
         return "over budget"
@@ -1266,6 +1660,7 @@ def render_holiday_report_compact(
                 f"Gmail's {hol.EMAIL_HTML_BUDGET_BYTES // 1000} KB payload cap.</div>"
             )
             break
+    out.append(_multi_centre_html(config))
     out.append(_over_budget_html(config))
     out.append(_watch_html(config))
     out.append(_notes_html(config, deals))
@@ -1343,6 +1738,7 @@ def render_holiday_report_compact_text(
         for warning in card["warnings"]:
             lines.append(f"  ! {warning}")
         lines.append("")
+    lines.extend(_multi_centre_lines(config))
     keys = {d.key.lower() for d in config.destinations}
     over = [row for row in hol.LAST_OVER_BUDGET
             if str(row.get("destination_key", "")).lower() in keys]
@@ -1351,10 +1747,12 @@ def render_holiday_report_compact_text(
         lines.append(f"Over the {_gbp(budget)} budget — priced, no option fits")
         for row in over:
             total = float(row.get("true_d2d", 0.0))
+            note = over_package_words(row, travellers=int(config.travellers))
             lines.append(
                 f"  {row.get('resort_name', '')} · {_place(row.get('destination_label', ''))} · "
                 f"{_gbp(total)} for {int(config.travellers)} · "
                 f"{_gbp(max(total - budget, 0.0))} over"
+                + (f" {note}" if note else "")
             )
         lines.append("")
     watch = far_east_watch_rows(config)

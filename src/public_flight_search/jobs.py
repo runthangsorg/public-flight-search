@@ -13,9 +13,11 @@ from typing import Optional
 from .holidays import (
     _date_pairs,
     collect_holiday_deals,
+    consume_stopover_skip_log,
     count_provider_entries,
     far_east_watch_rows,
     load_holiday_config,
+    load_stopover_reads,
     render_holiday_report,
 )
 from .holiday_email import (
@@ -169,6 +171,7 @@ def run_holiday_planner(
     hotel_evidence_path: str = "",
     live_evidence_path: str = "",
     package_evidence_path: str = "",
+    stopover_reads_path: str = "",
 ) -> dict[str, int | bool]:
     # WHICH CONFIG THIS RUN USED belongs in the result, not in an operator's
     # guess. Five shapes reach this function — an explicit --config path, two
@@ -306,6 +309,32 @@ def run_holiday_planner(
         print(
             f"package-evidence: load failed: {package_evidence_error}", file=sys.stderr
         )
+    # STOPOVER READS (owner brief 2026-10-04, H10): whole-party multi-city
+    # fares for the two-nights-at-the-hub itineraries. Private like the other
+    # three, loaded the same way, and subject to the same "a missing file
+    # changes nothing else about the run" rule. Without it a card whose dates
+    # were never read still offers the itinerary, it just cannot price it.
+    stopover_reads: tuple = ()
+    stopover_skipped: list[str] = []
+    stopover_evidence_error: Optional[str] = None
+    stopover_priced = 0
+    try:
+        stopover_reads = load_stopover_reads(
+            stopover_reads_path or os.getenv("HOLIDAY_STOPOVER_READS_PATH", "")
+        )
+        stopover_skipped = consume_stopover_skip_log()
+        stopover_priced = sum(
+            1 for row in stopover_reads
+            if str(row.get("status", "")).strip().lower() == "priced"
+            and row.get("total_gbp") not in (None, "")
+        )
+    except Exception as exc:
+        stopover_reads = ()
+        stopover_evidence_error = f"{type(exc).__name__}: {exc}"
+        stopover_skipped = [f"stopover-evidence load failed: {stopover_evidence_error}"]
+        print(
+            f"stopover-evidence: load failed: {stopover_evidence_error}", file=sys.stderr
+        )
     # CONSUMPTION CONTRACT (2026-09-23): the report prices ONE date pair from
     # ONE origin for a specific set of (airport, cabin) keys, and the private
     # hunt has no other way to learn that set. Before this was recorded, 125
@@ -341,6 +370,7 @@ def run_holiday_planner(
         live_flight_offers=live_offers or None,
         hotel_evidence=hotel_rates or None,
         package_evidence=package_prices or None,
+        stopover_reads=stopover_reads or None,
     )
     # MEMORY BEFORE BUILD: the workflow seeds `history_path` from the
     # private repo in a dedicated bash step (proven transport) BEFORE this
@@ -519,6 +549,19 @@ def run_holiday_planner(
         ),
         "package_evidence_skipped": package_skipped,
         "package_evidence_load_error": package_evidence_error,
+        # Stopover reads: how many whole-party fares were loaded, and how many
+        # of them actually reached a card. A non-zero count with none on cards
+        # means the reads are for date pairs this config no longer prices —
+        # visible in the summary rather than silently unused.
+        "stopover_reads_loaded": len(stopover_reads),
+        "stopover_fares_priced": stopover_priced,
+        "stopover_options_on_cards": sum(
+            1 for deal in deals
+            for option in (deal.flight_options or ())
+            if str(option.get("kind", "")).startswith("stopover")
+        ),
+        "stopover_evidence_skipped": stopover_skipped,
+        "stopover_evidence_load_error": stopover_evidence_error,
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
         "send_skipped_no_change": (not dry_run) and not send_email,
