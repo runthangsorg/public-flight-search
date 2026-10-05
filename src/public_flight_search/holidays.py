@@ -1100,9 +1100,16 @@ def card_lookup_keys(config: HolidayConfig) -> tuple[tuple[str, str], ...]:
 class OperatorPackage:
     """One operator's package price for THIS property on THIS trip's dates.
 
-    Additional information on a card, never a headline. It carries its own
-    provenance and the gap to the engine's own total so the reader can see the
-    two figures side by side and decide which they are being sold.
+    It carries its own provenance and the gap to the engine's own total so the
+    reader can see the two figures side by side and decide which they are being
+    sold.
+
+    Whether it is INFORMATION beside the headline or IS the headline is the
+    card's ``package_priced`` flag, and both exist: a qualifying package for the
+    pair a card is built on becomes that card's price (BRIEF-H10 §2, and BRIEF-H12
+    §1 since 2026-10-05, which lets it choose the pair too), while a package
+    that fails a gate — most often an unknown ``flight_cabin`` — rides beneath
+    the engine's own price as H9's comparison sentence.
     """
 
     operator: str
@@ -1433,18 +1440,23 @@ class PackageDeal:
     #: the catalogue, exactly as before the seam existed.
     hotel_evidence: Any = None
     #: A real operator package price — flights and hotel, one booking — read for
-    #: THIS property on THIS card's dates (owner brief 2026-10-04, WP4d). It is
-    #: INFORMATION, never a price: it never touches
-    #: ``total_package_price_gbp``, the budget test, the discount, the value
-    #: score or the ordering. None means no qualifying package was read, which
-    #: is the state every card was in before the seam existed.
+    #: THIS property on THIS card's dates (owner brief 2026-10-04, WP4d).
+    #: INFORMATION beside the headline, never a filter and never a re-ranking of
+    #: the report. It IS the headline on a card where ``package_priced`` is
+    #: true, and then the price, the budget test, the discount, the value score
+    #: and the ordering all follow it — the price the reader is shown. None means
+    #: no qualifying package was read, which is the state every card was in
+    #: before the seam existed.
     operator_package: Optional[OperatorPackage] = None
     #: True when ``total_package_price_gbp`` IS ``operator_package.total_gbp``
-    #: (owner decision 2, 2026-10-04): the resort's own flights + stay came
-    #: over the ceiling and an operator package for this card's exact dates,
-    #: with economy flights, came in under it, so the package became the price.
-    #: False on every card that was already in budget, where the package stays
-    #: the comparison line beside the headline it never replaced.
+    #: (owner decision 2, 2026-10-04): an operator package for this card's exact
+    #: dates, with economy flights, came in under the ceiling, so the package
+    #: became the price. Two ways to get here since BRIEF-H12 §1 (2026-10-05):
+    #: the resort's own flights + stay came over the ceiling and the package
+    #: rescued the card (H10 §2), or the package won the choice of date pair on
+    #: evidence class and the card is priced at it either way (§1, §2). False
+    #: when no qualifying package was read, or when the one that was read failed
+    #: a gate — where it stays the comparison line beneath the engine's price.
     package_priced: bool = False
     source_url: str = ""
     # When a live whole-party fare is used, the carrier the provider actually
@@ -5559,10 +5571,13 @@ the cards' own prices.
                             ),
                             hotel_evidence=hotel_rate,
                             # The operator's own package price for these dates,
-                            # when one was read. INFORMATION ONLY: it is
-                            # computed after the headline is fixed and cannot
-                            # reach the total, the budget test, the discount,
-                            # the value score or the ordering.
+                            # when one was read. On an engine-priced card it is
+                            # INFORMATION ONLY: computed after the headline is
+                            # fixed, and it cannot reach the total, the budget
+                            # test, the discount, the value score or the
+                            # ordering. On a package-priced card it is the
+                            # object those are all measured from, which is what
+                            # the next line says.
                             operator_package=(
                                 # On a package-priced card this IS the price,
                                 # so it is the object already chosen (and
@@ -6500,10 +6515,13 @@ def render_operator_package_line(deal: Any, *, travellers: int) -> str:
 
     Rendered only when a qualifying operator package was read for THIS property
     on THIS card's dates; without one the card is exactly what it was before the
-    seam existed. It never replaces the headline: the engine's flights + stay
-    stay the headline, and this is the market's answer to the same question, so
-    the reader sees both and the gap between them (owner brief 2026-10-04,
-    WP4d D3).
+    seam existed. On a card whose price is the engine's own flights + stay, this
+    is the market's answer to the same question and the reader sees both figures
+    and the gap between them (owner brief 2026-10-04, WP4d D3). On a
+    PACKAGE-PRICED card the operator's figure IS the headline, and this line is
+    the comparison that says so: what the card costs against what the engine's
+    own split of the same trip costs, which is also the only budget statement
+    that card carries (BRIEF-H10 §2, BRIEF-H12 §2, 2026-10-05).
 
     The detailed style's twin of ``holiday_email.package_words``: the same words
     from the same fields, so choosing a style never changes what the report
@@ -6856,10 +6874,23 @@ def _option_title(option: Mapping[str, Any], *, has_business: bool = True) -> st
     return f"({letter}) Economy + 2 nights {hub_label} each way"
 
 
-def _flight_option_line(option: Mapping[str, Any], *, has_business: bool = True) -> str:
-    """One full option line: flights, stay, any hub hotel, totals and the budget chip."""
-    chip = ('<span style="color:#166534; font-weight:700;">within budget</span>' if option["within_budget"]
-            else '<span style="color:#b45309; font-weight:700;">over budget</span>')
+def _flight_option_line(option: Mapping[str, Any], *, has_business: bool = True,
+                         budget_chip: bool = True) -> str:
+    """One full option line: flights, stay, any hub hotel, totals and the budget chip.
+
+    ``budget_chip=False`` for a card whose price is an OPERATOR PACKAGE
+    (BRIEF-H12 §2, 2026-10-05). The rows beside such a card are the engine's own
+    split of the same trip — the comparison the package line is measured against
+    — and a chip on them says nothing about the card: "over budget" beside a
+    headline that fits is the card refuting itself, and "within budget" beside a
+    figure that does not fit is worse. The card's budget statement is the
+    package price, which the package line already prints.
+    """
+    chip = ""
+    if budget_chip:
+        chip = ('<span style="color:#166534; font-weight:700;">within budget</span>'
+                if option["within_budget"] else
+                '<span style="color:#b45309; font-weight:700;">over budget</span>')
     stopover = option["kind"] in ("stopover", "stopover_premium_economy")
     # The stopover buys two hotel nights in the hub and, because the party
     # reaches the resort two days after leaving London, two fewer nights there.
@@ -6882,7 +6913,9 @@ def _flight_option_line(option: Mapping[str, Any], *, has_business: bool = True)
                  + escape(BOARD_LABELS.get(board_code(option["hub_board"]), str(option["hub_board"]))) + hotel_note + ')')
     line += (' = <strong>£' + f'{float(option["total_pkg"]):,.0f}' + '</strong> · £'
              + f'{float(option["true_d2d"]):,.0f}' + ' door to door · ' + escape(str(option["outbound"]))
-             + '→' + escape(str(option["return"])) + ' from ' + escape(str(option["origin"])) + ' · ' + chip)
+             + '→' + escape(str(option["return"])) + ' from ' + escape(str(option["origin"])))
+    if chip:
+        line += " · " + chip
     if option.get("source_url"):
         line += (' <a href="' + escape(str(option["source_url"]), quote=True)
                  + '" style="color:#2563eb;text-decoration:none;">multi-city search ↗</a>')
@@ -6899,7 +6932,7 @@ def _cheapest_stopover(stopovers: Sequence[Mapping[str, Any]]) -> Optional[Mappi
 
 def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: int,
                           dates: Optional[tuple[str, str]] = None, airport: str = "",
-                          origin: str = "") -> str:
+                          origin: str = "", budget_chips: bool = True) -> str:
     """(a) Business, (b) Economy, (c) Economy with a stopover: each a total for the party.
 
     Shown in full, in this order: (a) Business, (b) Economy, (c) the cheapest
@@ -6912,11 +6945,19 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
     multi-city itinerary for every hub as a search link (hotel named), so the
     option is available at every destination in every season without a price
     being invented.
+
+    ``budget_chips=False`` for a card priced by an OPERATOR PACKAGE: these rows
+    are the engine's own split of the same trip, the comparison the package line
+    is measured against, so their in/over-budget marks say nothing about the
+    card the reader is being offered (BRIEF-H12 §2, 2026-10-05).
     """
     out = [
         '<div style="margin:0 0 10px 0; padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; color:#334155;">'
         '<strong style="color:#0f172a;">✈ Flight options for ' + str(travellers)
-        + '</strong> <span style="color:#64748b;">— each a total: flights + hotel(s) + board; the budget is tested on each</span>'
+        + '</strong> <span style="color:#64748b;">— each a total: flights + hotel(s) + board'
+        + ('; the budget is tested on each</span>' if budget_chips else
+           '; these are the engine’s own prices beside an operator package, '
+           'so no budget verdict applies to them</span>')
     ]
     stopovers = [o for o in options if o["kind"] == "stopover"]
     expanded = _cheapest_stopover(stopovers)
@@ -6928,12 +6969,13 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
     # (a) Business and (b) Economy, when the card has them.
     for kind in ("business", "economy"):
         out.extend(
-            _flight_option_line(o, has_business=has_business)
+            _flight_option_line(o, has_business=has_business, budget_chip=budget_chips)
             for o in options if o["kind"] == kind
         )
     # (c) the cheapest Economy stopover, in full.
     if expanded is not None:
-        out.append(_flight_option_line(expanded, has_business=has_business))
+        out.append(_flight_option_line(expanded, has_business=has_business,
+                                         budget_chip=budget_chips))
     # ONE Premium Economy line: the cheapest PE option (same route or stopover),
     # whichever it is, carrying its in/over-budget mark — never a line per
     # cabin variant.
@@ -6941,12 +6983,13 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
                   if o["kind"] in ("premium_economy", "stopover_premium_economy")]
     if pe_options:
         cheapest_pe = min(pe_options, key=lambda o: float(o["total_pkg"]))
-        out.append(_flight_option_line(cheapest_pe, has_business=has_business))
+        out.append(_flight_option_line(cheapest_pe, has_business=has_business,
+                                         budget_chip=budget_chips))
     # A mixed-cabin fare, when one was read: its own line, labelled as a mix,
     # never folded into the Business or Economy row above (owner brief
     # 2026-10-03, H7).
     for mixed in [o for o in options if o["kind"] == "mixed_cabin"]:
-        out.append(_flight_option_line(mixed))
+        out.append(_flight_option_line(mixed, budget_chip=budget_chips))
     # Every other stopover collapses into one compact totals line.
     other_stopovers = [o for o in stopovers if o is not expanded]
     if other_stopovers:
@@ -7533,13 +7576,25 @@ def render_holiday_report(
             # leads with the cabin that FITS, naming the others that breach
             # (owner rule 2026-10-02) — the same line a Far East watch row
             # carries. It says nothing when every option is inside the budget.
+            # A PACKAGE-PRICED CARD HAS NO BUDGET LINE (BRIEF-H12 §2,
+            # 2026-10-05). Its price is the operator's figure, which clears the
+            # ceiling by definition, while the rows below are the engine's own
+            # split of the same trip. Printing "every option is over the £N
+            # budget" on such a card would have the card denying its own
+            # headline; printing "fits" beside a figure that does not fit would
+            # be worse. The package line states the price and the gap, which is
+            # the whole budget statement this card needs.
+            package_priced_card = bool(getattr(deal, "package_priced", False))
             cabin_options = [
                 (_BUDGET_CABIN_LABELS.get(str(option["kind"]), str(option["kind"])),
                  float(option["true_d2d"]), bool(option["within_budget"]))
                 for option in deal.flight_options
                 if str(option["kind"]) in _BUDGET_CABIN_LABELS
             ]
-            budget_line = budget_headline(cabin_options, config.max_budget_gbp)
+            budget_line = (
+                "" if package_priced_card
+                else budget_headline(cabin_options, config.max_budget_gbp)
+            )
             if budget_line:
                 out.append('<div style="margin:0 0 8px 0; font-size:13px;">💷 ' + budget_line + '</div>')
 
@@ -7557,6 +7612,7 @@ def render_holiday_report(
             if deal.flight_options:
                 out.append(render_flight_options(
                     deal.flight_options, travellers=config.travellers,
+                    budget_chips=not package_priced_card,
                     dates=(deal.outbound_date, deal.return_date),
                     airport=deal.destination_airport, origin=deal.origin))
             # Deal rationale callout: explain WHY this is a great deal for this party

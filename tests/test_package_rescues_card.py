@@ -19,8 +19,12 @@ over-budget row. Pinned here:
 * a MISSING ``flight_cabin`` is unknown, and unknown does not promote — that
   case keeps H9's "package deal £X … fits the budget" line on the over-budget
   row instead;
-* a resort whose own headline is already in budget keeps today's behaviour:
-  the package rides beside the headline, never instead;
+* SUPERSEDED 2026-10-05 by BRIEF-H12 §1/§2, which this file's docstring used
+  to state the other way round: a resort whose own headline is already in
+  budget no longer keeps the package beside the headline — a qualifying package
+  for the pair is the top evidence class and becomes the price. An UNQUALIFIED
+  package (no ``flight_cabin``) still rides beneath the engine's own price as
+  H9's comparison sentence, and both cases are asserted below;
 * the breakdown adds up to the printed total, and the card says in its first
   words that the price is the operator's package, what it covers, and how many
   rooms;

@@ -5,11 +5,10 @@ WHY this file exists
 BRIEF-H12 (2026-10-05), from what REPLY-H10 found in the dry runs: almost no
 read evidence reached a card, because every card took the dates of its cheapest
 viable flight pair while the hotel rates, operator packages and stopover fares
-had all been read for OTHER pairs. The clearest case was a resort showing
-GBP 5,618 for one pair while an economy operator package for another priceable
-pair — GBP 5,364, flights + B&B, two rooms, ``flight_cabin: ECONOMY`` — was
-ignored, and a second resort that had exactly such a package never became a card
-at all.
+had all been read for OTHER pairs. The brief's own worked case is quoted above
+in two figures (GBP 5,618 against GBP 5,364) purely to say what was ignored —
+both are already written down in the brief and in REPLY-H10. No fixture here
+uses either of them, or any other figure from an evidence export.
 
 H5 (2026-10-04) already ranks candidates by evidence class first and price
 second, and its class counts two read halves: a read fare, a read hotel rate.
@@ -36,9 +35,13 @@ The rule this file pins:
 * the ceiling is never moved: a package over it promotes nothing, and a card
   priced by a package is inside it.
 
-Synthetic throughout: an invented Lanzarote window, an invented fare, an
-invented rate and an invented operator. No figure here came from an evidence
-export, a private read or a real holiday.
+Every FIXTURE in this file is synthetic and derived: an invented Lanzarote
+window and an invented Zanzibar one, invented package reads for an invented
+operator, invented rates, and catalogue figures read out of
+``resort_catalog`` rather than pasted so a rate change cannot make the tests
+describe a different holiday. No fixture figure came from an evidence export, a
+private read or a real holiday — the two real figures in this docstring are the
+brief's, quoted to name the case and used by nothing.
 """
 
 from __future__ import annotations
@@ -51,11 +54,14 @@ from pathlib import Path
 
 from public_flight_search import holidays as hol
 from public_flight_search.holidays import (
+    candidate_price,
     collect_holiday_deals,
+    destination_cabins,
     load_holiday_config,
     package_evidence_class,
     priceable_date_pairs,
     priced_date_pair,
+    render_holiday_report,
 )
 from public_flight_search.holiday_email import (
     breakdown_display_parts,
@@ -291,6 +297,13 @@ def _card(deals, name: str = RESORT):
     raise AssertionError(
         f"no card for {name}: {[d.resort_name for d in deals]}"
     )
+
+
+class _StubPackage:
+    """The one field ``candidate_price`` reads, so a test can pin the fallback."""
+
+    def __init__(self, total_gbp):
+        self.total_gbp = total_gbp
 
 
 class TestTheWindowIsWhatTheTestsThinkItIs(unittest.TestCase):
@@ -535,9 +548,11 @@ class TestTheHotelRateHalfOfTheRule(unittest.TestCase):
         self.assertEqual(card.hotel_rate_basis, "exact-date-rate")
         self.assertAlmostEqual(card.hotel_price_total_gbp, 4600.0)
 
-    def test_a_rate_read_beats_a_package_on_another_pair_only_when_it_is_cheaper(self):
-        # Both are read evidence, but the package is a different CLASS: it wins
-        # the pair on class, and the rate cannot out-rank it by being cheaper.
+    def test_a_rate_read_does_not_out_rank_a_package_on_another_pair(self):
+        # A read rate is class 1 and a package is the top class, so the package
+        # takes the pair even though the rate is much cheaper. That is the rule
+        # doing what it says; a rate may still win on a pair of its OWN (no
+        # package read for it), which the test above is.
         rates = _rates(_rate(SHORT_PAIR, 3000.0))
         _config, deals = _deals(
             packages=_packages(_record(amount=5600.0)), rates=rates
@@ -562,10 +577,188 @@ class TestThePairEvidenceClassItself(unittest.TestCase):
             package_evidence_class({"evidence_used": True, "hotel_rate": object()}), 2
         )
 
-    def test_a_package_with_no_price_is_not_a_class_of_its_own(self):
-        # The key reads the option it is handed: a caller that sets the field
-        # to something with no price gets no free upgrade.
+    def test_a_package_key_of_none_is_not_a_class_of_its_own(self):
+        # The key reads the option it is handed, and an absent field is the
+        # modelled answer: a caller that sets ``package`` to None gets the
+        # read-half ranks it had before, never a free upgrade.
         self.assertEqual(package_evidence_class({"package": None}), 0)
+        self.assertEqual(package_evidence_class({}), 0)
+
+
+class TestThePriceTheClassIsComparedOn(unittest.TestCase):
+    """``candidate_price``: the figure the reader is shown, not another one."""
+
+    def test_an_option_with_a_package_is_worth_the_package_total(self):
+        self.assertEqual(
+            candidate_price({"total_pkg": 999.0, "package": _StubPackage(4000.0)}),
+            4000.0,
+        )
+
+    def test_an_option_without_a_package_is_worth_the_engines_own_total(self):
+        self.assertEqual(candidate_price({"total_pkg": 999.0}), 999.0)
+
+    def test_a_package_with_no_readable_price_falls_back_to_the_engines_total(self):
+        # The loader guarantees a float total, so this cannot happen through the
+        # collector — but the ranking key must not raise if a caller hands it
+        # something else, and it must fall back to a figure the card can print
+        # rather than to a package total it cannot read.
+        self.assertEqual(
+            candidate_price({"total_pkg": 999.0, "package": _StubPackage(None)}),
+            999.0,
+        )
+
+
+# ---------------------------------------------------------------------------
+# The long-haul branch, where the card's own rows exist to contradict it
+# ---------------------------------------------------------------------------
+
+#: Zanzibar at 11h40: a long-haul ROUTE, quoted ECONOMY since 2026-10-04 (no
+#: London nonstop), so the card goes down the branch that builds the comparison
+#: rows. The Lanzarote fixture above is short haul and has no rows at all, which
+#: is why the contradiction this file guards cannot be shown there.
+LONG_HAUL_CONFIG = """
+{
+  "report_title": "Evidence-first dates, long haul",
+  "party": {"travellers": 5, "rooms": [2, 2, 1]},
+  "max_budget_gbp": 35000,
+  "min_nights": 12,
+  "max_nights": 14,
+  "departure_window": ["06:00", "23:59"],
+  "origins": ["LHR"],
+  "outbound_dates": ["2026-12-17", "2026-12-19"],
+  "return_dates": ["2026-12-31"],
+  "destinations": [
+    {"key": "zanzibar", "label": "Zanzibar", "airports": ["ZNZ"],
+     "flight_hours": 11.67, "nonstop_from_london": false,
+     "nonstop_source": "synthetic fixture: no London nonstop"}
+  ]
+}
+"""
+
+LH_SHORT_PAIR = ("2026-12-19", "2026-12-31")   # 12 nights
+LH_LONG_PAIR = ("2026-12-17", "2026-12-31")    # 14 nights
+LH_RESORT = "Nungwi Dreams by Mantis"
+
+
+def _lh_record(*, amount: float = 9000.0, **overrides) -> dict:
+    """One operator package for the long-haul fixture's property."""
+    record = _record(
+        amount=amount,
+        outbound=LH_LONG_PAIR[0],
+        returning=LH_LONG_PAIR[1],
+        nights=14,
+        property_name=LH_RESORT,
+        destination_key="zanzibar",
+        flight_summary="",
+    )
+    del record["room_descriptions"]
+    record.update(overrides)
+    return record
+
+
+def _lh_deals(*records, max_budget_gbp: float = 35_000.0):
+    config = load_holiday_config(LONG_HAUL_CONFIG)
+    deals = collect_holiday_deals(
+        config,
+        max_budget_gbp=max_budget_gbp,
+        package_evidence=_packages_for(config, *records) or None,
+    )
+    consume_package_skip_log()
+    return config, deals
+
+
+def _packages_for(config, *records) -> dict:
+    handle = tempfile.NamedTemporaryFile(
+        "w", suffix=".json", delete=False, encoding="utf-8"
+    )
+    json.dump({"schema": "holiday_package_evidence/1", "packages": list(records)},
+              handle)
+    handle.close()
+    loaded = load_package_evidence(config, path=handle.name, now=NOW)
+    consume_package_skip_log()
+    return loaded
+
+
+class TestThePairTheEngineCannotAfford(unittest.TestCase):
+    """The one way a resort now enters the report for a reason other than the
+    budget test — and what the card may then say about itself.
+
+    H10 §2 rescued a card whose own flights + stay busted the ceiling, but only
+    for the pair the engine happened to land on. §1 asks every priceable pair, so
+    a package read for any pair this run prices can now admit one. The ceiling is
+    untouched and the package still has to clear every gate; what must not happen
+    is the card contradicting itself — a headline that fits, beside rows marked
+    "over budget" and a line saying every option is over the budget.
+    """
+
+    #: A ceiling BELOW what this property costs on either pair on the engine's
+    #: own figures — 5,954 + (1,120.04 x 12) + 16.50 = 19,410.98 for twelve
+    #: nights and 21,651.06 for fourteen — while a package for the fourteen-night
+    #: pair is well inside it. Without that package the resort makes no card at
+    #: all; with it, the card exists at the package price.
+    TIGHT_CEILING = 19_000.0
+    PACKAGE_TOTAL = 9_000.0
+
+    def test_the_window_really_is_long_haul(self):
+        config = load_holiday_config(LONG_HAUL_CONFIG)
+        self.assertGreater(config.destinations[0].flight_hours, 8.0)
+        self.assertEqual(destination_cabins(config, config.destinations[0]), ("ECONOMY",))
+
+    def test_the_card_exists_because_its_package_fits(self):
+        config, deals = _lh_deals(
+            _lh_record(amount=self.PACKAGE_TOTAL), max_budget_gbp=self.TIGHT_CEILING
+        )
+        card = _card(deals, LH_RESORT)
+        self.assertTrue(card.package_priced)
+        self.assertEqual((card.outbound_date, card.return_date), LH_LONG_PAIR)
+        self.assertEqual(card.total_package_price_gbp, self.PACKAGE_TOTAL)
+        self.assertTrue(card.is_under_budget)
+        self.assertLessEqual(card.true_d2d_gbp, self.TIGHT_CEILING)
+        # It is not on the over-budget list any more: the package IS its price.
+        self.assertNotIn(LH_RESORT, {row["resort_name"] for row in hol.LAST_OVER_BUDGET})
+        self.assertTrue(deals, "the resort makes a card at all")
+
+    def test_without_that_package_the_same_ceiling_makes_no_card(self):
+        # The control, and the point of the whole thing: the ceiling is not
+        # moved. Only a qualifying package under it admits the pair.
+        config, deals = _lh_deals(max_budget_gbp=self.TIGHT_CEILING)
+        self.assertEqual(deals, ())
+        self.assertIn(LH_RESORT, {row["resort_name"] for row in hol.LAST_OVER_BUDGET})
+
+    def test_the_detailed_card_never_contradicts_its_own_package_headline(self):
+        config, deals = _lh_deals(
+            _lh_record(amount=self.PACKAGE_TOTAL), max_budget_gbp=self.TIGHT_CEILING
+        )
+        card = _card(deals, LH_RESORT)
+        # The rows beside it are the engine's own split of the same trip and the
+        # package line measures the gap against them, so their totals are still
+        # printed — but they must not carry a budget verdict about a card whose
+        # price is the package and fits.
+        self.assertGreater(card.operator_package.vs_engine_gbp, 0.0)
+        self.assertTrue(
+            any(not row.get("within_budget") for row in card.flight_options),
+            "the engine's own row really is over the ceiling, which is why the"
+            " card can only exist through its package",
+        )
+        html = render_holiday_report(
+            config, generated_at=NOW, deals=deals, history_chips=(),
+        )
+        self.assertNotIn("over budget", html)
+        self.assertNotIn("every option is over", html)
+        self.assertIn("LESS than booking flights and hotel separately", html)
+
+    def test_an_engine_priced_card_keeps_its_budget_verdicts(self):
+        # The guard is on the package-priced card only. With no package the rows
+        # ARE the card, so their marks stand — asserted here against the same
+        # renderer so the guard cannot be "fixed" by deleting the marks.
+        config, deals = _lh_deals()
+        card = _card(deals, LH_RESORT)
+        self.assertFalse(card.package_priced)
+        self.assertTrue(any(row.get("within_budget") for row in card.flight_options))
+        html = render_holiday_report(
+            config, generated_at=NOW, deals=deals, history_chips=(),
+        )
+        self.assertIn("within budget", html)
 
 
 class TestTheShippedReportIsUntouchedWithoutEvidence(unittest.TestCase):
