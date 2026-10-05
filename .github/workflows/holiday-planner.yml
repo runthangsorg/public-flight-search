@@ -168,6 +168,27 @@ jobs:
           else
             echo "::warning::No holiday_package_evidence.json in private repo; cards carry no operator package prices."
           fi
+          # The stopover reads ride that clone too: one stopover_reads/1 batch
+          # per reading session, each a set of whole-party multi-city fares for
+          # the two-nights-at-the-hub itineraries. Globbed, because the engine
+          # exports one batch at a time and a run must use every batch it has
+          # rather than only the newest filename — holidays.load_stopover_reads
+          # globs the same way at run time, which is why a run could not price
+          # them at all until this step copied them in.
+          priced_stopover_reads() {
+            python3 -c 'import json,sys;rows=json.load(open(sys.argv[1])).get("rows",[]);print(sum(1 for r in rows if str(r.get("status","")).strip().lower()=="priced" and r.get("total_gbp") not in (None,"")))' "$1" 2>/dev/null || echo "?"
+          }
+          stopover_batches=0
+          for src in "$(dirname "${HOTEL_SRC}")"/stopover_reads*.json; do
+            [[ -f "${src}" ]] || continue
+            name="$(basename "${src}")"
+            cp "${src}" "data/${name}"
+            stopover_batches=$((stopover_batches + 1))
+            echo "Seeded stopover reads: ${name} ($(priced_stopover_reads "data/${name}") priced)"
+          done
+          if [[ "${stopover_batches}" -eq 0 ]]; then
+            echo "::warning::No stopover_reads*.json in private repo; stopover cards offer the itinerary, not a price."
+          fi
       - name: Build and optionally deliver
         env:
           HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.HOLIDAY_SEARCH_CONFIG_JSON }}
