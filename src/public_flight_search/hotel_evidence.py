@@ -11,6 +11,9 @@ honest seam rather than a scraper — the same contract as
 
 * every accepted rate is re-validated here for season, exact dates, party size,
   booking shape, board basis and freshness;
+* evidence is grouped by (property, dates, booking shape), so a card is priced
+  from a read of the shape it actually books and a read of another shape is
+  visible beside it rather than merged into it (BRIEF-H17 §7);
 * a rate read for ANOTHER pair stays loaded, and ``hotel_rates_near`` hands it
   out nearest-first so a card may be priced from a real nightly rather than a
   catalogue guess (BRIEF-H14 §1). That holds for a pair OUTSIDE the run's own
@@ -219,13 +222,17 @@ class BlockedSource:
 
 @dataclass(frozen=True)
 class HotelEvidence:
-    """What one property may be priced and described with, for one date pair."""
+    """What one property may be priced and described with, for one date pair AND
+    one booking shape (BRIEF-H17 §7). Every rate in it is that shape's."""
 
     property_name: str
     destination_key: str
     season: str
     check_in: str
     check_out: str
+    #: The shape every rate in this entry was read as. Since BRIEF-H17 §7 it is
+    #: part of the key, so it is a fact about the entry rather than a fact about
+    #: whichever rate happened to be cheapest.
     booking_shape: str
     #: The cheapest qualifying rate.
     cheapest: HotelRate
@@ -366,7 +373,29 @@ def _normalise_property(name: str) -> str:
     return "".join(character for character in text if character.isalnum())
 
 
-def hotel_rate_for(loaded, property_name: str, check_in: str, check_out: str):
+def _pair_entries(loaded, property_name: str, check_in: str, check_out: str,
+                  *, priceable_only: bool = True) -> tuple:
+    """Every loaded entry for this property and these exact dates.
+
+    Since BRIEF-H17 §7 (2026-10-06) an entry is per (property, dates, booking
+    shape), so a pair can hold more than one: one villa read and two rooms on
+    one booking, read for the same nights. Sorted by shape, so the order is a
+    property of the evidence and not of the file's line order.
+    """
+    if not loaded:
+        return ()
+    wanted = _normalise_property(property_name)
+    found = [
+        entry for entry in loaded.values()
+        if (not priceable_only or entry.pair_is_priceable)
+        and _normalise_property(entry.property_name) == wanted
+        and entry.check_in == check_in and entry.check_out == check_out
+    ]
+    return tuple(sorted(found, key=lambda entry: (entry.booking_shape,)))
+
+
+def hotel_rate_for(loaded, property_name: str, check_in: str, check_out: str,
+                   *, booking_shape: Optional[str] = None):
     """The evidence for this property and these dates, or None.
 
     The dates must match exactly: a rate read for other nights is another
@@ -375,18 +404,36 @@ def hotel_rate_for(loaded, property_name: str, check_in: str, check_out: str):
     (BRIEF-H15 §1): it is a real nightly for the same room, but "the rate for
     these dates" can only be a rate read for a pair the report offers, and this
     one is not one. It stays loaded for ``hotel_rates_near``.
+
+    ``booking_shape`` asks for THIS card's shape (BRIEF-H17 §7). A card that
+    books two rooms on one booking is priced from a two-room read when one
+    exists, because before that change the loader kept the cheapest rate across
+    both shapes and the card could be priced from one villa while naming two
+    rooms. A read on another shape is still admitted when that is all there is:
+    a rate read for these very dates is this stay's price whatever it covers,
+    and BRIEF-H16 §2's sentence still judges an exact-pair read on its board
+    alone. With no shape asked, any of them is returned — which is the question
+    "does the loader have anything for this property on these dates at all?".
     """
-    if not loaded:
-        return None
-    wanted = _normalise_property(property_name)
-    for key, entry in loaded.items():
-        if not entry.pair_is_priceable:
-            continue
-        if _normalise_property(entry.property_name) != wanted:
-            continue
-        if entry.check_in == check_in and entry.check_out == check_out:
-            return entry
-    return None
+    candidates = _pair_entries(loaded, property_name, check_in, check_out)
+    if booking_shape:
+        for entry in candidates:
+            if entry.booking_shape == booking_shape:
+                return entry
+    return candidates[0] if candidates else None
+
+
+def hotel_rates_for_pair(loaded, property_name: str, check_in: str,
+                         check_out: str) -> tuple:
+    """Every entry for one pair, whatever shape each is.
+
+    BRIEF-H17 §7: the question ``hotel_rate_for`` answers is "which one prices
+    this card", and that has one answer. The question a reader needs answered
+    when the catalogue's price stands is "what WAS read for these dates, and why
+    was none of it used?" — and a read of the other shape is part of that
+    answer, so it must not be hidden by the lookup that picked the card's.
+    """
+    return _pair_entries(loaded, property_name, check_in, check_out)
 
 
 def _day_gap(first: Any, second: Any) -> Optional[int]:
@@ -423,6 +470,13 @@ def hotel_rates_near(
     closest to the pair wanted is the nearest — and ties break on the shorter
     difference in nights, then on the earlier check-in, so the order is a
     property of the evidence and never of the dict's iteration order.
+
+    ``booking_shape`` filters to the card's own shape, and since BRIEF-H17 §7
+    each shape is its own entry — so a two-room rate read for one pair is
+    reachable here even when a one-unit read for the same pair is cheaper. That
+    was the defect: the shape filter used to see one merged entry per pair and
+    skipped it entirely when the cheapest rate inside it was the wrong shape,
+    throwing away a read of the shape the card is actually booking.
     """
     if not loaded:
         return ()
@@ -433,7 +487,7 @@ def hotel_rates_near(
             continue
         if entry.check_in == check_in and entry.check_out == check_out:
             continue
-        if booking_shape and str(entry.cheapest.booking_shape or "") != booking_shape:
+        if booking_shape and str(entry.booking_shape or "") != booking_shape:
             continue
         rate = entry.cheapest
         if int(getattr(rate, "nights", 0) or 0) < 1:
@@ -767,8 +821,9 @@ def load_hotel_evidence(
     path: str = DEFAULT_HOTEL_EVIDENCE_PATH,
     now: Optional[str] = None,
     max_age_hours: Optional[int] = None,
-) -> dict[tuple[str, str, str], HotelEvidence]:
-    """Load the rates this run may price cards with, keyed by property + dates.
+) -> dict[tuple[str, str, str, str], HotelEvidence]:
+    """Load the rates this run may price cards with, keyed by property, dates
+    and booking shape (BRIEF-H17 §7, 2026-10-06).
 
 A rate is kept only when every one of the brief's conditions holds:
 
@@ -785,10 +840,20 @@ A rate is kept only when every one of the brief's conditions holds:
     * it is observed within ``max_age_hours`` (default one week);
     * it has a real http(s) source URL and a positive price.
 
-    The returned entry carries the cheapest qualifying rate, the refundable
-    rate when it is a *different* rate, and the supplementary records
+    The returned entry carries the cheapest qualifying rate OF ITS OWN SHAPE, the
+    refundable rate when it is a *different* rate, and the supplementary records
     (unit checks, ratings, facts, blocked sources) for the property.
 
+    BRIEF-H17 §7 (2026-10-06). The key used to be property + dates, so a pair
+    read in two shapes became ONE entry holding the cheapest of the two, and two
+    things went wrong from that. A two-room card could be priced from a
+    one-villa read for the same nights while still naming two rooms; and
+    ``hotel_rates_near``'s shape filter — which is what stops a card being priced
+    from another shape's nightly — saw a single entry per pair and skipped it
+    entirely when the cheapest rate inside it was the wrong shape, discarding a
+    read of the shape the card is booking. Keying by shape makes each shape its
+    own entry, so a card prices from a read of its own shape and a two-room
+    rate held beside a one-unit rate is visible to the filter.
 
     Anything else is skipped with a stated reason on stderr. A missing or
     unreadable file returns an empty mapping — today's output is unchanged,
@@ -825,11 +890,11 @@ A rate is kept only when every one of the brief's conditions holds:
         print(f"hotel-evidence: {path} has no rates list", file=sys.stderr)
         return {}
 
-    qualifying: dict[tuple[str, str, str], list[HotelRate]] = {}
+    qualifying: dict[tuple[str, str, str, str], list[HotelRate]] = {}
     #: Keys whose own pair this run prices, so ``pair_is_priceable`` is recorded
     #: from the walk rather than recomputed at the end: one source of truth for
     #: which read may be an exact-date price and which may only be carried.
-    priceable_keys: set[tuple[str, str, str]] = set()
+    priceable_keys: set[tuple[str, str, str, str]] = set()
     # Indexed BEFORE the rates are walked, and for every property the file
     # mentions rather than only the priced ones: a unit check for a property we
     # found no rate for is still a fact about the property.
@@ -961,11 +1026,11 @@ A rate is kept only when every one of the brief's conditions holds:
             booking_shape=shape,
             party_adults=adults,
         )
-        qualifying.setdefault((name, check_in, check_out), []).append(rate)
+        qualifying.setdefault((name, check_in, check_out, shape), []).append(rate)
         if priceable_pair:
-            priceable_keys.add((name, check_in, check_out))
+            priceable_keys.add((name, check_in, check_out, shape))
 
-    entries: dict[tuple[str, str, str], HotelEvidence] = {}
+    entries: dict[tuple[str, str, str, str], HotelEvidence] = {}
     for key, found in qualifying.items():
         cheapest = min(found, key=lambda rate: rate.price_gbp)
         refundable_rates = [rate for rate in found if rate.refundable]
@@ -974,14 +1039,16 @@ A rate is kept only when every one of the brief's conditions holds:
             best_flexible = min(refundable_rates, key=lambda rate: rate.price_gbp)
             if best_flexible.rate_name != cheapest.rate_name or best_flexible.price_gbp != cheapest.price_gbp:
                 flexible = best_flexible
-        name, check_in, check_out = key
+        name, check_in, check_out, shape = key
         entries[key] = HotelEvidence(
             property_name=name,
             destination_key=cheapest.destination_key,
             season=cheapest.season,
             check_in=check_in,
             check_out=check_out,
-            booking_shape=cheapest.booking_shape,
+            # Every rate in this entry is that shape's, by the key it was filed
+            # under — so this no longer depends on which of them was cheapest.
+            booking_shape=shape,
             cheapest=cheapest,
             flexible=flexible,
             rates=tuple(sorted(found, key=lambda rate: rate.price_gbp)),
@@ -989,7 +1056,7 @@ A rate is kept only when every one of the brief's conditions holds:
             ratings=_ratings(payload, name),
             facts=_facts(payload, name),
             blocked=_blocked(payload, name),
-            pair_is_priceable=(name, check_in, check_out) in priceable_keys,
+            pair_is_priceable=key in priceable_keys,
         )
     return entries
 

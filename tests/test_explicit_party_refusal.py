@@ -463,5 +463,199 @@ class PerCardTests(unittest.TestCase):
             self.assertEqual(deal.hotel_read_refused, "")
 
 
+class EvidenceIsGroupedByBookingShapeTests(unittest.TestCase):
+    """§7 (and the shape note from H16): evidence is grouped by booking shape.
+
+    The loader filed a pair read in two shapes as ONE entry holding the cheapest
+    rate of the lot, so its ``booking_shape`` was whichever shape happened to be
+    cheaper rather than the shape a card books. Two things followed: a card could
+    be priced from a one-villa read while naming two rooms, and
+    ``hotel_rates_near``'s shape filter — the gate that stops a card being priced
+    from another shape's nightly — skipped that entry entirely.
+
+    The evidence is Pullman Lombok Merujani Mandalika's own, which is the only
+    property in the file read in both shapes: four ``two_rooms_one_booking``
+    reads and four ``single_unit`` reads for one pair, the villa cheaper.
+    """
+
+    LOMBOK = "Pullman Lombok Merujani Mandalika Beach Resort"
+    CARD_PAIR = ("2027-06-27", "2027-07-09")
+    NEAR_PAIR = ("2027-06-25", "2027-07-09")
+
+    LOMBOK_CONFIG = """
+{
+  "report_title": "Evidence grouped by booking shape",
+  "party": {"travellers": 5, "rooms": [2, 2, 1]},
+  "max_budget_gbp": 100000000,
+  "min_nights": 12,
+  "max_nights": 14,
+  "departure_window": ["06:00", "23:59"],
+  "origins": ["LHR"],
+  "outbound_dates": ["2027-06-27"],
+  "return_dates": ["2027-07-09"],
+  "destinations": [
+    {"key": "lombok", "label": "Lombok", "airports": ["LOP"],
+     "flight_hours": 24.0}
+  ]
+}
+"""
+
+    #: (rate name, total GBP for the stay, refundable, rooms in the read)
+    TWO_ROOM_READS = (
+        ("STAY LONGER AND SAVE - BREAKFAST INCLUDED", 14839.40, False, 2),
+        ("FLEXIBLE RATE - BREAKFAST INCLUDED", 18281.45, True, 2),
+        ("EARLY BOOKER - BREAKFAST INCLUDED", 13900.00, False, 2),
+        ("MEMBER RATE - BREAKFAST INCLUDED", 15200.00, False, 2),
+    )
+    ONE_UNIT_READS = (
+        ("STAY LONGER AND SAVE - BREAKFAST INCLUDED", 8754.80, False, 1),
+        ("FLEXIBLE RATE - BREAKFAST INCLUDED", 10445.07, True, 1),
+        ("EARLY BOOKER - BREAKFAST INCLUDED", 8300.00, False, 1),
+        ("MEMBER RATE - BREAKFAST INCLUDED", 9100.00, False, 1),
+    )
+
+    def _read(self, pair, shape, name, total, refundable, rooms) -> dict:
+        nightly = round(total / _nights(pair), 2)
+        return {
+            "property_name": self.LOMBOK,
+            "destination_key": "lombok",
+            "season": "summer",
+            "vendor": "Example brand booking engine",
+            "check_in": pair[0],
+            "check_out": pair[1],
+            "nights": _nights(pair),
+            "party": {"adults": 5, "children": 0},
+            "booking_shape": shape,
+            # One unit the shape reads, or two rooms on the one booking, as the
+            # hotel describes them: the room count is what a read's own record
+            # says, not something the engine infers from the shape.
+            "units": [{"name": "Garden Villa", "bedrooms_stated": 2,
+                       "guests_stated": "6"}] if rooms == 1 else [
+                {"name": "Garden Villa", "bedrooms_stated": 2,
+                 "guests_stated": "6"},
+                {"name": "Garden Villa", "guests_stated": "6"},
+            ],
+            "board": "BB",
+            "rate_name": name,
+            "price_basis": "nightly_room_rate",
+            "currency": "GBP",
+            "prices_shown": [{"unit": "Garden Villa", "nightly": nightly,
+                              "provider": "Example Hotels"}],
+            "derived_stay_total": {
+                "value": total,
+                "currency": "GBP",
+                "how": f"nightly price shown x {_nights(pair)} nights",
+            },
+            "terms": [{"unit": "Garden Villa", "refundable": refundable,
+                       "cancellation": "free cancellation until 1 Jun",
+                       "payment": "pay on arrival"}],
+            "source_url": "https://example.invalid/brand/hotel/A1K2",
+            "observed_at": "2026-10-05T08:10:00+00:00",
+            "exact_date_match": True,
+        }
+
+    def _reads(self, pair):
+        return [
+            self._read(pair, "two_rooms_one_booking", name, total, refundable,
+                       rooms)
+            for name, total, refundable, rooms in self.TWO_ROOM_READS
+        ] + [
+            self._read(pair, "single_unit", name, total, refundable, rooms)
+            for name, total, refundable, rooms in self.ONE_UNIT_READS
+        ]
+
+    def _loaded(self, pair=None):
+        handle = tempfile.NamedTemporaryFile(
+            "w", suffix=".json", delete=False, encoding="utf-8")
+        json.dump({"schema": "holiday_hotel_evidence/1",
+                   "rates": self._reads(pair or self.CARD_PAIR)}, handle)
+        handle.close()
+        config = load_holiday_config(self.LOMBOK_CONFIG)
+        loaded = load_hotel_evidence(config, path=handle.name, now=NOW)
+        consume_hotel_skip_log()
+        return config, loaded
+
+    def test_one_pair_read_in_two_shapes_is_two_entries(self):
+        _config, loaded = self._loaded()
+        self.assertEqual(len(loaded), 2)
+        self.assertEqual(
+            {entry.booking_shape for entry in loaded.values()},
+            {"single_unit", "two_rooms_one_booking"},
+        )
+
+    def test_each_entry_holds_only_its_own_shapes_rates(self):
+        _config, loaded = self._loaded()
+        for entry in loaded.values():
+            self.assertEqual(len(entry.rates), 4)
+            self.assertEqual({rate.booking_shape for rate in entry.rates},
+                             {entry.booking_shape})
+
+    def test_the_card_is_priced_from_a_read_of_its_own_shape(self):
+        from public_flight_search.hotel_evidence import hotel_rate_for
+
+        config, loaded = self._loaded()
+        entry = hotel_rate_for(loaded, self.LOMBOK, *self.CARD_PAIR,
+                               booking_shape="single_unit")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.booking_shape, "single_unit")
+        self.assertAlmostEqual(entry.cheapest.price_gbp, 8300.00)
+        deal = _lombok(config, loaded)
+        self.assertEqual(deal.booking_shape_seen, "single_unit")
+        self.assertAlmostEqual(deal.hotel_price_total_gbp, 8300.00)
+
+    def test_a_two_room_read_beside_a_cheaper_one_unit_read_is_still_there(self):
+        from public_flight_search.hotel_evidence import hotel_rate_for
+
+        _config, loaded = self._loaded()
+        two_rooms = hotel_rate_for(loaded, self.LOMBOK, *self.CARD_PAIR,
+                                   booking_shape="two_rooms_one_booking")
+        self.assertIsNotNone(two_rooms)
+        self.assertAlmostEqual(two_rooms.cheapest.price_gbp, 13900.00)
+        # The same pair holds the cheaper one-unit read, so an entry grouped by
+        # property and dates alone would have kept that one and lost this.
+        one_unit = hotel_rate_for(loaded, self.LOMBOK, *self.CARD_PAIR,
+                                  booking_shape="single_unit")
+        self.assertLess(one_unit.cheapest.price_gbp, two_rooms.cheapest.price_gbp)
+
+    def test_the_shape_filter_sees_a_two_room_read_beside_a_one_unit_read(self):
+        from public_flight_search.hotel_evidence import hotel_rates_near
+
+        # A pair that is NOT the card's, read in both shapes, the one-unit read
+        # the cheaper. This is the case the filter could not reach: one merged
+        # entry per pair, cheapest inside it the wrong shape, whole entry
+        # skipped.
+        _config, loaded = self._loaded(self.NEAR_PAIR)
+        near = hotel_rates_near(loaded, self.LOMBOK, *self.CARD_PAIR,
+                                booking_shape="two_rooms_one_booking")
+        self.assertEqual(len(near), 1)
+        self.assertEqual(near[0].booking_shape, "two_rooms_one_booking")
+        self.assertEqual((near[0].check_in, near[0].check_out), self.NEAR_PAIR)
+
+    def test_the_nearest_read_of_the_cards_own_shape_prices_the_stay(self):
+        # The other half of §7, and the half that reaches a card: this property's
+        # card books one villa, so a read for another pair prices it as one villa
+        # — which is only knowable because the shape is part of the entry.
+        config, loaded = self._loaded(self.NEAR_PAIR)
+        deal = _lombok(config, loaded)
+        self.assertEqual(deal.hotel_rate_basis, "read-rate-estimate")
+        self.assertEqual(deal.hotel_rate_read_dates, self.NEAR_PAIR)
+        self.assertAlmostEqual(deal.hotel_price_total_gbp,
+                               8300.00 / 14 * 12, places=2)
+
+
+def _lombok(config, loaded):
+    deals = collect_holiday_deals(config, max_budget_gbp=10 ** 9,
+                                  hotel_evidence=loaded)
+    consume_hotel_skip_log()
+    return next(deal for deal in deals
+                if deal.resort_name == EvidenceIsGroupedByBookingShapeTests.LOMBOK)
+
+
+def _nights(pair) -> int:
+    from datetime import date
+
+    return (date.fromisoformat(pair[1]) - date.fromisoformat(pair[0])).days
+
+
 if __name__ == "__main__":
     unittest.main()

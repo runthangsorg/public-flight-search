@@ -43,6 +43,7 @@ from .live_verify import (
 from .hotel_evidence import (
     hotel_rate_for,
     hotel_rate_provenance,
+    hotel_rates_for_pair,
     hotel_rates_near,
     supplemental_for,
     unit_check_blocks_party,
@@ -5106,20 +5107,23 @@ def _refusal_sentence(resort: Mapping[str, Any], loaded: Any, check_in: str,
     """``A rate read for 20–28 Dec was not used (…); the price here is the
     catalogue's estimate.`` — or ``""``.
 
-    The lookup is BRIEF-H15 §2's, with one change: ``hotel_rates_near`` is asked
+    The lookup is BRIEF-H15 §2's, with two changes: ``hotel_rates_near`` is asked
     WITHOUT ``booking_shape``, because a read on another shape is precisely the
     read whose refusal has to be named, and filtering it out first hides the
-    reason it was not used. The shape gate still decides which reason is
-    reported — ``read_refusal_reason`` judges shape before anything else for a
-    near read — so nothing is priced by looking harder here.
+    reason it was not used; and since BRIEF-H17 §7 every read for this pair is
+    walked, not just the one ``hotel_rate_for`` picked for the card, because a
+    read of the other shape is part of the answer to "what was read for these
+    dates?". The shape gate still decides which reason is reported —
+    ``read_refusal_reason`` judges shape before anything else for a near read —
+    so nothing is priced by looking harder here.
     """
     if not loaded:
         return ""
     name = str(resort["name"])
-    entries: list[tuple[Any, bool]] = []
-    exact = hotel_rate_for(loaded, name, check_in, check_out)
-    if exact is not None:
-        entries.append((exact, True))
+    entries: list[tuple[Any, bool]] = [
+        (entry, True)
+        for entry in hotel_rates_for_pair(loaded, name, check_in, check_out)
+    ]
     entries.extend(
         (entry, False) for entry in
         hotel_rates_near(loaded, name, check_in, check_out)
@@ -5230,13 +5234,24 @@ def _stay_price(resort: Mapping[str, Any], loaded: Any, check_in: str,
     there the board IS the price (BRIEF-H14 §2). Every other card prices the
     board the catalogue names, so a half-board read can never be passed off as
     the price of a bed & breakfast holiday.
+
+    BRIEF-H17 §7 (2026-10-06): both lookups ask for THIS card's booking shape.
+    The loader now files each shape as its own entry, so a card that books two
+    rooms on one booking is priced from a two-room read even where a cheaper
+    one-unit read for the same nights exists — otherwise the price and the
+    "Sleeps 5 in one booking — 2 rooms" line under it describe two different
+    holidays. The one exception is a read for these very dates on the other
+    shape and nothing else: it is this stay's rate whatever it covers, which is
+    BRIEF-H16 §2's rule for an exact-pair read and is unchanged here.
     """
     catalogue = float(arch.get("suite_nightly_gbp") or 0.0)
+    shape = _card_booking_shape(arch)
 
     def _catalogue_stay() -> _StayPrice:
         return _StayPrice(round(catalogue * int(nights), 2), None, "", ())
 
-    exact = hotel_rate_for(loaded, resort["name"], check_in, check_out)
+    exact = hotel_rate_for(loaded, resort["name"], check_in, check_out,
+                           booking_shape=shape)
     if exact is not None:
         if island:
             rows = _read_board_rows(exact, nights)
@@ -5246,7 +5261,6 @@ def _stay_price(resort: Mapping[str, Any], loaded: Any, check_in: str,
         elif _rate_board_matches(resort, exact.cheapest):
             return _StayPrice(round(float(exact.cheapest.price_gbp), 2), exact,
                               str(exact.cheapest.board or ""), (), True)
-    shape = "single_unit" if int(_unit_rooms(arch) or 1) == 1 else "two_rooms_one_booking"
     for near in hotel_rates_near(loaded, resort["name"], check_in, check_out,
                                  booking_shape=shape):
         if island:

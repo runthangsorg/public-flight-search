@@ -456,11 +456,25 @@ class TestQualifyingRates(unittest.TestCase):
         entry = self.properties["Example Beach Resort"]
         self.assertEqual(entry.booking_shape, "two_rooms_one_booking")
 
-    def test_entries_are_keyed_by_property_and_date_pair(self):
+    def test_entries_are_keyed_by_property_dates_and_booking_shape(self):
+        # BRIEF-H17 §7: the shape is part of the key, so a pair read as one unit
+        # and as two rooms is two entries rather than one entry holding the
+        # cheaper of the two. See test_explicit_party_refusal.py's
+        # ``EvidenceIsGroupedByBookingShapeTests`` for what that fixes.
         loaded = _load()
         self.assertIn(
-            ("Example Beach Resort", "2027-07-20", "2027-07-27"), loaded
+            ("Example Beach Resort", "2027-07-20", "2027-07-27",
+             "two_rooms_one_booking"),
+            loaded,
         )
+
+    def test_the_key_carries_the_shape_of_the_rates_it_holds(self):
+        for entry in _load().values():
+            self.assertEqual(
+                {rate.booking_shape for rate in entry.rates},
+                {entry.booking_shape},
+                "an entry must hold one shape, or its name is a guess",
+            )
 
 
 class TestPassthrough(unittest.TestCase):
