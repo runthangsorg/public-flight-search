@@ -5588,6 +5588,8 @@ the cards' own prices.
             cheapest["true_d2d"],
             max_budget_gbp,
         )
+        stay_read = cheapest.get("hotel_read") or _StayPrice(0.0, None, "", ())
+        carried = stay_read.window is not None and not stay_read.exact
         return {
             "resort_name": resort["name"],
             "destination_key": dest.key,
@@ -5608,6 +5610,28 @@ the cards' own prices.
                 else "benchmark"
             ),
             "hotel_confidence": resort.get("confidence", "market-supported"),
+            # How THIS ROW's stay was priced, in the same three-word vocabulary
+            # a card uses for the same question, and the read's own window when
+            # a nightly was carried onto these dates (BRIEF-H16 §1). Not the
+            # ``hotel_confidence`` above: that is the CATALOGUE entry's
+            # confidence in its own nightly, which is a different fact and on a
+            # row priced from a read it would name the wrong one. A held-back
+            # row is priced in front of the reader, so the reader is told what
+            # priced it.
+            "hotel_rate_basis": (
+                "exact-date-rate"
+                if cheapest.get("hotel_rate") is not None
+                else (
+                    "read-rate-estimate"
+                    if carried
+                    else str(resort.get("confidence", "market-supported"))
+                )
+            ),
+            "hotel_rate_read_dates": (
+                (stay_read.window.check_in, stay_read.window.check_out)
+                if carried and stay_read.window is not None
+                else ()
+            ),
             "unit": arch["suite_type"],
             # An island row's boards come from the read that priced its stay, as
             # its card's do (BRIEF-H14 §2): a row that printed "every basis the
@@ -5615,20 +5639,23 @@ the cards' own prices.
             # at a fifth of the stay above it would be describing two different
             # holidays.
             "board": (
-                BOARD_LABELS.get(
-                    (cheapest.get("hotel_read") or _StayPrice(0.0, None, "")).basis,
-                    resort.get("board", ""),
-                )
-                if (cheapest.get("hotel_read") or _StayPrice(0.0, None, "")).rows
+                BOARD_LABELS.get(stay_read.basis, resort.get("board", ""))
+                if stay_read.rows
                 else resort.get("board", "")
             ),
             "board_options": (
-                (cheapest.get("hotel_read") or _StayPrice(0.0, None, "")).rows
-                or board_totals(resort, cheapest["nights"])
+                stay_read.rows or board_totals(resort, cheapest["nights"])
             ),
             "flight_options": flight_options,
             "max_budget_gbp": float(max_budget_gbp),
             "package": package,
+            # True when this row is NOT on the over-budget list because its
+            # destination produced nothing, but because the destination DID
+            # produce a card and the short-haul rule keeps the list to
+            # destinations of its own (BRIEF-H16 §1, 2026-10-06). False on every
+            # other row, so a renderer can ask this question rather than infer
+            # it from the destination list.
+            "held_back": False,
         }
     for dest in config.destinations:
         # Islands where eating out is not realistic: every board the hotel sells
@@ -6173,6 +6200,22 @@ the cards' own prices.
     for key, rows in held_short_haul.items():
         if key not in carded_keys:
             over_budget.extend(rows)
+        else:
+            # HELD BACK IS NOT THE SAME AS ABSENT (BRIEF-H16 §1, 2026-10-06).
+            # Lara Barut Collection was December item 2 and then appeared
+            # nowhere: the short-haul rule keeps an over-ceiling resort to
+            # itself when its destination has other cards, and Lara Barut's
+            # price — £8,994 door to door, a live rate for a December fortnight
+            # nobody had been shown — was the single most useful number in the
+            # run. The rule still stands: one card per destination is the whole
+            # point of the report, and a held-back resort is still not a card.
+            # What changes is that it is no longer silent, and no longer free:
+            # the row rides the over-budget list marked with the reason it was
+            # held, so the reader can see what it would cost and why it is not
+            # a card instead of inferring both from its absence.
+            over_budget.extend(
+                {**row, "held_back": True} for row in rows
+            )
     deals.sort(key=lambda d: (weather_weighted_discount_pct(d), -d.value_score, d.total_package_price_gbp))
     # Stamp the value-score rank (1 = best) so history tracks movement in the
     # composite ranking, not just raw price wobble.
@@ -7626,7 +7669,9 @@ def render_over_budget(rows: Sequence[Mapping[str, Any]], *, travellers: int) ->
         '<p style="margin:0 0 8px 0; color:#475569; font-size:13px;">Each resort\'s cheapest option '
         'for ' + str(travellers) + ' across the configured dates and airports. Not cards: no option fits '
         'the budget. Long-haul resorts show all three flight options (Business, Economy, a Doha/Muscat '
-        'stopover); a short-haul destination is listed here only when none of its resorts fits.</p>',
+        'stopover); a short-haul resort is listed here when its destination produced no card at all, and '
+        'a short-haul resort whose destination DID produce a card is listed here too, marked with the '
+        'reason it was held back.</p>',
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; '
         'background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; margin:0 0 18px 0;">',
     ]
@@ -7634,11 +7679,14 @@ def render_over_budget(rows: Sequence[Mapping[str, Any]], *, travellers: int) ->
         over = max(float(row["true_d2d"]) - budget, 0.0)
         flight_words = _FLIGHT_BASIS_WORDS.get(str(row.get("flight_confidence")), "benchmark estimate")
         hotel_words = _HOTEL_BASIS_WORDS.get(str(row.get("hotel_confidence")), "rate estimate")
-        # The operator's own package, when it fits the ceiling (brief H9).
-        # Imported here, not at module load: ``holiday_email`` imports THIS
-        # module, so the seam has to be lazy or neither can be imported first.
-        from .holiday_email import over_package_html
+        # The operator's own package, when it fits the ceiling (brief H9), and
+        # the one-line reason a held-back short-haul resort is on this list at
+        # all (BRIEF-H16 §1). Both imported here, not at module load:
+        # ``holiday_email`` imports THIS module, so the seam has to be lazy or
+        # neither can be imported first.
+        from .holiday_email import held_back_sentence, over_package_html
 
+        held_back = held_back_sentence(row, travellers=travellers)
         package_note = over_package_html(row, travellers=travellers)
         out.append(
             '<tr><td style="padding:8px 12px; border-bottom:1px solid #f1f5f9; font-size:13px; color:#475569;">'
@@ -7657,6 +7705,7 @@ def render_over_budget(rows: Sequence[Mapping[str, Any]], *, travellers: int) ->
                                      airport=row["airport"], origin=row["origin"])
                if row.get("flight_options") else '')
             + (f'<br><span style="color:#0f172a;">{package_note}</span>' if package_note else '')
+            + (f'<br><span style="color:#b45309;">{escape(held_back)}</span>' if held_back else '')
             + '</td></tr>'
         )
     out.append('</table>')

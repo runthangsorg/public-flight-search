@@ -272,7 +272,12 @@ class JulyReportHonestyTests(unittest.TestCase):
             # is stated as "benchmark", never "benchmark estimate".
             self.assertIn("(benchmark)", html)
 
-    def test_short_haul_over_budget_is_listed_only_for_uncarded_destinations(self):
+    def test_a_short_haul_row_is_listed_or_held_back_but_never_hidden(self):
+        # The short-haul rule still keeps one card per destination, and a row
+        # whose destination produced NOTHING is listed for that reason alone.
+        # Since BRIEF-H16 §1 a row whose destination DID produce a card is
+        # listed too, marked ``held_back`` — so this loop now asks each row
+        # which of the two it is rather than assuming the first.
         fixture = load_holiday_config(
             (ROOT / "tests" / "fixtures" / "july_short_haul_config.json").read_text(encoding="utf-8")
         )
@@ -280,11 +285,14 @@ class JulyReportHonestyTests(unittest.TestCase):
         self.assertTrue(deals)
         carded = {d.destination_key for d in deals}
         for row in hol.LAST_OVER_BUDGET:
-            self.assertNotIn(row["destination_key"], carded)
+            with self.subTest(resort=row["resort_name"]):
+                self.assertEqual(
+                    row["destination_key"] in carded, bool(row["held_back"]))
         # Priced out entirely, every short-haul destination is stated.
         collect_holiday_deals(fixture, max_budget_gbp=100.0)
         listed = {row["destination_key"] for row in hol.LAST_OVER_BUDGET}
         self.assertTrue({"antalya", "tenerife", "paphos", "hurghada"} <= listed)
+        self.assertFalse(any(row["held_back"] for row in hol.LAST_OVER_BUDGET))
 
     def test_cards_state_routing_estimates_and_the_rule_not_applied(self):
         config = dataclasses.replace(_july(), max_budget_gbp=UNCAPPED_GBP)

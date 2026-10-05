@@ -575,6 +575,31 @@ _OVER_PACKAGE_BOARD: dict[str, str] = {
     "RO": "Room Only",
 }
 
+# ---------------------------------------------------------------------------
+# A HELD-BACK RESORT IS NAMED, WITH ITS PRICE AND ITS REASON
+# (owner brief H16 §1, 2026-10-06)
+# ---------------------------------------------------------------------------
+
+#: What priced a held-back row's two halves, in the fewest words that are still
+#: true of them. The audit page spells the same two facts out in full
+#: (``holidays._FLIGHT_BASIS_WORDS`` / ``_HOTEL_BASIS_WORDS``); these are the
+#: short forms of the same wordings, so the two renderers cannot disagree about
+#: what priced a number and neither has to be shortened at the call site.
+_HELD_FLIGHT_WORDS: dict[str, str] = {
+    "verified-exact-date": "a live fare read",
+    "stale-cache": "an observed fare, not live",
+    "benchmark": "a benchmark fare",
+}
+_HELD_STAY_WORDS: dict[str, str] = {
+    # The three bases a row's stay can carry are the card's own three
+    # (``PackageDeal.hotel_rate_basis``), so this reads them and the card's
+    # words elsewhere stay the reference.
+    "exact-date-rate": "a rate read for these dates",
+    "read-rate-estimate": "a rate read for another pair",
+    "market-supported": "a rate read for these dates",
+    "estimate": "an estimate",
+}
+
 
 def _row_field(row: Any, key: str, default: str = "") -> str:
     """A row's field — rows are dicts, and a patched test row may be anything."""
@@ -582,6 +607,15 @@ def _row_field(row: Any, key: str, default: str = "") -> str:
     if callable(getter):
         return str(getter(key, default) or default)
     return str(getattr(row, key, default) or default)
+
+
+def _raw_field(row: Any, key: str, default: Any = None) -> Any:
+    """A row's field unstringified — for the ones that are a tuple of dates."""
+    getter = getattr(row, "get", None)
+    if callable(getter):
+        value = getter(key, default)
+        return default if value is None else value
+    return getattr(row, key, default)
 
 
 def _over_package(row: Any) -> Any:
@@ -756,6 +790,70 @@ def over_package_html(row: Any, *, travellers: int, generated_at: str = "") -> s
         else:
             out.append(_esc(text))
     return "".join(out)
+
+
+def _held_stay_words(row: Any) -> str:
+    """The stay half of a held-back line, naming the read it came from when it
+    was carried from another pair.
+
+    A nightly derived from a read for a neighbouring fortnight is an estimate
+    and has to read as one — the same rule the card's board line follows
+    (``hotel_rate_basis`` = ``read-rate-estimate``). The read's own dates are
+    in the sentence because "a rate read for another pair" is not something a
+    reader can check; "20–27 Jul" is.
+    """
+    basis = _row_field(row, "hotel_rate_basis") or "market-supported"
+    if basis != "read-rate-estimate":
+        return _HELD_STAY_WORDS.get(basis, _HELD_STAY_WORDS["estimate"])
+    read_dates = _raw_field(row, "hotel_rate_read_dates")
+    first, second = (list(read_dates) + ["", ""])[:2]
+    if first and second:
+        # "another pair" first, then the pair: a reader who saw only the dates
+        # could take them for this row's own, which is the one thing they are
+        # not. The card's board line says the same thing in its own place.
+        return f"a rate read for another pair, {_range_words(first, second)}"
+    return _HELD_STAY_WORDS["read-rate-estimate"]
+
+
+def held_back_sentence(row: Any, *, travellers: int, generated_at: Any = "") -> str:
+    """One compact line for a resort the short-haul rule held back.
+
+    ``Lara Barut Collection · 17–25 Dec · £8,994 for 5, door to door · priced
+    by a benchmark fare and a rate read for these dates · held back: Antalya
+    Riviera, Turkey has cards within budget``
+
+    BRIEF-H16 §1 (2026-10-06). The owner read the December report, where Lara
+    Barut had been item 2 and then appeared nowhere, and asked for the resort
+    to be named with its price and the reason. Every piece of the line is a
+    fact the collector already holds — the row's own pair, its D2D total, the
+    two bases behind that total, and the destination that took the slot — so
+    nothing here is a new claim, only an old one said out loud.
+
+    Built ONCE and returned as plain text, because three renderers print it:
+    the compact e-mail, its plain-text twin and the audit page. Each escapes it
+    in its own way, so the three cannot word it differently.
+
+    Empty for any row that is not held back, so a caller can ask the question
+    instead of checking the destination list.
+    """
+    if not _raw_field(row, "held_back", False):
+        return ""
+    place = _place(_row_field(row, "destination_label"))
+    flight = _HELD_FLIGHT_WORDS.get(
+        _row_field(row, "flight_confidence"), _HELD_FLIGHT_WORDS["benchmark"])
+    reason = (
+        f"held back: {place} has cards within budget" if place
+        else "held back: this destination has cards within budget"
+    )
+    return " · ".join((
+        _row_field(row, "resort_name").strip(),
+        _range_words(_row_field(row, "outbound"), _row_field(row, "return"),
+                     generated_at=generated_at),
+        f"{_gbp(_raw_field(row, 'true_d2d', 0.0))} for {int(travellers)}, "
+        "door to door",
+        f"priced by {flight} and {_held_stay_words(row)}",
+        reason,
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -1512,6 +1610,17 @@ def _over_budget_html(config: HolidayConfig) -> str:
         " — priced, no option fits:</div>",
     ]
     for row in rows:
+        held = held_back_sentence(row, travellers=int(config.travellers))
+        if held:
+            # A HELD-BACK RESORT GETS ITS OWN LINE (BRIEF-H16 §1). The line
+            # below states a price and a gap; this one states a price, the pair
+            # it is for, what priced it and why it is not a card — which is a
+            # different set of facts and does not fit beside "£3,994 over".
+            lines.append(
+                f'<div style="font-size:12px; color:{_MUTED}; padding:2px 0 0 0;">'
+                f'{_esc(held)}</div>'
+            )
+            continue
         try:
             total = float(row.get("true_d2d", 0.0))
         except (TypeError, ValueError):
@@ -1791,6 +1900,10 @@ def render_holiday_report_compact_text(
         budget = float(over[0].get("max_budget_gbp", 0.0))
         lines.append(f"Over the {_gbp(budget)} budget — priced, no option fits")
         for row in over:
+            held = held_back_sentence(row, travellers=int(config.travellers))
+            if held:
+                lines.append(f"  {held}")
+                continue
             total = float(row.get("true_d2d", 0.0))
             note = over_package_words(row, travellers=int(config.travellers))
             lines.append(
