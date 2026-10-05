@@ -372,6 +372,12 @@ def run_holiday_planner(
         package_evidence=package_prices or None,
         stopover_reads=stopover_reads or None,
     )
+    # The mis-read rule runs where the reads become fares, so it reports
+    # itself here rather than at load time: a read refused for being over
+    # three times its pair's median is exactly the kind of gap an operator
+    # reading this summary needs to see, and it is the same list the loader's
+    # unreadable-file and wrong-schema refusals go to.
+    stopover_skipped = list(stopover_skipped) + consume_stopover_skip_log()
     # MEMORY BEFORE BUILD: the workflow seeds `history_path` from the
     # private repo in a dedicated bash step (proven transport) BEFORE this
     # job runs, so trends, chips and the change digest describe real
@@ -552,7 +558,10 @@ def run_holiday_planner(
         # Stopover reads: how many whole-party fares were loaded, and how many
         # of them actually reached a card. A non-zero count with none on cards
         # means the reads are for date pairs this config no longer prices —
-        # visible in the summary rather than silently unused.
+        # visible in the summary rather than silently unused. `loaded` and
+        # `priced` count rows before the mis-read rule, so read the two
+        # together with `stopover_evidence_skipped`, which names every read
+        # refused for being over three times its own pair's median.
         "stopover_reads_loaded": len(stopover_reads),
         "stopover_fares_priced": stopover_priced,
         "stopover_options_on_cards": sum(

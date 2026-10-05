@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from html import escape
 import json
 import re
+import statistics
 import sys
 from typing import Any, Mapping, Optional, Sequence
 from urllib.parse import urlencode
@@ -3605,6 +3606,92 @@ def _display_carrier(raw: Any) -> str:
     return re.sub(r"(?<=[a-z])(?=[A-Z])", " / ", text)
 
 
+#: How many times its own pair's median a read may be before it stops being an
+#: option and becomes a mis-read card. The rule H11 wrote for the committed
+#: tuple, applied to every read since H13 — the private exports arrive by machine
+#: now, and a mis-read card in one of them is quoted exactly like a good one.
+STOPOVER_OUTLIER_FACTOR = 3.0
+
+
+def _priced_read_total(row: Mapping[str, Any]) -> Optional[float]:
+    """The fare a read claims, or None when it claims none.
+
+    The same two conditions `_stopover_fares` asks for — a ``priced`` status
+    and a total — so the median is taken over exactly the rows that could
+    become a fare, and no more.
+    """
+    if str(row.get("status", "")).strip().lower() != _STOPOVER_PRICED_STATUS:
+        return None
+    total = row.get("total_gbp")
+    if total in (None, ""):
+        return None
+    try:
+        return float(total)
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_pair(row: Mapping[str, Any]) -> Optional[tuple[str, str]]:
+    """A read's date pair, or None when it does not carry a usable one."""
+    pair = row.get("pair")
+    if not (isinstance(pair, (list, tuple)) and len(pair) == 2):
+        return None
+    return (str(pair[0]), str(pair[1]))
+
+
+def _without_stopover_outliers(
+    reads: Sequence[Mapping[str, Any]],
+) -> tuple[tuple[Mapping[str, Any], ...], list[str]]:
+    """The reads that may be quoted, and why each refused one was not.
+
+    A read more than three times its own pair's median is not a cheaper
+    option, it is a card read wrong: from the June session, a Muscat stopover
+    into Zanzibar at GBP 32,858 against a GBP 5,135 pair median, six times the
+    median and six times the next dearest fare in the set. H11 held the
+    committed tuple to that rule by hand; H13 holds every read to it, because
+    the private exports are machine-written and a mis-read card in one of them
+    would be quoted exactly like a good one.
+
+    The median is taken per date pair across every hub and airport read for
+    that pair — the same population H11 measured over the committed tuple — and
+    only from priced rows carrying a total, so an unanswered search can never
+    drag a median down and get a real fare excluded. A pair with one read is
+    its own median, so the rule cannot refuse the only answer there is.
+
+    Every excluded read is named with its pair, hub, airport, figure and
+    median, because the exclusion goes into the run summary's skip list and an
+    operator reading that has to be able to see which read went and why.
+    """
+    priced: dict[tuple[str, str], list[float]] = {}
+    for row in reads:
+        pair = _read_pair(row)
+        total = _priced_read_total(row)
+        if pair is None or total is None:
+            continue
+        priced.setdefault(pair, []).append(total)
+    medians = {pair: statistics.median(totals) for pair, totals in priced.items()}
+
+    kept: list[Mapping[str, Any]] = []
+    excluded: list[str] = []
+    for row in reads:
+        pair = _read_pair(row)
+        total = _priced_read_total(row)
+        median = medians.get(pair) if pair is not None else None
+        if (
+            total is not None and median is not None
+            and total > STOPOVER_OUTLIER_FACTOR * median
+        ):
+            excluded.append(
+                f"{row.get('hub', '?')}-{row.get('airport', '?')} on "
+                f"{pair[0]} to {pair[1]}: {total:,.0f} GBP is over "
+                f"{STOPOVER_OUTLIER_FACTOR:g}x the pair median "
+                f"({median:,.0f} GBP), so it is a mis-read card, not an option"
+            )
+            continue
+        kept.append(row)
+    return tuple(kept), excluded
+
+
 def _stopover_fares(
     reads: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> dict[tuple[tuple[str, str], str, str], tuple[dict[str, Any], ...]]:
@@ -3614,9 +3701,19 @@ def _stopover_fares(
     exports covering the same (pair, hub, airport) are two looks at one
     journey, and quoting the dearer of them would be a worse price for the
     same trip. The same rule the package loader applies.
+
+    The mis-read rule is applied here, once, to whatever this call was handed:
+    the committed tuple (no argument) and the committed tuple plus this run's
+    private exports (the loader's output) therefore cannot be held to different
+    standards.
     """
+    source, excluded = _without_stopover_outliers(
+        _STOPOVER_READS if reads is None else reads
+    )
+    for reason in excluded:
+        _warn_stopover_skip("outlier read", reason)
     fares: dict[tuple[tuple[str, str], str, str], list[dict[str, Any]]] = {}
-    for row in (_STOPOVER_READS if reads is None else reads):
+    for row in source:
         if str(row.get("status", "")).strip().lower() != _STOPOVER_PRICED_STATUS:
             continue
         total = row.get("total_gbp")
