@@ -1517,11 +1517,17 @@ class PackageDeal:
     #: an estimate and has to read as one.
     hotel_rate_read_dates: tuple[str, str] = ()
     #: One line naming a rate read for this property that could NOT price this
-    #: card because it was on another board (owner brief 2026-10-05, H15 §2).
-    #: Set only when the card's stay is the catalogue's, because that is the
-    #: only case where the card shows a figure the read contradicts. Empty when a
-    #: read priced the card, when an operator's package did, and on an island.
-    hotel_board_caution: str = ""
+    #: card, and why — another board, another booking shape, another party or
+    #: another number of rooms (owner brief 2026-10-05, H15 §2; generalised
+    #: 2026-10-06, H16 §2) — OR this pair's own dates being checked and coming
+    #: back with no priced row for the party at all (H16 §2). The first is set
+    #: only when the card's stay is the catalogue's, because that is the only
+    #: case where the card carries a figure a read contradicts; the second is
+    #: asked whenever the pair was checked, because a nightly carried from a
+    #: neighbouring fortnight is not a price for these dates either. Empty when
+    #: a read priced the card exactly, when an operator's package did, and on an
+    #: island for the board reason (every board a read carries is priced there).
+    hotel_read_refused: str = ""
     #: Google (or another named site's) rating read for this property, with
     #: its source and review count (owner brief 2026-10-03, H4).
     hotel_ratings: tuple = ()
@@ -4879,37 +4885,236 @@ def _read_board_rows(entry: Any, nights: int) -> tuple[dict[str, Any], ...]:
     ))
 
 
-def board_read_caution(resort: Mapping[str, Any], loaded: Any, check_in: str,
-                       check_out: str, *, arch: Mapping[str, Any],
-                       island: bool = False) -> str:
-    """The one line a catalogue-priced card owes the reader when a read says
-    otherwise, or ``""`` (BRIEF-H15 §2, 2026-10-05).
+#: The two booking shapes this report ever asks for, as the evidence loader
+#: spells them. A read on any other shape is not in the loader's mapping at
+#: all, so these two are the whole of the comparison.
+SINGLE_UNIT_SHAPE = "single_unit"
+TWO_ROOMS_ONE_BOOKING_SHAPE = "two_rooms_one_booking"
+
+
+def _card_booking_shape(arch: Mapping[str, Any]) -> str:
+    """The shape this card books: one unit, or N rooms on one booking."""
+    return (SINGLE_UNIT_SHAPE if int(_unit_rooms(arch) or 1) == 1
+            else TWO_ROOMS_ONE_BOOKING_SHAPE)
+
+
+def _card_rooms(arch: Mapping[str, Any]) -> Optional[int]:
+    """Rooms this card books, or ``None`` when the unit was never shown."""
+    return _unit_rooms(arch)
+
+
+def _read_rooms(rate: Any) -> Optional[int]:
+    """Rooms a read's own record describes, or ``None`` when it names none.
+
+    The hotel's ``units`` are the only statement of how many rooms a rate
+    covered. ``booking_shape`` says the booking was ONE booking and whether it
+    was a unit or rooms; it does not say how many rooms, so this asks the
+    record rather than inferring it.
+    """
+    units = tuple(getattr(rate, "units", ()) or ())
+    return len(units) or None
+
+
+def _shape_words(shape: str, rooms: Optional[int]) -> str:
+    """``one unit`` / ``2 rooms on one booking``, from a shape and a count."""
+    if shape != TWO_ROOMS_ONE_BOOKING_SHAPE:
+        return "one unit"
+    return f"{int(rooms)} rooms on one booking" if rooms else "rooms on one booking"
+
+
+def read_refusal_reason(resort: Mapping[str, Any], rate: Any, *,
+                        arch: Mapping[str, Any], island: bool,
+                        travellers: int, exact_pair: bool = False) -> str:
+    """Why this read could not price this card, in words — or ``""``.
+
+    BRIEF-H16 §2 (2026-10-06). BRIEF-H15 §2 named one reason: the board. The
+    others a read can differ on are just as much reasons to refuse it, and a
+    reader told only that "a read was not used" has learned nothing:
+
+    ``booking shape``
+        one villa is not two rooms on one booking. Two different bookings.
+    ``party``
+        a rate quoted for three adults is not a rate for this party of five,
+        however its total was derived.
+    ``rooms``
+        the same declared shape can still cover a different number of rooms.
+    ``board``
+        an all-inclusive resort does not sell a breakfast rate.
+
+    The order is the order the gates are applied in, and that order is not the
+    order they are named in, because the two answer different questions. A read
+    FOR THIS PAIR is judged on the board alone: ``hotel_rate_for`` does not
+    filter on shape, so a read for these dates prices the card whatever shape it
+    covers and shape would be a reason that stopped nothing. A read for ANOTHER
+    pair is judged shape first — ``hotel_rates_near`` filters on shape before
+    anything else sees it — so the first reason returned is the one that
+    actually stopped the read.
+
+    Two of the four cannot stop anything today, and the sentence is honest
+    either way. The loader refuses a rate whose party is not the report's party
+    before this code runs, and the pricing path treats a room count as no gate
+    at all. What the reasons add is the ability to SAY what differed when one
+    of them is true, rather than naming no reason at all for a read that was
+    quietly left out — and a wording that is pinned by a test, so it cannot rot
+    into a claim the engine cannot make.
+    """
+    def _board_reason() -> str:
+        read_board = str(getattr(rate, "board", "") or "").strip().upper()
+        if _rate_board_matches(resort, rate, island=island):
+            return ""
+        nightly = read_nightly(rate)
+        if nightly is None:
+            return ""
+        card_board = BOARD_LABELS.get(
+            board_code(resort.get("board")), str(resort.get("board") or ""))
+        return (f"it was {BOARD_LABELS.get(read_board, read_board)} at "
+                f"£{nightly:,.0f} a night, and this card is {card_board}")
+
+    if island:
+        # Every board a read carries is priced on the card, so none is refused;
+        # the other three are not about the board and still apply.
+        pass
+    elif exact_pair:
+        return _board_reason()
+
+    read_shape = str(getattr(rate, "booking_shape", "") or "")
+    card_shape = _card_booking_shape(arch)
+    card_rooms = _card_rooms(arch)
+    read_rooms = _read_rooms(rate)
+    if read_shape and read_shape != card_shape:
+        return (f"it is {_shape_words(read_shape, read_rooms)}, and this card "
+                f"is {_shape_words(card_shape, card_rooms)}")
+    read_party = int(getattr(rate, "party_adults", 0) or 0)
+    if read_party and read_party != int(travellers):
+        return (f"it was quoted for {read_party} adults, and this card is for "
+                f"{int(travellers)}")
+    if read_rooms and card_rooms and read_rooms != int(card_rooms):
+        return (f"it covers {read_rooms} "
+                f"{'room' if read_rooms == 1 else 'rooms'}, and this card is "
+                f"{int(card_rooms)}")
+    if island:
+        return ""
+    return _board_reason()
+
+
+def no_priced_row_check(resort_name: str, check_in: str, check_out: str, *,
+                        travellers: int) -> bool:
+    """Whether this property's OWN dates were checked and came back empty.
+
+    BRIEF-H16 §2 (2026-10-06). Garrya Tongsai Bay's four June pairs — the card's
+    own 28 Jun–12 Jul among them — are recorded as unit checks saying Google
+    Hotels showed no priced row at all for five adults and asked the reader to
+    contact the property. So the card's stay is not an estimate nobody made: it
+    is an estimate made AFTER somebody looked for these exact dates and found
+    nothing, and only the second of those two facts was on the card.
+
+    Narrow on purpose. The check must be FOR this pair (a check of last month's
+    nights is not a check of these, and ``supplemental_for`` deliberately hands
+    back checks that name no dates at all), it must name the party the card is
+    for, and it must be a finding of ABSENCE rather than of a limitation —
+    "5 adults in one room refused, sold as two suites" is a limit the card
+    already carries elsewhere, and it did not look for a price and fail.
+    """
+    for check in supplemental_for(
+        resort_name, "unit_checks", dates=(check_in, check_out)
+    ):
+        if tuple(getattr(check, "dates", ()) or ()) != (check_in, check_out):
+            continue
+        finding = str(getattr(check, "finding", "") or "").lower()
+        if not any(word in finding for word in NO_PRICED_ROW_WORDS):
+            continue
+        if f"{int(travellers)} adult" not in finding:
+            continue
+        return True
+    return False
+
+
+def read_refusal_caution(resort: Mapping[str, Any], loaded: Any, check_in: str,
+                         check_out: str, *, arch: Mapping[str, Any],
+                         island: bool = False, travellers: int = 0,
+                         stay: Any = None) -> str:
+    """The one line a card owes the reader when a read of this property could
+    not price it — or when these exact dates were checked and came back empty.
+    ``""`` when neither is true.
+
+    BRIEF-H15 §2 generalised by BRIEF-H16 §2 (2026-10-06), and this is the
+    whole of the change since: BRIEF-H15 named one reason (the board) and BRIEF-H16
+    asks for any refusal to be named in the same sentence, so
+    ``read_refusal_reason`` supplies the reason and the sentence is the same
+    one. Nothing here can price anything.
 
     Lara Barut Collection's December card is All Inclusive at the catalogue's
     ~GBP 185 a night. The only rate read for that property is Bed & Breakfast at
     ~GBP 731 a night, and H3's board rule rightly refuses a breakfast rate to
     price an all-inclusive card — the resort does not sell one. So the catalogue
-    stands, the card is priced, and until now the reader had no way of knowing
-    that the only measurement anyone has of those nights says something four
-    times larger on a different board.
+    stands, the card is priced, and the reader has to be told that the only
+    measurement anyone has of those nights says something four times larger on a
+    different board.
 
-    The rule refuses to change the price and says so instead. Nothing here can
-    price anything: it is asked for only when the card's stay IS the
-    catalogue's, and it names the read it is standing against — its board, its
-    per-night figure, and its own dates when they are not this card's, because
-    "for these dates" is a claim about a pair and this run only offers the pair
-    the card is on.
+    The refusal sentence needs the stay to BE the catalogue's: that is the one
+    case where the card carries a figure the evidence does not support, and it is
+    only then that an unread read is standing against a price. The absence
+    sentence (``no_priced_row_check``) has no such requirement — a pair nobody
+    could price is worth saying whether the number below it came from a
+    neighbouring read or from the catalogue.
 
-    Empty when a read priced the card (there is then nothing contradicted), when
-    the refused read is on another booking shape (it describes a different
-    booking, not this one on another board), when the catalogue's board is
-    unverified (a read that states a board settles it rather than contradicting
-    it), and on an island, where every board a read carries is priced on the
-    card and none is refused.
+    When both would fire, the refusal is printed and the absence is not: it is
+    the sentence that explains the figure the reader is looking at. That is the
+    one case this one-line field cannot carry both, and it is stated here
+    rather than left to be discovered.
+
+    Empty on an island for the BOARD reason (every board a read carries is
+    priced on the card, so none is refused) but not for the others: a read on
+    another shape is refused there too. Empty when the catalogue's board is
+    unverified, because a read that states a board settles that rather than
+    contradicting it.
     """
-    if not loaded or island:
+    name = str(resort["name"])
+    absence = (
+        no_priced_row_check(name, check_in, check_out, travellers=travellers)
+        if travellers else False
+    )
+    if stay is not None and getattr(stay, "window", None) is not None:
+        # A read priced this stay — exactly or as a nightly carried from
+        # another pair — so no read is standing against the price.
+        return _absence_words(travellers, absence, stay) if absence else ""
+    reason = _refusal_sentence(
+        resort, loaded, check_in, check_out, arch=arch, island=island,
+        travellers=travellers,
+    )
+    if reason:
+        return reason
+    return _absence_words(travellers, absence, stay) if absence else ""
+
+
+#: Wording that says a check FOUND NOTHING, as opposed to a check that found a
+#: limitation. Only the first kind means the price on the card is the only price
+#: anybody has for these dates.
+NO_PRICED_ROW_WORDS: tuple[str, ...] = (
+    "no priced row",
+    "no rate",
+    "no price",
+    "no row",
+    "no result",
+    "nothing priced",
+)
+
+
+def _refusal_sentence(resort: Mapping[str, Any], loaded: Any, check_in: str,
+                      check_out: str, *, arch: Mapping[str, Any],
+                      island: bool, travellers: int) -> str:
+    """``A rate read for 20–28 Dec was not used (…); the price here is the
+    catalogue's estimate.`` — or ``""``.
+
+    The lookup is BRIEF-H15 §2's, with one change: ``hotel_rates_near`` is asked
+    WITHOUT ``booking_shape``, because a read on another shape is precisely the
+    read whose refusal has to be named, and filtering it out first hides the
+    reason it was not used. The shape gate still decides which reason is
+    reported — ``read_refusal_reason`` judges shape before anything else for a
+    near read — so nothing is priced by looking harder here.
+    """
+    if not loaded:
         return ""
-    shape = "single_unit" if int(_unit_rooms(arch) or 1) == 1 else "two_rooms_one_booking"
     name = str(resort["name"])
     entries: list[tuple[Any, bool]] = []
     exact = hotel_rate_for(loaded, name, check_in, check_out)
@@ -4917,48 +5122,68 @@ def board_read_caution(resort: Mapping[str, Any], loaded: Any, check_in: str,
         entries.append((exact, True))
     entries.extend(
         (entry, False) for entry in
-        hotel_rates_near(loaded, name, check_in, check_out, booking_shape=shape)
+        hotel_rates_near(loaded, name, check_in, check_out)
     )
     for entry, is_exact in entries:
         for rate in getattr(entry, "rates", ()) or ():
-            read_board = str(getattr(rate, "board", "") or "").strip().upper()
-            if read_board not in BREAKFAST_BASES:
+            reason = read_refusal_reason(
+                resort, rate, arch=arch, island=island, travellers=travellers,
+                exact_pair=is_exact,
+            )
+            if not reason:
                 continue
-            if _rate_board_matches(resort, rate, island=island):
-                continue
-            nightly = read_nightly(rate)
-            if nightly is None:
-                continue
-            return _board_caution_words(
-                resort, read_board, nightly, entry.check_in, entry.check_out,
-                is_exact=is_exact,
+            return _read_refused_words(
+                entry.check_in, entry.check_out, is_exact=is_exact,
+                reason=reason,
             )
     return ""
 
 
-def _board_caution_words(resort: Mapping[str, Any], read_board: str, nightly: float,
-                         read_in: str, read_out: str, *, is_exact: bool) -> str:
-    """The caution sentence, built ONCE so both renderers cannot word it
-    differently (BRIEF-H15 §2).
+def _read_refused_words(read_in: str, read_out: str, *, is_exact: bool,
+                        reason: str) -> str:
+    """The refusal sentence, built ONCE so every renderer cannot word it
+    differently (BRIEF-H15 §2, generalised by BRIEF-H16 §2).
 
     ``_range_words`` is imported here rather than at module load for the same
     reason ``holidays`` imports ``over_package_html`` where it does:
     ``holiday_email`` imports THIS module, so the import cannot be top-level.
     Sharing the formatter is the point — the board line already spells a read's
-    window this way, and the caution beside it must spell the same window
+    window this way, and the sentence beside it must spell the same window
     identically.
     """
     from .holiday_email import _range_words
 
-    when = ("these dates" if is_exact
-            else _range_words(read_in, read_out))
-    card_board = BOARD_LABELS.get(
-        board_code(resort.get("board")), str(resort.get("board") or ""))
+    when = ("these dates" if is_exact else _range_words(read_in, read_out))
     return (
-        f"A rate read for {when} was {BOARD_LABELS.get(read_board, read_board)} "
-        f"at £{nightly:,.0f} a night; the {card_board} price here is the "
-        "catalogue's estimate."
+        f"A rate read for {when} was not used ({reason}); the price here is "
+        "the catalogue's estimate."
     )
+
+
+def _absence_words(travellers: int, absence: bool, stay: Any) -> str:
+    """``A check of these dates found no priced row for 5 adults, so the stay is
+    estimated from a read rate for 20–27 Jul.`` — or ``""``.
+
+    The tail names where the number below came from, because "no priced row"
+    with nothing after it leaves the reader guessing between a catalogue guess
+    and a real nightly: those are very different things to book against.
+    """
+    if not absence:
+        return ""
+    carried: tuple[str, ...] = ()
+    if stay is not None:
+        window = getattr(stay, "window", None)
+        if window is not None and not getattr(stay, "exact", False):
+            carried = (str(getattr(window, "check_in", "") or ""),
+                       str(getattr(window, "check_out", "") or ""))
+    if len(carried) == 2 and carried[0] and carried[1]:
+        from .holiday_email import _range_words
+
+        tail = f"so the stay is estimated from a read rate for {_range_words(*carried)}"
+    else:
+        tail = "so the stay here is the catalogue's estimate"
+    return (f"A check of these dates found no priced row for {int(travellers)} "
+            f"adults, {tail}.")
 
 
 class _StayPrice(NamedTuple):
@@ -5901,18 +6126,25 @@ the cards' own prices.
                         uk_ground = 0.0
                         transfer = 0.0
                         hotel_rate = None
-                    # THE CARD SHOWS THE CATALOGUE, AND A READ SAYS OTHERWISE
-                    # (BRIEF-H15 §2). Asked only when nothing read priced this
-                    # stay: that is the one case where the card carries a figure
-                    # the evidence contradicts. A package-priced card keeps no
-                    # caution either — the operator's quote is the stay, so there
-                    # is no catalogue figure left to contradict.
-                    board_caution = (
+                    # A READ THAT COULD NOT PRICE THIS CARD SAYS WHY
+                    # (BRIEF-H15 §2, generalised by BRIEF-H16 §2). Two facts can
+                    # leave a card short of a read: a read exists and was refused
+                    # (on its board, its booking shape, its party or its rooms),
+                    # or these exact dates were checked and nothing came back.
+                    # The function decides which applies — and the second needs
+                    # asking even when a read DID price the stay, because a
+                    # nightly carried from a neighbouring fortnight is still not
+                    # a price for these dates, and the reader should know
+                    # somebody looked. A package-priced card asks for neither:
+                    # the operator's quote IS the stay, so there is no engine
+                    # figure left for a read to contradict.
+                    read_refused = (
                         ""
-                        if package_priced or stay_read.window is not None
-                        else board_read_caution(
+                        if package_priced
+                        else read_refusal_caution(
                             resort, hotel_evidence, target_outbound, target_return,
                             arch=arch, island=island,
+                            travellers=travellers, stay=stay_read,
                         )
                     )
                     price_pp = round(total_pkg / travellers, 2)
@@ -6098,7 +6330,7 @@ the cards' own prices.
                             # nightly carried from another pair is an estimate
                             # and must read as one.
                             hotel_rate_read_dates=hotel_read_dates,
-                            hotel_board_caution=board_caution,
+                            hotel_read_refused=read_refused,
                             hotel_evidence=hotel_rate,
                             # The operator's own package price for these dates,
                             # when one was read. On an engine-priced card it is
@@ -7309,21 +7541,24 @@ def _booking_term_values(deal: Any) -> tuple[list[str], list[str]]:
     return verified, unknown
 
 
-def render_board_caution_line(deal: Any) -> str:
-    """A read on another board, standing against the price above it.
+def render_read_refusal_line(deal: Any) -> str:
+    """A rate read that could not price this card, and the reason why.
 
-    BRIEF-H15 §2 (2026-10-05). The audit page prints the same sentence the
-    compact e-mail prints, from the same field, because a reader auditing a card
-    must not find a caveat the e-mail kept or an e-mail caveat the page hides.
-    Empty on every card whose stay a read or an operator's package priced: there
-    is nothing there for a contrary read to contradict.
+    BRIEF-H15 §2 (2026-10-05), generalised by BRIEF-H16 §2 (2026-10-06). The
+    audit page prints the same sentence the compact e-mail prints, from the same
+    field, because a reader auditing a card must not find a caveat the e-mail
+    kept or an e-mail caveat the page hides. The heading names the SHAPE of the
+    fact and not one of the four reasons, because the reasons are the sentence's
+    own business and a heading that guessed at them could contradict it.
+    Empty on every card whose stay a read for these dates or an operator's
+    package priced: there is nothing there for another read to contradict.
     """
-    caution = str(getattr(deal, "hotel_board_caution", "") or "").strip()
+    caution = str(getattr(deal, "hotel_read_refused", "") or "").strip()
     if not caution:
         return ""
     return (
         '<div style="margin:0 0 6px 0; color:#92400e; font-size:13px;">'
-        '<strong style="color:#0f172a;">Read on another board:</strong> '
+        '<strong style="color:#0f172a;">Rate read not used:</strong> '
         + escape(caution) + '</div>'
     )
 
@@ -8188,7 +8423,7 @@ def render_holiday_report(
             out.append(render_hotel_unit_note_line(deal))
             out.append(render_space_note_line(deal))
             out.append(render_board_line(deal))
-            out.append(render_board_caution_line(deal))
+            out.append(render_read_refusal_line(deal))
             out.append(render_booking_terms(deal))
             if deal.flight_options:
                 out.append(render_flight_options(

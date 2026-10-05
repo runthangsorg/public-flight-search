@@ -121,7 +121,8 @@ def _garrya_read(**overrides) -> dict:
         "nights": 7,
         "party": {"adults": 5, "children": 0},
         "booking_shape": "two_rooms_one_booking",
-        "units": [{"name": "Beachfront Suite - King", "adults": 5}],
+        "units": [{"name": "Beachfront Suite - King", "adults": 3},
+                  {"name": "Beachfront Suite - King", "adults": 2}],
         "board": "BB",
         "rate_name": "SUPER ADVANCE SAVER - BED AND BREAKFAST",
         "price_basis": "total_stay_rate",
@@ -448,7 +449,12 @@ class TestAnOffWindowReadReachesAResortWithNoCatalogueRate(unittest.TestCase):
 
 
 class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
-    """§2: the price stays, and the card names the read standing against it."""
+    """§2: the price stays, and the card names the read standing against it.
+
+    BRIEF-H16 §2 generalised this sentence to any refusal — booking shape, party,
+    rooms or board — and the board case is one of the four. The other three, and
+    the absence sentence, are in ``tests/test_refused_read_is_named.py``.
+    """
 
     def setUp(self):
         self.config, self.loaded, self.deals = _deals(
@@ -466,11 +472,12 @@ class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
             LARA_CATALOGUE_NIGHTLY * self.deal.nights, places=2)
 
     def test_the_card_names_the_read_that_was_refused(self):
-        caution = self.deal.hotel_board_caution
-        self.assertIn("A rate read for 20–28 Dec was Bed & Breakfast", caution)
-        self.assertIn("£731 a night", caution)
-        self.assertIn("the All Inclusive price here is the catalogue's estimate",
-                      caution)
+        caution = self.deal.hotel_read_refused
+        self.assertEqual(
+            caution,
+            "A rate read for 20–28 Dec was not used (it was Bed & Breakfast "
+            "at £731 a night, and this card is All Inclusive); the price here "
+            "is the catalogue's estimate.")
 
     def test_a_read_for_these_dates_is_named_as_such(self):
         # Same sentence, "these dates" — because the read IS for this pair.
@@ -478,8 +485,8 @@ class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
             _lara_barut_read(check_in=BOARD_CONTRADICTION_PAIR[0],
                              check_out=BOARD_CONTRADICTION_PAIR[1]),
         ])
-        caution = _deal(deals, LARA_BARUT).hotel_board_caution
-        self.assertIn("A rate read for these dates was Bed & Breakfast", caution)
+        caution = _deal(deals, LARA_BARUT).hotel_read_refused
+        self.assertIn("A rate read for these dates was not used", caution)
         self.assertNotIn("20–28 Dec", caution)
 
     def _said(self, page: str) -> str:
@@ -488,18 +495,18 @@ class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
 
     def test_the_compact_email_carries_the_caution(self):
         html = _card_html(self.config, [self.deal])
-        self.assertIn(self.deal.hotel_board_caution, self._said(html))
+        self.assertIn(self.deal.hotel_read_refused, self._said(html))
 
     def test_the_plain_text_email_carries_the_same_words(self):
         text = render_holiday_report_compact_text(
             self.config, generated_at=NOW, deals=[self.deal])
-        self.assertIn(self.deal.hotel_board_caution, text)
+        self.assertIn(self.deal.hotel_read_refused, text)
 
     def test_the_audit_page_carries_the_same_words(self):
         html = hol.render_holiday_report(
             self.config, generated_at=NOW, deals=[self.deal])
-        self.assertIn("Read on another board:", html)
-        self.assertIn(self.deal.hotel_board_caution, self._said(html))
+        self.assertIn("Rate read not used:", html)
+        self.assertIn(self.deal.hotel_read_refused, self._said(html))
 
     def test_no_caution_when_the_reads_own_board_is_the_cards_board(self):
         # Read for this pair on the card's own board: it prices the card, and a
@@ -510,7 +517,7 @@ class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
                              check_out=BOARD_CONTRADICTION_PAIR[1]),
         ])
         deal = _deal(deals, LARA_BARUT)
-        self.assertEqual(deal.hotel_board_caution, "")
+        self.assertEqual(deal.hotel_read_refused, "")
         self.assertIsNotNone(deal.hotel_evidence)
         self.assertEqual(deal.hotel_rate_basis, "exact-date-rate")
         self.assertAlmostEqual(deal.hotel_price_total_gbp, 731.0 * 8, places=2)
@@ -522,7 +529,7 @@ class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
             _lara_barut_read(board="AI"),
         ])
         deal = _deal(deals, LARA_BARUT)
-        self.assertEqual(deal.hotel_board_caution, "")
+        self.assertEqual(deal.hotel_read_refused, "")
         self.assertEqual(deal.hotel_rate_basis, "read-rate-estimate")
         self.assertEqual(tuple(deal.hotel_rate_read_dates),
                          ("2026-12-20", "2026-12-28"))
@@ -530,7 +537,7 @@ class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
     def test_no_caution_when_nothing_was_read_at_all(self):
         config, _loaded, deals = _deals(BOARD_CONTRADICTION_CONFIG, [])
         deal = _deal(deals, LARA_BARUT)
-        self.assertEqual(deal.hotel_board_caution, "")
+        self.assertEqual(deal.hotel_read_refused, "")
         self.assertAlmostEqual(deal.hotel_price_total_gbp,
                                LARA_CATALOGUE_NIGHTLY * deal.nights, places=2)
 
@@ -539,21 +546,16 @@ class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
         # about a read that priced nothing would be noise on a priced card.
         config, _loaded, deals = _deals(OFF_WINDOW_CONFIG, [_garrya_read()])
         deal = _deal(deals, GARRYA)
-        self.assertEqual(deal.hotel_board_caution, "")
+        self.assertEqual(deal.hotel_read_refused, "")
         self.assertEqual(deal.hotel_rate_basis, "read-rate-estimate")
-
-    def test_no_caution_for_a_read_on_another_booking_shape(self):
-        # One villa is not two rooms on one booking: a read for a different
-        # booking describes a different booking, not this one on another board.
-        config, _loaded, deals = _deals(BOARD_CONTRADICTION_CONFIG, [
-            _lara_barut_read(booking_shape="three_rooms"),
-        ])
-        self.assertEqual(_deal(deals, LARA_BARUT).hotel_board_caution, "")
 
     def test_no_caution_where_the_catalogue_board_is_unverified(self):
         # `board_problem` refuses a resort whose catalogue board is unverified
         # before any read is consulted, so no such card can exist — the branch
-        # is exercised on the function, which is where the rule lives.
+        # is exercised on the function, which is where the rule lives. A read
+        # that STATES a board settles an unverified catalogue board, so there is
+        # nothing to contradict: the read, its shape, its party and its rooms
+        # are all this card's.
         config = load_holiday_config(OFF_WINDOW_CONFIG)
         loaded = load_hotel_evidence(
             config,
@@ -564,23 +566,26 @@ class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
         consume_hotel_skip_log()
         resort = {"name": GARRYA, "board": "board unverified"}
         self.assertEqual(
-            hol.board_read_caution(resort, loaded, "2027-06-28", "2027-07-12",
-                                   arch=hol.SUITE_ARCHITECTURE[GARRYA]),
+            hol.read_refusal_caution(resort, loaded, "2027-06-28", "2027-07-12",
+                                     arch=hol.SUITE_ARCHITECTURE[GARRYA],
+                                     travellers=5, stay=None),
             "")
 
-    def test_no_caution_on_an_island(self):
+    def test_no_board_caution_on_an_island(self):
         # An island prices every board its read carries, so no read of one is
-        # refused and there is nothing for a caution to stand against.
+        # refused on its board and there is nothing for a board caution to
+        # stand against.
         config, loaded, deals = _deals(OFF_WINDOW_CONFIG, [_garrya_read()])
         resort = {"name": GARRYA, "board": "All Inclusive"}
         self.assertEqual(
-            hol.board_read_caution(resort, loaded, "2027-06-28", "2027-07-12",
-                                   arch=hol.SUITE_ARCHITECTURE[GARRYA],
-                                   island=True),
+            hol.read_refusal_caution(resort, loaded, "2027-06-28", "2027-07-12",
+                                     arch=hol.SUITE_ARCHITECTURE[GARRYA],
+                                     island=True, travellers=5, stay=None),
             "")
         self.assertNotEqual(
-            hol.board_read_caution(resort, loaded, "2027-06-28", "2027-07-12",
-                                   arch=hol.SUITE_ARCHITECTURE[GARRYA]),
+            hol.read_refusal_caution(resort, loaded, "2027-06-28", "2027-07-12",
+                                     arch=hol.SUITE_ARCHITECTURE[GARRYA],
+                                     travellers=5, stay=None),
             "")
 
 

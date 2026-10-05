@@ -1224,7 +1224,7 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
             # BRIEF-H15 §2: the card's own words, built once by the engine and
             # printed here verbatim, so this e-mail and the audit page cannot
             # word the same contradiction differently.
-            "caution": str(getattr(deal, "hotel_board_caution", "") or "").strip(),
+            "caution": str(getattr(deal, "hotel_read_refused", "") or "").strip(),
             "tag": tag,
             "tag_colour": tag_colour,
             "movement": movement_words(trend_by_resort.get(str(deal.resort_name)),
