@@ -30,6 +30,7 @@ against the card it is testing.
 
 from __future__ import annotations
 
+from html import unescape
 import json
 import tempfile
 import unittest
@@ -38,6 +39,7 @@ from public_flight_search import holidays as hol
 from public_flight_search.holiday_email import (
     board_line,
     render_holiday_report_compact,
+    render_holiday_report_compact_text,
 )
 from public_flight_search.holidays import (
     collect_holiday_deals,
@@ -210,6 +212,31 @@ def _lara_barut_read(**overrides) -> dict:
     return record
 
 
+def _lara_barut_member_read(**overrides) -> dict:
+    """The same row as it now arrives: a public nightly AND a member nightly.
+
+    ``member`` is the price a hotel's own loyalty scheme offers, which is not a
+    price the reader can book as a guest, so it can never become the card's
+    figure and a row carrying only one prices nothing at all.
+    """
+    return _lara_barut_read(**{
+        "board": "AI",
+        "rate_name": "Suite · 5 guests · breakfast · Suite",
+        "units": [{"name": "Deluxe Family Suite - All Inclusive",
+                   "adults": 5, "guests_stated": "5 guests"}],
+        "prices_shown": [{"unit": "Deluxe Family Suite - All Inclusive",
+                          "nightly": 1038.0, "member": 634.0,
+                          "provider": "Example Hotels"}],
+        "derived_stay_total": {
+            "value": 8304.0,
+            "currency": "GBP",
+            "how": ("nightly price shown x 8 nights; the listing shows a nightly "
+                    "figure, not the stay total"),
+        },
+        **overrides,
+    })
+
+
 def _write(payload: dict) -> str:
     handle = tempfile.NamedTemporaryFile(
         "w", suffix=".json", delete=False, encoding="utf-8")
@@ -357,9 +384,7 @@ class TestTheOffWindowReadStillFacesEveryOtherGate(unittest.TestCase):
     def test_a_rate_with_no_gbp_figure_is_still_refused(self):
         # A EUR total with no conversion is not a GBP price, inside the window
         # or outside it.
-        record = _garrya_read()
-        record.pop("derived_gbp")
-        self.assertEqual(self._loaded(**{"derived_gbp": None}), {})
+        self.assertEqual(self._loaded(derived_gbp=None), {})
 
     def test_a_read_with_no_source_url_is_still_refused(self):
         self.assertEqual(self._loaded(source_url="example.invalid/booking"), {})
@@ -420,6 +445,170 @@ class TestAnOffWindowReadReachesAResortWithNoCatalogueRate(unittest.TestCase):
         self.assertIsNone(deal.hotel_evidence)
         self.assertIn("estimate from a read rate for 20–27 Jul",
                       board_line(deal, travellers=5))
+
+
+class TestACardWhoseBoardIsContradictedSaysSo(unittest.TestCase):
+    """§2: the price stays, and the card names the read standing against it."""
+
+    def setUp(self):
+        self.config, self.loaded, self.deals = _deals(
+            BOARD_CONTRADICTION_CONFIG, [_lara_barut_read()])
+        self.deal = _deal(self.deals, LARA_BARUT)
+
+    def test_the_price_is_kept_and_is_the_catalogue_estimate(self):
+        # H3's board rule is untouched: an all-inclusive resort does not sell a
+        # breakfast rate, so the read cannot price the card and the catalogue
+        # stands. The fix is a sentence, not a different number.
+        self.assertEqual(hol.board_code(self.deal.board_basis), "AI")
+        self.assertIsNone(self.deal.hotel_evidence)
+        self.assertAlmostEqual(
+            self.deal.hotel_price_total_gbp,
+            LARA_CATALOGUE_NIGHTLY * self.deal.nights, places=2)
+
+    def test_the_card_names_the_read_that_was_refused(self):
+        caution = self.deal.hotel_board_caution
+        self.assertIn("A rate read for 20–28 Dec was Bed & Breakfast", caution)
+        self.assertIn("£731 a night", caution)
+        self.assertIn("the All Inclusive price here is the catalogue's estimate",
+                      caution)
+
+    def test_a_read_for_these_dates_is_named_as_such(self):
+        # Same sentence, "these dates" — because the read IS for this pair.
+        config, _loaded, deals = _deals(BOARD_CONTRADICTION_CONFIG, [
+            _lara_barut_read(check_in=BOARD_CONTRADICTION_PAIR[0],
+                             check_out=BOARD_CONTRADICTION_PAIR[1]),
+        ])
+        caution = _deal(deals, LARA_BARUT).hotel_board_caution
+        self.assertIn("A rate read for these dates was Bed & Breakfast", caution)
+        self.assertNotIn("20–28 Dec", caution)
+
+    def _said(self, page: str) -> str:
+        """The page as a reader receives it: entities resolved."""
+        return unescape(page)
+
+    def test_the_compact_email_carries_the_caution(self):
+        html = _card_html(self.config, [self.deal])
+        self.assertIn(self.deal.hotel_board_caution, self._said(html))
+
+    def test_the_plain_text_email_carries_the_same_words(self):
+        text = render_holiday_report_compact_text(
+            self.config, generated_at=NOW, deals=[self.deal])
+        self.assertIn(self.deal.hotel_board_caution, text)
+
+    def test_the_audit_page_carries_the_same_words(self):
+        html = hol.render_holiday_report(
+            self.config, generated_at=NOW, deals=[self.deal])
+        self.assertIn("Read on another board:", html)
+        self.assertIn(self.deal.hotel_board_caution, self._said(html))
+
+    def test_no_caution_when_the_reads_own_board_is_the_cards_board(self):
+        # Read for this pair on the card's own board: it prices the card, and a
+        # read that priced the card contradicts nothing.
+        config, _loaded, deals = _deals(BOARD_CONTRADICTION_CONFIG, [
+            _lara_barut_read(board="AI",
+                             check_in=BOARD_CONTRADICTION_PAIR[0],
+                             check_out=BOARD_CONTRADICTION_PAIR[1]),
+        ])
+        deal = _deal(deals, LARA_BARUT)
+        self.assertEqual(deal.hotel_board_caution, "")
+        self.assertIsNotNone(deal.hotel_evidence)
+        self.assertEqual(deal.hotel_rate_basis, "exact-date-rate")
+        self.assertAlmostEqual(deal.hotel_price_total_gbp, 731.0 * 8, places=2)
+
+    def test_no_caution_when_the_same_board_read_carried_a_nightly_instead(self):
+        # The read is for the neighbouring pair, so BRIEF-H14 §1's derived rule
+        # prices the card — still no caution, and still named.
+        config, _loaded, deals = _deals(BOARD_CONTRADICTION_CONFIG, [
+            _lara_barut_read(board="AI"),
+        ])
+        deal = _deal(deals, LARA_BARUT)
+        self.assertEqual(deal.hotel_board_caution, "")
+        self.assertEqual(deal.hotel_rate_basis, "read-rate-estimate")
+        self.assertEqual(tuple(deal.hotel_rate_read_dates),
+                         ("2026-12-20", "2026-12-28"))
+
+    def test_no_caution_when_nothing_was_read_at_all(self):
+        config, _loaded, deals = _deals(BOARD_CONTRADICTION_CONFIG, [])
+        deal = _deal(deals, LARA_BARUT)
+        self.assertEqual(deal.hotel_board_caution, "")
+        self.assertAlmostEqual(deal.hotel_price_total_gbp,
+                               LARA_CATALOGUE_NIGHTLY * deal.nights, places=2)
+
+    def test_no_caution_when_a_read_priced_the_card(self):
+        # The derived rule already names the read it used; a second sentence
+        # about a read that priced nothing would be noise on a priced card.
+        config, _loaded, deals = _deals(OFF_WINDOW_CONFIG, [_garrya_read()])
+        deal = _deal(deals, GARRYA)
+        self.assertEqual(deal.hotel_board_caution, "")
+        self.assertEqual(deal.hotel_rate_basis, "read-rate-estimate")
+
+    def test_no_caution_for_a_read_on_another_booking_shape(self):
+        # One villa is not two rooms on one booking: a read for a different
+        # booking describes a different booking, not this one on another board.
+        config, _loaded, deals = _deals(BOARD_CONTRADICTION_CONFIG, [
+            _lara_barut_read(booking_shape="three_rooms"),
+        ])
+        self.assertEqual(_deal(deals, LARA_BARUT).hotel_board_caution, "")
+
+    def test_no_caution_where_the_catalogue_board_is_unverified(self):
+        # `board_problem` refuses a resort whose catalogue board is unverified
+        # before any read is consulted, so no such card can exist — the branch
+        # is exercised on the function, which is where the rule lives.
+        config = load_holiday_config(OFF_WINDOW_CONFIG)
+        loaded = load_hotel_evidence(
+            config,
+            path=_write({"schema": "holiday_hotel_evidence/1",
+                         "rates": [_garrya_read()]}),
+            now=NOW,
+        )
+        consume_hotel_skip_log()
+        resort = {"name": GARRYA, "board": "board unverified"}
+        self.assertEqual(
+            hol.board_read_caution(resort, loaded, "2027-06-28", "2027-07-12",
+                                   arch=hol.SUITE_ARCHITECTURE[GARRYA]),
+            "")
+
+    def test_no_caution_on_an_island(self):
+        # An island prices every board its read carries, so no read of one is
+        # refused and there is nothing for a caution to stand against.
+        config, loaded, deals = _deals(OFF_WINDOW_CONFIG, [_garrya_read()])
+        resort = {"name": GARRYA, "board": "All Inclusive"}
+        self.assertEqual(
+            hol.board_read_caution(resort, loaded, "2027-06-28", "2027-07-12",
+                                   arch=hol.SUITE_ARCHITECTURE[GARRYA],
+                                   island=True),
+            "")
+        self.assertNotEqual(
+            hol.board_read_caution(resort, loaded, "2027-06-28", "2027-07-12",
+                                   arch=hol.SUITE_ARCHITECTURE[GARRYA]),
+            "")
+
+
+class TestAMemberNightlyIsNeverThePrice(unittest.TestCase):
+    """A loyalty price is not a price the reader can book as a guest."""
+
+    def test_the_public_nightly_is_the_price_and_the_member_figure_is_not(self):
+        config, loaded, deals = _deals(
+            BOARD_CONTRADICTION_CONFIG, [_lara_barut_member_read()])
+        deal = _deal(deals, LARA_BARUT)
+        self.assertAlmostEqual(deal.hotel_price_total_gbp, 1038.0 * 8, places=2)
+        self.assertNotAlmostEqual(deal.hotel_price_total_gbp, 634.0 * 8, places=2)
+        entry = next(iter(loaded.values()))
+        self.assertIn("£8,304", entry.cheapest.price_label)
+        self.assertNotIn("634", entry.cheapest.price_label)
+
+    def test_a_row_with_only_a_member_price_prices_nothing(self):
+        record = _lara_barut_member_read()
+        record["prices_shown"] = [
+            {"unit": "Deluxe Family Suite - All Inclusive", "member": 634.0,
+             "provider": "Example Hotels"},
+        ]
+        record["derived_stay_total"] = None
+        config, loaded, deals = _deals(BOARD_CONTRADICTION_CONFIG, [record])
+        self.assertEqual(loaded, {})
+        deal = _deal(deals, LARA_BARUT)
+        self.assertAlmostEqual(deal.hotel_price_total_gbp,
+                               LARA_CATALOGUE_NIGHTLY * deal.nights, places=2)
 
 
 if __name__ == "__main__":

@@ -1516,6 +1516,12 @@ class PackageDeal:
     #: names these dates, because a nightly carried from a neighbouring pair is
     #: an estimate and has to read as one.
     hotel_rate_read_dates: tuple[str, str] = ()
+    #: One line naming a rate read for this property that could NOT price this
+    #: card because it was on another board (owner brief 2026-10-05, H15 §2).
+    #: Set only when the card's stay is the catalogue's, because that is the
+    #: only case where the card shows a figure the read contradicts. Empty when a
+    #: read priced the card, when an operator's package did, and on an island.
+    hotel_board_caution: str = ""
     #: Google (or another named site's) rating read for this property, with
     #: its source and review count (owner brief 2026-10-03, H4).
     hotel_ratings: tuple = ()
@@ -4873,6 +4879,88 @@ def _read_board_rows(entry: Any, nights: int) -> tuple[dict[str, Any], ...]:
     ))
 
 
+def board_read_caution(resort: Mapping[str, Any], loaded: Any, check_in: str,
+                       check_out: str, *, arch: Mapping[str, Any],
+                       island: bool = False) -> str:
+    """The one line a catalogue-priced card owes the reader when a read says
+    otherwise, or ``""`` (BRIEF-H15 §2, 2026-10-05).
+
+    Lara Barut Collection's December card is All Inclusive at the catalogue's
+    ~GBP 185 a night. The only rate read for that property is Bed & Breakfast at
+    ~GBP 731 a night, and H3's board rule rightly refuses a breakfast rate to
+    price an all-inclusive card — the resort does not sell one. So the catalogue
+    stands, the card is priced, and until now the reader had no way of knowing
+    that the only measurement anyone has of those nights says something four
+    times larger on a different board.
+
+    The rule refuses to change the price and says so instead. Nothing here can
+    price anything: it is asked for only when the card's stay IS the
+    catalogue's, and it names the read it is standing against — its board, its
+    per-night figure, and its own dates when they are not this card's, because
+    "for these dates" is a claim about a pair and this run only offers the pair
+    the card is on.
+
+    Empty when a read priced the card (there is then nothing contradicted), when
+    the refused read is on another booking shape (it describes a different
+    booking, not this one on another board), when the catalogue's board is
+    unverified (a read that states a board settles it rather than contradicting
+    it), and on an island, where every board a read carries is priced on the
+    card and none is refused.
+    """
+    if not loaded or island:
+        return ""
+    shape = "single_unit" if int(_unit_rooms(arch) or 1) == 1 else "two_rooms_one_booking"
+    name = str(resort["name"])
+    entries: list[tuple[Any, bool]] = []
+    exact = hotel_rate_for(loaded, name, check_in, check_out)
+    if exact is not None:
+        entries.append((exact, True))
+    entries.extend(
+        (entry, False) for entry in
+        hotel_rates_near(loaded, name, check_in, check_out, booking_shape=shape)
+    )
+    for entry, is_exact in entries:
+        for rate in getattr(entry, "rates", ()) or ():
+            read_board = str(getattr(rate, "board", "") or "").strip().upper()
+            if read_board not in BREAKFAST_BASES:
+                continue
+            if _rate_board_matches(resort, rate, island=island):
+                continue
+            nightly = read_nightly(rate)
+            if nightly is None:
+                continue
+            return _board_caution_words(
+                resort, read_board, nightly, entry.check_in, entry.check_out,
+                is_exact=is_exact,
+            )
+    return ""
+
+
+def _board_caution_words(resort: Mapping[str, Any], read_board: str, nightly: float,
+                         read_in: str, read_out: str, *, is_exact: bool) -> str:
+    """The caution sentence, built ONCE so both renderers cannot word it
+    differently (BRIEF-H15 §2).
+
+    ``_range_words`` is imported here rather than at module load for the same
+    reason ``holidays`` imports ``over_package_html`` where it does:
+    ``holiday_email`` imports THIS module, so the import cannot be top-level.
+    Sharing the formatter is the point — the board line already spells a read's
+    window this way, and the caution beside it must spell the same window
+    identically.
+    """
+    from .holiday_email import _range_words
+
+    when = ("these dates" if is_exact
+            else _range_words(read_in, read_out))
+    card_board = BOARD_LABELS.get(
+        board_code(resort.get("board")), str(resort.get("board") or ""))
+    return (
+        f"A rate read for {when} was {BOARD_LABELS.get(read_board, read_board)} "
+        f"at £{nightly:,.0f} a night; the {card_board} price here is the "
+        "catalogue's estimate."
+    )
+
+
 class _StayPrice(NamedTuple):
     """What one pair's stay costs, and what it is a price OF."""
 
@@ -5786,6 +5874,20 @@ the cards' own prices.
                         uk_ground = 0.0
                         transfer = 0.0
                         hotel_rate = None
+                    # THE CARD SHOWS THE CATALOGUE, AND A READ SAYS OTHERWISE
+                    # (BRIEF-H15 §2). Asked only when nothing read priced this
+                    # stay: that is the one case where the card carries a figure
+                    # the evidence contradicts. A package-priced card keeps no
+                    # caution either — the operator's quote is the stay, so there
+                    # is no catalogue figure left to contradict.
+                    board_caution = (
+                        ""
+                        if package_priced or stay_read.window is not None
+                        else board_read_caution(
+                            resort, hotel_evidence, target_outbound, target_return,
+                            arch=arch, island=island,
+                        )
+                    )
                     price_pp = round(total_pkg / travellers, 2)
                     # REAL discount baseline: the SAME suite, same nights/party,
                     # at the resort's summer peak (Jul/Aug school-holiday highs),
@@ -5969,6 +6071,7 @@ the cards' own prices.
                             # nightly carried from another pair is an estimate
                             # and must read as one.
                             hotel_rate_read_dates=hotel_read_dates,
+                            hotel_board_caution=board_caution,
                             hotel_evidence=hotel_rate,
                             # The operator's own package price for these dates,
                             # when one was read. On an engine-priced card it is
@@ -7163,6 +7266,25 @@ def _booking_term_values(deal: Any) -> tuple[list[str], list[str]]:
     return verified, unknown
 
 
+def render_board_caution_line(deal: Any) -> str:
+    """A read on another board, standing against the price above it.
+
+    BRIEF-H15 §2 (2026-10-05). The audit page prints the same sentence the
+    compact e-mail prints, from the same field, because a reader auditing a card
+    must not find a caveat the e-mail kept or an e-mail caveat the page hides.
+    Empty on every card whose stay a read or an operator's package priced: there
+    is nothing there for a contrary read to contradict.
+    """
+    caution = str(getattr(deal, "hotel_board_caution", "") or "").strip()
+    if not caution:
+        return ""
+    return (
+        '<div style="margin:0 0 6px 0; color:#92400e; font-size:13px;">'
+        '<strong style="color:#0f172a;">Read on another board:</strong> '
+        + escape(caution) + '</div>'
+    )
+
+
 def render_booking_terms(deal_or_row: Any) -> str:
     """A compact, honest booking-terms line: verified facts, then the unknowns.
 
@@ -8017,6 +8139,7 @@ def render_holiday_report(
             out.append(render_hotel_unit_note_line(deal))
             out.append(render_space_note_line(deal))
             out.append(render_board_line(deal))
+            out.append(render_board_caution_line(deal))
             out.append(render_booking_terms(deal))
             if deal.flight_options:
                 out.append(render_flight_options(

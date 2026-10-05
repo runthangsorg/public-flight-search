@@ -1095,6 +1095,10 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
             "package_html": _package_line_html(deal, travellers=travellers),
             "package_how": _rooms_added_words(getattr(deal, "operator_package", None)),
             "board": board_line(deal, travellers=travellers),
+            # BRIEF-H15 §2: the card's own words, built once by the engine and
+            # printed here verbatim, so this e-mail and the audit page cannot
+            # word the same contradiction differently.
+            "caution": str(getattr(deal, "hotel_board_caution", "") or "").strip(),
             "tag": tag,
             "tag_colour": tag_colour,
             "movement": movement_words(trend_by_resort.get(str(deal.resort_name)),
@@ -1303,6 +1307,15 @@ def _card_html(card: Mapping[str, Any]) -> str:
             )
     out.extend([
         f'<div style="font-size:13px; color:{_INK}; margin:6px 0 0 0;">{_esc(card["board"])}</div>',
+        # Directly under the board line, because that is the figure it qualifies.
+        # NOT one of ``warnings``: those are capped at two and ordered by how
+        # long they last, and a price that its own evidence contradicts must
+        # never be the line that gets cut.
+        *(
+            [f'<div style="font-size:12px; color:#92400e; margin:4px 0 0 0;">'
+             f'⚠ {_esc(card["caution"])}</div>']
+            if card["caution"] else []
+        ),
         '<div style="font-size:11px; margin:6px 0 0 0;">',
         f'<span style="background:{tag_bg}; color:{tag_fg}; padding:2px 8px; ',
         f'border-radius:9999px;">{_esc(card["tag"])}</span> ',
@@ -1757,6 +1770,8 @@ def render_holiday_report_compact_text(
             if card["package_how"]:
                 lines.append(f"  {card['package_how']}")
         lines.append(f"  {card['board']}")
+        if card["caution"]:
+            lines.append(f"  ! {card['caution']}")
         lines.append(f"  {card['tag']} · {card['movement']}")
         for cabin, route, total in card["flights"]:
             price = total[0] if isinstance(total, tuple) else total
