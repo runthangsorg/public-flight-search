@@ -947,6 +947,51 @@ def option_evidence_class(option: Mapping[str, Any]) -> int:
     )
 
 
+#: Evidence class of a date pair whose price is an OPERATOR'S OWN PACKAGE
+#: (BRIEF-H12 §1, 2026-10-05). Above ``option_evidence_class``'s best of 2,
+#: because the package is the only candidate price that is one figure somebody
+#: published for flights + board + rooms, for the party, on those dates, in the
+#: one booking the reader would actually make. A read fare and a read nightly
+#: are two figures about two halves of the same holiday; the package is the
+#: holiday.
+PACKAGE_EVIDENCE_CLASS = 3
+
+
+def package_evidence_class(option: Mapping[str, Any]) -> int:
+    """Which evidence class ONE date pair's price belongs to (BRIEF-H12 §1).
+
+    ``option_evidence_class`` counts the two read halves (a fare, a rate) and is
+    unchanged. On top of it, a pair carrying a qualifying operator package is
+    the top class: the package outranks "a read fare and a read rate", and
+    within any one class the lower total still wins.
+
+    Like that function it is the RANKING key only. It says which pair a card is
+    built on and what the card's price is; it never says whether a resort makes
+    a card at all, and it never touches the budget ceiling.
+    """
+    if option.get("package") is not None:
+        return PACKAGE_EVIDENCE_CLASS
+    return option_evidence_class(option)
+
+
+def candidate_price(option: Mapping[str, Any]) -> float:
+    """The price a card on this option would SHOW.
+
+    An option priced by an operator's package shows the package total, because
+    that is what the card's headline becomes; every other option shows the
+    engine's own flights + stay. Used as the second half of the ranking key, so
+    "within one class the lower total wins" compares the figures the reader will
+    actually be shown rather than a number the card does not print.
+    """
+    package = option.get("package")
+    if package is not None:
+        try:
+            return round(float(package.total_gbp), 2)
+        except (AttributeError, TypeError, ValueError):
+            return float(option["total_pkg"])
+    return float(option["total_pkg"])
+
+
 def destination_cabins(
     config: HolidayConfig, destination: HolidayDestination
 ) -> tuple[str, ...]:
@@ -1086,6 +1131,58 @@ class OperatorPackage:
     return_date: str = ""
 
 
+def _qualifying_package(
+    package_evidence: Optional[Mapping[Any, Any]],
+    resort_name: str,
+    outbound: str,
+    returning: str,
+    max_budget_gbp: Any,
+    *,
+    nights: Optional[int] = None,
+) -> Optional[Any]:
+    """The operator package that may price THIS pair, or None.
+
+    The qualification half of ``_promoting_package``, split out so the pair
+    chooser can ask the same question of every pair it is considering and get
+    the same answer it would get once the pair was chosen (BRIEF-H12 §1, 2026-10-
+    05). One definition, so a gate can never be enforced for a card and
+    forgotten for the pairs that compete with it.
+
+    Every condition, and none of them is optional (owner decision 2, 2026-10-04):
+
+    * the package is for these exact outbound and return dates, matched by
+      ``package_price_for``. A package read for the neighbouring fortnight is a
+      different holiday;
+    * it is for the same number of nights, from the record's own field;
+    * its flights are ECONOMY, read from ``flight_cabin``. A missing cabin is
+      UNKNOWN and unknown does not promote. An operator's package is a one-stop
+      by construction and the owner quotes business only for a direct flight,
+      so a package whose flights were searched in Business is not this holiday;
+    * its whole-party total is within ``config.max_budget_gbp``.
+
+    The board, party and room-count gates are the loader's, and the resort has
+    already cleared ``filter_resorts`` and the one-booking unit check by the time
+    this is asked.
+    """
+    if not package_evidence:
+        return None
+    from .package_evidence import (
+        package_covers_nights,
+        package_flown_economy,
+        package_price_for,
+        package_within_budget,
+    )
+
+    price = package_price_for(package_evidence, resort_name, outbound, returning)
+    if price is None or not package_flown_economy(price):
+        return None
+    if nights is not None and not package_covers_nights(price, nights):
+        return None
+    if not package_within_budget(price, max_budget_gbp):
+        return None
+    return price
+
+
 def _promoting_package(
     package_evidence: Optional[Mapping[Any, Any]],
     resort_name: str,
@@ -1101,46 +1198,28 @@ def _promoting_package(
     Owner decision 2, 2026-10-04 ("ok go ahead"): when a resort's own headline
     is over the ceiling but an operator package for the card's OWN trip comes
     in under it, the card stays and its headline is the package total. H9's
-    rule — the package is only ever a sentence beside an over-budget row —
-    is superseded for exactly this case.
+    rule — the package is only ever a sentence beside an over-budget row — is
+    superseded for exactly this case.
 
-    Every condition, and none of them is optional:
-
-    * the package is for this card's own outbound and return dates, matched
-      exactly by ``package_price_for``. A package read for the neighbouring
-      fortnight is a different holiday;
-    * it is for the SAME number of nights, from the record's own field;
-    * its flights are ECONOMY, read from ``flight_cabin``. A missing cabin is
-      UNKNOWN and unknown does not promote (see ``package_flown_economy``).
-      An operator's package is a one-stop by construction, and the owner
-      quotes business only for a direct flight, so a package whose flights
-      were searched in Business is not this holiday;
-    * its whole-party total is within ``config.max_budget_gbp``.
-
-    The board, party and room-count gates are the loader's, and the resort has
-    already cleared ``filter_resorts`` and the one-booking unit check by the
-    time this is asked — so a package that reaches here has passed every
-    gate its own headline did.
+    Qualification is ``_qualifying_package``'s, so a package that can price a
+    card once the pair is chosen can also WIN the choice of pair (BRIEF-H12
+    §1): the same gates, asked per pair. What this adds is the card-shaped
+    package, with the gap measured against the engine's own quote for the same
+    trip, which is what makes "GBP X less than booking the halves separately" a
+    true sentence.
 
     Anything else returns ``None`` and the card is priced exactly as before,
     with the package still riding it as a comparison line.
     """
     if not package_evidence:
         return None
-    from .package_evidence import (
-        package_covers_nights,
-        package_flown_economy,
-        package_price_for,
-        package_provenance,
-        package_within_budget,
-    )
+    from .package_evidence import package_provenance
 
-    price = package_price_for(package_evidence, resort_name, outbound, returning)
-    if price is None or not package_flown_economy(price):
-        return None
-    if nights is not None and not package_covers_nights(price, nights):
-        return None
-    if not package_within_budget(price, max_budget_gbp):
+    price = _qualifying_package(
+        package_evidence, resort_name, outbound, returning, max_budget_gbp,
+        nights=nights,
+    )
+    if price is None:
         return None
     try:
         engine_total = float(engine_total_gbp)
@@ -1246,7 +1325,11 @@ def _over_operator_package(
     this list. The package's own dates ride along so the note can state them.
 
     It never prices, ranks, filters or admits anything (same rule as on a
-    card): it is a sentence beside the row, not a second deal.
+    card): it is a sentence beside the row, not a second deal. Note that a
+    resort whose package QUALIFIES under ``_qualifying_package`` no longer
+    reaches this list at all on that account — since BRIEF-H12 §1 it is priced at
+    the package and makes a card. What still lands here is a package that fails a
+    gate (an unknown cabin above all) or one for a pair this run cannot price.
     """
     if not package_evidence:
         return None
@@ -4623,13 +4706,15 @@ def collect_holiday_deals(
     qualifying rate, nothing changes.
 
     ``package_evidence`` is the operator-package loader's output (owner brief
-    2026-10-04, WP4d). Where a card's resort and dates have a qualifying
-    operator package, that price rides the card as ``operator_package`` beside
-    the headline. It NEVER prices, ranks, filters or scores anything: the
-    headline stays the engine's own flights + stay, because an operator's price
-    for one booking on one date is information about the market, not a
-    re-ranking of the report. Absent, or with no qualifying package, nothing
-    changes.
+    2026-10-04, WP4d). A qualifying package for a pair, and only for a pair this
+run prices, rides the card for those dates: since BRIEF-H12 §1 (2026-10-05) it
+is also the strongest piece of evidence the pair chooser knows about, so it
+decides WHICH pair a card is built on, and since H10 §2 it is the card's price
+whenever it qualifies. Every other gate is unchanged — economy ``flight_cabin``
+read from the record, the card's own dates and nights, the party and rooms, and
+a whole-party total inside ``config.max_budget_gbp``. It never filters a
+resort out of the report, never scores, and never reorders the report against
+the cards' own prices.
 
     ``stopover_reads`` is the private stopover export (``load_stopover_reads``):
     whole-party multi-city fares read for the hub-stopover itineraries. They
@@ -4666,7 +4751,8 @@ def collect_holiday_deals(
 
     def _best_option(resort, cabin, flight_mult, arch, *, enforce_budget: bool = True,
                      prefer_evidence: bool = False,
-                     require_evidence: bool = False) -> Optional[dict]:
+                     require_evidence: bool = False,
+                     prefer_packages: bool = False) -> Optional[dict]:
         """Best (date pair, departure origin) for one resort that clears
         BOTH ceilings, or None when no combination does.
 
@@ -4703,12 +4789,33 @@ def collect_holiday_deals(
         test above still admits and rejects exactly the same candidates, a
         resort that made a card still makes one, and the resorts are still
         ranked against each other afterwards.
+
+        ``prefer_packages`` adds the strongest read of all (BRIEF-H12 §1,
+        2026-10-05): a pair an operator has quoted a package for, qualifying
+        under H10 §2's gates, is the top class whatever else was read for it,
+        and the card is priced AT that package. Two consequences, both
+        deliberate:
+
+        * the price compared within the class is the package total
+          (``candidate_price``), so "within one class the lower total wins"
+          compares the figure the reader is shown;
+        * a pair whose OWN flights + stay cannot fit the ceiling may still be
+          priced, when a qualifying package for that pair fits. That is H10 §2's
+          own rescue, generalised from "the pair the engine happened to land on"
+          to every priceable pair — the ceiling itself is never moved, and the
+          package still has to clear every gate of it.
         """
         def _rank(option: dict) -> tuple[float, ...]:
             # Strictly less-than below, so a tie keeps the first candidate
             # evaluated — and ``pairs`` leads with the headline pair.
             if not prefer_evidence:
                 return (option["total_pkg"], option["true_d2d"])
+            if prefer_packages:
+                return (
+                    -float(package_evidence_class(option)),
+                    candidate_price(option),
+                    option["true_d2d"],
+                )
             return (
                 -float(option_evidence_class(option)),
                 option["total_pkg"],
@@ -4733,6 +4840,19 @@ def collect_holiday_deals(
             else:
                 hotel_cost = round(arch["suite_nightly_gbp"] * nights, 2)
             peak_hotel = round(arch["suite_peak_nightly_gbp"] * nights, 2)
+            # THE OPERATOR'S OWN PRICE FOR THIS PAIR (BRIEF-H12 §1). Asked per
+            # pair, under the same gates a card's own rescue uses, so the pair a
+            # package was read for can win the choice of pair instead of being
+            # read for nothing. Only when ``prefer_packages`` is on: the
+            # comparison rows below are priced by the engine, because a package
+            # is an economy booking and must never price a Premium Economy or a
+            # mixed-cabin row.
+            package = None
+            if prefer_packages:
+                package = _qualifying_package(
+                    package_evidence, str(resort["name"]), outbound, returning,
+                    max_budget_gbp, nights=nights,
+                )
             if hotel_rate is None and not arch.get("suite_nightly_gbp"):
                 # NO PRICE, NO CARD. This entry carries a unit and public facts
                 # but no rate: pricing it from nothing would show a stay at
@@ -4764,9 +4884,17 @@ def collect_holiday_deals(
                 uk_ground = UK_GROUND_RETURN_GBP.get(origin, 16.50)
                 total_pkg = round(flight_cost + hotel_cost, 2)
                 true_d2d = round(total_pkg + uk_ground + transfer, 2)
-                # STRICT: both measures must clear the ceiling.
-                if enforce_budget and not (
-                    total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
+                # STRICT: both measures must clear the ceiling — unless this
+                # pair carries a qualifying package that does, in which case the
+                # card is priced BY the package and the engine's own split of
+                # this trip is the comparison beside it, not the price. Nothing
+                # else is admitted this way, and the ceiling is untouched.
+                if (
+                    enforce_budget
+                    and not (
+                        total_pkg <= max_budget_gbp and true_d2d <= max_budget_gbp
+                    )
+                    and package is None
                 ):
                     continue
                 option = {
@@ -4784,9 +4912,28 @@ def collect_holiday_deals(
                     "evidence": evidence,
                     "evidence_used": evidence_used,
                     "hotel_rate": hotel_rate,
+                    "package": package,
                 }
                 if best is None or _rank(option) < _rank(best):
                     best = option
+        if best is not None and best.get("package") is not None:
+            # THE PACKAGE IS THE CARD'S PRICE (BRIEF-H12 §2). The winner carries
+            # a qualifying package, so the card is priced at it and renders
+            # exactly as BRIEF-H10 §2's package-priced card renders: the operator,
+            # what the package includes, the room count, the operator link, and a
+            # breakdown that adds up to the headline because the package is its
+            # only part. The engine's own total is kept as the gap the
+            # comparison line is measured against.
+            best = dict(best)
+            best["rescue"] = _promoting_package(
+                package_evidence,
+                str(resort["name"]),
+                str(best["outbound"]),
+                str(best["return"]),
+                best["true_d2d"],
+                max_budget_gbp,
+                nights=int(best["nights"]),
+            )
         return best
 
     def _within(total_pkg: float, true_d2d: float) -> bool:
@@ -5117,6 +5264,7 @@ def collect_holiday_deals(
                     fitting = _best_option(
                         resort, cabin, flight_mult, arch,
                         enforce_budget=True, prefer_evidence=True,
+                        prefer_packages=True,
                     )
                     if fitting is not None:
                         cheapest = fitting
@@ -5156,6 +5304,14 @@ def collect_holiday_deals(
                         # ceiling? If there is, the card stays and the
                         # package total becomes its headline. This is the one
                         # place an operator's price may price anything.
+                        #
+                        # Since H12 §1 ``prefer_packages`` on the call above has
+                        # already asked this question of EVERY priceable pair,
+                        # so a resort with a qualifying package for any of them
+                        # was admitted by ``fitting`` and never reaches here.
+                        # Kept because it costs nothing and because it is the
+                        # belt to that pair of braces: a pair skipped for want of
+                        # a stay price still gets its chance here.
                         rescue = _promoting_package(
                             package_evidence, str(resort["name"]),
                             str(cheapest["outbound"]), str(cheapest["return"]),
@@ -5174,9 +5330,12 @@ def collect_holiday_deals(
                     # card makes (owner brief 2026-10-04, H5). The candidate set
                     # is already inside the budget by the time it is ranked, so
                     # preferring a real price here moves WHICH PAIR the card
-                    # shows and can never add or drop a resort.
+                    # shows and can never add or drop a resort — except through
+                    # the one exception BRIEF-H12 §1 names, a pair an operator
+                    # has quoted a qualifying package for (see below).
                     option = _best_option(
-                        resort, cabin, flight_mult, arch, prefer_evidence=True
+                        resort, cabin, flight_mult, arch, prefer_evidence=True,
+                        prefer_packages=True,
                     )
                     if option is None:
                         # Held back: listed only if the WHOLE destination ends
@@ -5188,7 +5347,8 @@ def collect_holiday_deals(
                             # An economy route is exactly where an operator's
                             # economy package can out-price the engine's own
                             # flights + stay, so it is the case the rule was
-                            # written for.
+                            # written for. Unreachable while every priceable
+                            # pair is asked above; kept as the belt to that.
                             rescue = _promoting_package(
                                 package_evidence, str(resort["name"]),
                                 str(cheapest["outbound"]), str(cheapest["return"]),
