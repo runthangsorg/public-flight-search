@@ -5269,22 +5269,38 @@ def _board_for_card(resort: Mapping[str, Any], rate: Any) -> str:
     return str(resort.get("board") or "")
 
 
-def _unit_check_findings(resort_name: str, config) -> tuple[tuple[str, str], ...]:
-    """``(finding, dates)`` for this property's unit checks, per date pair.
+class _UnitCheckSeen(NamedTuple):
+    """One unit check as the collector reads it: the words, the dates they were
+    read for, and the exporter's own answer to whether the party is refused."""
 
-    A property that refuses five adults for one week may well take them for
+    finding: str
+    dates: str
+    refuses_party: Any = None
+
+
+def _unit_check_findings(resort_name: str, config) -> tuple[_UnitCheckSeen, ...]:
+    """This property's unit checks, per date pair this run prices.
 
     A property that refuses five adults for one week may well take them for
     another, so a check only speaks for the dates it was made on.
+
+    ``refuses_party`` is carried with the words because it DECIDES them
+    (BRIEF-H17 §1, 2026-10-06): where the exporter stated it, the wording is
+    evidence of what was seen, not the rule. ``None`` means it stated nothing,
+    and only then is the wording read.
     """
     from .holidays import priceable_date_pairs
 
-    out: list[tuple[str, str]] = []
+    out: list[_UnitCheckSeen] = []
     for outbound, returning in priceable_date_pairs(config):
         for check in supplemental_for(
             resort_name, "unit_checks", dates=(outbound, returning)
         ):
-            out.append((check.finding, f"{outbound}→{returning}"))
+            out.append(_UnitCheckSeen(
+                finding=check.finding,
+                dates=f"{outbound}→{returning}",
+                refuses_party=getattr(check, "refuses_party", None),
+            ))
     return tuple(out)
 
 
@@ -5302,14 +5318,21 @@ def _unit_check_refusal(resort_name: str, config, *, travellers: int,
     Where a qualifying rate exists the finding is still true and still worth
     saying, so it becomes a note on the card (``_unit_check_note``) instead of
     a removal.
+
+    BRIEF-H17 §1 (2026-10-06) decides the first question from the exporter's
+    ``refuses_party`` wherever it is stated, so this branch no longer has to
+    guess from words: "No rooms available for selected dates" is sold out, and a
+    note about an estimate that "cannot be re-checked" is about our reading, and
+    neither removes a resort.
     """
-    for finding, dates in _unit_check_findings(resort_name, config):
-        if not unit_check_blocks_party(finding, travellers):
+    for seen in _unit_check_findings(resort_name, config):
+        if not unit_check_blocks_party(
+                seen.finding, travellers, refuses_party=seen.refuses_party):
             continue
-        outbound, _, returning = dates.partition("→")
+        outbound, _, returning = seen.dates.partition("→")
         if hotel_rate_for(hotel_evidence, resort_name, outbound, returning) is not None:
             continue
-        return f"{finding} (checked {dates})"
+        return f"{seen.finding} (checked {seen.dates})"
     return ""
 
 
@@ -5320,15 +5343,18 @@ def _unit_check_note(resort_name: str, config, *, travellers: int,
     The finding is carried in the engine's own words: "one room for 5 refused;
     sold as 2 rooms in one booking" is exactly the thing a reader wants to
     know before choosing it, and paraphrasing it risks saying something the
-    engine did not.
+    engine did not. Only a check that actually refuses the party gets here
+    (BRIEF-H17 §1), which is why a sold-out property and a read we could not
+    re-check no longer print a note about the party at all.
     """
-    for finding, dates in _unit_check_findings(resort_name, config):
-        if not unit_check_blocks_party(finding, travellers):
+    for seen in _unit_check_findings(resort_name, config):
+        if not unit_check_blocks_party(
+                seen.finding, travellers, refuses_party=seen.refuses_party):
             continue
-        outbound, _, returning = dates.partition("→")
+        outbound, _, returning = seen.dates.partition("→")
         if hotel_rate_for(hotel_evidence, resort_name, outbound, returning) is None:
             continue
-        return finding
+        return seen.finding
     return ""
 
 

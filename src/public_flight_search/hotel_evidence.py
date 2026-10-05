@@ -22,6 +22,10 @@ honest seam rather than a scraper — the same contract as
   ``derived_gbp`` conversion that carries its own arithmetic on its face, so a
   converted amount can never be read as a GBP price;
 * each rate travels with its terms, its source URL and its observation time;
+* a unit check refuses the party only when the EXPORTER said so
+  (``refuses_party``, BRIEF-H17 §1), and the wording is read — narrowly, as a
+  refusal and its party in one clause within six words — only for records that
+  state nothing;
 * an aged, mismatched or room-only rate is dropped **with a stated reason**
   rather than quietly;
 * a missing or unreadable file changes nothing about today's output.
@@ -167,6 +171,19 @@ class UnitCheck:
     destination_key: str = ""
     #: The dates this check was made for; empty when the engine did not say.
     dates: tuple[str, ...] = ()
+    #: The EXPORTER'S OWN answer to the only question this report asks of a
+    #: unit check: does this property refuse the party in one booking? BRIEF-H17
+    #: §1 (2026-10-06). ``True`` removes the resort, ``False`` never does —
+    #: whatever the wording beside it says, which is the whole point: a finding
+    #: may quote a page that says "no rooms available" (sold out, not a
+    #: refusal) or a note that an estimate "cannot be re-checked" (nothing to do
+    #: with the hotel), and a text matcher reads either as a refusal.
+    #:
+    #: ``None`` means the exporter stated nothing, and only then does
+    #: ``unit_check_blocks_party`` fall back to the wording — narrowly, because
+    #: a fallback that guesses is what drops a card for a hotel that does take
+    #: five adults.
+    refuses_party: Optional[bool] = None
 
 
 @dataclass(frozen=True)
@@ -235,6 +252,43 @@ class HotelEvidence:
 #: Skips from the most recent load, surfaced in the job summary so an
 #: operator sees exactly why a property stayed unpriced.
 _SKIP_LOG: list[str] = []
+
+#: How this load's unit checks were decided (BRIEF-H17 §3): ``field`` counts the
+#: ones the exporter answered for with ``refuses_party``, ``text`` the ones that
+#: fell back to the wording. The second number is the fallback's REACH, and it
+#: is the one that matters operationally: every check in it is a card whose
+#: existence depends on a six-word proximity rule rather than on an answer, so
+#: it is where an exporter that stops emitting the field would start costing
+#: cards. Belongs to THIS load, like ``_SKIP_LOG``.
+_UNIT_CHECK_BASIS: dict[str, int] = {}
+
+
+def consume_hotel_unit_check_basis() -> dict[str, int]:
+    """Return and clear how this load's unit checks were decided.
+
+    Keys: ``total``, ``field``, ``text``.
+    """
+    basis = dict(_UNIT_CHECK_BASIS)
+    _UNIT_CHECK_BASIS.clear()
+    return basis
+
+
+def _tally_unit_check_basis() -> None:
+    """Count every unit check this load holds, by the mechanism that decides it.
+
+    Counted over the loaded records rather than over the calls, so the number is
+    a property of the evidence file and not of how many resorts and date pairs
+    the collector happened to walk.
+    """
+    total = by_field = 0
+    for entry in _SUPPLEMENTAL_BY_PROPERTY.values():
+        for check in entry.get("unit_checks", ()) or ():
+            total += 1
+            if getattr(check, "refuses_party", None) is not None:
+                by_field += 1
+    _UNIT_CHECK_BASIS.clear()
+    _UNIT_CHECK_BASIS.update({"total": total, "field": by_field,
+                              "text": total - by_field})
 
 
 def consume_hotel_skip_log() -> list[str]:
@@ -435,6 +489,20 @@ def _stated(entry: Any, field_name: str) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _stated_flag(entry: Any, field_name: str) -> Optional[bool]:
+    """A stated yes/no, or ``None`` when the record did not state one.
+
+    Only a real boolean counts. A missing key, a null and a string are all the
+    same thing here — the exporter did not answer — and answering them with
+    ``False`` would let a text matcher's guess stand in for an answer nobody
+    gave (BRIEF-H17 §1).
+    """
+    if not isinstance(entry, dict):
+        return None
+    value = entry.get(field_name)
+    return value if isinstance(value, bool) else None
 
 
 def _terms_by_field(rate: dict) -> tuple[str, str]:
@@ -728,6 +796,7 @@ A rate is kept only when every one of the brief's conditions holds:
     """
     _SKIP_LOG.clear()
     _SUPPLEMENTAL_BY_PROPERTY.clear()
+    _UNIT_CHECK_BASIS.clear()
 
     now_dt = _parse_observed_at(now) or datetime.now(timezone.utc)
     ceiling = max_age_hours if max_age_hours and max_age_hours > 0 else hotel_evidence_max_age_hours()
@@ -765,6 +834,7 @@ A rate is kept only when every one of the brief's conditions holds:
     # mentions rather than only the priced ones: a unit check for a property we
     # found no rate for is still a fact about the property.
     _SUPPLEMENTAL_BY_PROPERTY.update(_index_supplemental(payload))
+    _tally_unit_check_basis()
     for index, item in enumerate(rates):
         if not isinstance(item, dict):
             _warn_skip(f"#{index}", "not an object")
@@ -936,7 +1006,9 @@ def _supplementary(payload, section: str) -> list[dict]:
 #: Wording the engine uses when a property has no unit that takes the party in
 #: one booking. A unit check that FINDS units is not in here: this list is the
 #: refusal vocabulary, and a finding that matches none of it keeps the resort.
-#: A wrong removal is worse than a kept card, so the default is to keep.
+#: A wrong removal is worse than a kept card, so the default is to keep. This is
+#: the FALLBACK vocabulary only: where the exporter stated ``refuses_party``,
+#: that field decides and none of these words is read at all (BRIEF-H17 §1).
 UNIT_REFUSAL_WORDS: tuple[str, ...] = (
     "refused",
     "refuse",
@@ -952,34 +1024,141 @@ UNIT_REFUSAL_WORDS: tuple[str, ...] = (
     "will not take",
 )
 
+#: How close together, in words, a refusal word and the party it refuses must
+#: sit for the fallback to read them as one claim (BRIEF-H17 §2). Six words is
+#: a clause, not a paragraph: it separates "Rooms cannot accommodate more than
+#: 3 adults" from "5 adults in one room refused", and it keeps a refusal in one
+#: sentence from pairing with a party named in the next.
+UNIT_REFUSAL_PROXIMITY_WORDS = 6
 
-def unit_check_blocks_party(finding: str, travellers: int) -> bool:
+#: A party named in words rather than as a number of people: one room, one
+#: unit, one booking. A refusal of any of those is a refusal of the booking the
+#: report is selling.
+UNIT_PARTY_PHRASES: tuple[str, ...] = (
+    "one room",
+    "single unit",
+    "one booking",
+)
+
+#: "5 adults", "5-guest", "12 pers", "5guests": how the exporters write a party,
+#: in every shape their pages produced. A stated capacity of any number counts,
+#: not only this report's: "Rooms cannot accommodate more than 3 adults" is a
+#: refusal of a party of five, and nothing in it says the word five.
+_PARTY_NOUNS: tuple[str, ...] = (
+    "adult", "guest", "traveller", "traveler", "person", "pers", "pax",
+)
+_PARTY_WORD = re.compile(r"(\d+)(%s)" % "|".join(_PARTY_NOUNS))
+_PARTY_WORD_START = re.compile(r"^(?:%s)" % "|".join(_PARTY_NOUNS))
+
+#: Where one clause ends and the next begins: a semicolon, a question mark, an
+#: exclamation mark, a line break, or a full stop that follows a word and is
+#: followed by a space. A full stop inside a date ("2027-06-27..2027-07-09")
+#: or a decimal is not one, so dates stay in the clause that mentions them.
+_CLAUSE_SPLIT = re.compile(r"[;!?\n]+|(?<=[a-z0-9])\.\s")
+
+#: One word of a clause, reduced to its letters, digits and any plus sign:
+#: ``refused:`` and ``5-guest`` are the words ``refused`` and ``5guest``, and
+#: ``'No`` is the word ``no`` — the exporters quote their pages, so a refusal can
+#: arrive inside quotation marks and must still be found there.
+_CLAUSE_WORD = re.compile(r"[^a-z0-9+]+")
+
+
+def _clause_words(text: str) -> tuple[str, ...]:
+    return tuple(word for word in _CLAUSE_WORD.split(text.lower()) if word)
+
+
+def _phrase_positions(words: tuple[str, ...], phrase: str) -> tuple[int, ...]:
+    """Every index at which ``phrase``'s words appear, in order and whole."""
+    wanted = phrase.lower().split()
+    span = len(wanted)
+    if not span or span > len(words):
+        return ()
+    return tuple(
+        index for index in range(len(words) - span + 1)
+        if words[index:index + span] == tuple(wanted)
+    )
+
+
+def _party_positions(words: tuple[str, ...]) -> tuple[int, ...]:
+    """Every index at which a party is named — a number of people, or a unit."""
+    found: list[int] = []
+    for index, word in enumerate(words):
+        glued = _PARTY_WORD.match(word)
+        if glued and glued.group(0) == word:
+            found.append(index)
+            continue
+        following = words[index + 1] if index + 1 < len(words) else ""
+        if word.isdigit() and _PARTY_WORD_START.match(following):
+            found.append(index)
+    for phrase in UNIT_PARTY_PHRASES:
+        found.extend(_phrase_positions(words, phrase))
+    return tuple(sorted(set(found)))
+
+
+def _refusal_positions(words: tuple[str, ...]) -> tuple[int, ...]:
+    found: list[int] = []
+    for phrase in UNIT_REFUSAL_WORDS:
+        found.extend(_phrase_positions(words, phrase))
+    return tuple(sorted(set(found)))
+
+
+def _text_blocks_party(finding: str, travellers: int) -> bool:
+    """The fallback: a refusal and the party it refuses, close together.
+
+    BRIEF-H17 §2 (2026-10-06). This used to ask two questions of the WHOLE
+    finding — is a refusal word anywhere in it, is a party mentioned anywhere in
+    it — and answered True when both were. A finding saying the estimate
+    "cannot be re-checked" for a property that "sleeps the party of 5" said
+    both, so a card for a hotel that takes five adults was dropped over a
+    sentence about our own reading. The two halves must now be in the same
+    clause and within six words of each other, which is what a refusal of a
+    party actually reads like.
+
+    Anything unrecognised keeps the card: a wrong removal loses a holiday the
+    reader could have had, and the exporter's own ``refuses_party`` answers the
+    question outright wherever it is stated.
+    """
+    for clause in _CLAUSE_SPLIT.split(str(finding or "").strip().lower()):
+        words = _clause_words(clause)
+        if len(words) < 2:
+            continue
+        refusals = _refusal_positions(words)
+        if not refusals:
+            continue
+        parties = _party_positions(words)
+        if not parties:
+            continue
+        if any(
+            abs(refusal - party) <= UNIT_REFUSAL_PROXIMITY_WORDS
+            for refusal in refusals for party in parties
+        ):
+            return True
+    return False
+
+
+def unit_check_blocks_party(finding: str, travellers: int, *,
+                            refuses_party: Optional[bool] = None) -> bool:
     """True when this finding says the property cannot take the party.
 
-    Both halves must be present: a refusal word, and the party it refuses. A
-    finding like "two units available: 2+2 and 3+2" contains numbers but no
-    refusal, so the resort stays; "5 adults in one room refused" contains
-    both, so it goes. Anything unrecognised keeps the card, because dropping a
-    resort on a misread sentence loses a holiday the reader could have had.
+    The exporter's own ``refuses_party`` decides it outright (BRIEF-H17 §1,
+    2026-10-06): ``True`` blocks the party and ``False`` never blocks, whatever
+    the wording beside it says. That is the near miss the dealsearch side caught
+    — a finding whose own sentence was about our reading ("...it cannot be
+    re-checked and is not replaced by a rate") beside "5 adults", which the text
+    matcher read as the hotel refusing five adults, and which would have dropped
+    a card for a hotel that does take five.
+
+    Only a check with no stated answer falls back to the wording, and the
+    fallback is ``_text_blocks_party`` above: a refusal word and the party it
+    refuses in the same clause, no more than six words apart. Both halves must
+    be present, so "two units available: 2+2 and 3+2" contains numbers but no
+    refusal and the resort stays, while "5 adults in one room refused" and
+    "Rooms cannot accommodate more than 3 adults" both go. Anything
+    unrecognised keeps the card.
     """
-    text = str(finding or "").strip().lower()
-    if not text:
-        return False
-    if not any(word in text for word in UNIT_REFUSAL_WORDS):
-        return False
-    party = str(int(travellers))
-    party_mentions = (
-        f"{party} adult",
-        f"{party} guest",
-        f"{party} traveller",
-        f"{party} traveller",
-        f"for {party}",
-        f"party of {party}",
-        "one room",
-        "single unit",
-        "one booking",
-    )
-    return any(mention in text for mention in party_mentions)
+    if refuses_party is not None:
+        return bool(refuses_party)
+    return _text_blocks_party(finding, travellers)
 
 
 def _unit_check_from(item: dict, name: str) -> Optional[UnitCheck]:
@@ -993,6 +1172,7 @@ def _unit_check_from(item: dict, name: str) -> Optional[UnitCheck]:
         observed_at=_stated(item, "observed_at"),
         destination_key=_stated(item, "destination_key"),
         dates=tuple(str(value) for value in (item.get("dates") or ())),
+        refuses_party=_stated_flag(item, "refuses_party"),
     )
 
 

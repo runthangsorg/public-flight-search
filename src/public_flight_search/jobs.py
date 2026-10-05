@@ -259,6 +259,7 @@ def run_holiday_planner(
     hotel_rates: dict[tuple[str, str, str], object] = {}
     hotel_skipped: list[str] = []
     hotel_evidence_error: Optional[str] = None
+    unit_check_basis: dict[str, int] = {}
     try:
         hotel_rates = dict(
             hotel_evidence_module.load_hotel_evidence(
@@ -266,6 +267,7 @@ def run_holiday_planner(
             )
         )
         hotel_skipped = hotel_evidence_module.consume_hotel_skip_log()
+        unit_check_basis = hotel_evidence_module.consume_hotel_unit_check_basis()
     except Exception as exc:
         hotel_rates = {}
         hotel_evidence_error = f"{type(exc).__name__}: {exc}"
@@ -553,6 +555,16 @@ def run_holiday_planner(
         ),
         "hotel_evidence_skipped": hotel_skipped,
         "hotel_evidence_load_error": hotel_evidence_error,
+        # Unit checks, by the mechanism that decided them (BRIEF-H17 §3). A unit
+        # check can remove a resort, so where the answer comes from is not a
+        # detail: `field` is the exporter's own `refuses_party`, and `text` is
+        # the proximity fallback reading the wording. `unit_checks_decided_by_
+        # text` above zero means that many removals this run rested on six words
+        # of proximity rather than on an answer — the signal to ask for the
+        # field in the export before trusting a card's absence.
+        "unit_checks_loaded": int(unit_check_basis.get("total", 0) or 0),
+        "unit_checks_decided_by_field": int(unit_check_basis.get("field", 0) or 0),
+        "unit_checks_decided_by_text": int(unit_check_basis.get("text", 0) or 0),
         # Operator package prices (WP4d D1). The same question as the two seams
         # above, and it matters more here: `package_prices_on_cards` counts the
         # cards that actually show a package, so a non-zero `package_evidence_

@@ -372,7 +372,7 @@ class OwnDatesCheckedTests(unittest.TestCase):
                 _no_row_check(finding=(
                     "5 adults in one room refused: 'Rooms cannot accommodate "
                     "more than 3 adults.'; sold as 2 Beachfront Suites in one "
-                    "booking"))])
+                    "booking"), refuses_party=True)])
             self.assertNotIn(GARRYA, [d.resort_name for d in deals])
             reasons = dict(hol.LAST_FILTERED_OUT)
             self.assertIn(GARRYA, reasons)
@@ -387,13 +387,13 @@ class OwnDatesCheckedTests(unittest.TestCase):
                                    "all"))])
         self.assertEqual(_deal(deals).hotel_read_refused, "")
 
-    def test_the_refuses_party_field_is_not_read_by_h16(self):
-        # dealsearch 4651d79 added ``refuses_party`` to every unit check. H16 is
-        # instructed to ignore it and does: a check carrying the field says
-        # exactly what it said before, and a check with ``refuses_party`` True
-        # and no priced row still raises the absence sentence.
-        config, loaded, deals = _run([_read()], [
-            _no_row_check(refuses_party=True)])
+    def test_the_field_decides_the_party_and_not_the_absence(self):
+        # BRIEF-H17 §1. ``refuses_party`` is the exporter's answer to whether
+        # the property refuses the party in one booking, and it is asked nowhere
+        # else: a check whose words report a search that came back empty still
+        # raises the absence sentence whatever it says about refusing, because
+        # sold out is not a refusal and this sentence is about the price.
+        config, loaded, deals = _run([_read()], [_no_row_check()])
         self.assertIn("found no priced row for 5 adults",
                       _deal(deals).hotel_read_refused)
 
