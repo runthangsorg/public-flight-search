@@ -286,11 +286,41 @@ class RescueCardTests(unittest.TestCase):
 
 
 class UnchangedBehaviourTests(unittest.TestCase):
-    def test_a_resort_already_in_budget_keeps_the_package_beside_the_headline(self):
-        # Decision 2 only rescues an OVER-budget headline. With the ceiling
-        # high enough for the engine's own price, the card is priced by the
-        # engine and the package rides beside it, exactly as in H9.
+    def test_an_in_budget_headline_is_now_priced_at_the_package_too(self):
+        # REWRITTEN 2026-10-05 for BRIEF-H12 §1/§2, which supersedes the rule
+        # this assertion used to carry: "decision 2 only rescues an OVER-budget
+        # headline, so with the ceiling high enough for the engine's own price
+        # the card is priced by the engine and the package rides beside it".
+        #
+        # H12 §1 ranks candidate pairs by evidence class first, and a pair
+        # carrying a qualifying operator package is the top class; §2 then says
+        # a package that becomes the headline this way renders exactly as this
+        # file's package-priced card renders. So an in-budget headline no longer
+        # keeps the package beside it — the operator's own figure for the trip is
+        # better evidence than the engine's split of it, and it is cheaper
+        # besides (GBP 1,200 against GBP 1,890 here).
+        #
+        # The H9 comparison line is NOT lost: it is what an UNQUALIFIED package
+        # still gets, which the two tests below pin.
         _config, deals = _deal(_record(amount=1200.0), budget=60000.0)
+        card = next(d for d in deals if d.resort_name == RESORT)
+        self.assertTrue(card.package_priced)
+        self.assertEqual(card.total_package_price_gbp, 1200.0)
+        self.assertTrue(
+            package_words(card, travellers=5).startswith(
+                "This price is the operator's package: £1,200 for 5"
+            )
+        )
+
+    def test_an_unqualified_package_keeps_the_h9_comparison_line(self):
+        # Same shape as the test above, with the one gate that refuses the
+        # promotion: the record states no ``flight_cabin``, so the cabin is
+        # UNKNOWN. The card is priced by the engine and the package rides
+        # beneath it as H9's comparison sentence, never instead of it.
+        record = _record(amount=1200.0)
+        del record["flight_cabin"]
+        del record["flight_cabin_basis"]
+        _config, deals = _deal(record, budget=60000.0)
         card = next(d for d in deals if d.resort_name == RESORT)
         self.assertFalse(card.package_priced)
         self.assertNotEqual(card.total_package_price_gbp, 1200.0)
