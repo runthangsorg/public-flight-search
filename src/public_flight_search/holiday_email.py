@@ -350,6 +350,16 @@ def freshness_tag(deal: PackageDeal, *, generated_at: Any) -> tuple[str, str]:
     REPLY-H0 §4 replaces three badges with three sentences. The tag names the
     WEAKER of the two legs, because the headline is both legs: a live fare
     beside an estimated room rate is not a live price.
+
+    BRIEF-H17 §6 (2026-10-06) makes that literal. "Live price" claims the WHOLE
+    price was checked, so it may only appear where it was: a read for these exact
+    dates, or an operator's own quote for them. A card whose flights are live and
+    whose stay is the catalogue's — six December cards said "Live price · checked
+    today" directly above "so the stay here is the catalogue's estimate" — reads
+    "Flights live · stay estimated" instead, which names the live leg and the
+    estimated one and contradicts nothing. A nightly carried from another pair is
+    an estimate too, so it says which estimate: "Flights live · stay from a read
+    rate" (its board line names the pair it came from).
     """
     confidence = str(getattr(deal, "confidence", "") or "")
     live = confidence == "verified-exact-date"
@@ -359,19 +369,25 @@ def freshness_tag(deal: PackageDeal, *, generated_at: Any) -> tuple[str, str]:
         # The same render-time ageing the detailed card applies: an observation
         # that has aged out may not claim to be live.
         live, stale = False, True
-    hotel_estimated = str(getattr(deal, "hotel_rate_basis", "")) == "estimate"
+    basis = str(getattr(deal, "hotel_rate_basis", "") or "")
+    hotel_estimated = basis == "estimate"
     hotel_read = getattr(deal, "hotel_evidence", None) is not None
     # A stay whose nightly came from a read for ANOTHER pair (BRIEF-H14 §1). It
     # is not a catalogue guess, and it is not a read for these dates either: the
     # card names the read on its board line, and the tag here says only that the
     # stay is from a read rate. "checked today" would be claiming both halves
     # were read for this trip, which is the claim the owner's report caught.
-    stay_from_read = str(getattr(deal, "hotel_rate_basis", "")) == "read-rate-estimate"
+    stay_from_read = basis == "read-rate-estimate"
+    # The only two bases that are a price FOR THESE DATES. Anything else on a
+    # live card is the catalogue's own figure or an estimate of one, and the tag
+    # may not say the price was checked.
+    stay_is_a_price_for_these_dates = basis in (
+        "exact-date-rate", "operator package")
     if live:
         if stay_from_read:
-            return "Live price · stay from a read rate", "green"
-        if hotel_estimated:
-            return "Live price · stay estimated", "green"
+            return "Flights live · stay from a read rate", "green"
+        if not stay_is_a_price_for_these_dates:
+            return "Flights live · stay estimated", "green"
         return f"Live price · checked {_checked_words(age)}", "green"
     if stale:
         return f"Seen {relative_age_label(age) or 'earlier'}", "amber"

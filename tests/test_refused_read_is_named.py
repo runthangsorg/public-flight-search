@@ -325,12 +325,23 @@ class OwnDatesCheckedTests(unittest.TestCase):
     """§2's second half: these dates were checked and nothing was priced."""
 
     def test_the_card_says_a_check_of_these_dates_found_no_priced_row(self):
+        # BRIEF-H17 §4: the board line above already says "estimate from a read
+        # rate for 20–27 Jul", so the sentence says the absence ONCE and the
+        # basis is left to that line.
         config, loaded, deals = _run([_read()], [_no_row_check()])
         deal = _deal(deals)
         self.assertEqual(
             deal.hotel_read_refused,
-            "A check of these dates found no priced row for 5 adults, so the "
-            "stay is estimated from a read rate for 20–27 Jul.")
+            "A check of these dates found no priced row for 5 adults.")
+
+    def test_the_two_lines_do_not_say_the_same_thing_twice(self):
+        from public_flight_search.holiday_email import board_line
+
+        config, loaded, deals = _run([_read()], [_no_row_check()])
+        deal = _deal(deals)
+        self.assertIn("estimate from a read rate for 20–27 Jul",
+                      board_line(deal, travellers=5))
+        self.assertEqual(deal.hotel_read_refused.count("read rate"), 0)
 
     def test_the_stay_below_it_is_still_the_20_27_july_nightly(self):
         config, loaded, deals = _run([_read()], [_no_row_check()])

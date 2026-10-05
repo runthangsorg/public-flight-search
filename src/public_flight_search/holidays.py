@@ -5161,15 +5161,29 @@ def _read_refused_words(read_in: str, read_out: str, *, is_exact: bool,
 
 
 def _absence_words(travellers: int, absence: bool, stay: Any) -> str:
-    """``A check of these dates found no priced row for 5 adults, so the stay is
-    estimated from a read rate for 20–27 Jul.`` — or ``""``.
+    """``A check of these dates found no priced row for 5 adults.`` — or ``""``.
 
-    The tail names where the number below came from, because "no priced row"
-    with nothing after it leaves the reader guessing between a catalogue guess
-    and a real nightly: those are very different things to book against.
+    BRIEF-H16 §2 added a tail naming where the number below came from, because
+    "no priced row" with nothing after it leaves the reader guessing between a
+    catalogue guess and a real nightly. BRIEF-H17 §4 (2026-10-06) takes the tail
+    back off where it repeats itself: when a read for another pair priced the
+    stay, the board line immediately above already says "estimate from a read
+    rate for 20–27 Jul", and two adjacent lines naming the same basis is one
+    line too many. The tail stays exactly where nothing else says it — when the
+    stay is the catalogue's, which is the one case where the reader has no other
+    way to learn that.
+
+    So this is now a sentence with two shapes, and both say the same thing once:
+
+    * a read priced the stay — "A check of these dates found no priced row for
+      5 adults." (the board line carries the basis);
+    * nothing did — "A check of these dates found no priced row for 5 adults, so
+      the stay here is the catalogue's estimate."
     """
     if not absence:
         return ""
+    head = (f"A check of these dates found no priced row for {int(travellers)} "
+            "adults")
     carried: tuple[str, ...] = ()
     if stay is not None:
         window = getattr(stay, "window", None)
@@ -5177,13 +5191,8 @@ def _absence_words(travellers: int, absence: bool, stay: Any) -> str:
             carried = (str(getattr(window, "check_in", "") or ""),
                        str(getattr(window, "check_out", "") or ""))
     if len(carried) == 2 and carried[0] and carried[1]:
-        from .holiday_email import _range_words
-
-        tail = f"so the stay is estimated from a read rate for {_range_words(*carried)}"
-    else:
-        tail = "so the stay here is the catalogue's estimate"
-    return (f"A check of these dates found no priced row for {int(travellers)} "
-            f"adults, {tail}.")
+        return f"{head}."
+    return f"{head}, so the stay here is the catalogue's estimate."
 
 
 class _StayPrice(NamedTuple):

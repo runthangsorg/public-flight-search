@@ -41,8 +41,10 @@ from public_flight_search.hotel_evidence import (
 )
 
 GARRYA = "Garrya Tongsai Bay Samui"
+KHAO_LAK = "Pullman Khao Lak Resort"
 NOW = "2026-10-06T09:00:00+00:00"
 CARD_PAIR = ("2027-06-28", "2027-07-12")
+NEAR_PAIR = ("2027-07-20", "2027-07-27")
 
 #: One priceable pair (the card's own), 5 travellers, a ceiling above anything
 #: this fixture can price: these tests are about whether a resort is removed.
@@ -361,6 +363,104 @@ class SurfacedInTheRunTests(unittest.TestCase):
         self.assertEqual(result["unit_checks_loaded"], 2)
         self.assertEqual(result["unit_checks_decided_by_field"], 1)
         self.assertEqual(result["unit_checks_decided_by_text"], 1)
+
+
+class PerCardTests(unittest.TestCase):
+    """Ruling 2 (BRIEF-H17 §5): every card says it for ITSELF, not one note.
+
+    Two destinations, two properties, each with its own "these dates were
+    checked and nothing was priced" check. The ruling keeps the line per card
+    rather than moving it to a single note under them, and §4 makes it short
+    enough to read there.
+    """
+
+    TWO_PLACES = """
+{
+  "report_title": "An absence on every card",
+  "party": {"travellers": 5, "rooms": [2, 2, 1]},
+  "max_budget_gbp": 100000000,
+  "min_nights": 12,
+  "max_nights": 21,
+  "departure_window": ["06:00", "23:59"],
+  "origins": ["LHR"],
+  "outbound_dates": ["2027-06-28"],
+  "return_dates": ["2027-07-12"],
+  "destinations": [
+    {"key": "koh_samui", "label": "Koh Samui", "airports": ["USM"],
+     "flight_hours": 14.92},
+    {"key": "khao_lak", "label": "Khao Lak", "airports": ["HKT"],
+     "flight_hours": 14.5}
+  ]
+}
+"""
+
+    NO_ROW = ("Google Hotels, 5 adults, {start}..{end}: no priced row at all "
+              "(the page asks the reader to contact the property)")
+
+    def _checks(self):
+        return [
+            _check(finding=self.NO_ROW.format(start=CARD_PAIR[0],
+                                             end=CARD_PAIR[1])),
+            dict(_check(finding=self.NO_ROW.format(start=CARD_PAIR[0],
+                                                   end=CARD_PAIR[1])),
+                 property_name=KHAO_LAK, destination_key="khao_lak",
+                 vendor="Google Hotels"),
+        ]
+
+    def test_every_card_carries_its_own_absence_line(self):
+        config, _loaded, deals, _basis = _run(self._checks(),
+                                              config_json=self.TWO_PLACES)
+        names = _names(deals)
+        self.assertIn(GARRYA, names)
+        self.assertIn(KHAO_LAK, names)
+        for deal in deals:
+            if deal.resort_name in (GARRYA, KHAO_LAK):
+                self.assertEqual(
+                    deal.hotel_read_refused,
+                    "A check of these dates found no priced row for 5 adults, "
+                    "so the stay here is the catalogue's estimate.",
+                    deal.resort_name)
+
+    def test_the_email_says_it_on_each_card_rather_than_once(self):
+        from html import unescape
+
+        from public_flight_search.holiday_email import (
+            render_holiday_report_compact,
+            render_holiday_report_compact_text,
+        )
+
+        config, _loaded, deals, _basis = _run(self._checks(),
+                                              config_json=self.TWO_PLACES)
+        sentence = "A check of these dates found no priced row for 5 adults"
+        html = unescape(render_holiday_report_compact(
+            config, generated_at=NOW, deals=deals))
+        text = render_holiday_report_compact_text(
+            config, generated_at=NOW, deals=deals)
+        self.assertEqual(html.count(sentence), 2)
+        self.assertEqual(text.count(sentence), 2)
+
+    def test_a_read_beside_the_check_leaves_the_tail_to_the_board_line(self):
+        # Ruling 1 (BRIEF-H17 §4): with a read for another pair priced the stay,
+        # the board line already names the basis, so the sentence stops at the
+        # absence. Per card, still.
+        config, _loaded, deals, _basis = _run(
+            self._checks(), [_read(check_in=NEAR_PAIR[0], check_out=NEAR_PAIR[1],
+                                    nights=7,
+                                    derived_stay_total={"value": 4590.0,
+                                                        "currency": "GBP",
+                                                        "how": "nightly x 7"})],
+            config_json=self.TWO_PLACES)
+        deal = next(deal for deal in deals if deal.resort_name == GARRYA)
+        self.assertEqual(deal.hotel_rate_basis, "read-rate-estimate")
+        self.assertEqual(deal.hotel_read_refused,
+                         "A check of these dates found no priced row for 5 adults.")
+
+    def test_a_card_whose_dates_were_never_checked_says_nothing(self):
+        # The same run, with the checks removed: nothing about these dates may
+        # be claimed by a card nobody checked them for.
+        config, _loaded, deals, _basis = _run(config_json=self.TWO_PLACES)
+        for deal in deals:
+            self.assertEqual(deal.hotel_read_refused, "")
 
 
 if __name__ == "__main__":

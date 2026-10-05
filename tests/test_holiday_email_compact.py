@@ -477,7 +477,10 @@ class MovementTests(unittest.TestCase):
 
 class FreshnessTests(unittest.TestCase):
     def test_a_live_fare_read_yesterday(self):
+        # A read for THESE dates is the only stay that may sit under "Live
+        # price" (BRIEF-H17 §6): the word claims the whole price was checked.
         deal = _deal(confidence="verified-exact-date",
+                     hotel_rate_basis="exact-date-rate",
                      live_observed_at="2026-10-03T09:00:00+00:00")
         self.assertEqual(
             freshness_tag(deal, generated_at=GENERATED_AT), ("Live price · checked yesterday", "green")
@@ -488,6 +491,7 @@ class FreshnessTests(unittest.TestCase):
         # live_verify.EVIDENCE_MAX_AGE_HOURS, so the card says "Seen", never
         # "Live price".
         deal = _deal(confidence="verified-exact-date",
+                     hotel_rate_basis="exact-date-rate",
                      live_observed_at="2026-09-29T09:00:00+00:00")
         self.assertEqual(
             freshness_tag(deal, generated_at=GENERATED_AT), ("Seen 5 days ago", "amber")
@@ -508,7 +512,35 @@ class FreshnessTests(unittest.TestCase):
     def test_a_live_fare_beside_an_estimated_stay_is_not_a_live_price(self):
         deal = _deal(confidence="verified-exact-date", hotel_rate_basis="estimate",
                      live_observed_at="2026-10-03T09:00:00+00:00")
-        self.assertIn("stay estimated", freshness_tag(deal, generated_at=GENERATED_AT)[0])
+        self.assertEqual(freshness_tag(deal, generated_at=GENERATED_AT),
+                         ("Flights live · stay estimated", "green"))
+
+    def test_a_live_fare_beside_the_catalogue_stay_is_not_a_live_price(self):
+        # BRIEF-H17 §6, and the case six December cards hit: the chip said "Live
+        # price · checked today" on the line above "so the stay here is the
+        # catalogue's estimate". The tag may not claim the price was checked
+        # when one of its two legs is the catalogue's own nightly.
+        deal = _deal(confidence="verified-exact-date",
+                     hotel_rate_basis="market-supported",
+                     live_observed_at="2026-10-03T09:00:00+00:00")
+        self.assertEqual(freshness_tag(deal, generated_at=GENERATED_AT),
+                         ("Flights live · stay estimated", "green"))
+
+    def test_a_live_fare_beside_a_read_for_another_pair_says_which_estimate(self):
+        deal = _deal(confidence="verified-exact-date",
+                     hotel_rate_basis="read-rate-estimate",
+                     live_observed_at="2026-10-03T09:00:00+00:00")
+        self.assertEqual(freshness_tag(deal, generated_at=GENERATED_AT),
+                         ("Flights live · stay from a read rate", "green"))
+
+    def test_no_live_card_may_say_live_price(self):
+        # Whatever the stay's basis, the word "Live price" requires a live fare.
+        for basis in ("", "estimate", "market-supported", "read-rate-estimate",
+                      "exact-date-rate", "operator package"):
+            with self.subTest(basis=basis or "(none)"):
+                tag, _colour = freshness_tag(
+                    _deal(hotel_rate_basis=basis), generated_at=GENERATED_AT)
+                self.assertNotIn("Live price", tag)
 
     def test_the_tag_is_two_or_three_words_of_plain_english(self):
         text = visible_text(_render())
