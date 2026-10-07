@@ -239,6 +239,29 @@ class AtAGlanceTableTests(unittest.TestCase):
         text = visible_text(_render(config=_config(travellers=4)))
         self.assertIn("Every price is the total for 4, door to door.", text)
 
+    def test_rows_are_ordered_by_the_total_the_table_shows(self):
+        """The table sorts by the door-to-door total it displays, not the package-only price.
+
+        The 7 Oct 2026 December e-mail showed Seaside Palm Beach (£3,002) above
+        Annabelle Hotel (£2,974): both sort keys were the package-only price
+        (2,933 vs 2,940), while the displayed headline adds transfers and UK
+        ground. A table headed 'Total for 5' must read cheapest-first on that
+        total, and the cards below it must follow the same order.
+        """
+        # Same package order as ever, but the displayed totals cross over:
+        # package 2,933 + transfers 69 = 3,002; package 2,940 + transfers 34 = 2,974.
+        deals = [
+            _deal(0, resort_name="Cheaper Package Dearer Door",
+                  total_package_price_gbp=2933.0, true_d2d_gbp=3002.0),
+            _deal(1, resort_name="Dearer Package Cheaper Door",
+                  total_package_price_gbp=2940.0, true_d2d_gbp=2974.0),
+        ]
+        text = visible_text(_render(deals=deals))
+        self.assertLess(
+            text.index("Dearer Package Cheaper Door"),
+            text.index("Cheaper Package Dearer Door"),
+        )
+
 
 class OnePricePerCardTests(unittest.TestCase):
     def test_the_headline_is_the_door_to_door_total_not_the_package_total(self):

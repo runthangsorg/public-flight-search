@@ -1218,7 +1218,14 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
         if name and name not in trend_by_resort:
             trend_by_resort[name] = trend
     travellers = int(config.travellers)
-    ordered = sorted(deals, key=lambda d: float(d.total_package_price_gbp or 0.0))
+    # Sort by the door-to-door total the renderer displays (headline_total =
+    # package + transfers + UK ground), NOT the package-only price: a table
+    # headed "Total for 5" must read cheapest-first on that total, and the
+    # cards must follow the same order. The 7 Oct 2026 December run showed
+    # Seaside Palm Beach (£3,002) above Annabelle Hotel (£2,974) because both
+    # sorted on 2,933 vs 2,940. A deal with no door-to-door figure falls back
+    # to the package price, matching headline_total's own fallback order.
+    ordered = sorted(deals, key=lambda d: headline_total(d))
     cards: list[dict[str, Any]] = []
     for deal in ordered:
         tag, tag_colour = freshness_tag(deal, generated_at=generated_at)
