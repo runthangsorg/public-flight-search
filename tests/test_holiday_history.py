@@ -322,24 +322,6 @@ class ValueRankTests(unittest.TestCase):
             self.assertEqual(vc["current_rank"], 1)
             self.assertEqual(vc["prior_rank"], 3)
 
-    def test_digest_value_changes_render(self):
-        from public_flight_search.holiday_history import render_change_digest_html
-
-        html = render_change_digest_html(
-            {
-                "has_prior": True,
-                "drops": [],
-                "rises": [],
-                "new": [],
-                "value_changes": [
-                    {"name": "Resort A", "current_rank": 1, "prior_rank": 4, "delta": 3}
-                ],
-                "unchanged": 2,
-            }
-        )
-        self.assertIn("is now #1 by value (was #4)", html)
-        self.assertIn("Resort A", html)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -519,27 +519,6 @@ class EmailPresentationTests(unittest.TestCase):
                 self.assertNotIn("baruthotels.com", url, resort["name"])
                 self.assertNotIn("/brands/sheraton-hotels/", url, resort["name"])
 
-    def test_change_digest_pills_are_capped(self):
-        from public_flight_search.holiday_history import render_change_digest_html
-
-        digest = {
-            "has_prior": True,
-            "drops": [
-                {"name": f"Drop {i}", "current": 100.0, "prev": 200.0, "delta": -100.0}
-                for i in range(9)
-            ],
-            "rises": [],
-            "new": [f"New {i}" for i in range(9)],
-            "value_changes": [],
-            "unchanged": 0,
-        }
-        html = render_change_digest_html(digest)
-        # 4 drop pills + 4 new pills + collapse line + timestamp.
-        self.assertEqual(html.count("cheaper</span>"), 4)
-        self.assertEqual(html.count("now under budget</span>"), 4)
-        # 9 drops - 4 shown + 9 new - 4 shown = 10 collapsed.
-        self.assertIn("+10 more moved", html)
-
     def test_change_digest_dedupes_resorts_across_cabins(self):
         from public_flight_search.holiday_history import build_change_digest
 

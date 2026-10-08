@@ -19,19 +19,8 @@ import os
 import re
 from collections import defaultdict
 from datetime import datetime, timezone
-from html import escape
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
-
-# Digest strip caps: how many pills of each kind the change digest may
-# render before collapsing the rest into a single "+N more moved" line.
-# The first run of the uncapped renderer produced a ~30-pill ticker wall
-# that made the email unreadable — these are the fix, kept as module
-# constants so tests can pin them.
-_DIGEST_CAP_DROPS = 4
-_DIGEST_CAP_RISES = 2
-_DIGEST_CAP_NEW = 4
-_DIGEST_CAP_VALUE = 4
 
 HISTORY_DEFAULT_PATH = Path("data/holiday_price_history.jsonl")
 
@@ -375,101 +364,6 @@ def last_history_observation(*, path: Optional[Path] = None) -> str:
         return ""
     stamps = _LAST_AT_RE.findall(tail)
     return stamps[-1] if stamps else ""
-
-
-def render_change_digest_html(digest: Dict[str, Any]) -> str:
-    """One compact strip: what changed since the last report. Empty when
-    there is no prior data (first run) — never a wall of noise.
-
-    Pills are CAPPED (largest moves first) so a volatile week cannot
-    recreate the ticker wall: everything beyond the cap collapses into a
-    single quiet "+N more moved" line.
-    """
-    if not digest.get("has_prior"):
-        return ""
-    parts: List[str] = []
-    shown = 0
-    more = 0
-    for d in digest.get("drops", [])[:_DIGEST_CAP_DROPS]:
-        parts.append(
-            '<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">&#9660; '
-            + escape(d["name"])
-            + " £"
-            + f"{abs(d['delta']):,.0f} cheaper</span>"
-        )
-        shown += 1
-    more += max(0, len(digest.get("drops", [])) - _DIGEST_CAP_DROPS)
-    for d in digest.get("rises", [])[:_DIGEST_CAP_RISES]:
-        parts.append(
-            '<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">&#9650; '
-            + escape(d["name"])
-            + " £"
-            + f"{d['delta']:,.0f} pricier</span>"
-        )
-        shown += 1
-    more += max(0, len(digest.get("rises", [])) - _DIGEST_CAP_RISES)
-    for name in digest.get("new", [])[:_DIGEST_CAP_NEW]:
-        # "new" means the resort crossed INTO the under-budget funnel —
-        # say that, because "new" implied we started tracking it, which
-        # read as fake the moment every run had "new" resorts.
-        parts.append(
-            '<span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">✦ '
-            + escape(name)
-            + " now under budget</span>"
-        )
-        shown += 1
-    more += max(0, len(digest.get("new", [])) - _DIGEST_CAP_NEW)
-    # Rank movement: only the TOP movers make the digest at all, and the
-    # pill states what it means for the reader (position among value-ranked
-    # picks). Swaps outside the top 10 are invisible in every card anyway.
-    for v in digest.get("value_changes", [])[:_DIGEST_CAP_VALUE]:
-        arrow = "&#9650;" if int(v["delta"]) > 0 else "&#9660;"
-        bg, fg = ("#dbeafe", "#1d4ed8") if int(v["delta"]) > 0 else ("#fef3c7", "#92400e")
-        if int(v["current_rank"]) > 10 and int(v["prior_rank"]) > 10:
-            more += 1
-            continue
-        parts.append(
-            '<span style="background:' + bg + ";color:" + fg
-            + ';padding:3px 10px;border-radius:9999px;font-size:13px;font-weight:700;">'
-            + arrow + " "
-            + escape(v["name"])
-            + f" is now #{v['current_rank']} by value (was #{v['prior_rank']})</span>"
-        )
-        shown += 1
-    if more:
-        parts.append(
-            '<span style="color:#64748b;font-size:13px;">+'
-            + str(more)
-            + " more moved</span>"
-        )
-    unchanged = int(digest.get("unchanged", 0))
-    if unchanged and parts:
-        parts.append(
-            '<span style="color:#64748b;font-size:13px;">'
-            + str(unchanged)
-            + " unchanged</span>"
-        )
-    stamp = str(digest.get("last_report_at") or "")
-    when = ""
-    if stamp:
-        when = (
-            '<span style="color:#94a3b8;font-size:13px;">vs last report '
-            + escape(stamp[:16].replace("T", " "))
-            + " UTC</span>"
-        )
-    if not parts:
-        return (
-            '<p style="margin:0 0 14px 0; color:#64748b; font-size:14px;">'
-            "No price movement since the last report — every tracked resort is at its previous price. "
-            + when
-            + "</p>"
-        )
-    parts.append(when)
-    return (
-        '<div style="margin:0 0 14px 0; line-height:2;">'
-        + " ".join(parts)
-        + "</div>"
-    )
 
 
 def render_history_html(trends: List[Dict[str, Any]]) -> List[str]:
