@@ -4,8 +4,9 @@ Everything the redesign promises is pinned here, from synthetic fixtures only:
 
 * ONE price per card — the door-to-door total for the party — and the
   breakdown line under it adds up to that headline exactly (AMEND-H1 §1).
-* Movement is against the LAST observation: cheaper / dearer / no change /
-  first time tracked, never a benchmark (AMEND-H1 §2).
+* No price-change digest and no "vs last time" column (owner, 2026-10-08):
+  at most a "▼ £210" / "▲ £95" chip on the card's tag line, and only when the
+  price moved against the LAST observation, never a benchmark (AMEND-H1 §2).
 * One at-a-glance table, one row per deal, with the one key line under it.
 * A long-haul card has exactly three flight rows; an unpriced stopover says
   "price on request" and links the itinerary rather than printing a stale
@@ -34,7 +35,7 @@ from public_flight_search.holiday_email import (
     freshness_tag,
     nights_words,
     link_row,
-    movement_words,
+    movement_chip,
     render_holiday_report_compact,
     render_holiday_report_compact_text,
 )
@@ -471,6 +472,15 @@ class PrintedBreakdownArithmeticTests(unittest.TestCase):
 
 
 class MovementTests(unittest.TestCase):
+    """At most a compact up/down chip per card (owner, 2026-10-08).
+
+    The owner does not want price movement taking space. What survives is a
+    "▼ £210" / "▲ £95" chip on the card's freshness-tag line, which costs no
+    line, and only when the price moved against the LAST observation
+    (AMEND-H1 §2: never against a benchmark). "first time tracked" and "no
+    change since 1 Oct" were words on every card that said nothing; they go.
+    """
+
     def _trend(self, **overrides) -> dict:
         row = {
             "resort_name": "Test Resort 0",
@@ -481,32 +491,51 @@ class MovementTests(unittest.TestCase):
         row.update(overrides)
         return row
 
-    def test_cheaper_than_the_last_report(self):
-        words = movement_words(self._trend(), last_report_at=LAST_REPORT_AT)
-        self.assertEqual(words, "£210 cheaper than 1 Oct")
+    def test_a_drop_is_a_down_chip(self):
+        self.assertEqual(movement_chip(self._trend()), "▼ £210")
 
-    def test_dearer_than_the_last_report(self):
-        words = movement_words(self._trend(prior_last=3905.0), last_report_at=LAST_REPORT_AT)
-        self.assertEqual(words, "£95 dearer than 1 Oct")
+    def test_a_rise_is_an_up_chip(self):
+        self.assertEqual(movement_chip(self._trend(prior_last=3905.0)), "▲ £95")
 
-    def test_no_change_since_the_last_report(self):
-        words = movement_words(self._trend(prior_last=4000.0), last_report_at=LAST_REPORT_AT)
-        self.assertEqual(words, "no change since 1 Oct")
+    def test_no_change_prints_nothing(self):
+        self.assertEqual(movement_chip(self._trend(prior_last=4000.0)), "")
+        # Under a pound either way is not a movement anyone can act on.
+        self.assertEqual(movement_chip(self._trend(prior_last=4000.4)), "")
 
-    def test_first_time_tracked_without_history(self):
-        self.assertEqual(movement_words(None), "first time tracked")
-        self.assertEqual(
-            movement_words(self._trend(prior_last=None)), "first time tracked"
+    def test_no_history_prints_nothing(self):
+        self.assertEqual(movement_chip(None), "")
+        self.assertEqual(movement_chip(self._trend(prior_last=None)), "")
+        self.assertEqual(movement_chip(self._trend(prior_last="n/a")), "")
+
+    def test_the_chip_shares_the_freshness_tag_line(self):
+        deals = _deals(1)
+        html = _render(deals=deals, trends=[self._trend()])
+        self.assertEqual(visible_text(html).count("▼ £210"), 1)
+        tag_line = re.search(
+            r"<div[^>]*>(?:(?!</div>).)*Estimate — no live price(?:(?!</div>).)*</div>", html
         )
+        self.assertIsNotNone(tag_line)
+        self.assertIn("▼ £210", tag_line.group(0))
+        text = render_holiday_report_compact_text(
+            _config(), generated_at=GENERATED_AT, deals=deals, trends=[self._trend()],
+        )
+        self.assertIn("  Estimate — no live price · ▼ £210\n", text)
 
-    def test_the_card_states_the_movement_and_the_table_summarises_it(self):
-        # Same wording, same number: the card keeps the date, the one-line
-        # table column drops the redundant "than 1 Oct".
-        html = _render(trends=[self._trend()], last_report_at=LAST_REPORT_AT)
-        text = visible_text(html)
-        self.assertIn("£210 cheaper than 1 Oct", text)
-        self.assertIn("£210 cheaper", text)
-        self.assertEqual(text.count("£210 cheaper than 1 Oct"), 1)
+    def test_no_card_says_first_time_tracked_or_no_change(self):
+        for trends in (None, [self._trend(prior_last=None)], [self._trend(prior_last=4000.0)]):
+            with self.subTest(trends=trends):
+                deals = _deals(1)
+                html = _render(deals=deals, trends=trends, last_report_at=LAST_REPORT_AT)
+                text = render_holiday_report_compact_text(
+                    _config(), generated_at=GENERATED_AT, deals=deals,
+                    trends=trends, last_report_at=LAST_REPORT_AT,
+                )
+                for part in (visible_text(html), text):
+                    self.assertNotIn("first time tracked", part.lower())
+                    self.assertNotIn("no change since", part)
+                    self.assertNotIn("▼", part)
+                    self.assertNotIn("▲", part)
+                self.assertIn("  Estimate — no live price\n", text)
 
     def test_no_benchmark_movement_anywhere_in_the_email(self):
         html = _render(

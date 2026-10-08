@@ -870,36 +870,26 @@ def held_back_sentence(row: Any, *, travellers: int, generated_at: Any = "") -> 
 # Movement against the LAST observation, never a benchmark
 # ---------------------------------------------------------------------------
 
-def movement_words(trend: Optional[Mapping[str, Any]], *, last_report_at: Any = "",
-                   with_date: bool = True) -> str:
-    """``£210 cheaper than 12 Oct`` / ``no change since 12 Oct`` / ``first time tracked``.
+def movement_chip(trend: Optional[Mapping[str, Any]]) -> str:
+    """``▼ £210`` / ``▲ £95`` — or nothing.
 
-    AMEND-H1 §2: movement is measured against the previous report's number.
-    A benchmark is our own estimate, so a gap against one is not a movement
-    and is never worded as one.
-
-    ``with_date=False`` drops the "than/since 12 Oct" clause for the at-a-glance
-    column, which is one line wide; the card above it keeps the full sentence,
-    so the two carry the same four wordings and the same number.
+    Owner, 2026-10-08: price changes are not worth the space. What is left is
+    a chip on the card's freshness-tag line, so it costs no line, and it says
+    something only when the price moved by at least a pound against the LAST
+    observation (AMEND-H1 §2: a benchmark is our own estimate, so a gap
+    against one is never a movement). No history and no change both print
+    nothing: "first time tracked" on every card was a sentence that said
+    nothing.
     """
     if not trend or trend.get("prior_last") is None:
-        return "first time tracked"
-    when = _day_words(last_report_at) if with_date else ""
+        return ""
     try:
         delta = float(trend.get("current", 0.0)) - float(trend["prior_last"])
     except (TypeError, ValueError):
-        return "first time tracked"
+        return ""
     if abs(delta) < 0.5:
-        return f"no change since {when}" if when else "no change"
-    side = "cheaper" if delta < 0 else "dearer"
-    amount = _gbp(abs(delta))
-    return f"{amount} {side} than {when}" if when else f"{amount} {side}"
-
-
-def movement_colour(words: str) -> str:
-    if words.startswith("first time tracked") or words.startswith("no change"):
-        return "grey"
-    return "green" if "cheaper" in words else "amber"
+        return ""
+    return f"{'▼' if delta < 0 else '▲'} {_gbp(abs(delta))}"
 
 
 # ---------------------------------------------------------------------------
@@ -1197,8 +1187,7 @@ def warning_lines(deal: PackageDeal, config: HolidayConfig) -> list[str]:
 
 def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
            generated_at: Any,
-           trends: Optional[Sequence[Mapping[str, Any]]] = None,
-           last_report_at: Any = "") -> list[dict[str, Any]]:
+           trends: Optional[Sequence[Mapping[str, Any]]] = None) -> list[dict[str, Any]]:
     """One structure per card, cheapest cabin per resort first.
 
     Same order and same deduplication as the detailed renderer, so a resort
@@ -1244,8 +1233,7 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
             "caution": str(getattr(deal, "hotel_read_refused", "") or "").strip(),
             "tag": tag,
             "tag_colour": tag_colour,
-            "movement": movement_words(trend_by_resort.get(str(deal.resort_name)),
-                                       last_report_at=last_report_at),
+            "movement": movement_chip(trend_by_resort.get(str(deal.resort_name))),
             "flights": flight_rows(deal, travellers=travellers),
             "why": why_lines(deal, config),
             "links": link_row(deal, config),
@@ -1268,7 +1256,7 @@ _TAG_COLOURS = {"green": ("#dcfce7", "#166534"), "amber": ("#fef3c7", "#92400e")
 #: accent for the headline total, one muted grey for everything explanatory,
 #: amber only for "Estimate"/"Seen N days ago" and for a warning, green only
 #: for a price that came down.
-_MOVEMENT_COLOURS = {"green": "#166534", "amber": "#b45309", "grey": _MUTED}
+_MOVEMENT_COLOURS = {"▼": "#166534", "▲": "#b45309"}
 
 #: At-a-glance columns that must never wrap mid-value: Dates and Total. The
 #: board column DOES wrap: five nowrap columns do not fit a 380 px phone, and
@@ -1410,9 +1398,13 @@ def _card_html(card: Mapping[str, Any]) -> str:
         ),
         '<div style="font-size:11px; margin:6px 0 0 0;">',
         f'<span style="background:{tag_bg}; color:{tag_fg}; padding:2px 8px; ',
-        f'border-radius:9999px;">{_esc(card["tag"])}</span> ',
-        f'<span style="color:{_MOVEMENT_COLOURS[movement_colour(str(card["movement"]))]}">',
-        _esc(card["movement"]), '</span></div>',
+        f'border-radius:9999px;">{_esc(card["tag"])}</span>',
+        *(
+            [f' <span style="color:{_MOVEMENT_COLOURS[str(card["movement"])[:1]]}; '
+             f'font-weight:700;">{_esc(card["movement"])}</span>']
+            if card["movement"] else []
+        ),
+        '</div>',
     ])
     if card["flights"]:
         out.append(_flight_table_html(card["flights"]))
@@ -1765,15 +1757,12 @@ def render_holiday_report_compact(
     There is no "What changed" block: the owner asked on 2026-10-08 for the
     price-change bullets to go ("I don't care about that"), so neither
     ``digest`` nor a pre-rendered ``change_digest_html`` is printed, and
-    ``history_chips`` is ignored as before. ``trends``/``last_report_at`` (or
-    the digest's ``last_report_at``) only feed the per-card movement words,
-    which sit on the freshness-tag line and cost no space. All of them are
-    optional, so a caller with only the detailed renderer's arguments still
-    gets a valid e-mail.
+    ``history_chips`` and ``last_report_at`` are ignored. ``trends`` only feeds
+    the per-card "▼ £210" chip, which sits on the freshness-tag line and costs
+    no space. All of them are optional keywords, kept so the job can hand both
+    renderers one set of arguments.
     """
-    cards = _cards(config, deals, generated_at=generated_at, trends=trends,
-                   last_report_at=last_report_at or str(
-                       (digest or {}).get("last_report_at", "") or ""))
+    cards = _cards(config, deals, generated_at=generated_at, trends=trends)
     out: list[str] = [
         '<!DOCTYPE html><html><head><meta charset="utf-8"><title>',
         _esc(config.report_title),
@@ -1833,9 +1822,7 @@ def render_holiday_report_compact_text(
     in an HTML-capable client" is a part that carries none of the decision.
     Built from the same card structures, in the same order.
     """
-    cards = _cards(config, deals, generated_at=generated_at, trends=trends,
-                   last_report_at=last_report_at or str(
-                       (digest or {}).get("last_report_at", "") or ""))
+    cards = _cards(config, deals, generated_at=generated_at, trends=trends)
     lines: list[str] = [
         str(config.report_title),
         f"{party_words(config)} · departing "
@@ -1867,7 +1854,7 @@ def render_holiday_report_compact_text(
         lines.append(f"  {card['board']}")
         if card["caution"]:
             lines.append(f"  ! {card['caution']}")
-        lines.append(f"  {card['tag']} · {card['movement']}")
+        lines.append(f"  {card['tag']}" + (f" · {card['movement']}" if card["movement"] else ""))
         for cabin, route, total in card["flights"]:
             price = total[0] if isinstance(total, tuple) else total
             lines.append(f"  {cabin} · {route} · {price}")

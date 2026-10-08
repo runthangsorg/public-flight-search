@@ -418,14 +418,10 @@ def run_holiday_planner(
         # sends when HOLIDAY_SEND_EVERY_RUN is off.
     }
     if not detailed:
-        # Movement has to be stated in words against the LAST observation, so
-        # the compact renderer is given the trend rows themselves rather than
-        # the rendered chips (AMEND-H1 §2).
-        render_kwargs.update(
-            trends=trends,
-            digest=digest,
-            last_report_at=str(digest.get("last_report_at") or ""),
-        )
+        # The compact card's "▼ £210" chip is measured against the LAST
+        # observation, so it is given the trend rows themselves rather than
+        # the detailed renderer's tracked-minimum chips (AMEND-H1 §2).
+        render_kwargs.update(trends=trends)
     render = render_holiday_report if detailed else render_holiday_report_compact
     html = render(config, **render_kwargs)
     # The plain-text part the mailer already sends used to say "open this in an
