@@ -103,6 +103,19 @@ def _live_evidence_counts(live_offers) -> dict[str, int]:
     }
 
 
+def _tally(entries) -> list[str]:
+    """Each distinct reason once, in first-seen order, with ``(xN)`` when repeated.
+
+    The evidence loaders log one line per rejected ROW, so a single read refused
+    for its season appeared once per room row and buried the distinct reasons
+    (64 hotel lines, 23 distinct, on the 7 Oct December run).
+    """
+    counts: dict[str, int] = {}
+    for entry in entries:
+        counts[str(entry)] = counts.get(str(entry), 0) + 1
+    return [f"{entry} (x{count})" if count > 1 else entry for entry, count in counts.items()]
+
+
 def config_season(config) -> str:
     """Which holiday a config prices: ``"july"``, ``"december"`` or ``"unknown"``.
 
@@ -515,7 +528,7 @@ def run_holiday_planner(
         # the reverse. A flag that describes a file this run never opened is
         # worse than no flag.
         "live_evidence_file_found": os.path.exists(evidence_path),
-        "live_skipped": live_skipped,
+        "live_skipped": _tally(live_skipped),
         # The contract, the gap it leaves and how old the cache is. A run that
         # silently reverts to benchmarks should be visibly a stale-cache run.
         "live_evidence_contract": contract.as_dict() if contract else {},
@@ -551,7 +564,7 @@ def run_holiday_planner(
         "hotel_rates_priced_cards": sum(
             1 for deal in deals if deal.hotel_evidence is not None
         ),
-        "hotel_evidence_skipped": hotel_skipped,
+        "hotel_evidence_skipped": _tally(hotel_skipped),
         "hotel_evidence_load_error": hotel_evidence_error,
         # Unit checks, by the mechanism that decided them (BRIEF-H17 §3). A unit
         # check can remove a resort, so where the answer comes from is not a
@@ -574,7 +587,7 @@ def run_holiday_planner(
         "package_prices_on_cards": sum(
             1 for deal in deals if deal.operator_package is not None
         ),
-        "package_evidence_skipped": package_skipped,
+        "package_evidence_skipped": _tally(package_skipped),
         "package_evidence_load_error": package_evidence_error,
         # Stopover reads: how many whole-party fares were loaded, and how many
         # of them actually reached a card. A non-zero count with none on cards
@@ -590,7 +603,7 @@ def run_holiday_planner(
             for option in (deal.flight_options or ())
             if str(option.get("kind", "")).startswith("stopover")
         ),
-        "stopover_evidence_skipped": stopover_skipped,
+        "stopover_evidence_skipped": _tally(stopover_skipped),
         "stopover_evidence_load_error": stopover_evidence_error,
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,

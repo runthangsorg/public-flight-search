@@ -398,3 +398,40 @@ class HolidayStepSummaryTests(unittest.TestCase):
         payload = (root / "examples" / "july_holiday_config.json").read_text(encoding="utf-8")
         result = self._run({"JULY_HOLIDAY_SEARCH_CONFIG_JSON": payload})
         self.assertEqual(result["config_season"], "july")
+
+
+class SkipReasonTallyTests(unittest.TestCase):
+    """Each refusal reason is listed once in the run result, with its count.
+
+    The loaders log one line per rejected row, so one summer read refused by a
+    December run appeared once per room row: the 7 Oct December result carried
+    64 hotel skip lines of which 23 were distinct, and a 12 KB JSON line that
+    an operator has to read to see why a card fell back to a catalogue rate.
+    """
+
+    def test_a_repeated_reason_is_listed_once_with_its_count(self):
+        from public_flight_search.jobs import _tally
+
+        self.assertEqual(_tally(["a", "b", "a", "a"]), ["a (x3)", "b"])
+        self.assertEqual(_tally(["only"]), ["only"])
+        self.assertEqual(_tally([]), [])
+
+    def test_the_run_result_lists_each_skip_reason_once(self):
+        root = Path(__file__).parents[1]
+        fixtures = root / "tests" / "fixtures"
+        with patch("builtins.print"):
+            result = run_holiday_planner(
+                dry_run=True,
+                config_path=str(root / "examples" / "dec_holiday_config.json"),
+                hotel_evidence_path=str(fixtures / "hotel_evidence_sample.json"),
+                package_evidence_path=str(fixtures / "package_evidence_sample.json"),
+                live_evidence_path=_no_evidence()["live_evidence_path"],
+            )
+        tallied = False
+        for key in ("hotel_evidence_skipped", "package_evidence_skipped",
+                    "live_skipped", "stopover_evidence_skipped"):
+            entries = result[key]
+            self.assertEqual(len(entries), len(set(entries)), key)
+            tallied = tallied or any(entry.endswith(")") and " (x" in entry for entry in entries)
+        # The fixtures repeat at least one reason, so the count is exercised.
+        self.assertTrue(tallied)
