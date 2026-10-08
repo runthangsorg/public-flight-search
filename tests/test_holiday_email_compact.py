@@ -862,56 +862,63 @@ class TextPartTests(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
         self.assertIn("Prices checked Sun 4 Oct", text)
 
-    def test_the_text_part_and_the_html_state_the_same_movement_block(self):
-        digest = {
+    # Owner, 2026-10-08: "why are you giving me useless price changes bullets
+    # wasting space, I don't care about that". The "What changed" block used to
+    # open both parts with one ▼/▲/✦ line per resort that moved; it is gone from
+    # both, whatever the digest holds. The digest itself is still computed: it
+    # decides whether a run sends when HOLIDAY_SEND_EVERY_RUN is off.
+    _DIGESTS = (
+        {   # prices moved, both ways, and a resort came under budget
             "has_prior": True,
             "drops": [{"name": "Test Resort 1", "current": 1.0, "prev": 2.0, "delta": -10.0}],
-            "rises": [],
-            "new": ["Test Resort 2"],
+            "rises": [{"name": "Test Resort 2", "current": 3.0, "prev": 2.0, "delta": 15.0}],
+            "new": ["Test Resort 0"],
             "last_report_at": LAST_REPORT_AT,
-        }
-        html = _render(digest=digest, last_report_at=LAST_REPORT_AT)
-        text = render_holiday_report_compact_text(
-            _config(), generated_at=GENERATED_AT, deals=_deals(3),
-            digest=digest, last_report_at=LAST_REPORT_AT,
-        )
-        for line in ("▼ Test Resort 1 £10 cheaper", "✦ Test Resort 2 now under budget"):
-            self.assertIn(line, text)
-            self.assertIn(line, visible_text(html))
-        self.assertNotIn("First time tracked", text)
-        self.assertNotIn("First time tracked", visible_text(html))
-
-    def test_neither_part_invents_movement_when_there_is_no_history(self):
-        # A first run has no prior observation for any deal, so the digest
-        # lists them all as new; the e-mail says so once and lists none.
-        digest = {
-            "has_prior": False,
-            "drops": [], "rises": [],
-            "new": ["Test Resort 0", "Test Resort 1"],
-            "last_report_at": "",
-        }
-        html = _render(deals=_deals(2), digest=digest)
-        text = render_holiday_report_compact_text(
-            _config(), generated_at=GENERATED_AT, deals=_deals(2), digest=digest
-        )
-        self.assertIn("First time tracked — nothing to compare with yet", visible_text(html))
-        self.assertIn("First time tracked — nothing to compare with yet", text)
-        self.assertNotIn("now under budget", visible_text(html))
-        self.assertNotIn("now under budget", text)
-
-    def test_prior_data_with_no_movement_says_so_in_both_parts(self):
-        digest = {
+        },
+        {   # a first run: nothing to compare with
+            "has_prior": False, "drops": [], "rises": [],
+            "new": ["Test Resort 0", "Test Resort 1"], "last_report_at": "",
+        },
+        {   # prior data, nothing moved
             "has_prior": True, "drops": [], "rises": [], "new": [],
             "unchanged": 12, "last_report_at": LAST_REPORT_AT,
-        }
-        html = _render(digest=digest, last_report_at=LAST_REPORT_AT)
+        },
+    )
+    _DIGEST_WORDS = (
+        "What changed",
+        "▼ Test Resort",
+        "▲ Test Resort",
+        "✦",
+        "now under budget",
+        "First time tracked",
+        "nothing to compare with yet",
+        "Every tracked resort is at its previous price",
+    )
+
+    def test_neither_part_carries_a_price_change_digest(self):
+        for digest in self._DIGESTS:
+            with self.subTest(has_prior=digest["has_prior"], moved=bool(digest["drops"])):
+                html = _render(deals=_deals(3), digest=digest, last_report_at=LAST_REPORT_AT)
+                text = render_holiday_report_compact_text(
+                    _config(), generated_at=GENERATED_AT, deals=_deals(3),
+                    digest=digest, last_report_at=LAST_REPORT_AT,
+                )
+                for part_name, part in (("html", visible_text(html)), ("text", text)):
+                    for words in self._DIGEST_WORDS:
+                        self.assertNotIn(words, part, f"{part_name}: {words}")
+
+    def test_a_pre_rendered_digest_is_not_printed_either(self):
+        # The detailed renderer's own digest HTML used to be the fallback when
+        # no digest rows were passed, so a caller could still put it back.
+        rendered = '<div>What changed: ▼ Test Resort 1 £10 cheaper</div>'
+        html = _render(deals=_deals(2), change_digest_html=rendered)
         text = render_holiday_report_compact_text(
             _config(), generated_at=GENERATED_AT, deals=_deals(2),
-            digest=digest, last_report_at=LAST_REPORT_AT,
+            change_digest_html=rendered,
         )
         for part in (visible_text(html), text):
-            self.assertIn("Every tracked resort is at its previous price", part)
-            self.assertNotIn("First time tracked", part)
+            self.assertNotIn("What changed", part)
+            self.assertNotIn("£10 cheaper", part)
 
     def test_the_text_part_states_the_same_breakdown_and_tag(self):
         deals = [_deal(confidence="stale-cache", live_observed_at="2026-09-29T09:00:00+00:00")]
@@ -974,6 +981,48 @@ class StyleSwitchTests(unittest.TestCase):
                 )
         self.assertIn("Every price is the total for 5, door to door.", visible_text(sent["html"]))
         self.assertIn("flights £", sent["text"])
+
+    def test_no_email_the_job_sends_carries_the_change_digest(self):
+        """Owner 2026-10-08: the price-change bullets go from every holiday e-mail.
+
+        The second of two runs has prior history, so the digest has something
+        to say ("No price movement since the last report ..." in the detailed
+        renderer, "Every tracked resort is at its previous price" in the
+        compact one). Neither style may print it.
+        """
+        import tempfile
+
+        from public_flight_search.jobs import run_holiday_planner
+
+        for style in ("", "detailed"):
+            with self.subTest(style=style or "compact"), tempfile.TemporaryDirectory() as tmp:
+                sent: list = []
+
+                def _capture(subject, html, *, text=""):
+                    sent.append((html, text))
+
+                env = {
+                    "HOLIDAY_SEARCH_CONFIG_JSON": DEC.read_text(encoding="utf-8"),
+                    "HOLIDAY_HISTORY_PATH": str(Path(tmp) / "history.jsonl"),
+                    "HOLIDAY_REPORT_STYLE": style,
+                }
+                with patch.dict(os.environ, env), patch(
+                    "public_flight_search.jobs.send_html", _capture
+                ):
+                    for _ in range(2):
+                        run_holiday_planner(
+                            dry_run=False,
+                            force_send=True,
+                            hotel_evidence_path=str(Path(tmp) / "absent-hotel.json"),
+                            live_evidence_path=str(Path(tmp) / "absent-live.json"),
+                        )
+                self.assertEqual(len(sent), 2)
+                html, text = sent[-1]
+                for part in (visible_text(html), text):
+                    for words in ("What changed", "No price movement since the last report",
+                                  "Every tracked resort is at its previous price",
+                                  "vs last report", "now under budget", "more moved"):
+                        self.assertNotIn(words, part, words)
 
     def test_the_job_text_part_is_not_a_placeholder_any_more(self):
         from public_flight_search.mailer import send_html

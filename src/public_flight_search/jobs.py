@@ -29,7 +29,6 @@ from .holiday_history import (
     build_change_digest,
     last_history_observation,
     read_history,
-    render_change_digest_html,
     render_history_html,
     summarize_trends,
 )
@@ -413,7 +412,10 @@ def run_holiday_planner(
         "generated_at": generated_at,
         "deals": deals,
         "history_chips": render_history_html(trends),
-        "change_digest_html": render_change_digest_html(digest),
+        # No "change_digest_html": the price-change digest is not printed in
+        # any holiday e-mail (owner, 2026-10-08: "I don't care about that").
+        # The digest is still built above because it decides whether a run
+        # sends when HOLIDAY_SEND_EVERY_RUN is off.
     }
     if not detailed:
         # Movement has to be stated in words against the LAST observation, so

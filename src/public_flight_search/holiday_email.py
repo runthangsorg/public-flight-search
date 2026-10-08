@@ -51,12 +51,6 @@ from .google_flights import build_google_flights_legs_url
 from .multi_centre import load_multi_centre, trip_legs_for_dates
 from .vendors import build_vendor_links, trip_from_deal
 
-#: Lines in the "what changed" block. The change digest keeps its own per-kind
-#: caps (4 drops, 2 rises, 4 new) because it is a ticker; this e-mail states one
-#: resort per line, and six lines is as many as a phone screen shows before the
-#: reader starts skipping them.
-MAX_WHAT_CHANGED_LINES: int = 6
-
 #: Per-card caps. A card that answers "what does this cost, is it fresh, has it
 #: moved, how do I book it" in this many lines is the whole point of the
 #: redesign; anything more is what made the old e-mail unreadable.
@@ -1301,55 +1295,6 @@ def _header_html(config: HolidayConfig, *, generated_at: Any) -> str:
     ])
 
 
-def changed_lines(digest: Optional[Mapping[str, Any]]) -> list[str]:
-    """The "what changed" lines — one resort per line, at most six.
-
-    Shared by both renderings so the HTML and the plain-text part can never
-    disagree about what moved (that is how a "first time tracked" line once
-    ended up beside three resorts that had in fact just come under budget).
-
-    Three states, and no fourth: nothing to compare with yet, prior data with
-    no movement, or the movements themselves.
-    """
-    if not digest:
-        return []
-    if not digest.get("has_prior"):
-        return ["First time tracked — nothing to compare with yet"]
-    rows: list[str] = []
-    for entry in list(digest.get("drops", []))[:MAX_WHAT_CHANGED_LINES]:
-        rows.append(f"▼ {entry['name']} {_gbp(abs(float(entry['delta'])))} cheaper")
-    for entry in list(digest.get("rises", []))[:max(0, MAX_WHAT_CHANGED_LINES - len(rows))]:
-        rows.append(f"▲ {entry['name']} {_gbp(float(entry['delta']))} dearer")
-    for name in list(digest.get("new", []))[:max(0, MAX_WHAT_CHANGED_LINES - len(rows))]:
-        # "new" in the digest means the resort crossed INTO the under-budget
-        # funnel, which is what the line says: "new" on its own read as fake the
-        # moment every run had new resorts.
-        rows.append(f"✦ {name} now under budget")
-    return rows or ["Every tracked resort is at its previous price"]
-
-
-def _what_changed_html(digest: Optional[Mapping[str, Any]], *, last_report_at: Any,
-                       fallback_html: str = "") -> str:
-    """One line per resort that moved, at most six, and never a ticker.
-
-    A caller that passed only the detailed renderer's rendered digest has no
-    trend rows to state in words, so its own HTML is used rather than a
-    paraphrase nobody can verify.
-    """
-    if not digest:
-        return fallback_html
-    lines = changed_lines(digest)
-    when = _day_words(digest.get("last_report_at") or last_report_at)
-    head = "What changed" + (f" since {when}" if when else "")
-    body = "<br>".join(_esc(line) for line in lines)
-    return (
-        f'<div style="margin:10px 0 0 0; font-size:12px; color:{_MUTED};">'
-        f'<strong style="color:{_INK};">{_esc(head)}</strong><br>'
-        + body
-        + "</div>"
-    )
-
-
 def _glance_html(cards: Sequence[Mapping[str, Any]], *, travellers: int) -> str:
     """One table, one row per deal — the whole answer to "what is what"."""
     head_cells = ("Resort", "Where", "Dates", "Board", "Total for 5", "vs last time")
@@ -1819,13 +1764,14 @@ def render_holiday_report_compact(
 ) -> str:
     """The compact holiday e-mail. Same arguments as the detailed renderer.
 
-    ``trends``/``digest``/``last_report_at`` carry what the change digest and
-    the history chips carry, in a form this renderer can state in one line per
-    resort: AMEND-H1 §2 forbids both the chip wall and any benchmark movement,
-    so movement has to come from the trend rows rather than from rendered HTML.
-    They are optional so a caller that only has the detailed renderer's
-    arguments still gets a valid e-mail (every card then reads "first time
-    tracked").
+    There is no "What changed" block: the owner asked on 2026-10-08 for the
+    price-change bullets to go ("I don't care about that"), so neither
+    ``digest`` nor a pre-rendered ``change_digest_html`` is printed, and
+    ``history_chips`` is ignored as before. ``trends``/``last_report_at`` (or
+    the digest's ``last_report_at``) only feed the per-card movement words,
+    which sit on the freshness-tag line and cost no space. All of them are
+    optional, so a caller with only the detailed renderer's arguments still
+    gets a valid e-mail.
     """
     cards = _cards(config, deals, generated_at=generated_at, trends=trends,
                    last_report_at=last_report_at or str(
@@ -1841,9 +1787,6 @@ def render_holiday_report_compact(
         'style="width:100%; max-width:600px;"><tr><td>',
         _header_html(config, generated_at=generated_at),
     ]
-    if digest or change_digest_html:
-        out.append(_what_changed_html(digest, last_report_at=last_report_at,
-                                      fallback_html=change_digest_html))
     if cards:
         out.append(_glance_html(cards, travellers=int(config.travellers)))
     rendered = 0
@@ -1902,12 +1845,6 @@ def render_holiday_report_compact_text(
         prices_checked_words(generated_at),
         "",
     ]
-    if digest or change_digest_html:
-        when = _day_words(last_report_at or (digest or {}).get("last_report_at") or "")
-        lines.append("What changed" + (f" since {when}" if when else ""))
-        for line in changed_lines(digest) or ([change_digest_html] if change_digest_html else []):
-            lines.append(f"  {line}")
-        lines.append("")
     if cards:
         lines.append(
             f"At a glance (every price is the total for {int(config.travellers)}, door to door)"
