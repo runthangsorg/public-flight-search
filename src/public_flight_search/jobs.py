@@ -607,7 +607,13 @@ def run_holiday_planner(
         "stopover_evidence_load_error": stopover_evidence_error,
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
-        "send_skipped_no_change": (not dry_run) and not send_email,
+        # True only when the run was held back because nothing a reader cares
+        # about moved. A cooldown or a wrong-season refusal is a different
+        # reason with its own field, and reading it as "flat re-quote" (as the
+        # travel playbook tells an operator to) would send them the wrong way.
+        "send_skipped_no_change": (
+            (not dry_run) and not send_email and not cooldown_reason and not season_mismatch
+        ),
         "last_prior_observation": last_prior,
         "email_sent": send_email,
         "email_cooldown_reason": cooldown_reason,

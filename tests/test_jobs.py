@@ -329,6 +329,8 @@ class HolidaySeasonGuardTests(unittest.TestCase):
         self.assertTrue(result["config_season_mismatch"])
         self.assertFalse(result["email_sent"])
         self.assertIn("july planner", result["email_skipped_reason"])
+        # Refused, not quiet: "no change" would send an operator the wrong way.
+        self.assertFalse(result["send_skipped_no_change"])
         send.assert_not_called()
 
     def test_even_a_forced_send_cannot_push_the_wrong_holiday_out(self):

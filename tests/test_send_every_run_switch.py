@@ -211,6 +211,21 @@ class SwitchDefaultsAndCooldownTests(unittest.TestCase):
         self.assertIn("cooldown", result["email_cooldown_reason"])
         self.assertEqual(self.send.call_count, 1)
 
+    def test_a_cooled_run_is_not_reported_as_a_flat_one(self):
+        """``send_skipped_no_change`` means nothing a reader cares about moved.
+
+        The travel playbook tells an operator to read ``email_sent: false`` with
+        ``send_skipped_no_change: true`` as a flat re-quote suppressed by design.
+        A switched-on run the cooldown held back is not that, and said it was.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            self._run(tmp, HOLIDAY_SEND_EVERY_RUN="1")
+            self._backdate_history(tmp, minutes=10)
+            result = self._run(tmp, HOLIDAY_SEND_EVERY_RUN="1")
+        self.assertFalse(result["email_sent"])
+        self.assertIn("cooldown", result["email_cooldown_reason"])
+        self.assertFalse(result["send_skipped_no_change"])
+
     def test_a_switched_run_sends_once_the_cooldown_has_passed(self):
         """Past 180 minutes the cadence is allowed to mail again.
 
