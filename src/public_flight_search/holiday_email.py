@@ -1268,6 +1268,11 @@ def _esc(text: Any) -> str:
     return escape(str(text if text is not None else ""))
 
 
+def _utf8_len(chunk: str) -> int:
+    """What a chunk weighs on the wire, which is what Gmail's clip counts."""
+    return len(chunk.encode("utf-8"))
+
+
 def _header_html(config: HolidayConfig, *, generated_at: Any) -> str:
     return "".join([
         '<div style="font-size:19px; font-weight:700; color:', _INK, '; line-height:1.3;">',
@@ -1776,27 +1781,35 @@ def render_holiday_report_compact(
     ]
     if cards:
         out.append(_glance_html(cards, travellers=int(config.travellers)))
-    rendered = 0
-    for card in cards:
-        card_start = len(out)
-        out.append(_card_html(card))
-        rendered += 1
+    # The sections after the cards are built FIRST so the budget can hold their
+    # room: they are always sent, so a card that does not fit beside them is
+    # the one cut. Measured in UTF-8 bytes, because the budget is Gmail's byte
+    # cap and every £, ★, — and ↗ on a card is two or three bytes.
+    after_cards = [
+        _multi_centre_html(config),
+        _over_budget_html(config),
+        _watch_html(config),
+        _notes_html(config, deals),
+    ]
+    reserved = (sum(_utf8_len(chunk) for chunk in after_cards)
+                + hol._CLOSING_TAIL_ALLOWANCE_BYTES)
+    used = sum(_utf8_len(chunk) for chunk in out)
+    for rendered, card in enumerate(cards, start=1):
+        card_html = _card_html(card)
+        size = _utf8_len(card_html)
         if (
             rendered > hol.MIN_RENDERED_HOTEL_CARDS
-            and sum(len(chunk) for chunk in out) + hol._CLOSING_TAIL_ALLOWANCE_BYTES
-            > hol.EMAIL_HTML_BUDGET_BYTES
+            and used + size + reserved > hol.EMAIL_HTML_BUDGET_BYTES
         ):
-            del out[card_start:]
             out.append(
                 f'<div style="font-size:12px; color:{_MUTED}; margin:12px 0 0 0;">'
                 f'{len(cards) - rendered + 1} further deal(s) not shown: this e-mail is near '
                 f"Gmail's {hol.EMAIL_HTML_BUDGET_BYTES // 1000} KB payload cap.</div>"
             )
             break
-    out.append(_multi_centre_html(config))
-    out.append(_over_budget_html(config))
-    out.append(_watch_html(config))
-    out.append(_notes_html(config, deals))
+        out.append(card_html)
+        used += size
+    out.extend(after_cards)
     out.append("</td></tr></table></td></tr></table></body></html>")
     return "".join(out)
 

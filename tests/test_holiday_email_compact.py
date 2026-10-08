@@ -779,6 +779,31 @@ class CompactnessTests(unittest.TestCase):
         html = _render(deals=_deals(12))
         self.assertLess(len(html.encode("utf-8")), hol.EMAIL_HTML_BUDGET_BYTES)
 
+    def test_the_finished_email_fits_the_budget_that_cut_it(self):
+        """The Gmail-clip guard measures the e-mail that is actually sent.
+
+        It compared the CHARACTER count of the cards so far with a BYTE budget
+        (every £, ★, — and ↗ is two or three bytes), and the sections appended
+        after the cards — two-centre trips, over budget, watch list, notes —
+        were not counted at all beyond the 1.2 KB tail allowance. So a budget
+        one byte under the full e-mail cut nothing, and the e-mail it let
+        through was over the budget meant to stop it.
+        """
+        deals = [
+            _deal(index, resort_name=f"Résidence Été {index} — Plage ★",
+                  total_package_price_gbp=4000.0 + 250.0 * index)
+            for index in range(12)
+        ]
+        full = len(_render(deals=deals).encode("utf-8"))
+        budget = full - 1
+        with patch.object(hol, "EMAIL_HTML_BUDGET_BYTES", budget):
+            html = _render(deals=deals)
+        self.assertIn("further deal(s) not shown", html)
+        self.assertLessEqual(len(html.encode("utf-8")), budget)
+        # What follows the cards is never the part that gets cut.
+        self.assertIn("On the watch list", visible_text(html))
+        self.assertIn("Notes", visible_text(html))
+
     def test_three_links_per_card_at_most(self):
         # The first link is labelled by what it books (BRIEF-H16 §3), so both
         # branches are pinned here: a package-priced card keeps the operator's
