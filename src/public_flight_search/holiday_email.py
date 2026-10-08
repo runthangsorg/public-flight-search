@@ -1246,8 +1246,6 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
             "tag_colour": tag_colour,
             "movement": movement_words(trend_by_resort.get(str(deal.resort_name)),
                                        last_report_at=last_report_at),
-            "movement_short": movement_words(trend_by_resort.get(str(deal.resort_name)),
-                                             last_report_at=last_report_at, with_date=False),
             "flights": flight_rows(deal, travellers=travellers),
             "why": why_lines(deal, config),
             "links": link_row(deal, config),
@@ -1273,8 +1271,8 @@ _TAG_COLOURS = {"green": ("#dcfce7", "#166534"), "amber": ("#fef3c7", "#92400e")
 _MOVEMENT_COLOURS = {"green": "#166534", "amber": "#b45309", "grey": _MUTED}
 
 #: At-a-glance columns that must never wrap mid-value: Dates and Total. The
-#: board and movement columns DO wrap: six nowrap columns do not fit a 380 px
-#: phone, and a clipped "tracked" is worse than a wrapped "Bed & Breakfast".
+#: board column DOES wrap: five nowrap columns do not fit a 380 px phone, and
+#: a clipped "Breakfast" is worse than a wrapped "Bed & Breakfast".
 _GLANCE_NOWRAP = frozenset({2, 4})
 
 
@@ -1297,13 +1295,16 @@ def _header_html(config: HolidayConfig, *, generated_at: Any) -> str:
 
 def _glance_html(cards: Sequence[Mapping[str, Any]], *, travellers: int) -> str:
     """One table, one row per deal — the whole answer to "what is what"."""
-    head_cells = ("Resort", "Where", "Dates", "Board", "Total for 5", "vs last time")
+    # Five columns. The sixth, "vs last time", went on 2026-10-08 with the
+    # price-change bullets: the owner does not want price movement taking
+    # space, and on a phone it wrapped every row to two lines.
+    head_cells = ("Resort", "Where", "Dates", "Board", "Total for 5")
     out = [
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" ',
         'style="border-collapse:collapse; margin:12px 0 0 0;">',
         '<tr>',
     ]
-    aligns = ("left", "left", "left", "left", "right", "left")
+    aligns = ("left", "left", "left", "left", "right")
     for label, align in zip(head_cells, aligns):
         out.append(
             f'<td align="{align}" style="padding:4px 4px; font-size:11px; color:{_MUTED}; '
@@ -1319,9 +1320,6 @@ def _glance_html(cards: Sequence[Mapping[str, Any]], *, travellers: int) -> str:
             _esc(card["dates"]),
             _esc(board),
             f'<strong style="color:{_ACCENT}; white-space:nowrap;">{_esc(card["headline"])}</strong>',
-            # Movement is the one secondary fact in this column, so it is set
-            # one step smaller than the price beside it.
-            f'<span style="font-size:11px; color:{_MUTED};">{_esc(card["movement_short"])}</span>',
         )
         out.append("<tr>")
         for index, (align, cell) in enumerate(zip(aligns, cells)):
@@ -1852,7 +1850,7 @@ def render_holiday_report_compact_text(
         for index, card in enumerate(cards, start=1):
             lines.append(
                 f"  {index}. {card['name']} · {card['place']} · {card['dates']} · "
-                f"{str(card['board']).split(' · ')[0]} · {card['headline']} · {card['movement']}"
+                f"{str(card['board']).split(' · ')[0]} · {card['headline']}"
             )
         lines.append("")
     for card in cards:

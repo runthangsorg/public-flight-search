@@ -239,6 +239,34 @@ class AtAGlanceTableTests(unittest.TestCase):
         text = visible_text(_render(config=_config(travellers=4)))
         self.assertIn("Every price is the total for 4, door to door.", text)
 
+    def test_the_table_has_no_price_change_column(self):
+        """Owner 2026-10-08: price changes are not worth the space.
+
+        The sixth "vs last time" column held "first time tracked" or "£210
+        cheaper" on every row, and on a phone it wrapped every row to two
+        lines. Five columns: resort, where, dates, board, total. The plain-text
+        glance list drops the same field.
+        """
+        trend = {"resort_name": "Test Resort 0", "current": 4000.0,
+                 "prior_last": 4210.0, "prior_observations": 3}
+        deals = _deals(2)
+        html = _render(deals=deals, trends=[trend], last_report_at=LAST_REPORT_AT)
+        self.assertNotIn("vs last time", html)
+        header_start = html.rindex("<tr>", 0, html.index(">Resort</td>"))
+        header = html[header_start:html.index("</tr>", header_start)]
+        self.assertEqual(header.count("<td"), 5)
+        first_row_start = html.index("<tr>", header_start + 1)
+        first_row = html[first_row_start:html.index("</tr>", first_row_start)]
+        self.assertEqual(first_row.count("<td"), 5)
+        text = render_holiday_report_compact_text(
+            _config(), generated_at=GENERATED_AT, deals=deals,
+            trends=[trend], last_report_at=LAST_REPORT_AT,
+        )
+        glance = [line for line in text.splitlines() if re.match(r"  \d+\. ", line)]
+        self.assertEqual(len(glance), 2)
+        for line in glance:
+            self.assertTrue(line.endswith("£6,042"), line)
+
     def test_rows_are_ordered_by_the_total_the_table_shows(self):
         """The table sorts by the door-to-door total it displays, not the package-only price.
 
