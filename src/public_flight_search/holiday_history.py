@@ -4,9 +4,7 @@ Append-only JSONL store so the 3x-week GHA holiday planner can track
 historical prices across runs. Commit-friendly: one JSON object per line,
 stable field order, cheap to diff and append in a commit-back step.
 
-Complements the SQLite fare-history store (history_db.py), which stays
-migration-only for flight fare observations; this module tracks the
-package-holiday dimension (resort x dates) instead.
+It tracks the package-holiday dimension (resort x dates x unit x cabin).
 """
 
 from __future__ import annotations
