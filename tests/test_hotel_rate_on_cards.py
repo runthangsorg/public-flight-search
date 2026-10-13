@@ -354,11 +354,19 @@ class TestThePlannerRunReportsIt(unittest.TestCase):
     """A run with the file seeded must say so; a run without must not lie."""
 
     def test_a_seeded_file_prices_a_card_and_is_reported(self):
+        from datetime import datetime, timedelta, timezone
         from unittest.mock import patch
 
         from public_flight_search.jobs import run_holiday_planner
 
-        path = _evidence_file([_flexible_rate(), _saver_rate()])
+        # The planner judges freshness against the wall clock, not the
+        # fixture's NOW, so these reads are dated relative to today. Dated
+        # with the fixture's 2 October they aged past the one-week ceiling
+        # and this test failed from 2026-10-11, taking the scheduled runs
+        # with it.
+        observed = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        path = _evidence_file([_flexible_rate(observed_at=observed),
+                               _saver_rate(observed_at=observed)])
         with tempfile.TemporaryDirectory() as tmp:
             env = {
                 "HOLIDAY_SEARCH_CONFIG_JSON": CONFIG,
