@@ -271,21 +271,20 @@ def trip_legs_for_dates(
         raise ValueError(f"bad date pair: {outbound!r} -> {returning!r}") from exc
     if end <= start:
         raise ValueError(f"return date is not after the outbound: {outbound!r} -> {returning!r}")
-    dates = [start]
-    for stop in trip.stops:
-        dates.append(dates[-1] + timedelta(days=stop.nights))
-    # One date per leg. More legs than stops is unusual (a route home through a
-    # hub) but must not leave a leg undated, so pad with the last date.
-    while len(dates) < len(trip.legs):
-        dates.append(dates[-1])
-    # The LAST leg is the flight home, and it leaves on the report's own return
-    # date — always, whether or not the stop nights add up to the stay (13
-    # nights inside a 14-night pair, say). A link whose return leg lands before
-    # the reader's own return date is a different trip from the one printed, so
-    # the RETURN LEG's index is the one that is forced, not the last date the
-    # stops happened to generate: a two-leg round trip generates three dates and
-    # flies the first two. Intermediate legs follow the stop nights and are
-    # pulled back if they run past the return, never past it.
+    # One date per leg. A leg moves the date on only when it LEAVES the stay
+    # it is ending: its origin is the airport of the next stay not yet spent.
+    # Any other leg is a change of plane and flies the same day as the leg
+    # before it (live 2026-10-15: MC-02's HKT-BKK-USM was searched with
+    # BKK-USM a week later, seven nights in a Bangkok the trip never names).
+    dates = []
+    current = start
+    pending = list(trip.stops)
+    for index, (origin, _destination) in enumerate(trip.legs):
+        if index and pending and origin == pending[0].airport:
+            current = current + timedelta(days=pending.pop(0).nights)
+        dates.append(current)
+    # The LAST leg is the flight home and leaves on the report's own return
+    # date, always; earlier legs are pulled back if they run past it.
     dates = [min(date, end) for date in dates]
     dates[len(trip.legs) - 1] = end
     out: list[tuple[str, str, str]] = []
