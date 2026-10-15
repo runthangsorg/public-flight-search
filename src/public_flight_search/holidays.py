@@ -3765,6 +3765,68 @@ def _read_pair(row: Mapping[str, Any]) -> Optional[tuple[str, str]]:
     return (str(pair[0]), str(pair[1]))
 
 
+# ---------------------------------------------------------------------------
+# Two-centre reads: the same batches, a different itinerary shape
+# ---------------------------------------------------------------------------
+#
+# Owner brief 2026-10-15. The July e-mail's "Two-centre trips" block showed a
+# cost RANGE per trip because no dated multi-city fare had been read for one; the
+# private reader now writes a row for a trip's own legs, with `kind`
+# `multi_centre` and a `trip` id, into the SAME `stopover_reads/1` batches the
+# stopover fares ride. Nothing below is committed data and nothing is invented: a
+# run prices the section from the batches its own workflow seeded, and a trip with
+# no read shows its range and says the flights are not priced yet.
+
+#: The ``kind`` a two-centre read carries. A stopover row has no ``kind`` at all —
+#: its absence is what keeps the committed reads' shape untouched — so this string
+#: is the whole difference between the two kinds of row in one file.
+MULTI_CENTRE_READ_KIND = "multi_centre"
+
+
+def _is_multi_centre_read(row: Mapping[str, Any]) -> bool:
+    """True when this batch row is a two-centre read rather than a stopover one."""
+    return str(row.get("kind", "")).strip().lower() == MULTI_CENTRE_READ_KIND
+
+
+def _normalise_legs(value: Any) -> Optional[tuple[tuple[str, str, str], ...]]:
+    """An itinerary as ``(origin, destination, date)`` triples, or None.
+
+    Normalised in ONE place, so the loader that indexes a read and the renderer
+    that asks for one cannot build a different key for the same journey.
+    """
+    if not isinstance(value, (list, tuple)) or not value:
+        return None
+    legs: list[tuple[str, str, str]] = []
+    for leg in value:
+        if not (isinstance(leg, (list, tuple)) and len(leg) == 3):
+            return None
+        legs.append((str(leg[0]).strip().upper(), str(leg[1]).strip().upper(),
+                     str(leg[2]).strip()))
+    return tuple(legs)
+
+
+def multi_centre_fare_key(trip: Any,
+                          legs: Any) -> Optional[tuple[str, tuple[tuple[str, str, str], ...]]]:
+    """The key a two-centre read is indexed and looked up by: ``(trip, legs)``.
+
+    The LEGS carry the dates, so the key is the exact journey the read was made
+    for and nothing narrower is needed: a read for the same trip on another pair
+    is a different key, which is what stops a fare being borrowed from other
+    dates. ``None`` when either half is unusable, so a caller can refuse rather
+    than match on a guess.
+    """
+    name = str(trip or "").strip()
+    normalised = _normalise_legs(legs)
+    if not name or normalised is None:
+        return None
+    return (name, normalised)
+
+
+def _multi_centre_read_key(row: Mapping[str, Any]):
+    """A batch row's own key, if it carries the trip and legs to have one."""
+    return multi_centre_fare_key(row.get("trip"), row.get("legs"))
+
+
 def _without_stopover_outliers(
     reads: Sequence[Mapping[str, Any]],
 ) -> tuple[tuple[Mapping[str, Any], ...], list[str]]:
@@ -3787,7 +3849,13 @@ def _without_stopover_outliers(
     Every excluded read is named with its pair, hub, airport, figure and
     median, because the exclusion goes into the run summary's skip list and an
     operator reading that has to be able to see which read went and why.
+
+    A two-centre read (``kind`` ``multi_centre``) is not a stopover read at all,
+    so it is dropped BEFORE the median is taken rather than merely after: its
+    figure is a whole trip's, and letting it into the pair's population would move
+    the median and could refuse a real stopover fare (owner brief 2026-10-15).
     """
+    reads = tuple(row for row in reads if not _is_multi_centre_read(row))
     priced: dict[tuple[str, str], list[float]] = {}
     for row in reads:
         pair = _read_pair(row)
@@ -3900,6 +3968,99 @@ def _warn_stopover_skip(what: str, reason: str) -> None:
     print(f"stopover-evidence: skipping {message}", file=sys.stderr)
 
 
+def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
+                           index: dict[Any, dict[str, Any]]) -> None:
+    """Index one two-centre read under ``(trip id, its exact legs)``, or name why not.
+
+    Only a ``priced`` row carrying a total can answer a trip; an unanswered read
+    is a recorded gap, not a fare, so it is not indexed and not reported (the
+    section then shows the range and says the flights are not priced yet, which is
+    exactly what that read means). A row with no trip id or unreadable legs cannot
+    answer anything at all and IS named, because nothing else would show it.
+
+    Two reads for one key are two looks at one journey: the cheaper is kept, the
+    same rule ``_stopover_fares`` applies, so the dearer can never be quoted.
+    """
+    key = _multi_centre_read_key(item)
+    if key is None:
+        _warn_stopover_skip(where, "a multi_centre row with no trip id or no usable legs")
+        return
+    total = _priced_read_total(item)
+    if total is None:
+        return
+    existing = index.get(key)
+    if existing is not None and (keep := _priced_read_total(existing)) is not None \
+            and keep <= total:
+        return
+    index[key] = dict(item)
+
+
+def load_batch_reads(
+    path: str = "",
+) -> tuple[tuple[dict[str, Any], ...], dict[Any, dict[str, Any]]]:
+    """This run's ``stopover_reads/1`` batches, split into their two kinds.
+
+    ONE pass for one file shape, because the two kinds ride the SAME documents:
+    the private reader writes a stopover row for a ``(pair, hub, airport)``
+    itinerary and a two-centre row for a trip's own legs, and the workflow step
+    that already seeds the batches needs no change for the second kind to arrive.
+
+    Returns ``(stopover_rows, multi_centre_fares)``:
+
+    * ``stopover_rows`` is exactly what :func:`load_stopover_reads` has always
+      returned — every row, priced or not, which is where the fare table gets its
+      stops. **Two-centre rows are never in it**: they are a different itinerary
+      shape, and a fare that reached ``STOPOVER_FARES`` would price a stopover
+      card with a whole-trip multi-city number, and would move its pair's median
+      while doing it;
+    * ``multi_centre_fares`` indexes the two-centre rows that can become a fare by
+      ``(trip id, the exact legs)``, cheapest read winning — see
+      :func:`_keep_multi_centre_read`.
+
+    ``path`` is a single ``.json`` file or a glob; empty means every batch in
+    ``DEFAULT_STOPOVER_READS_GLOB``, because a run must use every batch it has
+    rather than only the newest filename.
+    """
+    import glob as _glob
+
+    _STOPOVER_SKIP_LOG.clear()
+    pattern = path or DEFAULT_STOPOVER_READS_GLOB
+    names = sorted(_glob.glob(pattern)) if not path.endswith(".json") else [path]
+    rows: list[dict[str, Any]] = []
+    multi_centre: dict[Any, dict[str, Any]] = {}
+    for name in names:
+        try:
+            with open(name, encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except FileNotFoundError:
+            # The normal case: a run with no stopover export simply has none.
+            continue
+        except (json.JSONDecodeError, OSError) as exc:
+            _warn_stopover_skip(name, f"unreadable: {type(exc).__name__}: {exc}")
+            continue
+        if not isinstance(payload, dict) or payload.get("schema") != STOPOVER_READS_SCHEMA:
+            found = payload.get("schema") if isinstance(payload, dict) else type(payload).__name__
+            _warn_stopover_skip(name, f"schema is {found!r}, expected {STOPOVER_READS_SCHEMA!r}")
+            continue
+        for index, item in enumerate(payload.get("rows") or ()):
+            where = f"{name}#{index}"
+            if not isinstance(item, dict):
+                _warn_stopover_skip(where, "not an object")
+                continue
+            if _is_multi_centre_read(item):
+                _keep_multi_centre_read(item, where, multi_centre)
+                continue
+            pair = item.get("pair")
+            if not (isinstance(pair, (list, tuple)) and len(pair) == 2):
+                _warn_stopover_skip(where, "no date pair")
+                continue
+            if not str(item.get("hub", "")).strip() or not str(item.get("airport", "")).strip():
+                _warn_stopover_skip(where, "no hub or airport")
+                continue
+            rows.append(dict(item))
+    return tuple(rows), multi_centre
+
+
 def load_stopover_reads(path: str = "") -> tuple[dict[str, Any], ...]:
     """Stopover fares read for THIS run's date pairs, or nothing.
 
@@ -3921,40 +4082,13 @@ def load_stopover_reads(path: str = "") -> tuple[dict[str, Any], ...]:
     * a missing file, an unreadable file, or a file with the wrong schema
       changes nothing about today's output — never a crash, never an invented
       figure.
-    """
-    import glob as _glob
 
-    _STOPOVER_SKIP_LOG.clear()
-    pattern = path or DEFAULT_STOPOVER_READS_GLOB
-    names = sorted(_glob.glob(pattern)) if not path.endswith(".json") else [path]
-    rows: list[dict[str, Any]] = []
-    for name in names:
-        try:
-            with open(name, encoding="utf-8") as handle:
-                payload = json.load(handle)
-        except FileNotFoundError:
-            # The normal case: a run with no stopover export simply has none.
-            continue
-        except (json.JSONDecodeError, OSError) as exc:
-            _warn_stopover_skip(name, f"unreadable: {type(exc).__name__}: {exc}")
-            continue
-        if not isinstance(payload, dict) or payload.get("schema") != STOPOVER_READS_SCHEMA:
-            found = payload.get("schema") if isinstance(payload, dict) else type(payload).__name__
-            _warn_stopover_skip(name, f"schema is {found!r}, expected {STOPOVER_READS_SCHEMA!r}")
-            continue
-        for index, item in enumerate(payload.get("rows") or ()):
-            if not isinstance(item, dict):
-                _warn_stopover_skip(f"{name}#{index}", "not an object")
-                continue
-            pair = item.get("pair")
-            if not (isinstance(pair, (list, tuple)) and len(pair) == 2):
-                _warn_stopover_skip(f"{name}#{index}", "no date pair")
-                continue
-            if not str(item.get("hub", "")).strip() or not str(item.get("airport", "")).strip():
-                _warn_stopover_skip(f"{name}#{index}", "no hub or airport")
-                continue
-            rows.append(dict(item))
-    return tuple(rows)
+    Two-centre rows arrive in these same files, and are **not** stopover reads:
+    they are a different itinerary shape and are indexed for the two-centre
+    section instead (:func:`load_batch_reads`, which this is the stopover half
+    of). A caller that needs both should call that, so the files are read once.
+    """
+    return load_batch_reads(path)[0]
 
 
 #: Read fares, keyed by the exact pair, hub and airport they were read for.
@@ -4016,6 +4150,51 @@ def stopover_fares_registry(
     if not reads:
         return STOPOVER_FARES
     return _stopover_fares(tuple(_STOPOVER_READS) + reads)
+
+
+#: Priced whole-trip two-centre reads, keyed by ``(trip id, the exact legs)``.
+#:
+#: EMPTY by design, and unlike ``STOPOVER_FARES`` there is no committed tuple to
+#: add to it: a two-centre read is private runtime data read for one run's date
+#: pairs, so a fresh checkout has none. The section is handed this run's registry
+#: explicitly (``jobs.run_holiday_planner`` loads it from the batches the workflow
+#: seeded), which also keeps it out of module state that a later render of a
+#: different season could inherit.
+MULTI_CENTRE_FARES: dict[Any, Any] = {}
+
+
+def multi_centre_fares_registry(reads: Any = None) -> dict[Any, Any]:
+    """This run's two-centre fares: precisely what its batches indexed, or none.
+
+    ``reads`` is the second element :func:`load_batch_reads` returns. A mapping is
+    returned either way, so a caller can ask it a question without checking: no
+    reads is exactly "no trip is answered", which is the honest state of a run
+    whose workflow seeded no batch.
+    """
+    if reads:
+        return dict(reads)
+    return dict(MULTI_CENTRE_FARES)
+
+
+def multi_centre_fare_for(trip: Any, legs: Any, *,
+                          fares: Any = None) -> Optional[dict[str, Any]]:
+    """The priced whole-trip fare read for EXACTLY this trip on EXACTLY these legs.
+
+    The same rule as a stopover fare, for the same reason: a fare only ever
+    answers the itinerary it was read for. The legs carry the dates, so a read for
+    the same trip on a neighbouring pair is a different key — never a borrowed
+    number, and a trip whose pair has moved shows no fare instead of the last
+    pair's.
+
+    ``fares`` is the run's registry (``multi_centre_fares_registry``); the default
+    is the module's (empty) one, so a direct render prices nothing rather than
+    reaching for a file the caller did not name.
+    """
+    key = multi_centre_fare_key(trip, legs)
+    if key is None:
+        return None
+    source = MULTI_CENTRE_FARES if fares is None else fares
+    return source.get(key)
 
 
 def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,
@@ -8093,7 +8272,16 @@ def render_holiday_report(
     deals: Sequence[PackageDeal] = (),
     history_chips: Optional[Sequence[str]] = None,
     change_digest_html: str = "",
+    multi_centre_fares: Optional[Mapping[Any, Any]] = None,
 ) -> str:
+    """The detailed report. ``multi_centre_fares`` is accepted and unused.
+
+    There is no two-centre block in this renderer — the section lives in the
+    compact e-mail alone (``holiday_email``) — but the keyword is taken here
+    anyway, so one set of arguments can be handed to either renderer without the
+    caller having to know which one it is rendering. The same reason
+    ``history_chips`` and ``change_digest_html`` are taken by both.
+    """
     out: list[str] = []
     shortlist = shortlist_date_pairs(config)
     # Every configured pair, for the header's "date combinations" count, and then

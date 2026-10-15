@@ -698,7 +698,16 @@ class FlightRowTests(unittest.TestCase):
         deal = _deal(flight_options=_long_haul_options() + (_stopover(),))
         html = _render(deals=[deal])
         self.assertIn("1-Stop via Doha, 2 nights each way", html)
-        self.assertNotIn("not priced yet", html)
+        # The ROW is priced, so it carries a figure and no "not priced yet" —
+        # scoped to the card itself, because the "Two-centre trips" block below
+        # it now says "flights not priced yet" on its own account while no dated
+        # multi-city fare has been read for a two-centre trip (owner brief
+        # 2026-10-15). That is a different section's statement about a different
+        # journey, and reading it as this row's answer was the bug in this
+        # assertion, not a reason to leave it saying so.
+        card = html.split("Two-centre trips")[0]
+        self.assertNotIn("not priced yet", card)
+        self.assertIn("£6,542", card, "the priced stopover row shows its own total")
 
     def test_an_unpriced_stopover_says_not_priced_yet_and_links_the_airlines(self):
         """The row names the gap AND the two places a stopover in it can be booked.

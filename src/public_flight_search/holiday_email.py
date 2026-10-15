@@ -1514,13 +1514,21 @@ def two_centre_cabin(config: HolidayConfig) -> str:
 _TWO_CENTRE_CABIN = SHORT_HAUL_CABIN
 
 
-def _multi_centre_rows(config: HolidayConfig) -> list[dict[str, Any]]:
+def _multi_centre_rows(config: HolidayConfig, *,
+                       fares: Optional[Mapping[Any, Any]] = None) -> list[dict[str, Any]]:
     """This season's two-centre itineraries with the runtime verdict on each.
 
-    The only thing decided here rather than read from the file is whether the
-    LOW end of a range fits the configured budget — and that is computed at
-    render time, so the stored file never carries an owner's budget and never
-    goes stale when it changes.
+    Three things are decided here rather than read from the file: whether the LOW
+    end of a range fits the configured budget (computed at render time, so the
+    stored file never carries an owner's budget and never goes stale when it
+    changes); the legs this run's own date pair gives each trip; and which trips a
+    DATED fare has actually been read for.
+
+    ``fares`` is this run's two-centre registry, keyed by ``(trip id, the exact
+    legs)`` — ``holidays.load_batch_reads``' second element, or nothing at all. A
+    trip is answered only when the read's legs are the legs this row is about,
+    dates included, so a fare for a neighbouring pair is never borrowed (the same
+    rule ``stopover_fares_for`` applies to a card's own pair).
     """
     try:
         pairs = hol.priceable_date_pairs(config)
@@ -1545,6 +1553,10 @@ def _multi_centre_rows(config: HolidayConfig) -> list[dict[str, Any]]:
             continue
         rows.append({
             "trip": trip,
+            # The legs are the trip's identity for a fare as well as for the
+            # link, so they are kept on the row rather than rebuilt later.
+            "legs": legs,
+            "read": hol.multi_centre_fare_for(trip.id, legs, fares=fares),
             "outbound": outbound,
             "return": returning,
             "nights": trip.total_nights,
@@ -1561,6 +1573,61 @@ def _multi_centre_rows(config: HolidayConfig) -> list[dict[str, Any]]:
     return rows
 
 
+def _read_day_words(observed_at: Any) -> str:
+    """The day a fare was read, as ``15 Oct``.
+
+    A read is a dated observation and not a promise, so the row states when it was
+    taken: a reader has to be able to tell today's read from one taken a fortnight
+    ago, and the date is the only thing that says so.
+    """
+    try:
+        stamp = datetime.fromisoformat(str(observed_at).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return str(observed_at or "").strip()[:10]
+    return f"{stamp.day} {stamp.strftime('%b')}"
+
+
+def _read_party(read: Mapping[str, Any]) -> int:
+    """The party a read's fare was quoted for: the read's own field, not the config's.
+
+    Every read this run consumes is made for one party, and stating that party is
+    what makes the figure placeable beside a config that may name another. The
+    fallback is the reader's own fixed party, so a row written before the field
+    existed still reads honestly.
+    """
+    try:
+        return int(read.get("travellers") or 0) or 5
+    except (TypeError, ValueError):
+        return 5
+
+
+def multi_centre_wanted(config: HolidayConfig) -> list[dict[str, Any]]:
+    """Every two-centre trip this run renders, in the private reader's --wanted format.
+
+    The other half of one seam, exactly as ``holidays.stopover_wanted`` is for
+    stopovers: the block prints a cost range and, where no dated fare was read,
+    says the flights are not priced yet — so the run also says exactly what to
+    read, and the next read is one command rather than a hand-written list
+    (``python -m holiday_scraper.live.stopover_reads --wanted <this list>``).
+
+    EVERY rendered trip is listed, not only the unread ones, and that is
+    deliberate rather than lazy: the legs carry the dates, so a trip priced for
+    one pair still needs its own read for the next one, and the list is then the
+    same list every run instead of one that quietly shrinks. Nothing here carries
+    a fare, a URL or a name — this repository is public, and a trip id with its
+    airports is the whole of what a reader needs.
+    """
+    return [
+        {
+            "kind": "multi_centre",
+            "trip": row["trip"].id,
+            "legs": [list(leg) for leg in row["legs"]],
+            "season": row["trip"].season,
+        }
+        for row in _multi_centre_rows(config)
+    ]
+
+
 def _multi_centre_verdict(row: Mapping[str, Any]) -> str:
     """Whether the low end fits — or, when it does not, by how much it misses.
 
@@ -1574,22 +1641,67 @@ def _multi_centre_verdict(row: Mapping[str, Any]) -> str:
     return f"low end {_gbp(row['gap'])} over"
 
 
-def _multi_centre_html(config: HolidayConfig) -> str:
+#: The block's opening sentence, and the one thing the header changes about
+#: itself (owner brief 2026-10-15). Both forms keep the same tail: the per-row
+#: verdict is measured against the budget the tail names, and the cabin clause is
+#: what tells a reader who clicks a link what the link will search. Before this,
+#: the header said no dated multi-city fare was readable on EVERY run — which became
+#: untrue the moment one was read, and left the reader unable to tell a priced trip
+#: from an unpriced one above the row.
+MULTI_CENTRE_HEAD_PRICE_READ = "flights priced where shown; hotel costs are ranges."
+MULTI_CENTRE_HEAD_NO_READ = "cost RANGES, not quotes; flights not priced yet."
+
+
+def _multi_centre_head(rows: Sequence[Mapping[str, Any]]) -> str:
+    """Which of the two opening sentences this block carries.
+
+    "At least one read" is the test, not "every trip read": a block that prices
+    some of what it shows must not go on claiming none of it was priced, and a
+    trip with no read still says so on its own row.
+    """
+    if any(row.get("read") for row in rows):
+        return MULTI_CENTRE_HEAD_PRICE_READ
+    return MULTI_CENTRE_HEAD_NO_READ
+
+
+def _multi_centre_read_html(row: Mapping[str, Any]) -> str:
+    """A trip's dated fare line, linked to the page it was read from.
+
+    The range beside it is untouched: that is a whole-trip estimate, this is the
+    flights, and the reader has to be able to tell which number is which.
+    """
+    read = row.get("read") or {}
+    source = str(read.get("source_url") or row["url"])
+    return (
+        f'<a href="{_esc(source)}" style="color:{_ACCENT}; '
+        f'text-decoration:none; font-weight:600;">flights '
+        f'{_gbp(read.get("total_gbp"))} for {_read_party(read)} '
+        f'(read {_esc(_read_day_words(read.get("observed_at")))})</a><br>'
+    )
+
+
+def _multi_centre_html(config: HolidayConfig, *,
+                       fares: Optional[Mapping[Any, Any]] = None) -> str:
     """The compact "Two-centre trips" block; empty when there are none.
 
     Placed after the cards and before the over-budget list: these are the
     alternatives to a single-centre trip, so they belong next to the cards the
     reader has just read, not buried under the resorts that did not fit.
+
+    ``fares`` is this run's dated two-centre reads; a trip with one gains its fare
+    line and the header stops saying none was readable (owner brief 2026-10-15).
+    The low and high of each range are unchanged — they are whole-trip estimates,
+    and a flight fare does not become a package price by sitting above one.
     """
-    rows = _multi_centre_rows(config)
+    rows = _multi_centre_rows(config, fares=fares)
     if not rows:
         return ""
     out = [
         f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">',
-        f'<strong style="color:{_INK};">Two-centre trips</strong> — cost RANGES, not '
-        'quotes; no dated multi-city fare was readable. Every leg here connects, '
-        'so these are Economy flights like the rest of this report. Low end '
-        'against the '
+        f'<strong style="color:{_INK};">Two-centre trips</strong> — '
+        + _multi_centre_head(rows)
+        + ' Every leg here connects, so these are Economy flights like the rest '
+        'of this report. Low end against the '
         + _gbp(getattr(config, "max_budget_gbp", 0.0)) + ' budget:</div>',
     ]
     for row in rows:
@@ -1599,7 +1711,8 @@ def _multi_centre_html(config: HolidayConfig) -> str:
             f'<strong style="color:{_INK};">{_esc(trip.title)}</strong> · '
             f'{_gbp(row["low"])}–{_gbp(row["high"])} · '
             f'{_esc(trip.price_label())} · {_esc(_multi_centre_verdict(row))}<br>'
-            f'why: {_esc(trip.why)}<br>'
+            + (_multi_centre_read_html(row) if row.get("read") else "")
+            + f'why: {_esc(trip.why)}<br>'
             f'catch: {_esc(trip.catch)} · '
             f'<a href="{_esc(row["url"])}" style="color:{_ACCENT}; '
             f'text-decoration:none; font-weight:600;">flights ↗</a></div>'
@@ -1607,15 +1720,16 @@ def _multi_centre_html(config: HolidayConfig) -> str:
     return "".join(out)
 
 
-def _multi_centre_lines(config: HolidayConfig) -> list[str]:
+def _multi_centre_lines(config: HolidayConfig, *,
+                        fares: Optional[Mapping[Any, Any]] = None) -> list[str]:
     """The plain-text twin of ``_multi_centre_html``."""
-    rows = _multi_centre_rows(config)
+    rows = _multi_centre_rows(config, fares=fares)
     if not rows:
         return []
     lines = [
-        "Two-centre trips — cost RANGES, not quotes; every leg here connects, so "
-        "these are Economy flights like the rest of this report. No dated "
-        "multi-city fare was readable. Low end against the "
+        "Two-centre trips — " + _multi_centre_head(rows)
+        + " Every leg here connects, so these are Economy flights like the rest "
+        "of this report. Low end against the "
         + _gbp(getattr(config, "max_budget_gbp", 0.0))
         + " budget:"
     ]
@@ -1625,6 +1739,13 @@ def _multi_centre_lines(config: HolidayConfig) -> list[str]:
             f"  {trip.title} · {_gbp(row['low'])}–{_gbp(row['high'])} · "
             f"{trip.price_label()} · {_multi_centre_verdict(row)}"
         )
+        read = row.get("read")
+        if read:
+            lines.append(
+                f"    flights {_gbp(read.get('total_gbp'))} for {_read_party(read)} "
+                f"(read {_read_day_words(read.get('observed_at'))}): "
+                f"{read.get('source_url') or row['url']}"
+            )
         lines.append(f"    why: {trip.why}")
         lines.append(f"    catch: {trip.catch}")
         lines.append(f"    flights ({len(trip.legs)} legs): {row['url']}")
@@ -1803,6 +1924,7 @@ def render_holiday_report_compact(
     trends: Optional[Sequence[Mapping[str, Any]]] = None,
     digest: Optional[Mapping[str, Any]] = None,
     last_report_at: str = "",
+    multi_centre_fares: Optional[Mapping[Any, Any]] = None,
 ) -> str:
     """The compact holiday e-mail. Same arguments as the detailed renderer.
 
@@ -1813,6 +1935,12 @@ def render_holiday_report_compact(
     the per-card "▼ £210" chip, which sits on the freshness-tag line and costs
     no space. All of them are optional keywords, kept so the job can hand both
     renderers one set of arguments.
+
+    ``multi_centre_fares`` is the run's dated two-centre reads, keyed by
+    ``(trip id, the exact legs)``. ``None`` is exactly no reads: a direct render
+    prices nothing rather than reaching for a file the caller did not name, which
+    is also what keeps a render independent of whatever a batch on disk happens
+    to hold.
     """
     cards = _cards(config, deals, generated_at=generated_at, trends=trends)
     out: list[str] = [
@@ -1833,7 +1961,7 @@ def render_holiday_report_compact(
     # the one cut. Measured in UTF-8 bytes, because the budget is Gmail's byte
     # cap and every £, ★, — and ↗ on a card is two or three bytes.
     after_cards = [
-        _multi_centre_html(config),
+        _multi_centre_html(config, fares=multi_centre_fares),
         _over_budget_html(config),
         _watch_html(config),
         _notes_html(config, deals),
@@ -1875,12 +2003,15 @@ def render_holiday_report_compact_text(
     trends: Optional[Sequence[Mapping[str, Any]]] = None,
     digest: Optional[Mapping[str, Any]] = None,
     last_report_at: str = "",
+    multi_centre_fares: Optional[Mapping[Any, Any]] = None,
 ) -> str:
     """The plain-text twin of ``render_holiday_report_compact``.
 
     ``mailer.send_html`` sends a text part, so a text part that says "open this
     in an HTML-capable client" is a part that carries none of the decision.
-    Built from the same card structures, in the same order.
+    Built from the same card structures, in the same order, and from the same
+    dated two-centre reads — a price the HTML part shows and this one does not
+    would be a reader whose mail client disagreed with the report.
     """
     cards = _cards(config, deals, generated_at=generated_at, trends=trends)
     lines: list[str] = [
@@ -1929,7 +2060,7 @@ def render_holiday_report_compact_text(
         for warning in card["warnings"]:
             lines.append(f"  ! {warning}")
         lines.append("")
-    lines.extend(_multi_centre_lines(config))
+    lines.extend(_multi_centre_lines(config, fares=multi_centre_fares))
     keys = {d.key.lower() for d in config.destinations}
     over = [row for row in hol.LAST_OVER_BUDGET
             if str(row.get("destination_key", "")).lower() in keys]

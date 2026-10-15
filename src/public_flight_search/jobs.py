@@ -17,13 +17,14 @@ from .holidays import (
     count_provider_entries,
     far_east_watch_rows,
     is_summer_trip,
+    load_batch_reads,
     load_holiday_config,
-    load_stopover_reads,
     render_holiday_report,
     stopover_fares_registry,
     stopover_wanted,
 )
 from .holiday_email import (
+    multi_centre_wanted,
     render_holiday_report_compact,
     render_holiday_report_compact_text,
 )
@@ -331,12 +332,19 @@ def run_holiday_planner(
     # three, loaded the same way, and subject to the same "a missing file
     # changes nothing else about the run" rule. Without it a card whose dates
     # were never read still offers the itinerary, it just cannot price it.
+    #
+    # ONE read of those files yields both kinds of row they carry (owner brief
+    # 2026-10-15): the stopover rows above, and the two-centre whole-trip fares
+    # the e-mail's "Two-centre trips" block renders. Reading them twice would open
+    # every batch twice and report every file-level refusal twice, so the loader
+    # returns the pair and each half goes where it belongs.
     stopover_reads: tuple = ()
     stopover_skipped: list[str] = []
     stopover_evidence_error: Optional[str] = None
     stopover_priced = 0
+    multi_centre_fares: dict = {}
     try:
-        stopover_reads = load_stopover_reads(
+        stopover_reads, multi_centre_fares = load_batch_reads(
             stopover_reads_path or os.getenv("HOLIDAY_STOPOVER_READS_PATH", "")
         )
         stopover_skipped = consume_stopover_skip_log()
@@ -347,6 +355,7 @@ def run_holiday_planner(
         )
     except Exception as exc:
         stopover_reads = ()
+        multi_centre_fares = {}
         stopover_evidence_error = f"{type(exc).__name__}: {exc}"
         stopover_skipped = [f"stopover-evidence load failed: {stopover_evidence_error}"]
         print(
@@ -407,6 +416,13 @@ def run_holiday_planner(
         deals, stopover_fares_registry(stopover_reads), season=stopover_season,
     )
     print(f"stopover_wanted: {len(stopover_wants)}")
+    # ... and the same for the two-centre trips the e-mail renders (owner brief
+    # 2026-10-15): each trip's own legs, in the private reader's --wanted format,
+    # so the section that prints a cost range can be priced by one command. It
+    # lists every rendered trip, not only the unread ones, because a trip's legs
+    # carry the dates and a new pair therefore needs a read of its own.
+    multi_centre_wants = multi_centre_wanted(config)
+    print(f"multi_centre_wanted: {len(multi_centre_wants)}")
     # MEMORY BEFORE BUILD: the workflow seeds `history_path` from the
     # private repo in a dedicated bash step (proven transport) BEFORE this
     # job runs, so trends, chips and the change digest describe real
@@ -439,6 +455,10 @@ def run_holiday_planner(
     render_kwargs: dict = {
         "generated_at": generated_at,
         "deals": deals,
+        # This run's dated two-centre fares, so the block prices the trips the
+        # workflow's batches were read for and nothing else. Passed to whichever
+        # renderer runs; the detailed one takes it and does not use it.
+        "multi_centre_fares": multi_centre_fares,
         "history_chips": render_history_html(trends),
         # No "change_digest_html": the price-change digest is not printed in
         # any holiday e-mail (owner, 2026-10-08: "I don't care about that").
@@ -625,6 +645,13 @@ def run_holiday_planner(
         # season) list the next read is aimed at, so a card that says "not priced
         # yet" comes with the command that prices it.
         "stopover_wanted": stopover_wants,
+        # The two-centre trips this run renders, in the same input format: each
+        # trip id with its own legs and season. Read this with
+        # `multi_centre_reads_loaded`: a non-zero count with the block still
+        # showing ranges means the reads are for date pairs this config no longer
+        # prices, which is waste the next read can be aimed away from.
+        "multi_centre_wanted": multi_centre_wants,
+        "multi_centre_reads_loaded": len(multi_centre_fares),
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
         # True only when the run was held back because nothing a reader cares
