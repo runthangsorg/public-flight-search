@@ -702,7 +702,11 @@ class TestThePairTheEngineCannotAfford(unittest.TestCase):
     def test_the_window_really_is_long_haul(self):
         config = load_holiday_config(LONG_HAUL_CONFIG)
         self.assertGreater(config.destinations[0].flight_hours, 8.0)
-        self.assertEqual(destination_cabins(config, config.destinations[0]), ("ECONOMY",))
+        # The HEADLINE cabin is Economy (no London nonstop) and the evidence set
+        # is both cabins, because every long-haul card now carries a Business row
+        # (owner direction 2026-10-15).
+        self.assertEqual(destination_cabins(config, config.destinations[0]),
+                         ("ECONOMY", "BUSINESS"))
 
     def test_the_card_exists_because_its_package_fits(self):
         config, deals = _lh_deals(

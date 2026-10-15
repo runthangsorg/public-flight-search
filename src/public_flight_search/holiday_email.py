@@ -71,15 +71,12 @@ _MONTH_ABBR = (
 _DAY_ABBR = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 #: "Nonstop" / "1-Stop via Doha": never the bare word "Direct", which on a
-#: holiday card reads as "you book the flight yourself".
-_STOP_PREFIX_RE = re.compile(r"^(\d)\s*[- ]?\s*stop\b", re.IGNORECASE)
-#: A connection through Singapore. SIN is a CHANGE OF PLANE on the way to Lombok,
-#: Bali and the Gulf of Thailand, never a stay: the owner asked for a stopover in
-#: Doha or Muscat only (2026-10-15), so a route naming it says what it is. Matching
-#: the airport code as well as the city name, because the routing strings carry
-#: both.
-_VIA_SIN_RE = re.compile(r"\bvia\s+(?:SIN|Singapore)\b", re.IGNORECASE)
-_NO_SIN_STAY = " (change of plane, no stay)"
+#: holiday card reads as "you book the flight yourself". The words themselves
+#: are built by ``holidays.route_words`` — one definition, because the detailed
+#: page's option titles print the same route — including the SIN rule from
+#: 6caf1ad: a connection through Singapore is a CHANGE OF PLANE on the way to
+#: Lombok, Bali and the Gulf of Thailand, never a stay, because the owner asked
+#: for a stopover in Doha or Muscat only (2026-10-15).
 
 #: One flight row's price cell. Exactly three shapes, because the cell is one table
 #: column wide: a bare figure, a figure (or "not priced yet") with the itinerary
@@ -910,24 +907,28 @@ def movement_chip(trend: Optional[Mapping[str, Any]]) -> str:
 # ---------------------------------------------------------------------------
 
 def route_words(deal: PackageDeal) -> str:
-    """``Nonstop LHR–AYT`` or ``1-Stop via Singapore`` — never "Direct"."""
-    routing = str(getattr(deal, "routing", "") or "").strip()
-    origin = str(getattr(deal, "origin", "") or "").upper()
-    airport = str(getattr(deal, "destination_airport", "") or "").upper()
-    nonstop = f"Nonstop {origin}–{airport}"
-    if not routing:
-        return nonstop
-    text = routing.split(":", 1)[-1] if ":" in routing else routing
-    text = text.split("(")[0].split(", then")[0].strip()
-    if not text or "nonstop" in text.lower():
-        return nonstop
-    text = _STOP_PREFIX_RE.sub(lambda m: f"{m.group(1)}-Stop", text)
-    text = text[0].upper() + text[1:] if text else nonstop
-    if text and _VIA_SIN_RE.search(text):
-        # A plane change, not the holiday. Said on the row that names the route, so
-        # a reader never counts Singapore as a stopover the report failed to price.
-        text += _NO_SIN_STAY
-    return text
+    """``Nonstop LHR–AYT`` or ``1-Stop via Singapore`` — never "Direct".
+
+    Delegates to ``holidays.route_words``, which is the one place a route's
+    words are built; this wrapper exists because the card carries the routing
+    note, the origin and the airport on three separate fields.
+    """
+    return hol.route_words(
+        str(getattr(deal, "routing", "") or ""),
+        origin=str(getattr(deal, "origin", "") or ""),
+        airport=str(getattr(deal, "destination_airport", "") or ""),
+    )
+
+
+def _option_route(option: Mapping[str, Any], deal: PackageDeal) -> str:
+    """The route this row prices: the fare's own words when the fare has them.
+
+    A Business row a fare was read for says what that fare IS — ``Nonstop``, or
+    the stop(s) it makes (owner brief 2026-10-15 §3) — and every other row says
+    the card's own route, which is what "same route" has always meant.
+    """
+    route = str(option.get("route") or "").strip()
+    return route or route_words(deal)
 
 
 def _option_total(option: Mapping[str, Any]) -> float:
@@ -942,7 +943,14 @@ def _option_total(option: Mapping[str, Any]) -> float:
 
 
 def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, str, FlightPrice]]:
-    """Three rows for a long-haul card: Business, Economy, one Gulf stopover.
+    """A long-haul card's rows: Business, Economy, one Gulf stopover.
+
+    The Business row is on EVERY long-haul card since the owner's direction of
+    2026-10-15 ("i want to know direct business class prices for each hotel
+    option too"): priced when a BUSINESS fare for the card's own dates and
+    origin was read, and otherwise saying "not priced yet" beside the Business
+    search for those dates. Its route text is the fare's own — ``Nonstop``, or
+    the stop(s) it makes — and the card's route when nothing was read.
 
     The stopover row is priced only when a whole-party multi-city fare was read
     for THIS card's dates. The committed July reads are for the old dates, so
@@ -968,10 +976,26 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
         for option in options:
             if str(option.get("kind", "")) != kind:
                 continue
+            route = _option_route(option, deal)
+            if option.get("not_priced"):
+                # The Business row of a card no Business fare has been read for
+                # (owner brief 2026-10-15 §2): the gap, named, with the Business
+                # search for this card's OWN dates and origin — never another
+                # pair's fare. An empty link still states the gap.
+                rows.append((labels[kind], route,
+                             ("not priced yet", str(option.get("source_url") or ""))))
+                break
             total = _option_total(option)
             if total <= 0:
                 continue
-            rows.append((labels[kind], route_words(deal), _gbp(total)))
+            # The most direct Business fare, with one muted line naming the
+            # cheaper read that stops more (owner steer 2026-10-15). Same wording
+            # as the detailed page, built once in holidays.
+            note = hol.cheaper_alternative_note(option.get("cheaper_alternative"))
+            rows.append((
+                labels[kind], route,
+                (_gbp(total), "", (), note) if note else _gbp(total),
+            ))
             break
     stopovers = [o for o in options if str(o.get("kind", "")) == "stopover"]
     priced = [o for o in stopovers if _option_total(o) > 0]
@@ -988,6 +1012,7 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
             f"1-Stop via {hub}, 2 nights each way",
             _gbp(_option_total(cheapest)),
         ))
+        rows.extend(_business_stopover_rows(options))
         return rows
     # Not priced for these dates: name one hub, offer the itinerary, and name the
     # airlines that sell a stopover there.
@@ -1018,7 +1043,37 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
         else price_text
     )
     rows.append(("Economy", f"1-Stop via {hub}, 2 nights each way", total))
+    rows.extend(_business_stopover_rows(options))
     return rows
+
+
+def _business_stopover_rows(
+    options: Sequence[Mapping[str, Any]]
+) -> list[tuple[str, str, FlightPrice]]:
+    """The ``Business + stopover`` row, when a BUSINESS multi-city fare was read.
+
+    Owner brief 2026-10-15 §2: this row exists only when a read exists. There is
+    no Business stopover benchmark and no estimate of one — inventing a figure
+    here would be inventing exactly the number the private reader exists to
+    read. One row: the cheapest read that fits the budget, else the cheapest.
+    """
+    priced = [
+        option for option in options
+        if str(option.get("kind", "")) == "stopover_business"
+        and _option_total(option) > 0
+    ]
+    if not priced:
+        return []
+    cheapest = min(
+        priced,
+        key=lambda o: (0 if o.get("within_budget") else 1, _option_total(o)),
+    )
+    hub = str(cheapest.get("hub_label") or cheapest.get("hub") or "Doha")
+    return [(
+        "Business",
+        f"1-Stop via {hub}, 2 nights each way",
+        _gbp(_option_total(cheapest)),
+    )]
 
 
 def board_line(deal: PackageDeal, *, travellers: int) -> str:
@@ -1392,6 +1447,13 @@ def _flight_table_html(rows: Sequence[tuple[str, str, FlightPrice]]) -> str:
                     f' <span style="color:{_MUTED};">·</span> '
                     f'<a href="{_esc(airline_url)}" style="color:{_ACCENT}; '
                     f'text-decoration:none;">{_esc(label)} ↗</a>'
+                )
+            # One short muted line UNDER the price: the cheaper fare that stops
+            # more (owner steer 2026-10-15).
+            if len(total) > 3 and total[3]:
+                amount += (
+                    f'<br><span style="color:{_MUTED}; font-size:11px;">'
+                    f'{_esc(total[3])}</span>'
                 )
         else:
             amount = f'<strong style="color:{_INK}; white-space:nowrap;">{_esc(total)}</strong>'
@@ -2049,9 +2111,11 @@ def render_holiday_report_compact_text(
         for cabin, route, total in card["flights"]:
             price = total[0] if isinstance(total, tuple) else total
             airlines = tuple(total[2]) if isinstance(total, tuple) and len(total) > 2 else ()
+            note = str(total[3]) if isinstance(total, tuple) and len(total) > 3 else ""
             lines.append(
                 f"  {cabin} · {route} · {price}"
                 + (" · " + " · ".join(label for label, _url in airlines) if airlines else "")
+                + (f" · {note}" if note else "")
             )
         for line in card["why"]:
             lines.append(f"  • {line}")

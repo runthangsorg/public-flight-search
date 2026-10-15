@@ -52,9 +52,9 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from typing import Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 # ``config`` sits below ``holidays`` in the import graph, so importing the
 # shared cabin set from there stays acyclic (holidays imports this module).
@@ -105,6 +105,25 @@ class LiveFareEvidence:
     #: one cabin — e.g. "Premium Economy long-haul + Economy hop". NOT a
     #: per-passenger split. Empty means a pure-cabin fare, unchanged.
     cabin_mix: str = ""
+    #: The fare's own stop count when the record carries one (0 = nonstop).
+    #: ``None`` is "the record says nothing", which is NOT nonstop: it decides
+    #: nothing, and the row falls back to the card's own route words.
+    stops: Optional[int] = None
+    #: The hub the fare connects through, when the record names one. Empty
+    #: otherwise, because a hub is never derived: naming one the read did not is
+    #: the same invention as naming a price it did not read (owner brief
+    #: 2026-10-15 §3).
+    layover: str = ""
+    #: How long the fare's own itinerary takes, in minutes, when the record says
+    #: (or when its local timestamps do). ``None`` means the record says nothing,
+    #: which ranks LAST in the "most direct fare" comparison and never wins it.
+    duration_minutes: Optional[int] = None
+    #: Other fares read for this SAME key — same airport, cabin, dates and origin
+    #: — that the freshest-wins rule did not keep as the slot's record. The slot
+    #: still holds one fare (every caller's contract, unchanged); these ride
+    #: along so the Business row can choose on DIRECTNESS instead: fewest stops,
+    #: then shortest, then cheapest (owner steer 2026-10-15).
+    alternates: tuple["LiveFareEvidence", ...] = ()
 
     @property
     def mixed_cabin(self) -> bool:
@@ -143,6 +162,84 @@ class LiveFareEvidence:
     @property
     def is_non_promotable_basis(self) -> bool:
         return self.basis in NON_PROMOTABLE_BASES
+
+
+def _record_stops(value: object) -> Optional[int]:
+    """A record's ``stops`` as a whole number, or ``None`` when it says nothing.
+
+    ``None`` is not nonstop: the loader's job is to report what the record says,
+    and a field it cannot read says nothing at all. A negative count is not a
+    stop count either.
+    """
+    if isinstance(value, bool) or value is None or value == "":
+        return None
+    try:
+        count = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return count if count >= 0 else None
+
+
+def _record_duration_minutes(item: dict) -> Optional[int]:
+    """How long the fare's own itinerary takes, in minutes, or ``None``.
+
+    Records carry it as ``duration_minutes`` (or ``duration``); where they carry
+    only the local departure and arrival stamps — which the private engine
+    always does — it is the difference between them. Nothing readable says
+    nothing: a guessed duration would rank a fare in a comparison it never
+    entered.
+    """
+    for key in ("duration_minutes", "duration"):
+        value = item.get(key)
+        if isinstance(value, bool) or value is None or value == "":
+            continue
+        try:
+            minutes = int(float(str(value).strip()))
+        except (TypeError, ValueError):
+            continue
+        if minutes > 0:
+            return minutes
+    departure = _parse_local_stamp(item.get("departure_local"))
+    arrival = _parse_local_stamp(item.get("arrival_local"))
+    if departure is None or arrival is None:
+        return None
+    minutes = int((arrival - departure).total_seconds() // 60)
+    return minutes if minutes > 0 else None
+
+
+def _parse_local_stamp(value: object) -> Optional[datetime]:
+    """An ISO local timestamp, as a naive ``datetime``, or ``None``.
+
+    Both stamps come from the same engine in the same local frame, so dropping
+    any offset (rather than converting them) is what makes the difference
+    between them the elapsed time.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
+
+
+def _record_layover(item: dict) -> str:
+    """The hub a record says the fare connects through, or ``""``.
+
+    Records carry this under ``layover``, ``layovers`` or ``via``; a list is
+    joined, because a two-stop itinerary names two hubs and both are what the
+    read actually says. An unknown field is still ignored by the loader, so a
+    record that carries none of the three simply states no hub.
+    """
+    for key in ("layover", "layovers", "via"):
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, (list, tuple)):
+            parts = [str(part).strip() for part in value if str(part).strip()]
+            if parts:
+                return ", ".join(parts)
+    return ""
 
 
 def _live_enabled() -> bool:
@@ -537,6 +634,10 @@ def load_live_flight_evidence(
     unreadable file returns an empty mapping (stay on benchmarks) — never
     a fabricated figure and never a crash.
     """
+    # Every accepted record is grouped by its key and reduced AFTER the whole
+    # file is read, so one freshest-wins assignment can never lose the reads an
+    # earlier one had collected as alternatives.
+    grouped: dict[Any, list[LiveFareEvidence]] = {}
     # ``now`` is the age reference, not decoration: the caller injects it so a
     # test can pin a fixed observation instant. Measuring against the wall
     # clock instead made every fixture a time bomb — a literal observed_at
@@ -785,6 +886,12 @@ def load_live_flight_evidence(
             cabin_class=entry_cabin,
             stale=stale,
             cabin_mix=entry_mix,
+            # The fare's own route, used to say what a Business row IS (owner
+            # brief 2026-10-15 §3). Both are optional and neither is guessed:
+            # an unreadable ``stops`` is "nothing said", not a nonstop.
+            stops=_record_stops(item.get("stops")),
+            layover=_record_layover(item),
+            duration_minutes=_record_duration_minutes(item),
         )
         # Keyed by (airport, cabin, outbound, return, origin). The cabin
         # component is the 2026-09-22 seam — an ECONOMY fare must never price
@@ -794,10 +901,49 @@ def load_live_flight_evidence(
         # observation may only stand for the dates and airport it was read
         # at. Freshness is the tie-break WITHIN one such key.
         key = (airport, entry_cabin, record_pair[0], record_pair[1], entry_origin)
-        existing = evidence.get(key)
-        if existing is None or observed > _parse_observed_at(existing.observed_at):
-            evidence[key] = entry
+        grouped.setdefault(key, []).append(entry)
+    # ONE record per key — every caller's contract, unchanged — but the records
+    # it beat ride along on it. The Business row chooses on DIRECTNESS, not on
+    # freshness (owner steer 2026-10-15), so a read this rule put aside must
+    # still be able to win that comparison.
+    for key, entries in grouped.items():
+        primary = entries[0]
+        for candidate in entries[1:]:
+            if _parse_observed_at(candidate.observed_at) > _parse_observed_at(
+                primary.observed_at
+            ):
+                primary = candidate
+        evidence[key] = replace(
+            primary, alternates=_alternates(primary, entries)
+        )
     return evidence
+
+
+def _alternates(
+    primary: "LiveFareEvidence", entries: "Sequence[LiveFareEvidence]"
+) -> tuple["LiveFareEvidence", ...]:
+    """Every read for one key except the slot's own record, each kept once.
+
+    Sameness is the observation itself — its timestamp, amount and carrier — so
+    re-reading a file does not pile up copies of one fare, while two genuinely
+    different reads for one itinerary (another carrier, another stop count,
+    another price) both stay.
+    """
+
+    def _signature(entry: "LiveFareEvidence") -> tuple:
+        return (entry.observed_at, round(float(entry.total_gbp), 2), entry.carrier)
+
+    seen = {_signature(primary)}
+    others: list["LiveFareEvidence"] = []
+    for entry in entries:
+        if entry is primary:
+            continue
+        signature = _signature(entry)
+        if signature in seen:
+            continue
+        seen.add(signature)
+        others.append(entry)
+    return tuple(others)
 
 
 def try_live_flight_offers(

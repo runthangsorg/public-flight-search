@@ -23,6 +23,13 @@ Owner direction 2026-09-30: Premium Economy IS now shown as a reader-visible
 comparison row in the per-card "Flight options" breakdown (business/economy/
 premium-economy/stopover, side by side) — that is a different thing from the
 headline cabin this rule governs, and does not reopen it.
+
+Owner direction 2026-10-15 ("i want to know direct business class prices for
+each hotel option too") narrows rule 2 again, and this file records both halves:
+``destination_cabin`` still governs the CARD's headline cabin (unknown nonstop
+still means Economy), while ``destination_cabins`` — the EVIDENCE set the hunt
+is aimed at — now carries both cabins for a long-haul route, because every
+long-haul card shows a Business row beside its Economy one.
 """
 
 import dataclasses
@@ -239,6 +246,24 @@ class LoaderDerivesTheCabinTests(unittest.TestCase):
               "nonstop_source": "test: the seasonal service has ended by July"}],
         ))
         self.assertEqual(destination_cabin(config.destinations[0]), "ECONOMY")
+        # The HEADLINE is Economy and the EVIDENCE set is both cabins: the card
+        # carries a Business row (owner direction 2026-10-15) and the hunt is
+        # aimed at a Business fare for it.
+        self.assertEqual(
+            destination_cabins(config, config.destinations[0]),
+            ("ECONOMY", "BUSINESS"),
+        )
+
+    def test_short_haul_evidence_is_economy_only(self):
+        # The other half of the 2026-10-15 rule: a short-haul card is unchanged —
+        # one cabin, no Business row, and no Business key for the hunt to pay for.
+        config = load_holiday_config(_payload(
+            [{"key": "malta", "label": "Malta", "airports": ["MLA"],
+              "flight_hours": 3.25, "nonstop_from_london": True,
+              "nonstop_source": "test: Malta is a year-round London nonstop"}],
+        ))
+        self.assertEqual(destination_cabin(config.destinations[0]), "ECONOMY")
+        self.assertEqual(destination_cabins(config, config.destinations[0]), ("ECONOMY",))
 
     def test_legacy_config_without_hours_uses_the_built_in_table(self):
         # The live December secret predates flight_hours and names premium
@@ -441,17 +466,28 @@ class CommittedConfigTests(unittest.TestCase):
                     self.assertGreater(dest.flight_hours, 8.0)
                     self.assertEqual(dest.cabin_class, "ECONOMY")
 
-    def test_july_prices_economy_everywhere(self):
-        # Owner, 2026-10-04: no current beach destination has a London nonstop
-        # in the June/July window, so no July card may quote Business.
+    def test_july_prices_economy_on_every_card_and_shows_business_beside_it(self):
+        # RE-ASSERTED 2026-10-15 (was ``test_july_prices_economy_everywhere``,
+        # which asserted ``"business" not in kinds``). The 2026-10-04 rule still
+        # holds for the CARD: no July destination has a London nonstop in the
+        # June/July window, so every July card is PRICED Economy. What changed is
+        # the row beside it — owner direction 2026-10-15 asks for a direct
+        # Business price on every long-haul card, so the Business row is now
+        # there, as a comparison and never as the card's price.
         config = load_holiday_config(JULY.read_text(encoding="utf-8"))
         self.assertEqual({d.cabin_class for d in config.destinations}, {"ECONOMY"})
         for deal in collect_holiday_deals(config, max_budget_gbp=config.max_budget_gbp):
             with self.subTest(card=deal.resort_name):
                 self.assertEqual(deal.cabin_class, "ECONOMY")
-                self.assertNotIn(
-                    "business", [str(o.get("kind", "")) for o in deal.flight_options]
+                kinds = [str(o.get("kind", "")) for o in deal.flight_options]
+                self.assertEqual(kinds[0], "business")
+                self.assertEqual(deal.flight_options[0]["cabin"], "BUSINESS")
+                # The card's own price is still the Economy option's.
+                economy = next(
+                    o for o in deal.flight_options if str(o.get("kind")) == "economy"
                 )
+                self.assertEqual(deal.total_package_price_gbp, economy["total_pkg"])
+                self.assertEqual(deal.cabin_class, economy["cabin"])
 
     def test_december_business_is_exactly_the_seasonal_nonstop(self):
         # Cancún flies nonstop 18 Oct 2026 - 11 Apr 2027, so December is the one

@@ -213,15 +213,60 @@ class TestContractMatchesCollectorExactly(unittest.TestCase):
             if deal.confidence == "verified-exact-date"
         }
 
-    def test_december_contract_covers_every_verifiable_card(self):
-        config = _load(DEC_CONFIG)
+    def _long_haul_airports(self, config) -> set[str]:
+        """The card airports whose London journey is over eight hours."""
+        from public_flight_search.cabin import is_long_haul_destination
+
+        return {
+            str(code).strip().upper()
+            for destination in config.destinations
+            if is_long_haul_destination(destination)
+            for code in (destination.airports or ())
+        }
+
+    def _assert_contract_covers_every_verifiable_card(self, config):
+        """Every card's own key is contracted, plus the OTHER cabin of a long-haul
+        card — and nothing else.
+
+        RE-ASSERTED 2026-10-15 (both callers used to assert the two sets were
+        EQUAL, which was only true while the contract asked for one cabin per
+        destination). Owner direction: every long-haul card shows a Business price
+        beside its Economy one, so the hunt is aimed at BOTH cabins for every
+        long-haul card airport. A short-haul airport still has exactly one key.
+        """
         contract = evidence_consumption_contract(config)
-        self.assertEqual(self._verified_keys(config), set(contract.keys))
+        contract_keys = set(contract.keys)
+        verified = self._verified_keys(config)
+        long_haul = self._long_haul_airports(config)
+        self.assertTrue(verified, "no card was verified — this test proves nothing")
+        self.assertTrue(
+            verified.issubset(contract_keys),
+            f"cards verified but not contracted: {sorted(verified - contract_keys)}",
+        )
+        self.assertEqual(
+            contract_keys - verified,
+            {(airport, "ECONOMY") for airport, cabin in verified
+             if airport in long_haul and cabin == "BUSINESS"}
+            | {(airport, "BUSINESS") for airport, cabin in verified
+               if airport in long_haul and cabin == "ECONOMY"},
+            "the only contracted keys beyond a card's own are the companion cabin "
+            "of a long-haul card",
+        )
+        for airport, cabin in verified:
+            if airport in long_haul:
+                continue
+            with self.subTest(airport=airport):
+                self.assertEqual(
+                    {value for code, value in contract_keys if code == airport},
+                    {cabin},
+                    "a short-haul card is quoted in one cabin only",
+                )
+
+    def test_december_contract_covers_every_verifiable_card(self):
+        self._assert_contract_covers_every_verifiable_card(_load(DEC_CONFIG))
 
     def test_july_contract_covers_every_verifiable_card(self):
-        config = _load(JULY_CONFIG)
-        contract = evidence_consumption_contract(config)
-        self.assertEqual(self._verified_keys(config), set(contract.keys))
+        self._assert_contract_covers_every_verifiable_card(_load(JULY_CONFIG))
 
 
 class TestRealConfigContractsAreGolden(unittest.TestCase):
@@ -296,11 +341,18 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         # with no card has no evidence to hunt.
         self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ", "CUN"})
         self.assertNotIn("OKA", contract.airports)
-        # Owner rule 2026-10-04: business class only for a DIRECT flight, and
-        # no July destination has a London nonstop on these dates — so the whole
-        # July hunt is aimed at ECONOMY. Cancun is in the airport list as a
-        # carded destination, but its July route is a connection.
-        self.assertEqual({cabin for _, cabin in contract.keys}, {"ECONOMY"})
+        # RE-ASSERTED 2026-10-15 (was: the whole July hunt is aimed at ECONOMY).
+        # Owner direction: every long-haul card shows a Business price beside its
+        # Economy one, and no July destination has a London nonstop, so the
+        # Business row is a ONE-STOP fare and the hunt must be aimed at both
+        # cabins for every carded July airport.
+        self.assertEqual(
+            {cabin for _, cabin in contract.keys}, {"ECONOMY", "BUSINESS"}
+        )
+        for airport in contract.airports:
+            with self.subTest(airport=airport):
+                self.assertIn((airport, "ECONOMY"), contract.keys)
+                self.assertIn((airport, "BUSINESS"), contract.keys)
 
     def test_contract_serializes_for_the_hunt(self):
         config = _load(JULY_CONFIG)
@@ -318,10 +370,12 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         )
         self.assertEqual(payload["origin"], "LHR")
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
-        # Economy, for the reason above: a Business key here would send the
-        # hunt after fares this report will never quote.
+        # RE-ASSERTED 2026-10-15 (was: "a Business key here would send the hunt
+        # after fares this report will never quote"). Every long-haul card now
+        # carries a Business row, so a Business key is exactly what the hunt is
+        # aimed at — both keys, for every carded airport.
         self.assertIn("USM/ECONOMY", payload["keys"])
-        self.assertNotIn("USM/BUSINESS", payload["keys"])
+        self.assertIn("USM/BUSINESS", payload["keys"])
         # Self-contained: everything `python -m live --config` reads, plus
         # the four things the hunt gets wrong if it is handed the report's
         # own config (which pairs/origins/cabins/airports are priced).
@@ -374,13 +428,16 @@ class TestContractGaps(unittest.TestCase):
         self.assertNotIn("AYT/ECONOMY", gaps["missing"])
         self.assertIn("ACE/ECONOMY", gaps["missing"])
         self.assertIn("PFO/ECONOMY", gaps["missing"])
-        # Since 2026-10-04 a card is quoted BUSINESS only when a London NONSTOP
-        # runs on its dates. In December that is Cancun alone (Virgin Atlantic,
-        # 18 Oct 2026 - 11 Apr 2027); Zanzibar connects via Addis, so its key is
-        # Economy. Everything else here is Economy too.
+        # RE-ASSERTED 2026-10-15. A card is still QUOTED Business only where a
+        # London NONSTOP runs on its dates (December: Cancun alone, Virgin
+        # Atlantic 18 Oct 2026 - 11 Apr 2027), but since the owner's direction
+        # every long-haul card airport is contracted for BOTH cabins — so the
+        # Business keys that are missing are one per long-haul card airport
+        # (Cancun, whose card is the Business one, plus Zanzibar, which connects
+        # via Addis and is priced Economy).
         self.assertEqual(
             sorted(k for k in gaps["missing"] if not k.endswith("/ECONOMY")),
-            ["CUN/BUSINESS"],
+            ["CUN/BUSINESS", "ZNZ/BUSINESS"],
         )
 
     def test_evidence_for_an_airport_with_no_card_is_reported_unused(self):

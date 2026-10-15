@@ -44,6 +44,7 @@ from pathlib import Path
 from public_flight_search import holidays
 from public_flight_search.holidays import (
     collect_holiday_deals,
+    destination_cabin,
     destination_cabins,
     load_holiday_config,
     option_evidence_class,
@@ -528,7 +529,14 @@ class TestALongHaulCardChoosesAmongTheOptionsThatFit(unittest.TestCase):
         # since 2026-10-04 the branch is chosen on hours and the cabin on
         # nonstopness, and these tests need the branch, not the cabin.
         self.assertGreater(config.destinations[0].flight_hours, 8.0)
-        self.assertEqual(destination_cabins(config, config.destinations[0]), ("ECONOMY",))
+        # The HEADLINE cabin is Economy; the evidence set is both cabins, because
+        # every long-haul card carries a Business row beside its Economy one
+        # (owner direction 2026-10-15).
+        self.assertEqual(destination_cabin(config.destinations[0]), "ECONOMY")
+        self.assertEqual(
+            destination_cabins(config, config.destinations[0]),
+            ("ECONOMY", "BUSINESS"),
+        )
         self.assertEqual(
             priceable_date_pairs(config), (LONG_PAIR_14N, SHORT_PAIR_12N)
         )
@@ -627,23 +635,30 @@ class TestALongHaulCardChoosesAmongTheOptionsThatFit(unittest.TestCase):
         )
 
     def test_the_card_keeps_its_option_rows(self):
-        # The repair is about WHICH option leads, not about stripping the
-        # comparison: the card still carries its option rows, and on this
-        # one-stop route the Economy row leads because that is the cabin the
-        # owner is quoted (2026-10-04). There is no Business row, and a Business
-        # row here would be the exact bug the rule fixes.
+        # RE-ASSERTED 2026-10-15 (it asserted ``"business" not in kinds``): the
+        # repair is about WHICH option leads, not about stripping the
+        # comparison. The card still carries its option rows, it is still PRICED
+        # Economy on this one-stop route, and the Business row the owner asked
+        # for now sits beside it — priced from a Business read for this card's
+        # own pair, or stating the gap when there is none.
         deal = _zcard(_long_haul_deals((LONG_PAIR_14N, READ_FARE)))
         self.assertEqual(deal.cabin_class, "ECONOMY")
         kinds = [str(row.get("kind")) for row in deal.flight_options]
-        self.assertNotIn("business", kinds)
-        self.assertEqual(kinds[0], "economy")
+        self.assertEqual(kinds[0], "business")
+        self.assertEqual(deal.flight_options[0]["cabin"], "BUSINESS")
+        # A read for the card's own pair priced the CARD; none was read for
+        # Business, so that row states the gap rather than borrowing the fare.
+        self.assertEqual(deal.flight_options[0]["not_priced"], True)
+        economy_row = next(
+            row for row in deal.flight_options if row["kind"] == "economy"
+        )
         self.assertIn("premium_economy", kinds)
         # The headline IS the Economy option, priced as one. Before 2026-10-04
         # the Economy row was re-derived without the budget test, so on an
         # economy card it could be a DIFFERENT option from the card and read
         # "over budget" on a card the report calls affordable.
-        self.assertEqual(deal.total_package_price_gbp, deal.flight_options[0]["total_pkg"])
+        self.assertEqual(deal.total_package_price_gbp, economy_row["total_pkg"])
         self.assertEqual(
-            (deal.flight_options[0]["outbound"], deal.flight_options[0]["return"]),
+            (economy_row["outbound"], economy_row["return"]),
             (deal.outbound_date, deal.return_date),
         )

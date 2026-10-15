@@ -219,6 +219,13 @@ class StopoverResortNightsTests(unittest.TestCase):
         for option in deal.flight_options:
             if option["kind"].startswith("stopover"):
                 continue
+            if option.get("not_priced"):
+                # The Business row of a card no Business fare has been read for
+                # (owner brief 2026-10-15 §2) carries no stay either: it is a
+                # statement of the gap, not a priced option.
+                self.assertEqual(option["kind"], "business")
+                self.assertEqual(option["hotel_cost"], 0.0)
+                continue
             with self.subTest(kind=option["kind"]):
                 self.assertNotIn("resort_nights", option)
                 self.assertEqual(option["hotel_cost"], full_stay)

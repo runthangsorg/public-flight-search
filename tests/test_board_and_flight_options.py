@@ -305,12 +305,17 @@ def _synthetic_stopover_fares(config, airports=("HKT", "USM"), hubs=("DOH", "MCT
 
 
 class FlightOptionTests(unittest.TestCase):
-    def test_every_long_haul_card_carries_economy_and_stopover_and_no_business_row(self):
-        # Owner rule 2026-10-04: "only quote business class for direct flights".
-        # No July destination has a London nonstop on these dates, so no July
-        # card may carry a Business row — while the Economy row and the Gulf
-        # stopover rows stay exactly as they were, because the owner's own rule
-        # is to fly the one-stop with two nights at the hub.
+    def test_every_long_haul_card_carries_economy_and_business_and_stopover_rows(self):
+        # RE-ASSERTED 2026-10-15 (was "..._and_no_business_row"): owner direction
+        # supersedes the 2026-10-04 "only quote business class for direct
+        # flights" rule for the ROW. Every long-haul card now shows a Business
+        # price BESIDE its Economy one, so no July card is Business-free any
+        # more — while the Economy row, the (b)-is-the-headline rule and the Gulf
+        # stopover rows stay exactly as they were.
+        #
+        # No July destination has a London nonstop on these dates, so the
+        # Business row is a one-stop fare; with no Business fare READ for these
+        # dates it is the row that states the gap and links the Business search.
         config = _july_uncapped()
         # Priced stopover rows need fares read for the pairs this run prices;
         # the committed ones were read for a pair the owner's window no longer
@@ -326,12 +331,22 @@ class FlightOptionTests(unittest.TestCase):
         for deal in deals:
             with self.subTest(resort=deal.resort_name):
                 kinds = [o["kind"] for o in deal.flight_options]
-                self.assertNotIn("business", kinds)
-                self.assertEqual(kinds[0], "economy")
-                self.assertEqual(deal.flight_options[0]["cabin"], "ECONOMY")
-                # The headline is the Economy option, priced as Economy.
+                self.assertEqual(kinds[0], "business")
+                business = deal.flight_options[0]
+                self.assertEqual(business["cabin"], "BUSINESS")
+                # No Business fare was read for these dates, so the row says so
+                # and offers the Business search instead of a number — and it
+                # names the route the card flies rather than a hub it invented.
+                self.assertTrue(business["not_priced"])
+                self.assertEqual(business["total_pkg"], 0.0)
+                self.assertTrue(business["source_url"].startswith(
+                    "https://www.google.com/travel/flights"))
+                self.assertTrue(str(business["route"]).strip())
+                # The CARD is still Economy, and the Economy row is its price.
+                economy = next(o for o in deal.flight_options if o["kind"] == "economy")
+                self.assertEqual(economy["cabin"], "ECONOMY")
                 self.assertEqual(deal.cabin_class, "ECONOMY")
-                self.assertEqual(deal.total_package_price_gbp, deal.flight_options[0]["total_pkg"])
+                self.assertEqual(deal.total_package_price_gbp, economy["total_pkg"])
                 if deal.destination_key in thai:
                     self.assertIn("stopover", kinds, "Thailand cards carry at least one Gulf-hub stopover option")
 
@@ -477,15 +492,17 @@ class FlightOptionTests(unittest.TestCase):
                 self.assertEqual(deal.flight_options, ())
 
     def test_the_card_labels_the_board_and_every_option(self):
-        # An economy card (one-stop, July) numbers from (a): Economy, then the
-        # Gulf stopover. No dangling "(b)" with nothing above it.
+        # An economy-owned long-haul card now numbers from (a) Business: since
+        # 2026-10-15 every long-haul card carries that row, so Economy is (b) and
+        # the Gulf stopover (c). The property this test exists for is unchanged —
+        # no dangling letter with nothing above it.
         config = _july_uncapped()
         deals = collect_holiday_deals(config)
         html = render_holiday_report(config, generated_at="2026-09-30T00:00:00+00:00", deals=deals)
-        self.assertIn("(a) Economy, same route", html)
-        self.assertIn("(b) Economy + 2 nights", html)
-        self.assertNotIn("(b) Economy, same route", html)
-        self.assertNotIn("(a) Business", html)
+        self.assertIn("(a) Business", html)
+        self.assertIn("(b) Economy, same route", html)
+        self.assertIn("(c) Economy + 2 nights", html)
+        self.assertNotIn("(a) Economy, same route", html)
         self.assertIn("Board:", html)
 
     def test_a_business_card_still_numbers_from_a_business(self):

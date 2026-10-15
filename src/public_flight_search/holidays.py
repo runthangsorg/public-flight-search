@@ -1023,7 +1023,21 @@ def destination_cabins(
     dates AND its block time is over 8 hours, else ECONOMY, and never premium
     economy (``cabin.py``, owner rule 2026-10-04). Unknown nonstop means
     ECONOMY. A config's own cabin fields are legacy and never consulted here.
+
+    Since the owner's direction of 2026-10-15 ("i want to know direct business
+    class prices for each hotel option too") a LONG-HAUL destination's evidence
+    set is BOTH cabins: every long-haul card shows a Business price beside its
+    Economy one, so the hunt this contract aims at is asked for a BUSINESS fare
+    as well as the Economy one. A short-haul route is unchanged — it prices one
+    cabin and shows no Business row.
+
+    This is the CONSUMPTION set, not a second card: the card itself is still
+    priced in its one derived headline cabin (:func:`destination_cabin`), and
+    the Business figure is a row on that card. ``collect_holiday_deals``
+    therefore iterates the headline cabin, never this tuple.
     """
+    if is_long_haul_destination(destination):
+        return ("ECONOMY", "BUSINESS")
     return (destination_cabin(destination),)
 
 
@@ -3856,28 +3870,34 @@ def _without_stopover_outliers(
     the median and could refuse a real stopover fare (owner brief 2026-10-15).
     """
     reads = tuple(row for row in reads if not _is_multi_centre_read(row))
-    priced: dict[tuple[str, str], list[float]] = {}
+    # The median is per date pair AND per cabin (owner brief 2026-10-15 §5). A
+    # Business fare is a different product for the same journey at roughly two
+    # and a half times the money, so one shared median would either read a
+    # perfectly good Business fare as a mis-read or hide a mis-read Economy card
+    # behind the Business population.
+    priced: dict[tuple[tuple[str, str], str], list[float]] = {}
     for row in reads:
         pair = _read_pair(row)
         total = _priced_read_total(row)
         if pair is None or total is None:
             continue
-        priced.setdefault(pair, []).append(total)
-    medians = {pair: statistics.median(totals) for pair, totals in priced.items()}
+        priced.setdefault((pair, _read_cabin(row)), []).append(total)
+    medians = {key: statistics.median(totals) for key, totals in priced.items()}
 
     kept: list[Mapping[str, Any]] = []
     excluded: list[str] = []
     for row in reads:
         pair = _read_pair(row)
         total = _priced_read_total(row)
-        median = medians.get(pair) if pair is not None else None
+        cabin = _read_cabin(row)
+        median = medians.get((pair, cabin)) if pair is not None else None
         if (
             total is not None and median is not None
             and total > STOPOVER_OUTLIER_FACTOR * median
         ):
             excluded.append(
                 f"{row.get('hub', '?')}-{row.get('airport', '?')} on "
-                f"{pair[0]} to {pair[1]}: {total:,.0f} GBP is over "
+                f"{pair[0]} to {pair[1]} ({cabin}): {total:,.0f} GBP is over "
                 f"{STOPOVER_OUTLIER_FACTOR:g}x the pair median "
                 f"({median:,.0f} GBP), so it is a mis-read card, not an option"
             )
@@ -3886,15 +3906,30 @@ def _without_stopover_outliers(
     return tuple(kept), excluded
 
 
+def _read_cabin(row: Mapping[str, Any]) -> str:
+    """The cabin a read row answers for: its own ``cabin``, else ECONOMY.
+
+    Every read committed before 2026-10-15 is an Economy read and carries no
+    field at all, so the default is the honest reading rather than an
+    assumption — owner brief 2026-10-15 §5: "a row without the field counts as
+    ECONOMY".
+    """
+    return str(row.get("cabin", "") or "").strip().upper() or "ECONOMY"
+
+
 def _stopover_fares(
     reads: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> dict[tuple[tuple[str, str], str, str], tuple[dict[str, Any], ...]]:
     """Fares keyed by ``(pair, hub, airport)`` from the priced reads only.
 
-    One itinerary can only ever be quoted once, at its CHEAPEST read: two
-    exports covering the same (pair, hub, airport) are two looks at one
-    journey, and quoting the dearer of them would be a worse price for the
-    same trip. The same rule the package loader applies.
+    One itinerary can only ever be quoted once PER CABIN, at its CHEAPEST read:
+    two exports covering the same (pair, hub, airport) in one cabin are two
+    looks at one journey, and quoting the dearer of them would be a worse price
+    for the same trip. The same rule the package loader applies. Cabin is part
+    of that identity (owner brief 2026-10-15 §5), because a Business read and an
+    Economy read for one itinerary are two products at two prices — keeping
+    only the cheaper of the two would silently delete the Business option, so
+    both are kept under the one key and the lookup filters on cabin.
 
     The mis-read rule is applied here, once, to whatever this call was handed:
     the committed tuple (no argument) and the committed tuple plus this run's
@@ -3917,12 +3952,17 @@ def _stopover_fares(
         hub = str(row["hub"]).upper()
         airport = str(row["airport"]).upper()
         origin = str(row.get("origin", "LHR")).upper()
+        cabin = _read_cabin(row)
         legs = stopover_legs(hub, airport, pair[0], pair[1], origin=origin)
         key = (pair, hub, airport)
-        existing = fares.get(key)
-        if existing and float(total) >= min(f["total_gbp"] for f in existing):
+        existing = fares.setdefault(key, [])
+        # Cheapest read wins WITHIN a cabin, and only within one: a Business and
+        # an Economy read for the same itinerary both stay, because they answer
+        # two different rows.
+        same_cabin = [f for f in existing if f["cabin"] == cabin]
+        if same_cabin and float(total) >= min(f["total_gbp"] for f in same_cabin):
             continue
-        fares[key] = [{
+        fares[key] = [f for f in existing if f["cabin"] != cabin] + [{
             "pair": pair,
             "legs": legs,
             "origin": origin,
@@ -3932,8 +3972,11 @@ def _stopover_fares(
             # A read is for one season; December reads can be added beside the
             # July ones without either leaking into the other planner.
             "season": str(row.get("season", "summer")).strip().lower() or "summer",
+            # ...and for one cabin: a BUSINESS multi-city read never prices the
+            # Economy stopover row, nor the other way round.
+            "cabin": cabin,
             "source_url": str(row.get("source_url") or "") or build_google_flights_legs_url(
-                legs, travellers=5, cabin_class="ECONOMY"
+                legs, travellers=5, cabin_class=cabin
             ),
         }]
     return {key: tuple(value) for key, value in fares.items()}
@@ -4104,6 +4147,7 @@ STOPOVER_FARES: dict[tuple[tuple[str, str], str, str], tuple[dict[str, Any], ...
 
 def stopover_fares_for(hub: str, airport: str, season: str, *,
                        pair: Optional[tuple[str, str]] = None,
+                       cabin: str = "ECONOMY",
                        fares: Optional[Mapping[Any, Any]] = None) -> tuple[dict[str, Any], ...]:
     """Stopover fares for one ``(hub, airport)`` in one season, optionally one pair.
 
@@ -4113,12 +4157,18 @@ def stopover_fares_for(hub: str, airport: str, season: str, *,
     the narrower question "was this itinerary read for THESE dates"; a read for
     any other pair is not an answer.
 
+    ``cabin`` is the other half of that question (owner brief 2026-10-15 §5): a
+    BUSINESS multi-city read must never price an Economy stopover row, and an
+    Economy read must never price the Business one. A read carrying no cabin
+    field counts as ECONOMY, which is every read committed before today.
+
     ``fares`` overrides the module's committed reads, so one run can price
     from the private exports without mutating shared state.
     """
     wanted = (season or "").strip().lower() or "winter"
     hub_key = str(hub).upper()
     airport_key = str(airport).upper()
+    cabin_key = (str(cabin or "").strip().upper() or "ECONOMY")
     pair_key = None
     if pair is not None:
         pair_key = (str(pair[0]), str(pair[1]))
@@ -4132,6 +4182,7 @@ def stopover_fares_for(hub: str, airport: str, season: str, *,
         found.extend(
             fare for fare in fares_for_key
             if str(fare.get("season", "summer")).strip().lower() == wanted
+            and _read_cabin(fare) == cabin_key
         )
     return tuple(found)
 
@@ -4242,11 +4293,18 @@ def stopover_wanted(
     module state. Hubs without a priced read for the card's pair are listed even
     when another hub already is: two hubs are two itineraries, and the point of
     the list is to name each one.
+
+    Each row carries the CABIN it answers for (owner brief 2026-10-15 §5), and
+    both cabins are asked for: every long-haul card now shows a Business row and
+    offers a Business-with-stopover row when a BUSINESS multi-city read exists,
+    so a list that only ever asked for Economy could never produce one. The
+    Economy rows come first for each card, because they are the ones that price
+    the option the card already shows.
     """
     source = STOPOVER_FARES if fares is None else fares
     season_key = (season or "").strip().lower() or "winter"
     wanted: list[dict[str, Any]] = []
-    seen: set[tuple[tuple[str, str], str, str]] = set()
+    seen: set[tuple[tuple[str, str], str, str, str]] = set()
     for deal in deals or ():
         # Only a card that offers flight options renders the stopover rows at all.
         if not (getattr(deal, "flight_options", None) or ()):
@@ -4257,19 +4315,22 @@ def stopover_wanted(
         if not (airport and outbound and returning):
             continue
         pair = (outbound, returning)
-        for hub in hubs:
-            key = (pair, str(hub).upper(), airport)
-            if key in seen:
-                continue
-            if stopover_fares_for(hub, airport, season_key, pair=pair, fares=source):
-                continue
-            seen.add(key)
-            wanted.append({
-                "pair": [outbound, returning],
-                "hub": str(hub).upper(),
-                "airport": airport,
-                "season": season_key,
-            })
+        for cabin in ("ECONOMY", "BUSINESS"):
+            for hub in hubs:
+                key = (pair, str(hub).upper(), airport, cabin)
+                if key in seen:
+                    continue
+                if stopover_fares_for(hub, airport, season_key, pair=pair,
+                                      cabin=cabin, fares=source):
+                    continue
+                seen.add(key)
+                wanted.append({
+                    "pair": [outbound, returning],
+                    "hub": str(hub).upper(),
+                    "airport": airport,
+                    "season": season_key,
+                    "cabin": cabin,
+                })
     return wanted
 
 
@@ -5911,6 +5972,14 @@ the cards' own prices.
             "kind": kind,
             "cabin": cabin,
             "hub": None,
+            # What the fare IS, when the read says (owner brief 2026-10-15 §3):
+            # "Nonstop" or "1-Stop via Dubai". Set by _flight_options from the
+            # fare's own record; empty means the renderer keeps the card's own
+            # route words.
+            "route": "",
+            # True on the one row that is an OFFER rather than a price: the
+            # Business row of a card no Business fare has been read for.
+            "not_priced": False,
             "outbound": picked["outbound"],
             "return": picked["return"],
             "nights": picked["nights"],
@@ -5942,17 +6011,25 @@ the cards' own prices.
 
     def _flight_options(resort, arch, business: Optional[dict],
                     headline: Optional[dict] = None,
-                    island: bool = False) -> tuple[dict, ...]:
+                    island: bool = False, *,
+                    business_rows: Sequence[dict] = ()) -> tuple[dict, ...]:
         """(a) Business, (b) Economy, (b2) Premium Economy on the same route,
         (c) Economy and (c2) Premium Economy with a Gulf stopover each way,
-        plus any mixed-cabin fare: every one a whole-party total.
+        (c3) Business with the same stopover, plus any mixed-cabin fare: every
+        one a whole-party total.
 
-        ``business`` is ``None`` on a route the report prices as ECONOMY, and
-        then there is no Business row at all (owner rule 2026-10-04, "only
-        quote business class for direct flights"). Every other row is
-        unchanged: Economy, the Gulf stopovers, Premium Economy and a mixed-cabin
-        fare are comparisons a reader chooses between, not quotes for a cabin
-        the destination is not sold in.
+        ``business`` is the card's OWN Business option where the report prices
+        this route Business (a London nonstop over eight hours), exactly as
+        before. Everywhere else ``business_rows`` carries the row the card shows
+        anyway (owner direction 2026-10-15: "i want to know direct business
+        class prices for each hotel option too"): a BUSINESS fare read for THIS
+        card's own dates, origin and airport, or — when no such fare has been
+        read — the row that says so and links the Business search for those
+        dates. Either way it is a comparison beside the Economy headline and
+        never the card's own price, and a fare read for another pair is never
+        borrowed to fill it. Economy, the Gulf stopovers, Premium Economy and a
+        mixed-cabin fare are unchanged: comparisons a reader chooses between,
+        not quotes for a cabin the destination is not sold in.
 
         ``headline`` is the card's own chosen option, and it is the Economy row
         when the card is priced Economy. That row was otherwise re-derived
@@ -5965,8 +6042,15 @@ the cards' own prices.
         """
         rows: list[dict] = []
         if business is not None:
-            rows.append(_option_row("business", "BUSINESS", business,
-                                    _evidence_words(business, "estimate: economy fare x2.5")))
+            business_row = _option_row(
+                "business", "BUSINESS", business,
+                _evidence_words(business, "estimate: economy fare x2.5"))
+            # What the fare IS, when a fare was read (§3 of the same brief).
+            business_row["route"] = fare_route_words(
+                business.get("evidence") if business.get("evidence_used") else None)
+            rows.append(business_row)
+        else:
+            rows.extend(business_rows)
         economy = headline if headline is not None else _best_option(
             resort, "ECONOMY", 1.0, arch, enforce_budget=False,
             prefer_evidence=True, island=island,
@@ -6009,107 +6093,199 @@ the cards' own prices.
         # on this card would put a number next to dates it was never read for
         # (owner brief 2026-10-04, H4).
         card_pair = (str(cheapest.get("outbound", "")), str(cheapest.get("return", "")))
+
+        def _stopover_row(kind: str, cabin: str, fare: Mapping[str, Any],
+                          hub: str, info: Mapping[str, Any]) -> dict:
+            """One whole-party stopover option: the read fare, the stay, the hub hotel.
+
+            The stopover arrives at the resort two days after leaving London, so
+            this option's stay is the pair's nights less those two days (owner
+            brief 2026-10-04, H4). The other options keep the full stay; only
+            this one pays for a shorter holiday and two hotel nights in the hub.
+
+            The stay uses the SAME nightly the card's own option was priced at —
+            a read rate's nightly when the property has one (BRIEF-H14 §1), the
+            catalogue's otherwise — for two nights fewer. A stopover row that
+            fell back to the catalogue nightly while the card above it carried a
+            read rate would price the same room two different ways on one card.
+
+            The hub room is identical in every cabin (a hotel rate does not move
+            with the flight cabin), so Economy and Business rows differ in the
+            fare and nothing else.
+            """
+            pair = tuple(fare["pair"])
+            nights = nights_between(pair)
+            resort_nights = max(nights - STOPOVER_FLIGHT_DAYS, 0)
+            nightly = float(cheapest.get("hotel_cost") or 0.0) / max(
+                1, int(cheapest.get("nights") or 1))
+            hotel_cost = round(nightly * resort_nights, 2)
+            stop_nights = 2 * int(info["nights_each_way"])
+            stop_hotel = round(float(info["hotel"]["nightly_gbp"]) * stop_nights, 2)
+            uk_ground = UK_GROUND_RETURN_GBP.get(fare["origin"], 16.50)
+            transfer = float(resort.get("transfer_gbp", 30.0))
+            flight_cost = round(float(fare["total_gbp"]), 2)
+            total_pkg = round(flight_cost + hotel_cost + stop_hotel, 2)
+            true_d2d = round(total_pkg + uk_ground + transfer, 2)
+            return {
+                "kind": kind,
+                "cabin": cabin,
+                "hub": hub,
+                "hub_label": info["label"],
+                "hub_hotel": info["hotel"]["name"],
+                "hub_board": info["hotel"]["board"],
+                "legs": tuple(tuple(leg) for leg in fare["legs"]),
+                "carrier": fare["carrier"],
+                "outbound": pair[0],
+                "return": pair[1],
+                "nights": nights,
+                "resort_nights": resort_nights,
+                "hub_nights_each_way": int(info["nights_each_way"]),
+                "origin": fare["origin"],
+                "flight_cost": flight_cost,
+                "hotel_cost": hotel_cost,
+                "stopover_hotel_cost": stop_hotel,
+                "stopover_nights": stop_nights,
+                "uk_ground": uk_ground,
+                "transfer": transfer,
+                "total_pkg": total_pkg,
+                "true_d2d": true_d2d,
+                "route": "",
+                "not_priced": False,
+                "flight_basis": (
+                    ("multi-city fare read " if cabin == "ECONOMY"
+                     else "multi-city business fare read ")
+                    + str(fare["observed_at"])[:10]
+                ),
+                "source_url": fare["source_url"],
+                "hub_hotel_confidence": info["hotel"].get("confidence", ""),
+                "within_budget": _within(total_pkg, true_d2d),
+            }
+
         if stopover_season and card_pair in priced_pairs_set:
+            airport_key = str(resort["airport"]).upper()
             for hub, info in STOPOVER_HUBS.items():
-                for fare in stopover_fares_for(hub, str(resort["airport"]).upper(),
-                                               stopover_season, pair=card_pair,
+                # A read answers for ONE cabin (owner brief 2026-10-15 §5).
+                # ``stopover_fares_for`` filters on it, so a BUSINESS multi-city
+                # fare can never price the Economy row and an Economy fare can
+                # never price the Business one. A read with no cabin field
+                # counts as ECONOMY, which is every read committed before today.
+                for fare in stopover_fares_for(hub, airport_key, stopover_season,
+                                               pair=card_pair, cabin="ECONOMY",
                                                fares=stopover_fares):
-                    pair = tuple(fare["pair"])
-                    nights = nights_between(pair)
-                    # The stopover arrives at the resort two days after leaving
-                    # London, so this option's stay is the pair's nights less
-                    # those two days (owner brief 2026-10-04, H4). The other
-                    # options keep the full stay; only this one pays for a
-                    # shorter holiday and two hotel nights in the hub.
-                    resort_nights = max(nights - STOPOVER_FLIGHT_DAYS, 0)
-                    # The SAME nightly the card's own option was priced at —
-                    # a read rate's nightly when the property has one (BRIEF-H14
-                    # §1), the catalogue's otherwise — for two nights fewer. A
-                    # stopover row that fell back to the catalogue nightly while
-                    # the card above it carried a read rate would price the same
-                    # room two different ways on one card.
-                    nightly = float(cheapest.get("hotel_cost") or 0.0) / max(
-                        1, int(cheapest.get("nights") or 1))
-                    hotel_cost = round(nightly * resort_nights, 2)
-                    stop_nights = 2 * int(info["nights_each_way"])
-                    stop_hotel = round(float(info["hotel"]["nightly_gbp"]) * stop_nights, 2)
-                    uk_ground = UK_GROUND_RETURN_GBP.get(fare["origin"], 16.50)
-                    transfer = float(resort.get("transfer_gbp", 30.0))
-                    total_pkg = round(float(fare["total_gbp"]) + hotel_cost + stop_hotel, 2)
-                    true_d2d = round(total_pkg + uk_ground + transfer, 2)
-                    rows.append({
-                        "kind": "stopover",
-                        "cabin": "ECONOMY",
-                        "hub": hub,
-                        "hub_label": info["label"],
-                        "hub_hotel": info["hotel"]["name"],
-                        "hub_board": info["hotel"]["board"],
-                        "legs": tuple(tuple(leg) for leg in fare["legs"]),
-                        "carrier": fare["carrier"],
-                        "outbound": pair[0],
-                        "return": pair[1],
-                        "nights": nights,
-                        "resort_nights": resort_nights,
-                        "hub_nights_each_way": int(info["nights_each_way"]),
-                        "origin": fare["origin"],
-                        "flight_cost": float(fare["total_gbp"]),
-                        "hotel_cost": hotel_cost,
-                        "stopover_hotel_cost": stop_hotel,
-                        "stopover_nights": stop_nights,
-                        "uk_ground": uk_ground,
-                        "transfer": transfer,
-                        "total_pkg": total_pkg,
-                        "true_d2d": true_d2d,
-                        "flight_basis": "multi-city fare read " + str(fare["observed_at"])[:10],
-                        "source_url": fare["source_url"],
-                        "hub_hotel_confidence": info["hotel"].get("confidence", ""),
-                        "within_budget": _within(total_pkg, true_d2d),
-                    })
+                    rows.append(_stopover_row("stopover", "ECONOMY", fare, hub, info))
                     # No Premium Economy multi-city fare has been read for any hub yet
                     # (_STOPOVER_READS is Economy-only) — estimated the same way the
                     # headline Business figure is when nothing was read: the read
                     # Economy stopover flight cost x1.6, hotel costs unchanged (a room
                     # rate does not move with cabin). Labelled "estimate" throughout,
                     # never presented as a fare that was actually read.
-                    pe_flight_cost = round(float(fare["total_gbp"]) * 1.6, 2)
-                    pe_total_pkg = round(pe_flight_cost + hotel_cost + stop_hotel, 2)
-                    pe_true_d2d = round(pe_total_pkg + uk_ground + transfer, 2)
+                    pe_row = _stopover_row("stopover_premium_economy",
+                                           "PREMIUM_ECONOMY", fare, hub, info)
+                    pe_row["flight_cost"] = round(float(fare["total_gbp"]) * 1.6, 2)
+                    pe_row["total_pkg"] = round(
+                        pe_row["flight_cost"] + pe_row["hotel_cost"]
+                        + pe_row["stopover_hotel_cost"], 2)
+                    pe_row["true_d2d"] = round(
+                        pe_row["total_pkg"] + pe_row["uk_ground"]
+                        + pe_row["transfer"], 2)
+                    pe_row["flight_basis"] = "estimate: economy stopover fare x1.6"
                     try:
-                        pe_source_url = stopover_search_url(
-                            hub, str(resort["airport"]).upper(), pair[0], pair[1],
+                        pe_row["source_url"] = stopover_search_url(
+                            hub, airport_key, pe_row["outbound"], pe_row["return"],
                             origin=fare["origin"], travellers=travellers,
                             cabin_class="PREMIUM_ECONOMY")
                     except Exception:
-                        pe_source_url = ""
-                    rows.append({
-                        "kind": "stopover_premium_economy",
-                        "cabin": "PREMIUM_ECONOMY",
-                        "hub": hub,
-                        "hub_label": info["label"],
-                        "hub_hotel": info["hotel"]["name"],
-                        "hub_board": info["hotel"]["board"],
-                        "legs": tuple(tuple(leg) for leg in fare["legs"]),
-                        "carrier": fare["carrier"],
-                        "outbound": pair[0],
-                        "return": pair[1],
-                        "nights": nights,
-                        "resort_nights": resort_nights,
-                        "hub_nights_each_way": int(info["nights_each_way"]),
-                        "origin": fare["origin"],
-                        "flight_cost": pe_flight_cost,
-                        "hotel_cost": hotel_cost,
-                        "stopover_hotel_cost": stop_hotel,
-                        "stopover_nights": stop_nights,
-                        "uk_ground": uk_ground,
-                        "transfer": transfer,
-                        "total_pkg": pe_total_pkg,
-                        "true_d2d": pe_true_d2d,
-                        "flight_basis": "estimate: economy stopover fare x1.6",
-                        "source_url": pe_source_url,
-                        "hub_hotel_confidence": info["hotel"].get("confidence", ""),
-                        "within_budget": _within(pe_total_pkg, pe_true_d2d),
-                    })
+                        pe_row["source_url"] = ""
+                    pe_row["within_budget"] = _within(
+                        pe_row["total_pkg"], pe_row["true_d2d"])
+                    rows.append(pe_row)
+                for fare in stopover_fares_for(hub, airport_key, stopover_season,
+                                               pair=card_pair, cabin="BUSINESS",
+                                               fares=stopover_fares):
+                    rows.append(_stopover_row("stopover_business", "BUSINESS",
+                                              fare, hub, info))
         return tuple(rows)
+
+    def _business_rows(resort, cheapest) -> tuple[dict, ...]:
+        """The Business row a long-haul card shows beside its Economy one.
+
+        Owner direction 2026-10-15: every long-haul card carries a Business
+        price. Two shapes and never a third:
+
+        * a BUSINESS fare READ for THIS card's own pair, origin and airport —
+          the read prices the flight half, the card's own figures the stay and
+          the ground, so the row is a door-to-door total for the same holiday
+          in a different cabin;
+        * no such read: the row says "not priced yet" and links the Business
+          search for those dates. A fare read for another pair, origin or
+          airport is never borrowed to fill it (owner brief 2026-10-04, H4 — the
+          rule the stopover rows already follow).
+        """
+        airport = str(resort["airport"]).upper()
+        pair = (str(cheapest.get("outbound", "")), str(cheapest.get("return", "")))
+        origin = str(cheapest.get("origin", ""))
+        route = route_words(str(resort.get("routing", "")), origin=origin, airport=airport)
+        try:
+            search_url = build_google_flights_roundtrip_url(
+                origin=origin, destination=airport,
+                outbound_date=pair[0], return_date=pair[1],
+                travellers=travellers, cabin_class="BUSINESS",
+            )
+        except Exception:
+            search_url = ""
+        evidence = evidence_for(
+            live_flight_offers, airport, "BUSINESS", pair[0], pair[1], origin,
+            headline=headline,
+        )
+        if evidence is not None and evidence.usable:
+            # THE MOST DIRECT FARE, not the freshest one (owner steer
+            # 2026-10-15): every BUSINESS read for this same key — the slot's own
+            # record plus the ones the freshest-wins rule put aside — is ranked
+            # fewest stops, then shortest, then cheapest, and the winner prices
+            # the row. A cheaper read that stops more is not thrown away: it is
+            # named on one muted line beneath the row.
+            candidates = [evidence] + [
+                alternative for alternative in getattr(evidence, "alternates", ())
+                if getattr(alternative, "usable", False)
+                and str(getattr(alternative, "cabin_class", "")).upper() == "BUSINESS"
+            ]
+            chosen = min(candidates, key=directness_rank)
+            picked = dict(cheapest)
+            picked["flight_cost"] = float(chosen.total_gbp)
+            picked["total_pkg"] = round(
+                picked["flight_cost"] + float(picked["hotel_cost"]), 2)
+            picked["true_d2d"] = round(
+                picked["total_pkg"] + float(picked["uk_ground"])
+                + float(picked["transfer"]), 2)
+            picked["evidence"] = chosen
+            picked["evidence_used"] = True
+            row = _option_row("business", "BUSINESS", picked,
+                              _evidence_words(picked, "Business fare"))
+            row["route"] = fare_route_words(chosen, route)
+            row["cheaper_alternative"] = _cheaper_with_more_stops(chosen, candidates)
+            return (row,)
+        return ({
+            "kind": "business",
+            "cabin": "BUSINESS",
+            "hub": None,
+            "not_priced": True,
+            "route": route,
+            "outbound": pair[0],
+            "return": pair[1],
+            "nights": int(cheapest.get("nights") or 0),
+            "origin": origin,
+            "flight_cost": 0.0,
+            "hotel_cost": 0.0,
+            "stopover_hotel_cost": 0.0,
+            "stopover_nights": 0,
+            "uk_ground": 0.0,
+            "transfer": 0.0,
+            "total_pkg": 0.0,
+            "true_d2d": 0.0,
+            "flight_basis": "no Business fare read for these dates",
+            "source_url": search_url,
+            "within_budget": False,
+        },)
 
     # The same catalogue and season card_lookup_keys uses, so the hunt contract
     # and the cards can never be built from two different resort lists.
@@ -6210,8 +6386,12 @@ the cards' own prices.
             island=island,
         )
         filtered_out.extend(dropped)
-        dest_cabins = destination_cabins(config, dest)
-        for cabin in dest_cabins:
+        # ONE CARD PER RESORT. The destination's evidence set is both cabins on
+        # a long-haul route (``destination_cabins``), but the card is priced in
+        # its derived HEADLINE cabin: the Business figure is a ROW beside the
+        # Economy one (owner direction 2026-10-15), so iterating the evidence
+        # set here would put a duplicate Business card beside every card.
+        for cabin in (destination_cabin(dest),):
             flight_mult = cabin_multipliers.get(cabin.upper(), 1.0)
             for resort in resorts:
                 # A unit check that says the property cannot take this party in
@@ -6301,6 +6481,10 @@ the cards' own prices.
                             # exists because it fits.
                             headline=cheapest if not business_cabin else None,
                             island=island,
+                            business_rows=(
+                                () if business_cabin
+                                else _business_rows(resort, cheapest)
+                            ),
                         )
                         option = cheapest
                     else:
@@ -6314,6 +6498,10 @@ the cards' own prices.
                                 resort, arch, cheapest if business_cabin else None,
                                 headline=cheapest if not business_cabin else None,
                                 island=island,
+                                business_rows=(
+                                    () if business_cabin
+                                    else _business_rows(resort, cheapest)
+                                ),
                             )
                             if cheapest else ()
                         )
@@ -7961,6 +8149,186 @@ def prices_checked_footer(deal: Any, *, generated_at: str) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# What a route says: the fare's own words (owner brief 2026-10-15 §3)
+# ---------------------------------------------------------------------------
+
+#: The SIN rule from 6caf1ad, in one place because two renderers print it: a
+#: connection through Singapore is a plane change, never a stopover the report
+#: failed to price.
+SIN_CONNECTION_NOTE = " (change of plane, no stay)"
+_VIA_SIN_RE = re.compile(r"\bvia\s+(?:SIN|Singapore)\b", re.IGNORECASE)
+#: "1 stop via ..." / "1-stop via ..." -> "1-Stop via ...". Anchored, so a
+#: sentence that merely mentions stops is not rewritten.
+_STOP_PREFIX_RE = re.compile(r"^(\d)\s*[- ]?\s*stop\b", re.IGNORECASE)
+
+
+def via_sin_note(text: str) -> str:
+    """Append the SIN connection note to a route that goes through Singapore."""
+    if text and _VIA_SIN_RE.search(text):
+        return text + SIN_CONNECTION_NOTE
+    return text
+
+
+def route_words(routing: str, *, origin: str = "", airport: str = "") -> str:
+    """``Nonstop LHR–AYT`` or ``1-Stop via Singapore`` — never "Direct".
+
+    The card's OWN route, written from the config's routing note. One
+    definition because two renderers print it: the detailed page's option
+    titles and the compact e-mail's flight rows. "Direct" is banned outright —
+    it means both "nonstop" and "sold by the airline" — so a nonstop says
+    ``Nonstop`` and a connection says how many stops and where.
+    """
+    origin_key = str(origin or "").upper()
+    airport_key = str(airport or "").upper()
+    nonstop = f"Nonstop {origin_key}–{airport_key}"
+    text = str(routing or "").strip()
+    if not text:
+        return nonstop
+    text = text.split(":", 1)[-1] if ":" in text else text
+    text = text.split("(")[0].split(", then")[0].strip()
+    if not text or "nonstop" in text.lower():
+        return nonstop
+    text = _STOP_PREFIX_RE.sub(lambda m: f"{m.group(1)}-Stop", text)
+    text = text[0].upper() + text[1:] if text else nonstop
+    return via_sin_note(text)
+
+
+def _stop_count(value: Any) -> Optional[int]:
+    """A fare record's ``stops`` as a whole number, or ``None`` when it says
+    nothing usable. An unreadable field is not evidence of a nonstop, and it is
+    not fatal either: the row falls back to the card's own route words."""
+    if isinstance(value, bool) or value is None or value == "":
+        return None
+    try:
+        count = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return count if count >= 0 else None
+
+
+#: Rank for a fact a fare record did not state. It sorts LAST: a read that did
+#: not say how direct it is cannot win a comparison about directness against one
+#: that did, and it is never called a nonstop.
+_UNKNOWN_DIRECTNESS_RANK = 10**9
+
+
+def directness_rank(evidence: Any) -> tuple[int, int, float]:
+    """Sort key for the MOST DIRECT fare: stops, then duration, then price.
+
+    Owner steer 2026-10-15: where several BUSINESS reads exist for one card's own
+    pair and airport, the Business row shows the most direct one — fewest stops
+    first, then the shortest itinerary, then the lowest price — rather than
+    whichever happened to be read last. A record that states no stop count ranks
+    behind every record that does, because "we did not record it" is not evidence
+    of a nonstop.
+    """
+    stops = _stop_count(getattr(evidence, "stops", None))
+    duration = getattr(evidence, "duration_minutes", None)
+    try:
+        minutes = int(duration) if duration is not None else _UNKNOWN_DIRECTNESS_RANK
+    except (TypeError, ValueError):
+        minutes = _UNKNOWN_DIRECTNESS_RANK
+    if minutes <= 0:
+        minutes = _UNKNOWN_DIRECTNESS_RANK
+    return (
+        _UNKNOWN_DIRECTNESS_RANK if stops is None else stops,
+        minutes,
+        float(getattr(evidence, "total_gbp", 0.0) or 0.0),
+    )
+
+
+def _cheaper_with_more_stops(chosen: Any, candidates: Sequence[Any]) -> Optional[dict[str, Any]]:
+    """The read that costs LESS than the chosen fare and stops MORE.
+
+    One muted line on the Business row says money is on the table for an extra
+    stop: the stop count, the figure and the carrier, and nothing else. Silent
+    when no cheaper read exists, when the cheaper read makes no more stops (a
+    cheaper fare with as few stops is the fare the choice above would already
+    have taken), and when either side does not state its stop count — no line is
+    better than a guessed one.
+
+    Where several qualify, the same ranking picks as chose the row: the NEXT
+    best fare, not the absolute cheapest, so the line reads as the alternative
+    the reader would actually take and never skips over a nearer one.
+    """
+    chosen_stops = _stop_count(getattr(chosen, "stops", None))
+    if chosen_stops is None:
+        return None
+    chosen_total = float(getattr(chosen, "total_gbp", 0.0) or 0.0)
+    worse: list[Any] = []
+    for candidate in candidates:
+        stops = _stop_count(getattr(candidate, "stops", None))
+        if stops is None or stops <= chosen_stops:
+            continue
+        if float(getattr(candidate, "total_gbp", 0.0) or 0.0) >= chosen_total:
+            continue
+        worse.append(candidate)
+    if not worse:
+        return None
+    alternative = min(worse, key=directness_rank)
+    return {
+        "stops": _stop_count(getattr(alternative, "stops", None)),
+        "total_gbp": float(getattr(alternative, "total_gbp", 0.0) or 0.0),
+        "carrier": str(getattr(alternative, "carrier", "") or ""),
+    }
+
+
+def cheaper_alternative_note(alternative: Optional[Mapping[str, Any]]) -> str:
+    """``cheaper with 2 stops: £15,500 (Emirates)`` — or nothing.
+
+    One wording for both renderers, so the page and the e-mail cannot describe
+    the same alternative two ways.
+    """
+    if not alternative:
+        return ""
+    try:
+        stops = int(alternative["stops"])
+        total = float(alternative["total_gbp"])
+    except (KeyError, TypeError, ValueError):
+        return ""
+    carrier = str(alternative.get("carrier", "") or "").strip()
+    return (
+        f"cheaper with {stops} stop{'s' if stops != 1 else ''}: £{total:,.0f}"
+        + (f" ({carrier})" if carrier else "")
+    )
+
+
+def fare_route_words(evidence: Any, fallback: str = "") -> str:
+    """What a fare's own route IS: ``Nonstop``, or the stops it makes.
+
+    A row that says "1-Stop via Doha" is making a claim about one specific
+    itinerary, so the only thing allowed to make it is the record that was read
+    (owner brief 2026-10-15 §3): the fare's own ``stops`` decides the word, and
+    a hub is named when — and only when — the record names one. Where it does
+    not, the carriers that fly it are named instead, because a stop count plus
+    the airline flying it is the whole of what such a record states; deriving a
+    hub from a carrier would be a guess wearing a route's clothes.
+
+    No record at all (or one that says nothing about stops) falls back to the
+    card's own route words, which is the route the card is priced on anyway.
+    """
+    if evidence is None:
+        return via_sin_note(str(fallback or "").strip())
+    stops = _stop_count(getattr(evidence, "stops", None))
+    hub = str(getattr(evidence, "layover", "") or "").strip()
+    if stops == 0:
+        return "Nonstop"
+    if stops is not None:
+        prefix = "1-Stop" if stops <= 1 else f"{stops}-Stop"
+        if hub:
+            return via_sin_note(f"{prefix} via {hub}")
+        carriers = [
+            part.strip()
+            for part in str(getattr(evidence, "carrier", "") or "").split(",")
+            if part.strip()
+        ]
+        return via_sin_note(f"{prefix} ({' · '.join(carriers)})" if carriers else prefix)
+    if hub:
+        return via_sin_note(f"1-Stop via {hub}")
+    return via_sin_note(str(fallback or "").strip())
+
+
 #: The letter each option line carries, keyed by its kind, for a card that
 #: quotes Business. On a card that does not (a one-stop route, where the owner
 #: quotes Economy) the letters renumber down, so a reader is never shown a
@@ -7968,6 +8336,7 @@ def prices_checked_footer(deal: Any, *, generated_at: str) -> str:
 _OPTION_LETTERS: dict[str, str] = {
     "business": "a", "economy": "b", "premium_economy": "b2",
     "stopover": "c", "stopover_premium_economy": "c2",
+    "stopover_business": "c3",
 }
 #: The letters vacated when a card carries no Business row: Economy takes (a),
 #: and the stopover takes (b). Premium Economy keeps its own suffix, which is
@@ -7975,6 +8344,7 @@ _OPTION_LETTERS: dict[str, str] = {
 _OPTION_LETTERS_NO_BUSINESS: dict[str, str] = {
     "business": "a", "economy": "a", "premium_economy": "b2",
     "stopover": "b", "stopover_premium_economy": "b2",
+    "stopover_business": "b3",
 }
 
 
@@ -7990,12 +8360,18 @@ def _option_title(option: Mapping[str, Any], *, has_business: bool = True) -> st
     if letter is None:
         return kind
     if kind == "business":
-        return f"({letter}) Business, normal route"
+        # What the fare IS, from the read itself when there is one (owner brief
+        # 2026-10-15 §3) — "Nonstop", or the stop(s) it makes. With no read the
+        # card's own route stands: a "normal route" beside a price read for it.
+        route = str(option.get("route") or "").strip()
+        return f"({letter}) Business, {route or 'normal route'}"
     if kind == "economy":
         return f"({letter}) Economy, same route"
     if kind == "premium_economy":
         return f"({letter}) Premium Economy, same route"
     hub_label = str(option.get("hub_label", option.get("hub")))
+    if kind == "stopover_business":
+        return f"({letter}) Business + 2 nights {hub_label} each way"
     if kind == "stopover_premium_economy":
         return f"({letter}) Premium Economy + 2 nights {hub_label} each way"
     return f"({letter}) Economy + 2 nights {hub_label} each way"
@@ -8013,6 +8389,21 @@ def _flight_option_line(option: Mapping[str, Any], *, has_business: bool = True,
     figure that does not fit is worse. The card's budget statement is the
     package price, which the package line already prints.
     """
+    if option.get("not_priced"):
+        # The Business row of a card no Business fare has been read for (owner
+        # brief 2026-10-15 §2): the row says so and links the Business search
+        # for THIS card's own dates and origin. A fare read for another pair,
+        # another origin or another airport is never borrowed to fill it.
+        unpriced = ('<br>' + escape(_option_title(option, has_business=has_business))
+                    + ': not priced yet — no whole-party Business fare was read for these dates')
+        if option.get("outbound") and option.get("return"):
+            unpriced += (' · ' + escape(str(option["outbound"])) + '→'
+                         + escape(str(option["return"])) + ' from '
+                         + escape(str(option.get("origin", ""))))
+        if option.get("source_url"):
+            unpriced += (' <a href="' + escape(str(option["source_url"]), quote=True)
+                         + '" style="color:#2563eb;text-decoration:none;">price it in Business ↗</a>')
+        return unpriced
     chip = ""
     if budget_chip:
         chip = ('<span style="color:#166534; font-weight:700;">within budget</span>'
@@ -8046,6 +8437,12 @@ def _flight_option_line(option: Mapping[str, Any], *, has_business: bool = True,
     if option.get("source_url"):
         line += (' <a href="' + escape(str(option["source_url"]), quote=True)
                  + '" style="color:#2563eb;text-decoration:none;">multi-city search ↗</a>')
+    note = cheaper_alternative_note(option.get("cheaper_alternative"))
+    if note:
+        # One muted line, on the row it qualifies: a dearer-but-more-direct fare
+        # is the row's point, and the reader is told money is on the table for an
+        # extra stop (owner steer 2026-10-15).
+        line += (' <span style="color:#64748b; font-size:11px;">' + escape(note) + '</span>')
     return line
 
 
@@ -8103,6 +8500,16 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
     if expanded is not None:
         out.append(_flight_option_line(expanded, has_business=has_business,
                                          budget_chip=budget_chips))
+    # (c3) Business + stopover, when a BUSINESS multi-city fare was READ for this
+    # card's own dates (owner brief 2026-10-15 §2). Only a read puts this line
+    # here: a Business stopover has no benchmark, and there is nothing to
+    # estimate one from. The cheapest read is shown in full; any further one goes
+    # into the compact totals line below rather than costing a line each.
+    business_stopovers = [o for o in options if o["kind"] == "stopover_business"]
+    expanded_business = _cheapest_stopover(business_stopovers)
+    if expanded_business is not None:
+        out.append(_flight_option_line(expanded_business, has_business=has_business,
+                                         budget_chip=budget_chips))
     # ONE Premium Economy line: the cheapest PE option (same route or stopover),
     # whichever it is, carrying its in/over-budget mark — never a line per
     # cabin variant.
@@ -8117,11 +8524,14 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
     # 2026-10-03, H7).
     for mixed in [o for o in options if o["kind"] == "mixed_cabin"]:
         out.append(_flight_option_line(mixed, budget_chip=budget_chips))
-    # Every other stopover collapses into one compact totals line.
-    other_stopovers = [o for o in stopovers if o is not expanded]
+    # Every other stopover collapses into one compact totals line, a Business
+    # stopover marked as one so a business figure is never read as economy.
+    other_stopovers = [o for o in stopovers + business_stopovers
+                       if o is not expanded and o is not expanded_business]
     if other_stopovers:
         totals = ' · '.join(
             escape(str(o.get("hub_label") or o.get("hub"))) + ' £' + f'{float(o["total_pkg"]):,.0f}'
+            + (' (business)' if o["kind"] == "stopover_business" else '')
             for o in other_stopovers)
         out.append('<br>Other stopovers: ' + totals + ' (economy, totals)')
 
@@ -8727,11 +9137,16 @@ def render_holiday_report(
             # be worse. The package line states the price and the gap, which is
             # the whole budget statement this card needs.
             package_priced_card = bool(getattr(deal, "package_priced", False))
+            # An unpriced row is not a price and has no verdict: the Business
+            # row of a card no Business fare has been read for never enters the
+            # budget line (a zero total would read as the cheapest thing on the
+            # card).
             cabin_options = [
                 (_BUDGET_CABIN_LABELS.get(str(option["kind"]), str(option["kind"])),
                  float(option["true_d2d"]), bool(option["within_budget"]))
                 for option in deal.flight_options
                 if str(option["kind"]) in _BUDGET_CABIN_LABELS
+                and not option.get("not_priced")
             ]
             budget_line = (
                 "" if package_priced_card

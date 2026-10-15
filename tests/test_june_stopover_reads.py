@@ -189,23 +189,38 @@ class StopoverWantedTests(unittest.TestCase):
         self.assertTrue(wanted)
         for row in wanted:
             with self.subTest(row=row):
-                self.assertEqual(set(row), {"pair", "hub", "airport", "season"})
+                # ``cabin`` joined the format on 2026-10-15: every long-haul card
+                # now offers a Business stopover row as well as its Economy one,
+                # and a read answers for ONE cabin, so the list has to say which.
+                self.assertEqual(
+                    set(row), {"pair", "hub", "airport", "season", "cabin"}
+                )
                 self.assertEqual(len(row["pair"]), 2)
                 self.assertIn(row["hub"], STOPOVER_LINK_HUBS)
                 self.assertEqual(row["season"], "summer")
+                self.assertIn(row["cabin"], {"ECONOMY", "BUSINESS"})
                 self.assertRegex(row["airport"], r"^[A-Z]{3}$")
+        # Both cabins are asked for, so the Business-with-stopover row the
+        # cards show when a read exists can ever exist.
+        self.assertEqual({row["cabin"] for row in wanted}, {"ECONOMY", "BUSINESS"})
 
     def test_every_row_is_a_rendered_cards_own_pair_hub_and_airport_with_no_read(self):
-        """The list is derived, not guessed: one row per (card, hub) with no fare."""
+        """The list is derived, not guessed: one row per (card, hub, cabin) with
+        no fare for that cabin."""
         deals, wanted = self._wanted()
-        listed = {(tuple(row["pair"]), row["hub"], row["airport"]) for row in wanted}
+        listed = {
+            (tuple(row["pair"]), row["hub"], row["airport"], row["cabin"])
+            for row in wanted
+        }
         expected = {
-            ((deal.outbound_date, deal.return_date), hub, deal.destination_airport)
+            ((deal.outbound_date, deal.return_date), hub,
+             deal.destination_airport, cabin)
             for deal in deals if deal.flight_options
             for hub in STOPOVER_LINK_HUBS
+            for cabin in ("ECONOMY", "BUSINESS")
             if not hol.stopover_fares_for(
                 hub, deal.destination_airport, "summer",
-                pair=(deal.outbound_date, deal.return_date),
+                pair=(deal.outbound_date, deal.return_date), cabin=cabin,
             )
         }
         self.assertTrue(expected, "every card is already priced — this test proves nothing today")
@@ -219,17 +234,28 @@ class StopoverWantedTests(unittest.TestCase):
         self.assertNotIn("SIN", {row["hub"] for row in wanted})
 
     def test_a_priced_read_removes_only_its_own_row(self):
-        """One fare answers one (pair, hub, airport): the other hub stays listed."""
+        """One fare answers one (pair, hub, airport, CABIN): the other hub and the
+        other cabin both stay listed."""
         deals, _ = self._wanted()
         deal = deals[0]
         pair = (deal.outbound_date, deal.return_date)
         fares = hol._stopover_fares((_synth_read(pair, "DOH", deal.destination_airport),))
         self.assertTrue(hol.stopover_fares_for("DOH", deal.destination_airport, "summer",
-                                               pair=pair, fares=fares))
+                                               pair=pair, cabin="ECONOMY", fares=fares))
         _deals, wanted = self._wanted(fares=fares)
-        listed = {(tuple(row["pair"]), row["hub"], row["airport"]) for row in wanted}
-        self.assertNotIn((pair, "DOH", deal.destination_airport), listed)
-        self.assertIn((pair, "MCT", deal.destination_airport), listed)
+        listed = {
+            (tuple(row["pair"]), row["hub"], row["airport"], row["cabin"])
+            for row in wanted
+        }
+        self.assertNotIn((pair, "DOH", deal.destination_airport, "ECONOMY"), listed)
+        self.assertIn((pair, "MCT", deal.destination_airport, "ECONOMY"), listed)
+        # An Economy read is not an answer about Business (owner brief
+        # 2026-10-15 §5), so the Business row for the same itinerary stays open.
+        self.assertIn((pair, "DOH", deal.destination_airport, "BUSINESS"), listed)
+        self.assertFalse(hol.stopover_fares_for(
+            "DOH", deal.destination_airport, "summer", pair=pair,
+            cabin="BUSINESS", fares=fares,
+        ))
 
     def test_an_unpriced_read_does_not_answer_the_row(self):
         # ``no_priced_economy_card`` is recorded so the gap is visible; it is not
@@ -274,8 +300,12 @@ class StopoverWantedTests(unittest.TestCase):
         registry = hol.stopover_fares_registry(export)
         self.assertEqual(hol.stopover_fares_registry(), hol.STOPOVER_FARES)
         wanted = hol.stopover_wanted(deals, registry, season="summer")
-        self.assertNotIn((pair, "DOH", deal.destination_airport),
-                         {(tuple(row["pair"]), row["hub"], row["airport"]) for row in wanted})
+        listed = {
+            (tuple(row["pair"]), row["hub"], row["airport"], row["cabin"])
+            for row in wanted
+        }
+        self.assertNotIn((pair, "DOH", deal.destination_airport, "ECONOMY"), listed)
+        self.assertIn((pair, "DOH", deal.destination_airport, "BUSINESS"), listed)
 
 
 class UnreadPairStillOffersTheLinkTests(unittest.TestCase):

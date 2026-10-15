@@ -256,8 +256,18 @@ class JulyReportHonestyTests(unittest.TestCase):
         # options within budget; its Business headline may be over.
         for deal in deals:
             with self.subTest(card=deal.resort_name):
-                self.assertTrue(any(o["within_budget"] for o in deal.flight_options))
+                self.assertTrue(any(
+                    o["within_budget"] for o in deal.flight_options
+                    if not o.get("not_priced")
+                ))
                 for option in deal.flight_options:
+                    if option.get("not_priced"):
+                        # A row with NO PRICE has no verdict: the Business row of
+                        # a card no Business fare has been read for (owner brief
+                        # 2026-10-15 §2). It carries no total to compare.
+                        self.assertEqual(option["total_pkg"], 0.0)
+                        self.assertFalse(option["within_budget"])
+                        continue
                     self.assertEqual(
                         option["within_budget"],
                         option["total_pkg"] <= config.max_budget_gbp
