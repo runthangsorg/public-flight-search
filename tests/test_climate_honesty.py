@@ -4,6 +4,12 @@ Owner brief 2026-10-02: a resort flagged as monsoon season for the travel
 month (Khao Lak, on Thailand's Andaman side, in July) must never win
 "Best Summer Climate", and its card must carry a visible warning. The climate
 award ranks only among in-season resorts.
+
+Owner update 2026-10-15 (20:45 BST): "avoid all monsoon areas, remove from the
+hotels and locations". Khao Lak is no longer flagged on a card — it is not in
+the July report at all (the committed climate exclusion table drops it), so
+these tests now pin the absence, and the honest naming of the seasons that
+remain (Riviera Maya's hurricanes, Okinawa's typhoons).
 """
 
 from __future__ import annotations
@@ -15,6 +21,7 @@ from types import SimpleNamespace
 import unittest
 
 import public_flight_search.holidays as hol
+from public_flight_search import climate
 from public_flight_search.holidays import (
     FAR_EAST_WATCH,
     SUMMER_RESORT_CATALOG,
@@ -49,18 +56,26 @@ def _climate_award(html: str) -> str:
 
 
 class MonsoonClimateTests(unittest.TestCase):
-    def test_khao_lak_is_flagged_monsoon_for_july(self):
-        resort = next(
-            r for rs in SUMMER_RESORT_CATALOG.values() for r in rs
-            if r["name"] == MONSOON_RESORT
+    def test_khao_lak_is_an_excluded_area_for_july(self):
+        # The Andaman coast is a committed EXCLUSION, not a card warning: a
+        # July stay there is dropped before a card can form.
+        area = climate.exclusion_for(
+            text="Khao Lak", airports=["HKT"], stay_months={7},
         )
-        self.assertIn(7, resort["monsoon_months"])
+        self.assertIsNotNone(area)
+        self.assertEqual(area.id, "andaman-coast")
+        self.assertIn(7, area.months)
 
-    def test_monsoon_resort_is_recognised_from_its_deal(self):
+    def test_the_july_report_has_no_khao_lak_card_at_all(self):
         deals = collect_holiday_deals(_july_uncapped())
-        khao_lak = next(d for d in deals if d.destination_key == "khao_lak")
-        self.assertEqual(khao_lak.resort_name, MONSOON_RESORT)
-        self.assertTrue(hol.deal_in_monsoon(khao_lak))
+        self.assertEqual(
+            [d for d in deals if d.destination_key == "khao_lak"], [],
+            "Khao Lak is a monsoon coast in July and must not be carded",
+        )
+        self.assertEqual(
+            [d for d in deals if d.resort_name == MONSOON_RESORT], [],
+        )
+        # ...and the Gulf side, which the monsoon does not reach, still is.
         in_season = next(d for d in deals if d.destination_key == "koh_samui")
         self.assertFalse(hol.deal_in_monsoon(in_season))
 
@@ -74,24 +89,18 @@ class MonsoonClimateTests(unittest.TestCase):
         self.assertNotIn(MONSOON_RESORT, _climate_award(html))
         self.assertTrue(_climate_award(html).strip())
 
-    def test_monsoon_card_header_carries_a_visible_warning(self):
+    def test_no_card_carries_a_monsoon_warning_in_july(self):
+        # Every monsoon-coast place the old warning existed for (Khao Lak,
+        # Bangkok, the Andaman islands, the Maldives) is excluded outright in
+        # months 5-10, so the July report has nothing left to warn about on
+        # that heading — while the seasons that are not monsoons still warn.
         config = _july_uncapped()
-        deals = collect_holiday_deals(config)
-        monsoon_card = next(d for d in deals if d.resort_name == MONSOON_RESORT)
         html = render_holiday_report(
-            config, generated_at="2026-09-30T00:00:00+00:00", deals=deals,
+            config, generated_at="2026-09-30T00:00:00+00:00",
+            deals=collect_holiday_deals(config),
         )
-        # The month is the CARD's own, read off its dates rather than pasted:
-        # the owner's July window departs 25-30 June 2027, so a July card can
-        # leave in June and the warning has to name the month the family
-        # actually flies in.
-        month = MONTH_NAMES[hol.deal_travel_month(monsoon_card)]
-        self.assertIn(
-            "Monsoon season (approximate climatology) for your "
-            + month + " travel month", html,
-        )
-        # Not just the destination label: the card header warning is separate.
-        self.assertIn("⚠️ Monsoon", html)
+        self.assertNotIn("Monsoon season", html)
+        self.assertNotIn(MONSOON_RESORT, html)
 
 
 class WetSeasonNamingTests(unittest.TestCase):
@@ -150,10 +159,7 @@ class WetSeasonNamingTests(unittest.TestCase):
         month = MONTH_NAMES[hol.deal_travel_month(grand_velas[0])]
         self.assertIn(f"Hurricane season for your {month} travel month", html)
         self.assertIn("sargassum", html)
-        # Khao Lak on the Andaman side is a real monsoon and still says so.
-        self.assertIn(
-            "Monsoon season (approximate climatology) for your " + month, html
-        )
+        self.assertNotIn("Monsoon season", html)
 
 
 class WetMonthsCoverageTests(unittest.TestCase):

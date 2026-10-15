@@ -13,6 +13,7 @@ import sys
 from typing import Any, Mapping, NamedTuple, Optional, Sequence
 from urllib.parse import urlencode
 
+from . import climate
 from .cabin import (
     cabin_for_flight_hours,
     destination_cabin,
@@ -3147,41 +3148,6 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "confidence": "market-supported",
         },
     ],
-    "khao_lak": [
-        {
-            "name": "Pullman Khao Lak Resort",
-            "destination_label": "Khao Lak, Thailand (Andaman side — MONSOON in July)",
-            # The Andaman coast sees the south-west monsoon roughly May-Oct:
-            # a July trip here may be rained off. Flagged so the climate award
-            # can never rank it and its card can warn (2026-10-02).
-            "monsoon_months": (5, 6, 7, 8, 9, 10),
-            "stars": 5,  # Accor ALL listing: "Resort Hotel 5"
-            "board": "Bed & Breakfast",
-            # Accor ALL booking engine, 20-27 Jul 2027, 7 nights, taxes
-            # included, "EARLY BIRD OFFER - BED & BREAKFAST" (read 2026-09-30):
-            # Family Suite (5 guests max; 3 adults) EUR 912.12 + Deluxe Room
-            # (2 adults) EUR 412.33 = EUR 1,324.45 (= GBP 1,135.29). The
-            # room-only rate read on 2026-09-29 is not a deal (owner rule).
-            "base_nightly_room_rate_gbp": 162.18,
-            "peak_summer_nightly_room_rate_gbp": 162.18,
-            **_HKT_FLIGHT,
-            "highlights": (
-                "Kids' club, two pools, two restaurants",
-                "Family Suite for up to 5 (62 m²) plus a Deluxe Room",
-                "Google rating 4.5 (2.2k reviews); Accor reviews 4.5/5; TripAdvisor ≥4.5 not verified",
-            ),
-            "hotel_url": "https://www.pullmankhaolakresort.com/",
-            "dec_ambient_c": (0, 0),
-            "sea_temp_c": 30,
-            "beach": ("Bang Muang white-sand beach — but July is the SW monsoon on the Andaman "
-                      "coast (Takua Pa: 466 mm over 19.7 rain days, WMO normals); check the sea "
-                      "before swimming"),
-            # Estimate: private car HKT-Khao Lak from THB 1,700 per way for 1-8
-            # people (a Khao Lak airport-transfer operator's price list).
-            "transfer_gbp": 76.58,
-            "confidence": "market-supported",
-        },
-    ],
     # ── MEXICO AND JAPAN (H9, owner direction 2026-10-04: "ensure mexico,
     # japan ... are also considered too"). Research read 2026-10-04
     # (research/mexico_japan.md); every figure below is sourced in its comment.
@@ -5714,6 +5680,58 @@ def _unit_check_note(resort_name: str, config, *, travellers: int,
     return ""
 
 
+def climate_place_name(key: str = "", label: str = "") -> str:
+    """The place name the reader knows, for a climate record or a Notes line.
+
+    "Khao Lak, Thailand (Andaman side: SW MONSOON in July, ...)" is a config
+    label; the line the e-mail prints is just "Khao Lak". The catalogue's own
+    destination names (``HOLIDAY_SEARCH_QUERIES``) win over the label
+    because they are already short and already spelled for the reader.
+    """
+    full = HOLIDAY_SEARCH_QUERIES.get(str(key or "").strip().lower(), "")
+    if not full:
+        full = str(label or key or "")
+    return full.split(",")[0].strip()
+
+
+def record_climate_excluded(name: str, area: Any, stay_months: set[int]) -> None:
+    """Remember one dropped stay for the run result and the e-mail's Notes.
+
+    One entry per place per area: the same place can be dropped as a config
+    destination AND as a catalogue resort AND as a two-centre stop, and the
+    reader must see it once.
+    """
+    global LAST_CLIMATE_EXCLUDED
+    entry = {
+        "name": str(name),
+        "area": str(getattr(area, "id", "") or "monsoon"),
+        "months": sorted(int(m) for m in getattr(area, "months", ()) or ()),
+    }
+    if entry not in LAST_CLIMATE_EXCLUDED:
+        LAST_CLIMATE_EXCLUDED = LAST_CLIMATE_EXCLUDED + (entry,)
+
+
+def climate_excluded(
+    name: str,
+    *,
+    text: str = "",
+    airports: Optional[Sequence[str]] = None,
+    stay_months: Optional[set[int]] = None,
+) -> Optional[Any]:
+    """The exclusion area that drops this STAY, recording it — or None.
+
+    A connection is not a stay: callers pass only nights-bearing places (a
+    config destination, a catalogue resort, a two-centre STOP, a watch row),
+    never a bare leg.
+    """
+    area = climate.exclusion_for(
+        text=text, airports=airports, stay_months=stay_months or set(),
+    )
+    if area is not None:
+        record_climate_excluded(name, area, stay_months or set())
+    return area
+
+
 def collect_holiday_deals(
     config: HolidayConfig,
     max_budget_gbp: Optional[float] = None,
@@ -6423,7 +6441,20 @@ the cards' own prices.
             # it from the destination list.
             "held_back": False,
         }
+    # The climate gate (owner direction 2026-10-15): a stay whose nights fall
+    # inside a committed rainy season is never offered. Computed once for the
+    # whole run — every destination, resort and watch row is judged against the
+    # same months, and a CONNECTION through an excluded airport (a leg with no
+    # nights) is not a stay and is never gated.
+    global LAST_CLIMATE_EXCLUDED
+    LAST_CLIMATE_EXCLUDED = ()
+    stay_months = climate.stay_months_for_pairs(pairs)
     for dest in config.destinations:
+        if climate_excluded(
+            climate_place_name(dest.key, dest.label),
+            text=dest.label, airports=dest.airports, stay_months=stay_months,
+        ) is not None:
+            continue
         # Islands where eating out is not realistic: every board the hotel sells
         # is shown, each priced (BRIEF-H14 §2, 2026-10-05). Resolved once per
         # destination, beside the filter that already asks the same question.
@@ -6441,6 +6472,15 @@ the cards' own prices.
         for cabin in (destination_cabin(dest),):
             flight_mult = cabin_multipliers.get(cabin.upper(), 1.0)
             for resort in resorts:
+                # The same gate one level down: a resort inside an excluded
+                # area is dropped here rather than filtered, so it never
+                # reaches a card, the glance table or the over-budget list.
+                if climate_excluded(
+                    climate_place_name(dest.key, dest.label),
+                    text=f"{resort.get('name', '')} {resort.get('destination_label', '')} {dest.label}",
+                    airports=dest.airports, stay_months=stay_months,
+                ) is not None:
+                    continue
                 # A unit check that says the property cannot take this party in
                 # one booking REMOVES it, with the engine's own words as the
                 # reason (owner brief 2026-10-03, H4). Offering a resort we
@@ -6450,9 +6490,6 @@ the cards' own prices.
                     resort["name"], config,
                     travellers=config.travellers, hotel_evidence=hotel_evidence,
                 )
-                if refusal:
-                    filtered_out.append((resort["name"], refusal))
-                    continue
                 if refusal:
                     filtered_out.append((resort["name"], refusal))
                     continue
@@ -7022,6 +7059,10 @@ the cards' own prices.
 #: with human-readable reasons (rendered in the email's transparency note).
 LAST_FILTERED_OUT: tuple[tuple[str, str], ...] = ()
 
+#: Places excluded by climate rules (monsoon/season). Rendered in run result
+#: and in notes.
+LAST_CLIMATE_EXCLUDED: tuple[dict[str, Any], ...] = ()
+
 #: Long-haul (Business) resorts the last collect run priced but could not card
 #: because their cheapest option breached the budget, cheapest first. Rendered
 #: as the report's over-budget list so a priced-out destination is stated, not
@@ -7427,7 +7468,15 @@ def far_east_watch_rows(config: HolidayConfig) -> list[dict[str, Any]]:
     month = int(outbound[5:7])
     unit_rooms = 1 if len(config.rooms) >= 3 else len(config.rooms)
     rows: list[dict[str, Any]] = []
+    stay_months = climate.stay_months_for_pairs(shortlist)
     for dest in config.destinations:
+        # A watch row is a PLACE we would stay at, so the same climate gate
+        # applies: a watched rainy-season coast is not offered as a watch.
+        if climate_excluded(
+            climate_place_name(dest.key, dest.label),
+            text=dest.label, airports=dest.airports, stay_months=stay_months,
+        ) is not None:
+            continue
         watch = FAR_EAST_WATCH.get(dest.key.lower())
         if watch is None:
             continue

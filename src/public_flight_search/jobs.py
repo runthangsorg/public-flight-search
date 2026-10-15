@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 from typing import Optional
 
+from . import holidays as _holidays
 from .holidays import (
     _date_pairs,
     collect_holiday_deals,
@@ -652,6 +653,12 @@ def run_holiday_planner(
         # prices, which is waste the next read can be aimed away from.
         "multi_centre_wanted": multi_centre_wants,
         "multi_centre_reads_loaded": len(multi_centre_fares),
+        # The stays the climate gate dropped this run (owner direction
+        # 2026-10-15): one entry per place per area, collected while the cards,
+        # the watch list and the two-centre block were being built. Read through
+        # the module rather than a captured copy, so it is this run's list and
+        # not the empty tuple the import froze.
+        "climate_excluded": list(_holidays.LAST_CLIMATE_EXCLUDED),
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
         # True only when the run was held back because nothing a reader cares

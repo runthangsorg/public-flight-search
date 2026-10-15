@@ -1,0 +1,38 @@
+{
+  "schema": "climate_exclusions/1",
+  "areas": [
+    {
+      "id": "andaman-coast",
+      "airports": ["HKT", "KBV"],
+      "place_words": ["khao lak", "phuket", "krabi", "phi phi", "koh lanta"],
+      "months": [5, 6, 7, 8, 9, 10],
+      "why": "Andaman coast south-west monsoon (Khao Lak ~450 mm, 21 rainy days in July; Similan islands closed 16 May–14 Oct)",
+      "source": "https://khaolakcenter.com/khao-lak-seasons-and-climate/"
+    },
+    {
+      "id": "bangkok-rains",
+      "airports": ["BKK", "DMK"],
+      "place_words": ["bangkok"],
+      "months": [5, 6, 7, 8, 9, 10],
+      "why": "Bangkok's south-west monsoon rainy season",
+      "source": "https://www.tmd.go.th/en/"
+    },
+    {
+      "id": "maldives-sw",
+      "airports": ["MLE"],
+      "place_words": ["maldives"],
+      "months": [5, 6, 7, 8, 9, 10],
+      "why": "Maldives south-west monsoon",
+      "source": "https://www.weather2travel.com/maldives/"
+    }
+  ],
+  "warnings": [
+    {
+      "id": "japan-tsuyu",
+      "airports": ["HND", "NRT", "KIX", "ITM"],
+      "place_words": ["tokyo", "kyoto", "osaka"],
+      "months": [6, 7],
+      "text": "rainy season (tsuyu) usually ends mid–late July"
+    }
+  ]
+}

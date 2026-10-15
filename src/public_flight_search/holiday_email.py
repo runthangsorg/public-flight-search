@@ -33,6 +33,7 @@ from html import escape
 import re
 from typing import Any, Mapping, Optional, Sequence, Union
 
+from . import climate
 from . import holidays as hol
 from .cabin import SHORT_HAUL_CABIN
 from .holidays import (
@@ -1258,6 +1259,24 @@ def warning_lines(deal: PackageDeal, config: HolidayConfig) -> list[str]:
         name = _MONTH_ABBR[month - 1] if month else "your travel month"
         season, hazard = wet_season_words_compact(deal)
         out.append(f"{season} in {name} — {hazard}")
+    # A climate WARNING area (Japan's tsuyu) keeps the stay and says so on the
+    # card: the owner allows these cities as short stops, so the card is never
+    # removed for them — only flagged (owner direction 2026-10-15, 20:55 BST).
+    try:
+        stay = climate.stay_months_for_pairs(
+            [(deal.outbound_date, deal.returning_date)]
+        )
+    except Exception:  # noqa: BLE001 - a malformed date pair is no warning
+        stay = set()
+    if stay:
+        for area in climate.warnings_for(
+            text=f"{deal.resort_name} {getattr(deal, 'destination_label', '')}",
+            airports=[getattr(deal, "airport", "")] if getattr(deal, "airport", "") else None,
+            stay_months=stay,
+        ):
+            line = area.text
+            if line not in out:
+                out.append(line)
     try:
         total = headline_total(deal)
         budget = float(config.max_budget_gbp)
@@ -1604,8 +1623,34 @@ def _multi_centre_rows(config: HolidayConfig, *,
     except Exception:  # noqa: BLE001 - see above
         return []
     budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
+    # The climate gate (owner direction 2026-10-15): a trip with a STOP inside
+    # a committed rainy season is not offered at all. A warning area (Japan's
+    # tsuyu) keeps the trip and rides the row as a ⚠ line instead.
+    stay_months = climate.stay_months_for_pairs(pairs)
     rows: list[dict[str, Any]] = []
     for trip in trips:
+        excluded = False
+        warnings: list[str] = []
+        for stop in getattr(trip, "stops", ()) or ():
+            place = str(getattr(stop, "place", "") or "")
+            airport = str(getattr(stop, "airport", "") or "")
+            text = f"{place} {airport}"
+            if hol.climate_excluded(
+                hol.climate_place_name("", place),
+                text=text, airports=[airport] if airport else None,
+                stay_months=stay_months,
+            ) is not None:
+                excluded = True
+                break
+            for warning in climate.warnings_for(
+                text=text, airports=[airport] if airport else None,
+                stay_months=stay_months,
+            ):
+                line = f"{place.split('(')[0].strip()}: ⚠ {warning.text}"
+                if line not in warnings:
+                    warnings.append(line)
+        if excluded:
+            continue
         try:
             legs = trip_legs_for_dates(trip, outbound, returning)
         except ValueError:
@@ -1627,6 +1672,7 @@ def _multi_centre_rows(config: HolidayConfig, *,
             "fits": trip.fits(budget),
             "gap": max(trip.cost_low_gbp - budget, 0.0) if budget > 0 else 0.0,
             "cabin": two_centre_cabin(config),
+            "warnings": warnings,
             "url": build_google_flights_legs_url(
                 legs, travellers=int(config.travellers),
                 cabin_class=two_centre_cabin(config),
@@ -1768,6 +1814,10 @@ def _multi_centre_html(config: HolidayConfig, *,
     ]
     for row in rows:
         trip = row["trip"]
+        climate_warn = "".join(
+            f'<br><span style="color:#92400e;">{_esc(w)}</span>'
+            for w in row.get("warnings") or ()
+        )
         out.append(
             f'<div style="font-size:12px; color:{_MUTED}; padding:6px 0 0 0;">'
             f'<strong style="color:{_INK};">{_esc(trip.title)}</strong> · '
@@ -1775,7 +1825,7 @@ def _multi_centre_html(config: HolidayConfig, *,
             f'{_esc(trip.price_label())} · {_esc(_multi_centre_verdict(row))}<br>'
             + (_multi_centre_read_html(row) if row.get("read") else "")
             + f'why: {_esc(trip.why)}<br>'
-            f'catch: {_esc(trip.catch)} · '
+            f'catch: {_esc(trip.catch)}{climate_warn} · '
             f'<a href="{_esc(row["url"])}" style="color:{_ACCENT}; '
             f'text-decoration:none; font-weight:600;">flights ↗</a></div>'
         )
@@ -1810,6 +1860,8 @@ def _multi_centre_lines(config: HolidayConfig, *,
             )
         lines.append(f"    why: {trip.why}")
         lines.append(f"    catch: {trip.catch}")
+        for climate_warning in row.get("warnings") or ():
+            lines.append(f"    {climate_warning}")
         lines.append(f"    flights ({len(trip.legs)} legs): {row['url']}")
     return lines
 
@@ -1950,9 +2002,31 @@ def _note_reason(reason: Any) -> str:
     return text
 
 
+def _climate_excluded_line() -> str:
+    """The one Notes line for every stay the climate gate dropped.
+
+    ``Left out for the monsoon: Khao Lak, Bangkok (dates fall in their rainy
+    season).`` — place names in the order they were dropped, each once, even
+    when the same place was dropped as a destination, a resort and a stop.
+    """
+    names: list[str] = []
+    for entry in getattr(hol, "LAST_CLIMATE_EXCLUDED", ()) or ():
+        if not isinstance(entry, Mapping):
+            continue
+        name = str(entry.get("name", "") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    if not names:
+        return ""
+    return f"Left out for the monsoon: {', '.join(names)} (dates fall in their rainy season)."
+
+
 def _notes_html(config: HolidayConfig, deals: Sequence[PackageDeal]) -> str:
     """Strict filters and rules that could not be applied — one line each."""
     lines: list[str] = []
+    climate_line = _climate_excluded_line()
+    if climate_line:
+        lines.append(_esc(climate_line))
     for name, reason in hol.LAST_FILTERED_OUT:
         text = _note_reason(reason)
         if not text:
@@ -2161,6 +2235,9 @@ def render_holiday_report_compact_text(
 
 def _notes_lines(config: HolidayConfig, deals: Sequence[PackageDeal]) -> list[str]:
     lines: list[str] = []
+    climate_line = _climate_excluded_line()
+    if climate_line:
+        lines.append(climate_line)
     for name, reason in hol.LAST_FILTERED_OUT:
         text = _note_reason(reason)
         if not text:

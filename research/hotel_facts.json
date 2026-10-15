@@ -1,0 +1,374 @@
+{
+ "schema": "hotel_facts/1",
+ "generated_at": "2026-10-15T19:45:00+00:00",
+ "note": "Public hotel facts summarised from the sources listed on each line; research 2026-10-15.",
+ "hotels": [
+  {
+   "name": "Pullman Khao Lak Resort",
+   "match": [
+    "pullman khao lak"
+   ],
+   "monsoon": {
+    "verdict": "wet_season",
+    "months": [
+     6,
+     7
+    ],
+    "why": "Andaman coast south-west monsoon: ~452 mm, 21 rainy days in July; Similan islands closed 16 May-14 Oct",
+    "source": "https://khaolakcenter.com/khao-lak-seasons-and-climate/"
+   },
+   "walkable": {
+    "summary": "Remote: nothing documented within 1 km; free shuttle to Bang Muang market",
+    "isolated": true,
+    "sources": [
+     "https://luxuryescapes.com/gb/offer/pullman-khao-lak-resort-thailand-asia/006RF00000FmHnVYAV",
+     "https://ph.trip.com/hotels/takua-pa-hotel-detail-67592551/pullman-khao-lak-resort/review.html"
+    ]
+   },
+   "halal": {
+    "in_hotel": "unknown",
+    "summary": "No halal evidence found",
+    "nearby": "None found nearby",
+    "sources": [
+     "https://nf.halalbooking.com/pullman-phuket-karon-beach-resort/p/31659"
+    ]
+   },
+   "activities": {
+    "summary": "4 pools, waterslide, kids club, teen zone, free bikes, spa with hammam",
+    "sources": [
+     "https://luxuryescapes.com/gb/offer/pullman-khao-lak-resort-thailand-asia/006RF00000FmHnVYAV",
+     "https://www.ttgmice.com/?p=35091"
+    ]
+   },
+   "unique": {
+    "summary": "New-build 5-star, Sino-Portuguese style; all-inclusive plan sold",
+    "sources": [
+     "https://bluebaytravel.co.uk/holidays/thailand/khao-lak/pullman-khao-lak-resort",
+     "https://www.ttgmice.com/?p=35091"
+    ]
+   },
+   "guest_rating": {
+    "score": 4.8,
+    "scale": 5,
+    "count": 2084,
+    "site": "Tripadvisor",
+    "source": "https://www.tripadvisor.com/Hotel_Review-g20862562-d21504399-Reviews-or50-Pullman_Khao_Lak_Resort-Bang_Muang_Khao_Lak_Takua_Pa_Phang_Nga_Province.html"
+   }
+  },
+  {
+   "name": "Novotel Lombok Resort & Villas",
+   "match": [
+    "novotel lombok"
+   ],
+   "monsoon": {
+    "verdict": "dry_season",
+    "months": [
+     6,
+     7
+    ],
+    "why": "Lombok dry season: ~56 mm over ~3 days in July",
+    "source": "https://www.weather2travel.com/lombok/kuta/july/"
+   },
+   "walkable": {
+    "summary": "Own beach, Mandalika beach ~100-540 m; Kuta village ~3 km by taxi",
+    "isolated": "partly",
+    "sources": [
+     "https://all.accor.com/hotel/0571/index.en.shtml",
+     "https://uk.trip.com/hotels/central-lombok-regency-hotel-detail-1460785/novotel-lombok-resort-and-villas"
+    ]
+   },
+   "halal": {
+    "in_hotel": "partial",
+    "summary": "Main kitchen halal-certified (2019 report); halal meals listed",
+    "nearby": "Lombok is Muslim-majority; no named restaurant checked",
+    "sources": [
+     "https://www.nowjakarta.co.id/the-splendours-of-the-novotel-lombok-resort-villas/",
+     "https://uk.trip.com/hotels/central-lombok-regency-hotel-detail-1460785/novotel-lombok-resort-and-villas"
+    ]
+   },
+   "activities": {
+    "summary": "On-site dive centre, water sports, 3 pools, kids club; Sade Sasak village, Rinjani",
+    "sources": [
+     "https://all.accor.com/hotel/0571/index.en.shtml",
+     "https://uk.trip.com/hotels/central-lombok-regency-hotel-detail-1460785/novotel-lombok-resort-and-villas"
+    ]
+   },
+   "unique": {
+    "summary": "Sasak-style architecture on a quiet private bay; private-pool villas (4-star)",
+    "sources": [
+     "https://all.accor.com/hotel/0571/index.en.shtml"
+    ]
+   },
+   "guest_rating": {
+    "score": 4.1,
+    "scale": 5,
+    "count": 2643,
+    "site": "Tripadvisor",
+    "source": "https://www.tripadvisor.co.uk/Hotel_Review-g3607401-d299542-Reviews-Novotel_Lombok_Resort_Villas-Pujut_Lombok_West_Nusa_Tenggara.html"
+   }
+  },
+  {
+   "name": "Nungwi Dreams by Mantis",
+   "match": [
+    "nungwi dreams"
+   ],
+   "monsoon": {
+    "verdict": "dry_season",
+    "months": [
+     6,
+     7
+    ],
+    "why": "Zanzibar long dry season June-October",
+    "source": "https://www.expertafrica.com/zanzibar/weather-and-climate"
+   },
+   "walkable": {
+    "summary": "Beachfront; Nungwi village ~20 min walk by day, tuk-tuk at night",
+    "isolated": "partly",
+    "sources": [
+     "https://www.timbuktutravel.com/lodge/nungwi-dreams",
+     "https://uk.trip.com/hotels/nungwi-hotel-detail-10030403/nungwi-dreams"
+    ]
+   },
+   "halal": {
+    "in_hotel": "yes",
+    "summary": "Oct-2026 guest: 'the food is all halal'; halal menu confirmed by management",
+    "nearby": "12 restaurants within 0.75 mi; Muslim-majority island",
+    "sources": [
+     "https://www.tripadvisor.com/Hotel_Review-g616016-d12786499-Reviews-Nungwi_Dreams_By_Mantis-Nungwi_Zanzibar_Island_Zanzibar_Archipelago.html",
+     "https://uk.trip.com/hotels/nungwi-hotel-detail-10030403/nungwi-dreams"
+    ]
+   },
+   "activities": {
+    "summary": "Mnemba Atoll diving and snorkelling from the beach, dhow cruises, spice tours, Stone Town",
+    "sources": [
+     "https://www.timbuktutravel.com/lodge/nungwi-dreams",
+     "https://all.accor.com/hotel/B404/index.en.shtml"
+    ]
+   },
+   "unique": {
+    "summary": "Boutique, two infinity pools, rooftop Sky Bar; 4-bedroom villa with private pool",
+    "sources": [
+     "https://www.timbuktutravel.com/lodge/nungwi-dreams",
+     "https://all.accor.com/hotel/B404/index.en.shtml"
+    ]
+   },
+   "guest_rating": {
+    "score": 4.5,
+    "scale": 5,
+    "count": 462,
+    "site": "Tripadvisor",
+    "source": "https://www.tripadvisor.com/Hotel_Review-g616016-d12786499-Reviews-Nungwi_Dreams_By_Mantis-Nungwi_Zanzibar_Island_Zanzibar_Archipelago.html"
+   }
+  },
+  {
+   "name": "Garrya Tongsai Bay Samui",
+   "match": [
+    "tongsai bay",
+    "garrya tongsai"
+   ],
+   "monsoon": {
+    "verdict": "dry_season",
+    "months": [
+     6,
+     7
+    ],
+    "why": "Gulf of Thailand side, sheltered from the monsoon; Samui's rains are Oct-Dec",
+    "source": "https://www.visitthailandtoday.com/guides/best-time-to-visit-koh-samui"
+   },
+   "walkable": {
+    "summary": "Private 200 m beach; Choeng Mon beach and shops ~0.8 km (about 9 min walk)",
+    "isolated": "partly",
+    "sources": [
+     "https://www.za.kayak.com/Ko-Samui-Hotels-The-Tongsai-Bay.190833.ksp",
+     "https://www.destination2.co.uk/hotels/garrya-tongsai-bay-samui"
+    ]
+   },
+   "halal": {
+    "in_hotel": "unknown",
+    "summary": "No halal evidence in the hotel",
+    "nearby": "Nearest halal in Chaweng and Bophut (Friday halal market), by car",
+    "sources": [
+     "https://halalspy.com/halal-food-guide/asia/koh-samui/"
+    ]
+   },
+   "activities": {
+    "summary": "Private beach, 3 pools, spa, Thai cooking, jungle hike, tennis/padel, kids club",
+    "sources": [
+     "https://www.anadventurousworld.com/garrya-tongsai-bay-review/",
+     "https://www.greatsmallhotels.com/ko-samui-boutique-hotels/garrya-tongsai-bay-samui"
+    ]
+   },
+   "unique": {
+    "summary": "Pure luxury: Samui's first 5-star (1987), own hidden bay in 28 acres, plunge-pool suites",
+    "sources": [
+     "https://www.anadventurousworld.com/garrya-tongsai-bay-review/",
+     "https://www.greatsmallhotels.com/ko-samui-boutique-hotels/garrya-tongsai-bay-samui"
+    ]
+   },
+   "guest_rating": {
+    "score": 4.8,
+    "scale": 5,
+    "count": 3649,
+    "site": "Tripadvisor",
+    "source": "https://www.tripadvisor.com/HotelsList-Ko_Samui-Luxury-Spa-Resorts-zfp40012.html"
+   }
+  },
+  {
+   "name": "Pullman Lombok Merujani Mandalika Beach Resort",
+   "match": [
+    "pullman lombok",
+    "merujani"
+   ],
+   "monsoon": {
+    "verdict": "dry_season",
+    "months": [
+     6,
+     7
+    ],
+    "why": "Lombok dry season: ~56 mm over ~3 days in July",
+    "source": "https://www.weather2travel.com/lombok/kuta/july/"
+   },
+   "walkable": {
+    "summary": "Pantai Seger 200 m, Mandalika beach ~650 m-1 km; Kuta ~2 km (car recommended)",
+    "isolated": "partly",
+    "sources": [
+     "https://all.accor.com/hotel/A1K2/index.en.shtml",
+     "https://halalbooking.com/en-us/pullman-lombok-merujani-mandalika-beach-resort/p/430120"
+    ]
+   },
+   "halal": {
+    "in_hotel": "partial",
+    "summary": "Some menu options halal (Halalbooking); halal meals listed",
+    "nearby": "Lombok is Muslim-majority; no named restaurant checked",
+    "sources": [
+     "https://halalbooking.com/en-us/pullman-lombok-merujani-mandalika-beach-resort/p/430120",
+     "https://ae.trip.com/hotels/pujut-hotel-detail-80938654/pullman-lombok-mandalika-beach-resort"
+    ]
+   },
+   "activities": {
+    "summary": "Swim-up bar pool, spa, kids' pool; Tanjung Aan, Merese Hill, Sasak villages, Mandalika circuit",
+    "sources": [
+     "https://all.accor.com/hotel/A1K2/index.en.shtml",
+     "https://guide.michelin.com/lv/en/hotels-stays/lombok/pullman-lombok-merujani-mandalika-beach-resort-13508"
+    ]
+   },
+   "unique": {
+    "summary": "Accor's first 5-star on Lombok, Michelin-listed; 2-bed beach villas with private pool for up to 6",
+    "sources": [
+     "https://guide.michelin.com/lv/en/hotels-stays/lombok/pullman-lombok-merujani-mandalika-beach-resort-13508",
+     "https://all.accor.com/hotel/A1K2/index.en.shtml"
+    ]
+   },
+   "guest_rating": {
+    "score": 4.7,
+    "scale": 5,
+    "count": 699,
+    "site": "Tripadvisor",
+    "source": "https://www.tripadvisor.com/Hotel_Review-g2155769-d23663712-Reviews-Pullman_Lombok_Merujani_Mandalika_Beach_Resort-Kuta_Lombok_West_Nusa_Tenggara.html"
+   }
+  },
+  {
+   "name": "Melati Beach Resort & Spa",
+   "match": [
+    "melati beach"
+   ],
+   "monsoon": {
+    "verdict": "dry_season",
+    "months": [
+     6,
+     7
+    ],
+    "why": "Gulf of Thailand side, sheltered from the monsoon; Samui's rains are Oct-Dec",
+    "source": "https://www.visitthailandtoday.com/guides/best-time-to-visit-koh-samui"
+   },
+   "walkable": {
+    "summary": "Secluded bay; Chaweng ~15 min by shuttle; nothing within 1 km",
+    "isolated": true,
+    "sources": [
+     "https://www.destinology.co.uk/hotels/koh-samui/melati-beach-resort-%26-spa/11414",
+     "https://www.turquoiseholidays.co.uk/destinations/asia/thailand/koh-samui-koh-phangan/melati-beach-resort-spa/"
+    ]
+   },
+   "halal": {
+    "in_hotel": "unknown",
+    "summary": "No halal evidence",
+    "nearby": "Nearest halal in Bophut/Chaweng by car",
+    "sources": [
+     "https://halalspy.com/halal-food-guide/asia/koh-samui/",
+     "https://www.destinology.co.uk/hotels/koh-samui/melati-beach-resort-%26-spa/11414"
+    ]
+   },
+   "activities": {
+    "summary": "2 pools, kids club, Thai cooking and boxing, snorkelling, kayaks",
+    "sources": [
+     "https://www.destinology.co.uk/hotels/koh-samui/melati-beach-resort-%26-spa/11414",
+     "https://www.turquoiseholidays.co.uk/destinations/asia/thailand/koh-samui-koh-phangan/melati-beach-resort-spa/"
+    ]
+   },
+   "unique": {
+    "summary": "Thai-village layout, many private pools; all-inclusive sold",
+    "sources": [
+     "https://www.turquoiseholidays.co.uk/destinations/asia/thailand/koh-samui-koh-phangan/melati-beach-resort-spa/",
+     "https://www.destinology.co.uk/hotels/koh-samui/melati-beach-resort-%26-spa/11414"
+    ]
+   },
+   "guest_rating": {
+    "score": 4.5,
+    "scale": 5,
+    "count": 2211,
+    "site": "Tripadvisor",
+    "source": "https://www.tripadvisor.com/HotelsList-Ko_Samui-Luxury-Spa-Resorts-zfp40012.html"
+   }
+  },
+  {
+   "name": "Banyan Tree Samui",
+   "match": [
+    "banyan tree samui"
+   ],
+   "monsoon": {
+    "verdict": "dry_season",
+    "months": [
+     6,
+     7
+    ],
+    "why": "Gulf of Thailand side, sheltered from the monsoon; Samui's rains are Oct-Dec",
+    "source": "https://www.visitthailandtoday.com/guides/best-time-to-visit-koh-samui"
+   },
+   "walkable": {
+    "summary": "Private bay; Silver Beach 0.5 km on foot; Lamai 1.8 km by car",
+    "isolated": "partly",
+    "sources": [
+     "https://halalbooking.com/en-us/banyan-tree-samui/p/32372"
+    ]
+   },
+   "halal": {
+    "in_hotel": "partial",
+    "summary": "Halal food on request (Halalbooking)",
+    "nearby": "Lamai halal restaurant; Hua Thanon Muslim village nearby",
+    "sources": [
+     "https://halalbooking.com/en-us/banyan-tree-samui/p/32372",
+     "https://halalspy.com/halal-food-guide/asia/koh-samui/"
+    ]
+   },
+   "activities": {
+    "summary": "House-reef snorkelling, paddle boards, sailing, Thai boxing, Rainforest spa, kids club",
+    "sources": [
+     "https://www.destinology.co.uk/hotels/koh-samui/banyan-tree-samui/18051"
+    ]
+   },
+   "unique": {
+    "summary": "Pure luxury: all pool villas above a private bay; in-villa private-chef dining",
+    "sources": [
+     "https://www.destinology.co.uk/hotels/koh-samui/banyan-tree-samui/18051"
+    ]
+   },
+   "guest_rating": {
+    "score": 4.8,
+    "scale": 5,
+    "count": 3230,
+    "site": "Tripadvisor",
+    "source": "https://www.tripadvisor.com/HotelsList-Ko_Samui-Luxury-Spa-Resorts-zfp40012.html"
+   }
+  }
+ ]
+}

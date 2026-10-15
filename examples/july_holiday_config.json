@@ -74,16 +74,6 @@
       "nonstop_source": "No London nonstop and no airport on Koh Phangan at all: fly to Koh Samui (USM, fastest listed 1-stop 14h55 via BKK, Google Flights LHR 20 Jul 2027, read 2026-09-29) and take the resort speedboat. Not nonstop."
     },
     {
-      "key": "khao_lak",
-      "label": "Khao Lak, Thailand (Andaman side: SW MONSOON in July, 466 mm of rain; 25-32°C)",
-      "airports": [
-        "HKT"
-      ],
-      "flight_hours": 14.5,
-      "flight_hours_source": "No nonstop listed for 20 Jul 2027. Fastest 1-stop on Google Flights for LHR-HKT (read 2026-09-29): THAI via BKK, 14h30; Etihad via AUH, 14h35. Then about 1h40 by road from Phuket airport",
-      "nonstop_source": "Khao Lak is served from HKT. Google Flights lists NO nonstop for LHR-HKT on 20 Jul 2027 (read 2026-09-29), and Virgin Atlantic's HKT service is SEASONAL (it starts 18 Oct 2026) with no season end given by any source in this repository or the 2026-10-04 research, so the June/July 2027 season cannot be confirmed from here either. UNKNOWN, and unknown is priced economy (owner rule 2026-10-04: business only for a direct flight)."
-    },
-    {
       "key": "zanzibar",
       "label": "Zanzibar, Tanzania (Nungwi beach; dry season, 22-29°C in July)",
       "airports": [
