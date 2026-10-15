@@ -143,6 +143,18 @@ EXPEDIA_BASE = "https://www.expedia.co.uk/Hotel-Search"
 GOOGLE_HOTELS_BASE = "https://www.google.com/travel/hotels"
 GOOGLE_FLIGHTS_SEARCH_BASE = "https://www.google.com/travel/flights/search"
 
+#: The airline that can actually SELL a two-night stopover in each hub the report
+#: links for (owner brief 2026-10-15). A carrier's own multi-city booking form is
+#: the one place a stopover in its hub is a supported product rather than two
+#: unrelated tickets, so these are the links a card offers beside the unread
+#: stopover row: Qatar Airways for Doha (its form takes Multi-city and a Doha
+#: stopover) and Oman Air for Muscat. Keyed by hub, because the row names one hub
+#: and the reader wants the airline that flies it.
+STOPOVER_AIRLINE_LINKS: dict[str, tuple[str, str]] = {
+    "DOH": ("Qatar Airways", "https://www.qatarairways.com/en-gb/homepage.html"),
+    "MCT": ("Oman Air", "https://www.omanair.com/gb/en"),
+}
+
 # Human-searchable destination query per holiday key. Used for Booking.com,
 # Expedia and Google Hotels parametric links so every link encodes the real
 # destination + dates + party instead of a static homepage.
@@ -319,6 +331,7 @@ VERIFIED_LINK_BASES: frozenset[str] = frozenset(
         *EASYJET_DESTINATION_PATHS.values(),
         *JET2_DESTINATION_PATHS.values(),
         *ATOL_OPERATOR_LINK_BASES,
+        *(url for _label, url in STOPOVER_AIRLINE_LINKS.values()),
     }
 )
 
@@ -3372,7 +3385,9 @@ STOPOVER_LINK_HUBS: tuple[str, ...] = ("DOH", "MCT")
 #: two days later, beach - hub on the return date, hub - London two days after
 #: that). One read answers exactly one (pair, hub, airport): a fare is only ever
 #: shown for the dates it was read for, so a card priced for another pair says
-#: "price on request" instead of borrowing a number that was never read for it.
+#: "not priced yet" instead of borrowing a number that was never read for it
+#: (wording changed 2026-10-15: the stopover is the holiday being asked about,
+#: so "on request" is the one answer that will not do).
 #: ``status`` says what the read produced, and only ``priced`` rows with a
 #: ``total_gbp`` may be committed as a fare — ``no_priced_economy_card``,
 #: ``blocked`` and ``error`` are recorded so the gap is visible, and render as
@@ -3943,8 +3958,9 @@ def load_stopover_reads(path: str = "") -> tuple[dict[str, Any], ...]:
 
 
 #: Read fares, keyed by the exact pair, hub and airport they were read for.
-#: Any (pair, hub, airport) with no key here renders as "price on request" with
-#: the multi-city link rather than a borrowed figure. No itinerary was listed
+#: Any (pair, hub, airport) with no key here renders as "not priced yet" with
+#: the multi-city link rather than a borrowed figure, and
+#: :func:`stopover_wanted` names it as a row still to read. No itinerary was listed
 #: for Doha - Lombok, Muscat - Zanzibar, Dubai - Koh Samui or Dubai - Lombok
 #: either (checked 2026-09-30, each a correctly-formed multi-city search that
 #: Google itself returned no options for); those cards say so rather than
@@ -3986,6 +4002,22 @@ def stopover_fares_for(hub: str, airport: str, season: str, *,
     return tuple(found)
 
 
+def stopover_fares_registry(
+    stopover_reads: Optional[Sequence[Mapping[str, Any]]] = None,
+) -> dict[tuple[tuple[str, str], str, str], tuple[dict[str, Any], ...]]:
+    """This run's stopover fares: the committed reads plus its private exports.
+
+    One definition, because two callers need the same answer: ``collect_holiday_deals``
+    prices cards from it, and :func:`stopover_wanted` measures the gap between what
+    it holds and what the cards need. Resolved per call so the module's committed
+    table is never mutated, and an empty export is exactly the committed table.
+    """
+    reads = tuple(stopover_reads or ())
+    if not reads:
+        return STOPOVER_FARES
+    return _stopover_fares(tuple(_STOPOVER_READS) + reads)
+
+
 def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,
                         *, origin: str = "LHR", travellers: int = 5,
                         cabin_class: str = "ECONOMY") -> str:
@@ -3999,6 +4031,67 @@ def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,
     """
     legs = stopover_legs(hub, airport, outbound, returning, origin=origin)
     return build_google_flights_legs_url(legs, travellers=travellers, cabin_class=cabin_class)
+
+
+def stopover_wanted(
+    deals: Sequence[Any],
+    fares: Optional[Mapping[Any, Any]] = None,
+    *,
+    season: str = "winter",
+    hubs: Sequence[str] = STOPOVER_LINK_HUBS,
+) -> list[dict[str, Any]]:
+    """Every stopover fare this run's rendered cards need and do not have.
+
+    The July e-mail shows a "1-Stop via <hub>, 2 nights each way · price on
+    request" row on every long-haul card. That row is unpriced whenever no
+    whole-party fare was READ for that card's own (pair, hub, airport) — a fare is
+    only ever shown for the dates and airports it was read for, and the renderer
+    refuses to borrow a number from another pair. This function is the other half
+    of that refusal: it lists exactly what is missing, in the private reader's
+    ``--wanted`` input format, so the next read is one command instead of a
+    hand-written list (
+    ``python -m holiday_scraper.live.stopover_reads --wanted <this list> --out ...``).
+
+    A card needs a stopover option only when it renders one at all: a short-haul
+    card has no flight options and no stopover row, so it is not asked about. The
+    pair is the card's OWN chosen pair — the one its price is built on — because a
+    read for a neighbouring fortnight could never price this card.
+
+    ``fares`` is the run's registry (``STOPOVER_FARES``, or the committed reads
+    plus this run's private exports); the default is the committed registry, so a
+    caller that has already loaded exports can price from them without mutating
+    module state. Hubs without a priced read for the card's pair are listed even
+    when another hub already is: two hubs are two itineraries, and the point of
+    the list is to name each one.
+    """
+    source = STOPOVER_FARES if fares is None else fares
+    season_key = (season or "").strip().lower() or "winter"
+    wanted: list[dict[str, Any]] = []
+    seen: set[tuple[tuple[str, str], str, str]] = set()
+    for deal in deals or ():
+        # Only a card that offers flight options renders the stopover rows at all.
+        if not (getattr(deal, "flight_options", None) or ()):
+            continue
+        airport = str(getattr(deal, "destination_airport", "") or "").strip().upper()
+        outbound = str(getattr(deal, "outbound_date", "") or "")
+        returning = str(getattr(deal, "return_date", "") or "")
+        if not (airport and outbound and returning):
+            continue
+        pair = (outbound, returning)
+        for hub in hubs:
+            key = (pair, str(hub).upper(), airport)
+            if key in seen:
+                continue
+            if stopover_fares_for(hub, airport, season_key, pair=pair, fares=source):
+                continue
+            seen.add(key)
+            wanted.append({
+                "pair": [outbound, returning],
+                "hub": str(hub).upper(),
+                "airport": airport,
+                "season": season_key,
+            })
+    return wanted
 
 
 # Recovered criteria registry (0-10 curated benchmarks per resort, from the
@@ -5421,10 +5514,7 @@ the cards' own prices.
     # This run's stopover fares: the committed reads plus whatever the private
     # engine exported. Resolved once here, so one run is internally consistent
     # and the module's committed table is never mutated.
-    stopover_fares = (
-        STOPOVER_FARES if not stopover_reads
-        else _stopover_fares(tuple(_STOPOVER_READS) + tuple(stopover_reads))
-    )
+    stopover_fares = stopover_fares_registry(stopover_reads)
     pairs = pricing_order(config)
     priced_pairs_set = set(pairs)
     headline = priced_date_pair(config)
@@ -7881,7 +7971,7 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
                     '<br>(' + ('c' if has_business else 'b')
                     + ') Economy + 2 nights in a Gulf hub each way, hotel included: no '
                            'whole-party fare was read for these dates, so nothing is priced here — '
-                           'price on request, one click to price it:')
+                           'not priced yet, one click to price it:')
                 out.extend(lines)
         if not offered:
             letter = 'c' if has_business else 'b'

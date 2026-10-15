@@ -9,8 +9,9 @@ Everything the redesign promises is pinned here, from synthetic fixtures only:
   price moved against the LAST observation, never a benchmark (AMEND-H1 §2).
 * One at-a-glance table, one row per deal, with the one key line under it.
 * A long-haul card has exactly three flight rows; an unpriced stopover says
-  "price on request" and links the itinerary rather than printing a stale
-  number (owner note of 2026-10-04).
+  "not priced yet" and links the itinerary rather than printing a stale number
+  (owner note of 2026-10-04; the wording changed on 2026-10-15, because the
+  stopover IS the holiday and "on request" reads as "we did not bother").
 * The critic's own complaints cannot come back: no ISO timestamp, no "Direct",
   no benchmark percentage, no collapsible <details>, no workflow or script
   name, and 12 deals still fit under 1,500 words.
@@ -32,6 +33,7 @@ from public_flight_search import holidays as hol
 from public_flight_search.holiday_email import (
     breakdown_parts,
     departure_range_words,
+    flight_rows,
     freshness_tag,
     nights_words,
     link_row,
@@ -652,6 +654,41 @@ class FlightRowTests(unittest.TestCase):
         self.assertIn("1-Stop via Singapore", html)
         self.assertNotIn("1 stop via Singapore", html)
 
+    def test_a_connection_through_singapore_says_it_is_a_change_of_plane(self):
+        """SIN is a plane change on the way to the island, never a stopover stay.
+
+        The owner asked for a stopover in Doha or Muscat only (2026-10-15), and a
+        route that just says "via Singapore" reads as a stay the report failed to
+        price. Both spellings of the connection are covered, because the routing
+        strings carry the airport code as well as the city name.
+        """
+        # Both spellings of the connection, in the routing convention the configs
+        # use ("no London nonstop: <the route>"): the city name and the code.
+        for routing, rendered in (
+            ("no London nonstop: 1 stop via Singapore (BA + Scoot)",
+             "1-Stop via Singapore (change of plane, no stay)"),
+            ("no London nonstop: 1 stop via SIN, 17h15",
+             "1-Stop via SIN, 17h15 (change of plane, no stay)"),
+        ):
+            with self.subTest(routing=routing):
+                html = _render(deals=[_deal(flight_options=_long_haul_options(),
+                                            routing=routing)])
+                self.assertIn(rendered, html)
+
+    def test_no_hub_or_stopover_row_is_offered_for_singapore(self):
+        # No SIN hub anywhere, and a card routed via SIN still offers its
+        # stopover row for Doha: the connection is not a hub to stay in.
+        self.assertNotIn("SIN", hol.STOPOVER_HUBS)
+        self.assertNotIn("SIN", hol.STOPOVER_LINK_HUBS)
+        for code, info in hol.STOPOVER_HUBS.items():
+            with self.subTest(hub=code):
+                self.assertNotIn("Singapore", str(info["label"]))
+        self.assertNotIn("SIN", hol.STOPOVER_AIRLINE_LINKS)
+        html = _render(deals=[_deal(flight_options=_long_haul_options(),
+                                    routing="no London nonstop: 1 stop via SIN")])
+        self.assertIn("1-Stop via Doha, 2 nights each way", html)
+        self.assertNotIn("Singapore, 2 nights each way", html)
+
     def test_each_row_is_a_total_for_the_party_not_a_flight_figure(self):
         html = _render(deals=[_deal(flight_options=_long_haul_options())])
         self.assertIn("£6,042", html)
@@ -661,12 +698,50 @@ class FlightRowTests(unittest.TestCase):
         deal = _deal(flight_options=_long_haul_options() + (_stopover(),))
         html = _render(deals=[deal])
         self.assertIn("1-Stop via Doha, 2 nights each way", html)
-        self.assertNotIn("price on request", html)
+        self.assertNotIn("not priced yet", html)
 
-    def test_an_unpriced_stopover_says_price_on_request_and_links_the_itinerary(self):
+    def test_an_unpriced_stopover_says_not_priced_yet_and_links_the_airlines(self):
+        """The row names the gap AND the two places a stopover in it can be booked.
+
+        The itinerary link is our own multi-city search; the airline links are the
+        carriers whose own booking form sells the stopover (Qatar Airways for
+        Doha, Oman Air for Muscat), so the offer is actionable even before the
+        private reader has been pointed at the pair.
+        """
         html = _render(deals=[_deal(flight_options=_long_haul_options())])
-        self.assertIn("price on request", html)
+        self.assertIn("not priced yet ↗", html)
         self.assertIn("travel/flights/search", html)
+        for label, url in hol.STOPOVER_AIRLINE_LINKS.values():
+            with self.subTest(airline=label):
+                self.assertIn(f'>{label} ↗</a>', html)
+                self.assertIn(url, html)
+                self.assertIn(url, hol.VERIFIED_LINK_BASES)
+        # The plain-text part names them too, so the two halves agree.
+        text = render_holiday_report_compact_text(
+            _config(), generated_at=GENERATED_AT,
+            deals=[_deal(flight_options=_long_haul_options())])
+        self.assertIn("Qatar Airways", text)
+        self.assertIn("Oman Air", text)
+
+    def test_the_row_hubs_own_airline_comes_first(self):
+        # The row names Doha, so Qatar Airways leads: it is the airline that flies
+        # this itinerary, and the one that survives if a link has to be shed.
+        rows = flight_rows(_deal(flight_options=_long_haul_options()))
+        (_cabin, _route, price) = rows[-1]
+        self.assertEqual(price[0], "not priced yet")
+        self.assertEqual([label for label, _url in price[2]][0], "Qatar Airways")
+
+    def test_a_stopover_row_never_says_price_on_request(self):
+        """The old wording is gone from the e-mail, priced or not (2026-10-15).
+
+        "price on request" is what the owner objected to: the stopover is the
+        holiday being asked about, so an unpriced row has to read as a gap we know
+        about rather than as a request he has to make.
+        """
+        for options in (_long_haul_options(), _long_haul_options() + (_stopover(),)):
+            with self.subTest(priced=len(options) > 2):
+                html = _render(deals=[_deal(flight_options=options)])
+                self.assertNotIn("price on request", visible_text(html))
 
     def test_no_card_prints_a_stale_stopover_number(self):
         # The committed multi-city reads are for the old dates, so the stopover

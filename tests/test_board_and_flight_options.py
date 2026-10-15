@@ -207,10 +207,10 @@ class StopoverSeasonTests(unittest.TestCase):
 
     def test_a_card_with_no_read_fare_offers_the_hub_itinerary_to_price(self):
         # A long-haul card with no read stopover fare must offer the itinerary
-        # to price rather than invent one, and say plainly that it is price on
-        # request. The read-fare map is emptied for this test so the answer does
-        # not depend on which reads happen to be committed; the December config
-        # no longer has a long-haul card at all (its only ones were 3-room or
+        # to price rather than invent one, and say plainly that nothing is priced
+        # yet. The read-fare map is emptied for this test so the answer does not
+        # depend on which reads happen to be committed; the December config no
+        # longer has a long-haul card at all (its only ones were 3-room or
         # unknown units, filtered by the one-booking rule on 2026-10-02).
         july = _july_uncapped()
         saved = hol.STOPOVER_FARES
@@ -222,10 +222,13 @@ class StopoverSeasonTests(unittest.TestCase):
             )
         finally:
             hol.STOPOVER_FARES = saved
-        # No invented price: the block says nothing is priced, calls it price on
-        # request, and links the multi-city itinerary per hub, naming the hub
-        # hotel the owner would stay in.
-        self.assertIn("price on request", html)
+        # No invented price: the block says nothing is priced yet, and links the
+        # multi-city itinerary per hub, naming the hub hotel the owner would stay
+        # in. The wording changed on 2026-10-15 (the stopover is the holiday, so
+        # "price on request" is the one answer that will not do) and the old
+        # string may not survive anywhere in the report.
+        self.assertIn("not priced yet", html)
+        self.assertNotIn("price on request", html)
         self.assertIn("price this multi-city itinerary", html)
         self.assertIn("Rixos Gulf Hotel Doha", html)
         self.assertIn("Mövenpick Hotel and Apartments Ghala Muscat", html)

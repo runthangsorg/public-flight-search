@@ -73,6 +73,19 @@ _DAY_ABBR = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 #: "Nonstop" / "1-Stop via Doha": never the bare word "Direct", which on a
 #: holiday card reads as "you book the flight yourself".
 _STOP_PREFIX_RE = re.compile(r"^(\d)\s*[- ]?\s*stop\b", re.IGNORECASE)
+#: A connection through Singapore. SIN is a CHANGE OF PLANE on the way to Lombok,
+#: Bali and the Gulf of Thailand, never a stay: the owner asked for a stopover in
+#: Doha or Muscat only (2026-10-15), so a route naming it says what it is. Matching
+#: the airport code as well as the city name, because the routing strings carry
+#: both.
+_VIA_SIN_RE = re.compile(r"\bvia\s+(?:SIN|Singapore)\b", re.IGNORECASE)
+_NO_SIN_STAY = " (change of plane, no stay)"
+
+#: One flight row's price cell. Exactly three shapes, because the cell is one table
+#: column wide: a bare figure, a figure (or "not priced yet") with the itinerary
+#: link, and — for an unread stopover row — that link plus the airlines that fly the
+#: hub it names.
+FlightPrice = Union[str, tuple[str, str], tuple[str, str, tuple[tuple[str, str], ...]]]
 
 
 # ---------------------------------------------------------------------------
@@ -909,7 +922,12 @@ def route_words(deal: PackageDeal) -> str:
     if not text or "nonstop" in text.lower():
         return nonstop
     text = _STOP_PREFIX_RE.sub(lambda m: f"{m.group(1)}-Stop", text)
-    return text[0].upper() + text[1:] if text else nonstop
+    text = text[0].upper() + text[1:] if text else nonstop
+    if text and _VIA_SIN_RE.search(text):
+        # A plane change, not the holiday. Said on the row that names the route, so
+        # a reader never counts Singapore as a stopover the report failed to price.
+        text += _NO_SIN_STAY
+    return text
 
 
 def _option_total(option: Mapping[str, Any]) -> float:
@@ -923,7 +941,7 @@ def _option_total(option: Mapping[str, Any]) -> float:
     return 0.0
 
 
-def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, str, Union[str, tuple[str, str]]]]:
+def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, str, FlightPrice]]:
     """Three rows for a long-haul card: Business, Economy, one Gulf stopover.
 
     The stopover row is priced only when a whole-party multi-city fare was read
@@ -931,6 +949,12 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
     that row usually has no price — it then says so and links the itinerary,
     which is the owner's rule for 2026-10-04: never a stale number, and never a
     missing option either.
+
+    An unread row says "not priced yet", not "price on request" (owner brief
+    2026-10-15): the stopover is the holiday being asked about, and "on request"
+    reads as "we did not bother". It carries the multi-city itinerary AND the
+    airlines that sell a stopover in the hub the row names, so the offer is
+    actionable without the private reader having been run first.
 
     Empty for a short-haul card: a destination with no London-stall Business
     option prices one cabin and gets no comparison table at all.
@@ -965,11 +989,13 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
             _gbp(_option_total(cheapest)),
         ))
         return rows
-    # Not priced for these dates: name one hub and offer the itinerary.
-    hub = str(hol.STOPOVER_HUBS[hol.STOPOVER_LINK_HUBS[0]]["label"])
+    # Not priced for these dates: name one hub, offer the itinerary, and name the
+    # airlines that sell a stopover there.
+    hub_code = str(hol.STOPOVER_LINK_HUBS[0]).upper()
+    hub = str(hol.STOPOVER_HUBS[hub_code]["label"])
     try:
         url = stopover_search_url(
-            hol.STOPOVER_LINK_HUBS[0],
+            hub_code,
             str(getattr(deal, "destination_airport", "") or "").upper(),
             str(getattr(deal, "outbound_date", "")),
             str(getattr(deal, "return_date", "")),
@@ -978,7 +1004,19 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
         )
     except Exception:
         url = ""
-    total: Union[str, tuple[str, str]] = ("price on request", url) if url else "price on request"
+    # The row's OWN hub's airline first: it is the one that flies this itinerary,
+    # and it is the one that survives if the e-mail has to shed a link for size.
+    airlines = tuple(
+        hol.STOPOVER_AIRLINE_LINKS[code]
+        for code in (hub_code,) + tuple(h for h in hol.STOPOVER_LINK_HUBS if h != hub_code)
+        if code in hol.STOPOVER_AIRLINE_LINKS
+    )
+    price_text = "not priced yet"
+    total: FlightPrice = (
+        (price_text, url, airlines) if url and airlines
+        else (price_text, url) if url
+        else price_text
+    )
     rows.append(("Economy", f"1-Stop via {hub}, 2 nights each way", total))
     return rows
 
@@ -1334,18 +1372,27 @@ def _glance_html(cards: Sequence[Mapping[str, Any]], *, travellers: int) -> str:
     return "".join(out)
 
 
-def _flight_table_html(rows: Sequence[tuple[str, str, Union[str, tuple[str, str]]]]) -> str:
+def _flight_table_html(rows: Sequence[tuple[str, str, FlightPrice]]) -> str:
     out = [
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" ',
         'style="border-collapse:collapse; margin:8px 0 0 0;">',
     ]
     for cabin, route, total in rows:
         if isinstance(total, tuple):
-            price, url = total
+            price, url = total[0], total[1]
             amount = (
                 f'<a href="{_esc(url)}" style="color:{_ACCENT}; text-decoration:none; '
                 f'font-weight:700;">{_esc(price)} ↗</a>' if url else _esc(price)
             )
+            # The airlines that sell a stopover in the hub this row names, beside
+            # the itinerary link (owner brief 2026-10-15). Plain links, each
+            # labelled with the airline, never a third price claim.
+            for label, airline_url in (total[2] if len(total) > 2 else ()):
+                amount += (
+                    f' <span style="color:{_MUTED};">·</span> '
+                    f'<a href="{_esc(airline_url)}" style="color:{_ACCENT}; '
+                    f'text-decoration:none;">{_esc(label)} ↗</a>'
+                )
         else:
             amount = f'<strong style="color:{_INK}; white-space:nowrap;">{_esc(total)}</strong>'
         out.append(
@@ -1870,7 +1917,11 @@ def render_holiday_report_compact_text(
         lines.append(f"  {card['tag']}" + (f" · {card['movement']}" if card["movement"] else ""))
         for cabin, route, total in card["flights"]:
             price = total[0] if isinstance(total, tuple) else total
-            lines.append(f"  {cabin} · {route} · {price}")
+            airlines = tuple(total[2]) if isinstance(total, tuple) and len(total) > 2 else ()
+            lines.append(
+                f"  {cabin} · {route} · {price}"
+                + (" · " + " · ".join(label for label, _url in airlines) if airlines else "")
+            )
         for line in card["why"]:
             lines.append(f"  • {line}")
         if card["links"]:

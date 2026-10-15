@@ -16,9 +16,12 @@ from .holidays import (
     consume_stopover_skip_log,
     count_provider_entries,
     far_east_watch_rows,
+    is_summer_trip,
     load_holiday_config,
     load_stopover_reads,
     render_holiday_report,
+    stopover_fares_registry,
+    stopover_wanted,
 )
 from .holiday_email import (
     render_holiday_report_compact,
@@ -392,6 +395,18 @@ def run_holiday_planner(
     # reading this summary needs to see, and it is the same list the loader's
     # unreadable-file and wrong-schema refusals go to.
     stopover_skipped = list(stopover_skipped) + consume_stopover_skip_log()
+    # WHAT TO READ NEXT (owner brief 2026-10-15): the (pair, hub, airport) rows
+    # this run's own rendered cards need a whole-party stopover fare for and do
+    # not have. The e-mail's card says "not priced yet" for each of them, so the
+    # list is the gap the reader has to close — printed as one line and carried in
+    # the JSON below in the private reader's --wanted format, which makes the next
+    # read a single command instead of a hand-written list nobody can reproduce.
+    # It is measured against the SAME registry the cards were priced from.
+    stopover_season = "summer" if is_summer_trip(config) else "winter"
+    stopover_wants = stopover_wanted(
+        deals, stopover_fares_registry(stopover_reads), season=stopover_season,
+    )
+    print(f"stopover_wanted: {len(stopover_wants)}")
     # MEMORY BEFORE BUILD: the workflow seeds `history_path` from the
     # private repo in a dedicated bash step (proven transport) BEFORE this
     # job runs, so trends, chips and the change digest describe real
@@ -605,6 +620,11 @@ def run_holiday_planner(
         ),
         "stopover_evidence_skipped": _tally(stopover_skipped),
         "stopover_evidence_load_error": stopover_evidence_error,
+        # The stopover rows this report renders with no price, in the private
+        # reader's own --wanted input format: the exact (pair, hub, airport,
+        # season) list the next read is aimed at, so a card that says "not priced
+        # yet" comes with the command that prices it.
+        "stopover_wanted": stopover_wants,
         "history_observations_appended": appended,
         "history_seeded_rows": seeded_rows,
         # True only when the run was held back because nothing a reader cares

@@ -13,7 +13,9 @@ Three things have to hold together, and each is a way this could quietly lie:
 * the **nights**. A stopover option that prices the full stay is not a cheaper
   option, it is a different holiday quoted at the wrong price.
 * the **fare's own pair**. A read is for the dates it was read for; every other
-  pair, and every read that did not come back priced, is "price on request".
+  pair, and every read that did not come back priced, says "not priced yet"
+  (owner brief 2026-10-15 — the stopover is the holiday being asked about, so
+  "price on request" is the one answer that will not do).
 
 The figures here are synthetic and stamped SYNTHETIC, so they can never be
 mistaken for a read.
@@ -269,7 +271,7 @@ class StopoverFarePairTests(unittest.TestCase):
         self.assertEqual(_registry_from([_read(PAIR, "DOH", "HKT", total=None)]), {})
         self.assertEqual(_registry_from([_read(PAIR, "DOH", "HKT", total="")]), {})
 
-    def test_a_card_with_no_row_says_price_on_request_and_offers_the_legs(self):
+    def test_a_card_with_no_row_says_not_priced_yet_and_offers_the_legs(self):
         config = _july_uncapped()
         deals = _with_fares({})(config)
         options = [o for deal in deals for o in deal.flight_options
@@ -278,7 +280,8 @@ class StopoverFarePairTests(unittest.TestCase):
         html = render_flight_options(
             options, travellers=5, dates=PAIR, airport="HKT", origin="LHR"
         )
-        self.assertIn("price on request", html)
+        self.assertIn("not priced yet", html)
+        self.assertNotIn("price on request", html)
         self.assertIn("price this multi-city itinerary", html)
         # The link it offers is the new-shape itinerary for this pair (escaped
         # for the href, as every URL in the report is).
