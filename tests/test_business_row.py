@@ -560,5 +560,35 @@ class AReadAnswersOneCabinTests(unittest.TestCase):
         self.assertIn("Business + 2 nights Doha each way", html)
 
 
+class BusinessAcrossAllOriginsTests(unittest.TestCase):
+    """Rank BUSINESS candidates across every config origin; name airport when it differs."""
+
+    def test_business_chosen_from_different_origin_when_more_direct(self):
+        config, base = _base_card()
+        pair = (base.outbound_date, base.return_date)
+        # Economy fare comes from base.origin (e.g. LHR); Business fare from different origin
+        # is more direct (fewer stops) and should be chosen.
+        other_origin = "LGW" if str(base.origin).upper() != "LGW" else "MAN"
+        records = _load(config, [
+            # Cheaper but more stops from the economy's origin - should not be chosen
+            _fare(base.destination_airport, cabin="BUSINESS", total=18_500.0, stops=2,
+                  carrier="SYNTHETIC two-stop", pair=pair, origin=base.origin,
+                  duration_minutes=970),
+            # More direct (nonstop) from different origin - should be chosen
+            _fare(base.destination_airport, cabin="BUSINESS", total=41_000.0, stops=0,
+                  carrier="SYNTHETIC nonstop", pair=pair, origin=other_origin,
+                  duration_minutes=780),
+        ])
+        deal = collect_holiday_deals(
+            config, max_budget_gbp=UNCAPPED, live_flight_offers=records,
+        )[0]
+        row = _business_option(deal)
+        self.assertFalse(row["not_priced"])
+        self.assertEqual(row["flight_cost"], 41_000.0)
+        self.assertEqual(row["route"], "Nonstop")
+        # Airport differs from economy's origin - should be named/reflected
+        self.assertEqual(str(row["origin"]).upper(), other_origin)
+
+
 if __name__ == "__main__":
     unittest.main()

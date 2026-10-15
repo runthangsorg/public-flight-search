@@ -6233,23 +6233,67 @@ the cards' own prices.
             )
         except Exception:
             search_url = ""
-        evidence = evidence_for(
-            live_flight_offers, airport, "BUSINESS", pair[0], pair[1], origin,
-            headline=headline,
-        )
-        if evidence is not None and evidence.usable:
-            # THE MOST DIRECT FARE, not the freshest one (owner steer
-            # 2026-10-15): every BUSINESS read for this same key — the slot's own
-            # record plus the ones the freshest-wins rule put aside — is ranked
-            # fewest stops, then shortest, then cheapest, and the winner prices
-            # the row. A cheaper read that stops more is not thrown away: it is
-            # named on one muted line beneath the row.
-            candidates = [evidence] + [
-                alternative for alternative in getattr(evidence, "alternates", ())
-                if getattr(alternative, "usable", False)
-                and str(getattr(alternative, "cabin_class", "")).upper() == "BUSINESS"
-            ]
-            chosen = min(candidates, key=directness_rank)
+        # Rank BUSINESS candidates across every configured origin (owner steer 2026-10-15):
+        # collect all BUSINESS evidence for (airport, pair) from any config origin,
+        # rank by fewest stops, shortest duration, lowest price.
+        candidates: list[tuple[Any, str]] = []  # (evidence, origin)
+        configured_origins = tuple(
+            str(value).strip().upper()
+            for value in (getattr(config, "origins", ()) or ())
+            if str(value).strip()
+        ) or (origin,)
+        for cand_origin in configured_origins:
+            ev = evidence_for(
+                live_flight_offers, airport, "BUSINESS", pair[0], pair[1], cand_origin,
+                headline=headline,
+            )
+            if ev is not None and getattr(ev, "usable", False):
+                candidates.append((ev, cand_origin))
+                for alternative in getattr(ev, "alternates", ()):
+                    if getattr(alternative, "usable", False) and str(getattr(alternative, "cabin_class", "")).upper() == "BUSINESS":
+                        candidates.append((alternative, cand_origin))
+        # Also try any origin present in live_flight_offers keys for this pair/airport/cabin
+        if not candidates and live_flight_offers:
+            outb, ret = pair[0], pair[1]
+            for key, ev in live_flight_offers.items():
+                try:
+                    k_airport, k_cabin, k_outb, k_ret, k_origin = key
+                except Exception:
+                    continue
+                if str(k_airport).upper() != airport:
+                    continue
+                if str(k_cabin).upper() != "BUSINESS":
+                    continue
+                if k_outb != outb or k_ret != ret:
+                    continue
+                if ev is not None and getattr(ev, "usable", False):
+                    candidates.append((ev, str(k_origin).upper()))
+                    for alternative in getattr(ev, "alternates", ()):
+                        if getattr(alternative, "usable", False) and str(getattr(alternative, "cabin_class", "")).upper() == "BUSINESS":
+                            candidates.append((alternative, str(k_origin).upper()))
+        # Deduplicate candidates by signature
+        seen_cand = set()
+        unique_candidates: list[tuple[Any, str]] = []
+        for c, c_origin in candidates:
+            sig = (
+                getattr(c, "observed_at", ""),
+                round(float(getattr(c, "total_gbp", 0.0)), 2),
+                getattr(c, "carrier", ""),
+                getattr(c, "stops", None),
+                getattr(c, "duration_minutes", None),
+                getattr(c, "layover", ""),
+                getattr(c, "source_url", ""),
+                c_origin,
+            )
+            if sig in seen_cand:
+                continue
+            seen_cand.add(sig)
+            unique_candidates.append((c, c_origin))
+        candidates = unique_candidates
+        if candidates:
+            # Rank by directness; if tied, keep first? But we have different origins
+            best = min(candidates, key=lambda x: directness_rank(x[0]))
+            chosen, chosen_origin = best
             picked = dict(cheapest)
             picked["flight_cost"] = float(chosen.total_gbp)
             picked["total_pkg"] = round(
@@ -6259,10 +6303,13 @@ the cards' own prices.
                 + float(picked["transfer"]), 2)
             picked["evidence"] = chosen
             picked["evidence_used"] = True
+            econ_origin = str(picked.get("origin", "") or "").upper()
+            if chosen_origin and chosen_origin != econ_origin:
+                picked["origin"] = chosen_origin
             row = _option_row("business", "BUSINESS", picked,
                               _evidence_words(picked, "Business fare"))
             row["route"] = fare_route_words(chosen, route)
-            row["cheaper_alternative"] = _cheaper_with_more_stops(chosen, candidates)
+            row["cheaper_alternative"] = _cheaper_with_more_stops(chosen, [c for c, _ in candidates])
             return (row,)
         return ({
             "kind": "business",
