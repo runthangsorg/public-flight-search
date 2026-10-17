@@ -314,8 +314,10 @@ class TheBusinessRowIsNeverTheCardTests(unittest.TestCase):
     def test_the_budget_line_ignores_an_unpriced_business_row(self):
         # A row with no price has no verdict: a zero total must never read as
         # the cheapest thing on the card.
-        config = dataclasses.replace(_config(), max_budget_gbp=7_000.0)
-        deals = collect_holiday_deals(config, max_budget_gbp=7_000.0)
+        # 10,000 admits the cheapest July card (Lombok, £9,503) now that the
+        # £9,000-ish Khao Lak card is gone with the monsoon gate (2026-10-15).
+        config = dataclasses.replace(_config(), max_budget_gbp=10_000.0)
+        deals = collect_holiday_deals(config, max_budget_gbp=10_000.0)
         self.assertTrue(deals, "no card fits, so this test proves nothing")
         html = render_holiday_report_compact(
             config, generated_at="2026-10-15T12:00:00+00:00", deals=deals,

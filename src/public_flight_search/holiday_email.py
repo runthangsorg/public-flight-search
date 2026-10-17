@@ -1263,8 +1263,9 @@ def warning_lines(deal: PackageDeal, config: HolidayConfig) -> list[str]:
     # card: the owner allows these cities as short stops, so the card is never
     # removed for them — only flagged (owner direction 2026-10-15, 20:55 BST).
     try:
+        returning = getattr(deal, "returning_date", None) or getattr(deal, "return_date", None)
         stay = climate.stay_months_for_pairs(
-            [(deal.outbound_date, deal.returning_date)]
+            [(deal.outbound_date, returning)]
         )
     except Exception:  # noqa: BLE001 - a malformed date pair is no warning
         stay = set()

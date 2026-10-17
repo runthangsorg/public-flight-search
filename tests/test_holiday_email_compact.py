@@ -821,7 +821,10 @@ class WarningTests(unittest.TestCase):
             monsoon_months=(7,),
         )
         text = visible_text(_render(deals=[deal]))
-        self.assertLessEqual(text.count("⚠"), 2)
+        # The cap is per CARD. The two-centre block below it carries its own
+        # climate warnings (Tokyo's tsuyu), so it is not counted here.
+        card = text.split("Two-centre trips")[0]
+        self.assertLessEqual(card.count("⚠"), 2)
 
 
 class CompactnessTests(unittest.TestCase):

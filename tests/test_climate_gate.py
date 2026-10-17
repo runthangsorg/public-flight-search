@@ -103,7 +103,10 @@ class GateRemovesTheStayTests(unittest.TestCase):
             config, generated_at=NOW, deals=collect_holiday_deals(config),
         )
         self.assertNotIn("Khao Lak", html)
-        self.assertNotIn("Bangkok", html)
+        # A Bangkok STAY would print as a destination label; a plane change
+        # through BKK is explicitly allowed (a connection is not a stay), so
+        # the gate is asserted on the stay, never on the substring.
+        self.assertNotIn("Bangkok, Thailand", html)
         self.assertNotIn("Left out for the monsoon", html)
 
     def test_a_secret_config_that_still_lists_hkt_is_still_gated(self):

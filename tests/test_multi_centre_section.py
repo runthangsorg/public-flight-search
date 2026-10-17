@@ -307,12 +307,14 @@ class BudgetVerdictTests(unittest.TestCase):
         self.assertIn("low end fits", loose)
 
     def test_the_verdict_is_judged_on_the_low_end_only(self):
-        config = _config(JULY, budget=12000.0)
+        # Khao Lak + Koh Phangan (MC-02) was the cheap pair this pinned until
+        # the monsoon gate removed it (2026-10-15); Bali + Lombok is the same
+        # shape of test: low 13,032 fits the ceiling, high 17,682 does not.
+        config = _config(JULY, budget=13500.0)
         trips = {t.id: t for t in load_multi_centre(config)}
-        # Khao Lak + Koh Phangan: low 11,757 fits, high 15,607 does not.
-        khao_lak = trips["MC-02"]
-        self.assertTrue(khao_lak.fits(12000.0))
-        self.assertFalse(khao_lak.fits(11000.0))
+        bali = trips["MC-01"]
+        self.assertTrue(bali.fits(13500.0))
+        self.assertFalse(bali.fits(13000.0))
         self.assertIn("low end fits", _text(config))
 
     def test_an_unusable_budget_gets_no_verdict_rather_than_a_wrong_one(self):

@@ -38,7 +38,7 @@ def _july_uncapped():
     return dataclasses.replace(config, max_budget_gbp=60000.0)
 
 
-def _synthetic_stopover_fares(config, airports=("HKT", "USM"), hubs=("DOH", "MCT")):
+def _synthetic_stopover_fares(config, airports=("USM",), hubs=("DOH", "MCT")):
     """Whole-party stopover fares for the pairs THIS config prices.
 
     The only ``read`` provenance in a July report is a priced multi-city
@@ -121,10 +121,10 @@ class OneFareLabelTests(unittest.TestCase):
         # never be exercised. The cabin is the one the card is priced in,
         # because a fare label is only ever rendered for a cabin that card uses.
         aged = LiveFareEvidence(
-            airport="HKT",
+            airport="USM",
             total_gbp=11100.0,
             basis="whole_party_return_total",
-            source_url="https://example.invalid/hkt",
+            source_url="https://example.invalid/usm",
             observed_at="2026-09-01T00:00:00+00:00",
             exact_date_match=True,
             cabin_class="ECONOMY",
@@ -139,7 +139,7 @@ class OneFareLabelTests(unittest.TestCase):
             html = render_holiday_report(
                 config, generated_at="2026-10-02T00:00:00+00:00",
                 deals=collect_holiday_deals(
-                    config, live_flight_offers={("HKT", "ECONOMY"): aged}
+                    config, live_flight_offers={("USM", "ECONOMY"): aged}
                 ),
             )
         finally:

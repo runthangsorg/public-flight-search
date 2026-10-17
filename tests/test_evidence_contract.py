@@ -339,7 +339,7 @@ class TestRealConfigContractsAreGolden(unittest.TestCase):
         # cards, so CUN is hunted too. OKA is NOT here: Halekulani is
         # filtered out (no confirmed 5-adult single unit), and a resort
         # with no card has no evidence to hunt.
-        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ", "CUN"})
+        self.assertEqual(set(contract.airports), {"LOP", "USM", "ZNZ", "CUN"})
         self.assertNotIn("OKA", contract.airports)
         # RE-ASSERTED 2026-10-15 (was: the whole July hunt is aimed at ECONOMY).
         # Owner direction: every long-haul card shows a Business price beside its
@@ -513,7 +513,7 @@ class TestEvidenceContractCommand(unittest.TestCase):
             [list(pair) for pair in shortlist_date_pairs(config)],
         )
         self.assertEqual(payload["origins"], ["LHR", "LGW", "LTN", "STN"])
-        self.assertEqual(payload["airports"], ["CUN", "HKT", "LOP", "USM", "ZNZ"])
+        self.assertEqual(payload["airports"], ["CUN", "LOP", "USM", "ZNZ"])
 
     def test_hunt_config_drives_the_hunt_on_its_own(self):
         # Regression: the fragment carried only origins/date_pairs/cabins/
@@ -629,7 +629,7 @@ class TestCatalogProvenance(unittest.TestCase):
             self.assertNotIn(december_only, resort_catalog(july), december_only)
 
         contract = evidence_consumption_contract(july)
-        self.assertEqual(set(contract.airports), {"HKT", "LOP", "USM", "ZNZ", "CUN"})
+        self.assertEqual(set(contract.airports), {"LOP", "USM", "ZNZ", "CUN"})
         for dead in ("MLA", "DOH", "AGA"):
             self.assertNotIn(dead, contract.airports, dead)
         # OKA is a July destination key (H9) but must not be a hunt target:

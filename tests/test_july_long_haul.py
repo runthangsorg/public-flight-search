@@ -42,8 +42,9 @@ DEC = ROOT / "examples" / "dec_holiday_config.json"
 EXCLUDED_AIRPORTS = {"SIN", "KUL", "PEN", "BKI", "LGK"}
 EXCLUDED_KEYS = {"singapore", "langkawi", "penang", "kota_kinabalu", "kuala_lumpur"}
 LOMBOK_KEYS = {"lombok"}
-THAILAND_KEYS = {"koh_samui", "koh_phangan", "khao_lak"}
-#: The Andaman coast is in its south-west monsoon in July.
+THAILAND_KEYS = {"koh_samui", "koh_phangan"}
+#: The Andaman coast is in its south-west monsoon in July, so the climate gate
+#: (2026-10-15) removed it from the summer catalogue and the shipped config.
 ANDAMAN_KEYS = {"khao_lak", "phuket", "krabi"}
 
 #: A budget high enough that every July resort cards. Synthetic: it is not,
@@ -70,7 +71,7 @@ class JulyScopeTests(unittest.TestCase):
     def test_lombok_and_thailand_lead_and_resolve_to_catalogue_resorts(self):
         config = _july()
         keys = [d.key for d in config.destinations]
-        self.assertEqual(set(keys[:4]), LOMBOK_KEYS | THAILAND_KEYS)
+        self.assertEqual(set(keys[:3]), LOMBOK_KEYS | THAILAND_KEYS)
         catalog = resort_catalog(config)
         for key in LOMBOK_KEYS | THAILAND_KEYS:
             with self.subTest(key=key):
@@ -82,22 +83,19 @@ class JulyScopeTests(unittest.TestCase):
                 self.assertEqual(len(kept) + len(dropped), len(resorts))
                 for _name, reason in dropped:
                     self.assertTrue(reason)
-        for key in ("lombok", "koh_samui", "khao_lak"):
+        for key in ("lombok", "koh_samui"):
             kept, _ = filter_resorts(catalog[key], is_summer=True)
             self.assertTrue(kept, f"{key} has no resort that survives the filters")
 
     def test_thailand_is_mostly_the_gulf_side(self):
-        # July: the Gulf (Samui, Phangan) is the drier coast; the Andaman
-        # side (Khao Lak) is in monsoon, so it gets at most two resorts and
-        # every one of them says so.
+        # July: the Gulf (Samui, Phangan) is the drier coast. The Andaman side
+        # (Khao Lak) is in monsoon and was removed by the climate gate
+        # (2026-10-15), so the summer catalogue carries no Andaman resort at
+        # all — a resort that warns about the monsoon is no longer offered.
         andaman = [r for key in ANDAMAN_KEYS for r in SUMMER_RESORT_CATALOG.get(key, [])]
         gulf = [r for key in ("koh_samui", "koh_phangan") for r in SUMMER_RESORT_CATALOG[key]]
-        self.assertLessEqual(len(andaman), 2)
-        self.assertGreater(len(gulf), len(andaman))
-        for resort in andaman:
-            with self.subTest(resort=resort["name"]):
-                self.assertIn("monsoon", resort["beach"].lower())
-                self.assertIn("MONSOON", resort["destination_label"])
+        self.assertEqual(andaman, [])
+        self.assertGreater(len(gulf), 0)
 
     def test_every_long_haul_destination_prices_economy(self):
         # Owner rule 2026-10-04: business class is quoted only for a DIRECT

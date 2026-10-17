@@ -81,8 +81,9 @@ FAR_EAST_DECEMBER_OUT_OF_SEASON = ["okinawa"]
 #: July since 2026-09-29: Lombok and Thailand lead (resort cards, no watch
 #: row), then the watch destinations. Kota Kinabalu left with Malaysia. H9
 #: (2026-10-04) replaced Tokyo with Okinawa, which now carries real resort
-#: cards, and added the Riviera Maya at the end.
-LONG_HAUL_JULY = ["lombok", "koh_samui", "koh_phangan", "khao_lak", "zanzibar", "bali", "da_nang", "okinawa", "riviera_maya"]
+#: cards, and added the Riviera Maya at the end. Khao Lak left with the
+#: monsoon gate (2026-10-15): its Andaman coast is excluded May-Oct.
+LONG_HAUL_JULY = ["lombok", "koh_samui", "koh_phangan", "zanzibar", "bali", "da_nang", "okinawa", "riviera_maya"]
 #: Watch rows only: bali and da_nang. Okinawa has catalogue resorts in July, so
 #: it is priced as real cards and NOT repeated as an unverified watch row.
 FAR_EAST_JULY = ["bali", "da_nang"]
@@ -401,15 +402,16 @@ class CommittedConfigTests(unittest.TestCase):
                         self.assertIn("UNKNOWN", dest["nonstop_source"].upper())
 
     def test_the_unknown_nonstops_are_the_two_seasonal_services(self):
-        # The only two destinations that may leave the question open are the
-        # ones whose nonstop is seasonal and whose season end no source gives.
-        for path in (DEC, JULY):
+        # The only destinations that may leave the question open are the ones
+        # whose nonstop is seasonal and whose season end no source gives.
+        # Khao Lak carried the July silence until the monsoon gate removed it
+        # (2026-10-15); Phuket is the one left, in December.
+        for path, expected in ((DEC, {"phuket"}), (JULY, set())):
             silent = {
                 dest["key"] for dest in self._data(path)["destinations"]
                 if "nonstop_from_london" not in dest
             }
-            self.assertTrue(silent.issubset({"phuket", "khao_lak"}), f"{path.name}: {silent}")
-            self.assertTrue(silent, path.name)
+            self.assertEqual(silent, expected, path.name)
             for dest in self._data(path)["destinations"]:
                 if dest["key"] in silent:
                     self.assertEqual(destination_cabin(_Shaped(dest)), "ECONOMY")

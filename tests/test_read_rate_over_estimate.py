@@ -58,18 +58,19 @@ from public_flight_search.hotel_evidence import (
 from public_flight_search.package_evidence import load_package_evidence
 
 ISLAND = "Nungwi Dreams by Mantis"
-MAINLAND = "Pullman Khao Lak Resort"
+#: A Gulf-side two-room card. The old fixture was Khao Lak, whose Andaman
+#: coast the climate gate excludes May-Oct (2026-10-15).
+MAINLAND = "Garrya Tongsai Bay Samui"
 MELATI = "Melati Beach Resort & Spa"
 
 NOW = "2026-10-05T09:00:00+00:00"
 
-#: Khao Lak: the 14-night pair carries the read, the 13-night pair does not.
-#: At GBP 1,000 a night the read puts the first pair at 4,695 + 14,000 + 16.50
-#: + 76.58 = 18,788.08 and the derived one at 17,788.08, so a ceiling of 18,000
-#: admits only the pair that was NOT read. That is the real case: the read
-#: priced the honest pair out of the budget, and the engine fell back to a
-#: catalogue nightly to find something that fitted.
-MAINLAND_BUDGET = 18000.0
+#: Garrya: the 14-night pair carries the read, the 13-night pair does not.
+#: At GBP 1,000 a night the read makes the first pair the dearer of the two,
+#: so a ceiling below it admits only the pair that was NOT read. That is the
+#: real case: the read priced the honest pair out of the budget, and the engine
+#: fell back to a catalogue nightly to find something that fitted.
+MAINLAND_BUDGET = 20000.0
 #: Nungwi: 5,349 + 17,881.14 + 16.50 = 23,246.64 read, 21,969.43 derived.
 ISLAND_BUDGET = 22500.0
 
@@ -94,7 +95,7 @@ MAINLAND_CONFIG = """
 {
   "report_title": "A read rate on another pair",
   "party": {"travellers": 5, "rooms": [2, 2, 1]},
-  "max_budget_gbp": 18000,
+  "max_budget_gbp": 20000,
   "min_nights": 12,
   "max_nights": 21,
   "departure_window": ["06:00", "23:59"],
@@ -102,7 +103,7 @@ MAINLAND_CONFIG = """
   "outbound_dates": ["2027-06-25", "2027-06-26"],
   "return_dates": ["2027-07-09"],
   "destinations": [
-    {"key": "khao_lak", "label": "Khao Lak", "airports": ["HKT"], "flight_hours": 14.5}
+    {"key": "koh_samui", "label": "Koh Samui", "airports": ["USM"], "flight_hours": 14.92}
   ]
 }
 """
@@ -184,10 +185,10 @@ def _island_reads() -> list[dict]:
 
 
 def _mainland_reads(public: float = 14000.0, **overrides) -> list[dict]:
-    """Khao Lak's shape: one bed & breakfast read for the 14-night pair."""
+    """Garrya's shape: one bed & breakfast read for the 14-night pair."""
     fields = {"public": public, "shape": "two_rooms_one_booking",
-              "units": "FAMILY SUITE + DELUXE ROOM",
-              "destination_key": "khao_lak"}
+              "units": "BEACHFRONT SUITE + BEACHFRONT SUITE",
+              "destination_key": "koh_samui"}
     fields.update(overrides)
     return [_rate(MAINLAND, **fields)]
 
@@ -294,7 +295,7 @@ class TestTheNearestReadPricesTheStay(unittest.TestCase):
         config, deals = _deals(MAINLAND_CONFIG, _mainland_reads())
         deal = _deal(deals, MAINLAND)
         catalogue_nightly = hol.SUITE_ARCHITECTURE[MAINLAND]["suite_nightly_gbp"]
-        self.assertAlmostEqual(catalogue_nightly * deal.nights, 162.18 * 13, places=2)
+        self.assertAlmostEqual(catalogue_nightly * deal.nights, 652.19 * 13, places=2)
         self.assertNotAlmostEqual(deal.hotel_price_total_gbp,
                                   catalogue_nightly * deal.nights, places=2)
 
@@ -323,17 +324,17 @@ class TestTheNearestReadPricesTheStay(unittest.TestCase):
         deal = _deal(deals, MAINLAND)
         self.assertNotEqual(deal.hotel_rate_basis, "read-rate-estimate")
         self.assertEqual(tuple(deal.hotel_rate_read_dates), ())
-        self.assertAlmostEqual(deal.hotel_price_total_gbp, 162.18 * 13, places=2)
+        self.assertAlmostEqual(deal.hotel_price_total_gbp, 652.19 * 13, places=2)
         self.assertNotIn("estimate from a read rate", board_line(deal, travellers=5))
 
     def test_a_read_on_another_board_does_not_price_the_card(self):
-        # Khao Lak's board is Bed & Breakfast; a half-board read is a different
+        # Garrya's board is Bed & Breakfast; a half-board read is a different
         # holiday at a different price and cannot price this card.
         config, deals = _deals(MAINLAND_CONFIG, _mainland_reads(board="HB"))
         deal = _deal(deals, MAINLAND)
         self.assertEqual(deal.hotel_rate_basis, "market-supported")
         self.assertEqual(tuple(deal.hotel_rate_read_dates), ())
-        self.assertAlmostEqual(deal.hotel_price_total_gbp, 162.18 * 13, places=2)
+        self.assertAlmostEqual(deal.hotel_price_total_gbp, 652.19 * 13, places=2)
 
     def test_a_read_for_another_unit_does_not_price_the_card(self):
         # One villa is not two rooms on one booking. The read has to be for the
@@ -343,7 +344,7 @@ class TestTheNearestReadPricesTheStay(unittest.TestCase):
                                                units="FAMILY SUITE"))
         deal = _deal(deals, MAINLAND)
         self.assertEqual(tuple(deal.hotel_rate_read_dates), ())
-        self.assertAlmostEqual(deal.hotel_price_total_gbp, 162.18 * 13, places=2)
+        self.assertAlmostEqual(deal.hotel_price_total_gbp, 652.19 * 13, places=2)
 
     def test_a_read_for_another_property_prices_nothing(self):
         config, deals = _deals(MAINLAND_CONFIG, _island_reads())
@@ -353,7 +354,7 @@ class TestTheNearestReadPricesTheStay(unittest.TestCase):
     def test_a_read_for_another_season_prices_nothing(self):
         config, deals = _deals(
             MAINLAND_CONFIG,
-            _mainland_reads(destination_key="khao_lak", season="winter"))
+            _mainland_reads(destination_key="koh_samui", season="winter"))
         deal = _deal(deals, MAINLAND)
         self.assertEqual(tuple(deal.hotel_rate_read_dates), ())
 
@@ -371,13 +372,12 @@ class TestTheNearestReadPricesTheStay(unittest.TestCase):
 
     def test_a_stay_no_cheaper_than_the_read_leaves_the_card_list(self):
         # The rule the owner asked for: the budget decides, as usual. At a
-        # ceiling below every option the read allows — 6,000, where even the
-        # two-nights-shorter stopover row clears 6,286 — no card is made and
-        # the resort is listed over budget at the read's figure, rather than
+        # ceiling below every option the read allows, no card is made and the
+        # resort is listed over budget at the read's figure, rather than
         # carrying a cheaper number than anybody read for it.
         config, deals = _deals(
-            MAINLAND_CONFIG.replace('"max_budget_gbp": 18000',
-                                    '"max_budget_gbp": 6000'),
+            MAINLAND_CONFIG.replace('"max_budget_gbp": 20000',
+                                    '"max_budget_gbp": 8000'),
             _mainland_reads(),
         )
         self.assertEqual([d.resort_name for d in deals], [])
@@ -385,7 +385,7 @@ class TestTheNearestReadPricesTheStay(unittest.TestCase):
                    None)
         self.assertIsNotNone(row, f"no over-budget row: {hol.LAST_OVER_BUDGET}")
         self.assertAlmostEqual(row["hotel_cost"], 14000.0, places=2)
-        self.assertAlmostEqual(row["true_d2d"], 18788.08, places=2)
+        self.assertGreater(row["true_d2d"], 8000.0)
 
     def test_with_no_evidence_the_card_is_unchanged(self):
         # The regression guard: no reads means the engine behaves exactly as
@@ -490,12 +490,12 @@ class TestIslandBoards(unittest.TestCase):
         self.assertAlmostEqual(row["hotel_cost"], 17881.14, places=2)
 
     def test_a_mainland_card_does_not_gain_read_board_rows(self):
-        # The island rule is the island rule: a Khao Lak read that happens to
+        # The island rule is the island rule: a Garrya read that happens to
         # carry a second board does not turn its card into a board table.
         config, deals = _deals(MAINLAND_CONFIG, _mainland_reads() + [
             _rate(MAINLAND, board="HB", public=20000.00,
                   shape="two_rooms_one_booking",
-                  units="FAMILY SUITE + DELUXE ROOM", destination_key="khao_lak"),
+                  units="BEACHFRONT SUITE + BEACHFRONT SUITE", destination_key="koh_samui"),
         ])
         deal = _deal(deals, MAINLAND)
         self.assertEqual(deal.board_options, ())

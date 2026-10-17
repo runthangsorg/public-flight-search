@@ -41,7 +41,10 @@ from public_flight_search.hotel_evidence import (
 )
 
 GARRYA = "Garrya Tongsai Bay Samui"
-KHAO_LAK = "Pullman Khao Lak Resort"
+#: A second allowed destination for the per-card tests. Khao Lak used to sit
+#: here, but its Andaman coast is excluded May-Oct by the climate gate
+#: (2026-10-15), so a Khao Lak card can no longer exist.
+PULLMAN_LOMBOK = "Pullman Lombok Merujani Mandalika Beach Resort"
 NOW = "2026-10-06T09:00:00+00:00"
 CARD_PAIR = ("2027-06-28", "2027-07-12")
 NEAR_PAIR = ("2027-07-20", "2027-07-27")
@@ -404,8 +407,8 @@ class PerCardTests(unittest.TestCase):
   "destinations": [
     {"key": "koh_samui", "label": "Koh Samui", "airports": ["USM"],
      "flight_hours": 14.92},
-    {"key": "khao_lak", "label": "Khao Lak", "airports": ["HKT"],
-     "flight_hours": 14.5}
+    {"key": "lombok", "label": "Lombok", "airports": ["LOP"],
+     "flight_hours": 24.0}
   ]
 }
 """
@@ -419,7 +422,7 @@ class PerCardTests(unittest.TestCase):
                                              end=CARD_PAIR[1])),
             dict(_check(finding=self.NO_ROW.format(start=CARD_PAIR[0],
                                                    end=CARD_PAIR[1])),
-                 property_name=KHAO_LAK, destination_key="khao_lak",
+                 property_name=PULLMAN_LOMBOK, destination_key="lombok",
                  vendor="Google Hotels"),
         ]
 
@@ -428,9 +431,9 @@ class PerCardTests(unittest.TestCase):
                                               config_json=self.TWO_PLACES)
         names = _names(deals)
         self.assertIn(GARRYA, names)
-        self.assertIn(KHAO_LAK, names)
+        self.assertIn(PULLMAN_LOMBOK, names)
         for deal in deals:
-            if deal.resort_name in (GARRYA, KHAO_LAK):
+            if deal.resort_name in (GARRYA, PULLMAN_LOMBOK):
                 self.assertEqual(
                     deal.hotel_read_refused,
                     "A check of these dates found no priced row for 5 adults, "

@@ -59,12 +59,14 @@ CONFIG = """
   "outbound_dates": ["2027-07-20"],
   "return_dates": ["2027-07-27"],
   "destinations": [
-    {"key": "khao_lak", "label": "Khao Lak", "airports": ["HKT"], "flight_hours": 14.5}
+    {"key": "koh_samui", "label": "Koh Samui", "airports": ["USM"], "flight_hours": 14.92}
   ]
 }
 """
 
-RESORT = "Pullman Khao Lak Resort"
+#: A Gulf-side resort: the Andaman coast (Khao Lak, the old fixture) is
+#: excluded May-Oct by the climate gate (2026-10-15), so its card cannot exist.
+RESORT = "Garrya Tongsai Bay Samui"
 
 
 def _payload(*, include_rate: bool) -> dict:
@@ -213,8 +215,8 @@ class JulyStillHasItsCardsTests(unittest.TestCase):
     def test_july_keeps_both_two_room_resorts_and_many_cards(self):
         _config, deals = _july_deals(payload=_whole_fixture())
         names = {deal.resort_name for deal in deals}
-        self.assertIn("Pullman Khao Lak Resort", names)
         self.assertIn("Garrya Tongsai Bay Samui", names)
+        self.assertIn("Novotel Lombok Resort & Villas", names)
         self.assertGreater(len(deals), 2,
                            "a unit check that describes a two-room workaround "
                            "must not empty the July report")
@@ -222,7 +224,7 @@ class JulyStillHasItsCardsTests(unittest.TestCase):
     def test_the_july_report_renders_those_cards(self):
         config, deals = _july_deals(payload=_whole_fixture())
         html = render_holiday_report(config, generated_at=NOW, deals=deals)
-        self.assertIn("Pullman Khao Lak Resort", html)
+        self.assertIn("Garrya Tongsai Bay Samui", html)
         self.assertIn("sold as 2 rooms in one booking", html)
 
 

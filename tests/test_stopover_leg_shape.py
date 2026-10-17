@@ -46,8 +46,8 @@ UNCAPPED_GBP = 60000.0
 PAIR = ("2027-06-26", "2027-07-10")
 EXPECTED_LEGS = (
     ("LHR", "DOH", "2027-06-26"),
-    ("DOH", "HKT", "2027-06-28"),
-    ("HKT", "DOH", "2027-07-10"),
+    ("DOH", "USM", "2027-06-28"),
+    ("USM", "DOH", "2027-07-10"),
     ("DOH", "LHR", "2027-07-12"),
 )
 
@@ -88,7 +88,7 @@ def _registry_from(rows) -> dict:
         hol._STOPOVER_READS = saved
 
 
-def _synthetic_fares(config, *, airports=("HKT",), hubs=("DOH", "MCT", "AUH", "DXB")):
+def _synthetic_fares(config, *, airports=("USM",), hubs=("DOH", "MCT", "AUH", "DXB")):
     """Read fares for every pair this config prices, keyed as the code keys them."""
     rows = []
     for pair in priceable_date_pairs(config):
@@ -114,20 +114,20 @@ class StopoverLegShapeTests(unittest.TestCase):
     """The four legs, and the URL that offers them for pricing."""
 
     def test_the_legs_of_a_stopover_itinerary_for_a_june_pair(self):
-        self.assertEqual(hol.stopover_legs("DOH", "HKT", PAIR[0], PAIR[1]), EXPECTED_LEGS)
+        self.assertEqual(hol.stopover_legs("DOH", "USM", PAIR[0], PAIR[1]), EXPECTED_LEGS)
 
     def test_the_price_it_yourself_link_carries_exactly_those_legs(self):
         # Bit-for-bit equality with a URL built from the legs above: the link a
         # card offers and the itinerary it describes cannot drift apart.
         self.assertEqual(
-            hol.stopover_search_url("DOH", "HKT", PAIR[0], PAIR[1]),
+            hol.stopover_search_url("DOH", "USM", PAIR[0], PAIR[1]),
             hol.build_google_flights_legs_url(
                 EXPECTED_LEGS, travellers=5, cabin_class="ECONOMY"
             ),
         )
 
     def test_the_link_names_the_four_flights_and_their_dates(self):
-        payload = _payload(hol.stopover_search_url("DOH", "HKT", PAIR[0], PAIR[1]))
+        payload = _payload(hol.stopover_search_url("DOH", "USM", PAIR[0], PAIR[1]))
         for _origin, airport, day in EXPECTED_LEGS:
             self.assertIn(airport.encode(), payload)
             self.assertIn(day.encode(), payload)
@@ -135,10 +135,10 @@ class StopoverLegShapeTests(unittest.TestCase):
         self.assertNotIn(b"2027-06-24", payload)
 
     def test_a_committed_read_is_priced_on_the_same_legs_as_its_link(self):
-        fare = _registry_from([_read(PAIR, "DOH", "HKT")])[(PAIR, "DOH", "HKT")][0]
+        fare = _registry_from([_read(PAIR, "DOH", "USM")])[(PAIR, "DOH", "USM")][0]
         self.assertEqual(tuple(fare["legs"]), EXPECTED_LEGS)
         self.assertEqual(
-            fare["source_url"], hol.stopover_search_url("DOH", "HKT", PAIR[0], PAIR[1])
+            fare["source_url"], hol.stopover_search_url("DOH", "USM", PAIR[0], PAIR[1])
         )
 
 
@@ -202,7 +202,7 @@ class StopoverResortNightsTests(unittest.TestCase):
         html = render_flight_options(
             deal.flight_options, travellers=5,
             dates=(stopover["outbound"], stopover["return"]),
-            airport="HKT", origin="LHR",
+            airport="USM", origin="LHR",
         )
         self.assertIn(
             f'{stopover["resort_nights"]} nights at the resort + '
@@ -236,17 +236,17 @@ class StopoverFarePairTests(unittest.TestCase):
 
     def test_a_read_for_one_pair_is_never_used_for_another(self):
         saved = hol.STOPOVER_FARES
-        hol.STOPOVER_FARES = _registry_from([_read(PAIR, "DOH", "HKT")])
+        hol.STOPOVER_FARES = _registry_from([_read(PAIR, "DOH", "USM")])
         other_pair = ("2027-07-12", "2027-07-26")
         try:
-            self.assertTrue(hol.stopover_fares_for("DOH", "HKT", "summer", pair=PAIR))
+            self.assertTrue(hol.stopover_fares_for("DOH", "USM", "summer", pair=PAIR))
             self.assertEqual(
-                hol.stopover_fares_for("DOH", "HKT", "summer", pair=other_pair), ()
+                hol.stopover_fares_for("DOH", "USM", "summer", pair=other_pair), ()
             )
             # Nor for another airport on the same pair.
-            self.assertEqual(hol.stopover_fares_for("DOH", "USM", "summer", pair=PAIR), ())
+            self.assertEqual(hol.stopover_fares_for("DOH", "LOP", "summer", pair=PAIR), ())
             # And asking for every pair at once still only finds this one.
-            self.assertEqual(len(hol.stopover_fares_for("DOH", "HKT", "summer")), 1)
+            self.assertEqual(len(hol.stopover_fares_for("DOH", "USM", "summer")), 1)
         finally:
             hol.STOPOVER_FARES = saved
 
@@ -254,7 +254,7 @@ class StopoverFarePairTests(unittest.TestCase):
         config = _july_uncapped()
         # A read for a pair the config does not price.
         unpriceable = ("2027-06-20", "2027-07-04")
-        deals = _with_fares(_registry_from([_read(unpriceable, "DOH", "HKT")]))(config)
+        deals = _with_fares(_registry_from([_read(unpriceable, "DOH", "USM")]))(config)
         self.assertTrue(deals)
         for deal in deals:
             with self.subTest(resort=deal.resort_name):
@@ -263,20 +263,20 @@ class StopoverFarePairTests(unittest.TestCase):
     def test_a_non_priced_read_never_yields_a_number(self):
         for status in ("no_priced_economy_card", "blocked", "error"):
             with self.subTest(status=status):
-                registry = _registry_from([_read(PAIR, "DOH", "HKT", status=status)])
+                registry = _registry_from([_read(PAIR, "DOH", "USM", status=status)])
                 self.assertEqual(registry, {})
                 saved = hol.STOPOVER_FARES
                 hol.STOPOVER_FARES = registry
                 try:
                     self.assertEqual(
-                        hol.stopover_fares_for("DOH", "HKT", "summer", pair=PAIR), ()
+                        hol.stopover_fares_for("DOH", "USM", "summer", pair=PAIR), ()
                     )
                 finally:
                     hol.STOPOVER_FARES = saved
 
     def test_a_priced_read_without_a_total_never_yields_a_number(self):
-        self.assertEqual(_registry_from([_read(PAIR, "DOH", "HKT", total=None)]), {})
-        self.assertEqual(_registry_from([_read(PAIR, "DOH", "HKT", total="")]), {})
+        self.assertEqual(_registry_from([_read(PAIR, "DOH", "USM", total=None)]), {})
+        self.assertEqual(_registry_from([_read(PAIR, "DOH", "USM", total="")]), {})
 
     def test_a_card_with_no_row_says_not_priced_yet_and_offers_the_legs(self):
         config = _july_uncapped()
@@ -285,7 +285,7 @@ class StopoverFarePairTests(unittest.TestCase):
                    if o["kind"] in ("business", "economy")]
         self.assertTrue(options)
         html = render_flight_options(
-            options, travellers=5, dates=PAIR, airport="HKT", origin="LHR"
+            options, travellers=5, dates=PAIR, airport="USM", origin="LHR"
         )
         self.assertIn("not priced yet", html)
         self.assertNotIn("price on request", html)
@@ -293,24 +293,24 @@ class StopoverFarePairTests(unittest.TestCase):
         # The link it offers is the new-shape itinerary for this pair (escaped
         # for the href, as every URL in the report is).
         self.assertIn(
-            escape(hol.stopover_search_url("DOH", "HKT", PAIR[0], PAIR[1]), quote=True),
+            escape(hol.stopover_search_url("DOH", "USM", PAIR[0], PAIR[1]), quote=True),
             html,
         )
 
     def test_a_priced_read_keeps_its_provenance(self):
         read = _read(
-            PAIR, "DOH", "HKT",
+            PAIR, "DOH", "USM",
             observed_at="2026-10-04T09:00:00Z",
             source_url="https://www.google.com/travel/flights/search?tfs=synthetic",
         )
-        fare = _registry_from([read])[(PAIR, "DOH", "HKT")][0]
+        fare = _registry_from([read])[(PAIR, "DOH", "USM")][0]
         self.assertEqual(fare["observed_at"], "2026-10-04T09:00:00Z")
         self.assertEqual(fare["source_url"], read["source_url"])
 
     def test_a_read_renders_its_observation_date_on_the_card(self):
         config = _july_uncapped()
         registry = _registry_from([
-            _read(pair, "DOH", "HKT", observed_at="2026-10-04T09:00:00Z")
+            _read(pair, "DOH", "USM", observed_at="2026-10-04T09:00:00Z")
             for pair in priceable_date_pairs(config)
         ])
         deals = _with_fares(registry)(config)
@@ -321,8 +321,8 @@ class StopoverFarePairTests(unittest.TestCase):
 
     def test_carrier_names_run_together_are_split_for_display(self):
         fare = _registry_from([
-            _read(PAIR, "DOH", "HKT", carrier="Qatar AirwaysBritish Airways")
-        ])[(PAIR, "DOH", "HKT")][0]
+            _read(PAIR, "DOH", "USM", carrier="Qatar AirwaysBritish Airways")
+        ])[(PAIR, "DOH", "USM")][0]
         self.assertEqual(fare["carrier"], "Qatar Airways / British Airways")
 
     def test_carrier_text_that_already_separates_its_names_is_left_alone(self):
@@ -406,15 +406,15 @@ class StopoverRegistryTests(unittest.TestCase):
 
     def test_a_winter_read_never_answers_a_summer_question(self):
         rows = [
-            _read(PAIR, "DOH", "HKT", season="summer"),
-            _read(PAIR, "DOH", "USM", season="winter"),
+            _read(PAIR, "DOH", "USM", season="summer"),
+            _read(PAIR, "DOH", "LOP", season="winter"),
         ]
         saved = hol.STOPOVER_FARES
         hol.STOPOVER_FARES = _registry_from(rows)
         try:
-            self.assertEqual(len(hol.stopover_fares_for("DOH", "HKT", "winter", pair=PAIR)), 0)
-            self.assertEqual(len(hol.stopover_fares_for("DOH", "USM", "summer", pair=PAIR)), 0)
-            self.assertEqual(len(hol.stopover_fares_for("DOH", "USM", "winter", pair=PAIR)), 1)
+            self.assertEqual(len(hol.stopover_fares_for("DOH", "USM", "winter", pair=PAIR)), 0)
+            self.assertEqual(len(hol.stopover_fares_for("DOH", "LOP", "summer", pair=PAIR)), 0)
+            self.assertEqual(len(hol.stopover_fares_for("DOH", "LOP", "winter", pair=PAIR)), 1)
         finally:
             hol.STOPOVER_FARES = saved
 
