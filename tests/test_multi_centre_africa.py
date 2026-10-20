@@ -177,3 +177,18 @@ class RegionSectionTests(unittest.TestCase):
         html, text = self._render([self._both()[0]])
         self.assertNotIn("Two-centre trips", html)
         self.assertNotIn("Two-centre trips", text)
+
+
+class FromPriceTests(unittest.TestCase):
+    """A lead-in 'from' price is shown as one figure, never as a fake range."""
+
+    def test_equal_low_and_high_render_as_a_from_price(self):
+        html, text = RenderTests._render(
+            RenderTests(), [_item(cost_low_gbp=17645, cost_high_gbp=17645)])
+        for part in (html, text):
+            self.assertIn("from £17,645", part)
+            self.assertNotIn("£17,645–£17,645", part)
+
+    def test_a_real_range_is_still_a_range(self):
+        html, _ = RenderTests._render(RenderTests(), [_item()])
+        self.assertIn("£14,000–£19,000", html)

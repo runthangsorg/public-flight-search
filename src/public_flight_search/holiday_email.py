@@ -1761,6 +1761,20 @@ MULTI_CENTRE_HEAD_PRICE_READ = "flights priced where shown; hotel costs are rang
 MULTI_CENTRE_HEAD_NO_READ = "cost RANGES, not quotes; flights not priced yet."
 
 
+def _multi_centre_price_words(low: Any, high: Any) -> str:
+    """``£X–£Y``, or ``from £X`` when the file carries only a lead-in price.
+
+    A trip whose low and high are equal has one figure behind it, an agency's
+    "from" price, and a range of one number would read as a quote.
+    """
+    try:
+        if float(low) == float(high):
+            return f"from {_gbp(low)}"
+    except (TypeError, ValueError):
+        pass
+    return f"{_gbp(low)}–{_gbp(high)}"
+
+
 def _multi_centre_kind_label(trip: Any) -> str:
     """``operator package`` or ``self-build``: whose shape a trip is."""
     return "operator package" if getattr(trip, "kind", "") == "operator" else "self-build"
@@ -1821,7 +1835,7 @@ def _multi_centre_row_html(row: Mapping[str, Any]) -> str:
     return (
         f'<div style="font-size:12px; color:{_MUTED}; padding:6px 0 0 0;">'
         f'<strong style="color:{_INK};">{_esc(trip.title)}</strong> · '
-        f'{_gbp(row["low"])}–{_gbp(row["high"])} · '
+        f'{_esc(_multi_centre_price_words(row["low"], row["high"]))} · '
         f'{_esc(trip.price_label())} · {_esc(_multi_centre_kind_label(trip))} · '
         f'{_esc(_multi_centre_verdict(row))}<br>'
         + (f'{_esc(trip.operator_ref)}<br>' if getattr(trip, "operator_ref", "") else "")
@@ -1877,7 +1891,7 @@ def _multi_centre_html(config: HolidayConfig, *,
 def _multi_centre_row_lines(row: Mapping[str, Any]) -> list[str]:
     trip = row["trip"]
     lines = [
-        f"  {trip.title} · {_gbp(row['low'])}–{_gbp(row['high'])} · "
+        f"  {trip.title} · {_multi_centre_price_words(row['low'], row['high'])} · "
         f"{trip.price_label()} · {_multi_centre_kind_label(trip)} · "
         f"{_multi_centre_verdict(row)}"
     ]
