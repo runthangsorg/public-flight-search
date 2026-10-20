@@ -141,3 +141,39 @@ class RenderTests(unittest.TestCase):
         for part in (html, text):
             self.assertIn("operator package", part)
             self.assertIn("Tropical Sky", part)
+
+
+class RegionSectionTests(unittest.TestCase):
+    """Africa trips get their own headed block, so they cannot be missed."""
+
+    def _both(self):
+        return [
+            _item(id="MC-X1", region="africa", title="Serengeti 4 nights + Zanzibar 7 nights"),
+            _item(id="MC-X2", title="Bali 7 nights + Lombok 7 nights",
+                  stops=[{"place": "Bali", "nights": 7, "airport": "DPS", "hotel": "h", "basis": "b"},
+                         {"place": "Lombok", "nights": 7, "airport": "LOP", "hotel": "h", "basis": "b"}],
+                  legs=[["LHR", "DPS"], ["DPS", "LOP"], ["LOP", "LHR"]], kind="self-build"),
+        ]
+
+    def _render(self, items):
+        return RenderTests._render(RenderTests(), items)
+
+    def test_the_africa_trip_sits_under_its_own_heading(self):
+        html, text = self._render(self._both())
+        for part in (html, text):
+            self.assertIn("Africa safari", part)
+            self.assertIn("Two-centre trips", part)
+            head_africa = part.index("Africa safari")
+            self.assertLess(part.index("Two-centre trips"), head_africa)
+            self.assertGreater(part.index("Serengeti 4 nights"), head_africa)
+            self.assertLess(part.index("Bali 7 nights"), head_africa)
+
+    def test_no_africa_trip_means_no_africa_heading(self):
+        html, text = self._render([self._both()[1]])
+        self.assertNotIn("Africa safari", html)
+        self.assertNotIn("Africa safari", text)
+
+    def test_only_africa_trips_means_no_two_centre_heading(self):
+        html, text = self._render([self._both()[0]])
+        self.assertNotIn("Two-centre trips", html)
+        self.assertNotIn("Two-centre trips", text)

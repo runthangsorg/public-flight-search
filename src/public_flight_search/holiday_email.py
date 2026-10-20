@@ -1794,9 +1794,48 @@ def _multi_centre_read_html(row: Mapping[str, Any]) -> str:
     )
 
 
+#: The Africa block's own opening: where its figures come from, because an agency's
+#: guide price is for two sharing and a party of five is not two.
+AFRICA_HEAD = (
+    "safari + beach and city combinations, copied from what UK agencies sell, with "
+    "our own build of the same shape beside it. Figures are ranges from named "
+    "agency guide prices (per person, two sharing, so a party of five needs room "
+    "supplements) and rate cards; they are not quotes, and they say when the date "
+    "is not July 2027."
+)
+
+
+def _multi_centre_split(rows: Sequence[Mapping[str, Any]]):
+    """``(other rows, Africa rows)``: Africa has its own headed block."""
+    africa = [r for r in rows if getattr(r["trip"], "region", "") == "africa"]
+    other = [r for r in rows if getattr(r["trip"], "region", "") != "africa"]
+    return other, africa
+
+
+def _multi_centre_row_html(row: Mapping[str, Any]) -> str:
+    trip = row["trip"]
+    climate_warn = "".join(
+        f'<br><span style="color:#92400e;">{_esc(w)}</span>'
+        for w in row.get("warnings") or ()
+    )
+    return (
+        f'<div style="font-size:12px; color:{_MUTED}; padding:6px 0 0 0;">'
+        f'<strong style="color:{_INK};">{_esc(trip.title)}</strong> · '
+        f'{_gbp(row["low"])}–{_gbp(row["high"])} · '
+        f'{_esc(trip.price_label())} · {_esc(_multi_centre_kind_label(trip))} · '
+        f'{_esc(_multi_centre_verdict(row))}<br>'
+        + (f'{_esc(trip.operator_ref)}<br>' if getattr(trip, "operator_ref", "") else "")
+        + (_multi_centre_read_html(row) if row.get("read") else "")
+        + f'why: {_esc(trip.why)}<br>'
+        f'catch: {_esc(trip.catch)}{climate_warn} · '
+        f'<a href="{_esc(row["url"])}" style="color:{_ACCENT}; '
+        f'text-decoration:none; font-weight:600;">flights ↗</a></div>'
+    )
+
+
 def _multi_centre_html(config: HolidayConfig, *,
                        fares: Optional[Mapping[Any, Any]] = None) -> str:
-    """The compact "Two-centre trips" block; empty when there are none.
+    """The compact "Two-centre trips" block and the Africa block; empty when none.
 
     Placed after the cards and before the over-budget list: these are the
     alternatives to a single-centre trip, so they belong next to the cards the
@@ -1806,38 +1845,57 @@ def _multi_centre_html(config: HolidayConfig, *,
     line and the header stops saying none was readable (owner brief 2026-10-15).
     The low and high of each range are unchanged — they are whole-trip estimates,
     and a flight fare does not become a package price by sitting above one.
+    Africa trips (``region == "africa"``) get their own heading (owner 2026-10-20:
+    "i still dont see south africa"), after the Asian trips.
     """
     rows = _multi_centre_rows(config, fares=fares)
     if not rows:
         return ""
-    out = [
-        f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">',
-        f'<strong style="color:{_INK};">Two-centre trips</strong> — '
-        + _multi_centre_head(rows)
-        + ' Every leg here connects, so these are Economy flights like the rest '
-        'of this report. Low end against the '
-        + _gbp(getattr(config, "max_budget_gbp", 0.0)) + ' budget:</div>',
-    ]
-    for row in rows:
-        trip = row["trip"]
-        climate_warn = "".join(
-            f'<br><span style="color:#92400e;">{_esc(w)}</span>'
-            for w in row.get("warnings") or ()
-        )
+    other, africa = _multi_centre_split(rows)
+    budget = _gbp(getattr(config, "max_budget_gbp", 0.0))
+    out: list[str] = []
+    if other:
         out.append(
-            f'<div style="font-size:12px; color:{_MUTED}; padding:6px 0 0 0;">'
-            f'<strong style="color:{_INK};">{_esc(trip.title)}</strong> · '
-            f'{_gbp(row["low"])}–{_gbp(row["high"])} · '
-            f'{_esc(trip.price_label())} · {_esc(_multi_centre_kind_label(trip))} · '
-            f'{_esc(_multi_centre_verdict(row))}<br>'
-            + (f'{_esc(trip.operator_ref)}<br>' if getattr(trip, "operator_ref", "") else "")
-            + (_multi_centre_read_html(row) if row.get("read") else "")
-            + f'why: {_esc(trip.why)}<br>'
-            f'catch: {_esc(trip.catch)}{climate_warn} · '
-            f'<a href="{_esc(row["url"])}" style="color:{_ACCENT}; '
-            f'text-decoration:none; font-weight:600;">flights ↗</a></div>'
+            f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">'
+            f'<strong style="color:{_INK};">Two-centre trips</strong> — '
+            + _multi_centre_head(other)
+            + ' Every leg here connects, so these are Economy flights like the rest '
+            'of this report. Low end against the ' + budget + ' budget:</div>'
         )
+        out.extend(_multi_centre_row_html(row) for row in other)
+    if africa:
+        out.append(
+            f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">'
+            f'<strong style="color:{_INK};">Africa safari + beach, multi-stop</strong> — '
+            + AFRICA_HEAD + ' ' + _multi_centre_head(africa)
+            + ' Low end against the ' + budget + ' budget:</div>'
+        )
+        out.extend(_multi_centre_row_html(row) for row in africa)
     return "".join(out)
+
+
+def _multi_centre_row_lines(row: Mapping[str, Any]) -> list[str]:
+    trip = row["trip"]
+    lines = [
+        f"  {trip.title} · {_gbp(row['low'])}–{_gbp(row['high'])} · "
+        f"{trip.price_label()} · {_multi_centre_kind_label(trip)} · "
+        f"{_multi_centre_verdict(row)}"
+    ]
+    if getattr(trip, "operator_ref", ""):
+        lines.append(f"    {trip.operator_ref}")
+    read = row.get("read")
+    if read:
+        lines.append(
+            f"    flights {_gbp(read.get('total_gbp'))} for {_read_party(read)} "
+            f"(read {_read_day_words(read.get('observed_at'))}): "
+            f"{read.get('source_url') or row['url']}"
+        )
+    lines.append(f"    why: {trip.why}")
+    lines.append(f"    catch: {trip.catch}")
+    for climate_warning in row.get("warnings") or ():
+        lines.append(f"    {climate_warning}")
+    lines.append(f"    flights ({len(trip.legs)} legs): {row['url']}")
+    return lines
 
 
 def _multi_centre_lines(config: HolidayConfig, *,
@@ -1846,34 +1904,24 @@ def _multi_centre_lines(config: HolidayConfig, *,
     rows = _multi_centre_rows(config, fares=fares)
     if not rows:
         return []
-    lines = [
-        "Two-centre trips — " + _multi_centre_head(rows)
-        + " Every leg here connects, so these are Economy flights like the rest "
-        "of this report. Low end against the "
-        + _gbp(getattr(config, "max_budget_gbp", 0.0))
-        + " budget:"
-    ]
-    for row in rows:
-        trip = row["trip"]
+    other, africa = _multi_centre_split(rows)
+    budget = _gbp(getattr(config, "max_budget_gbp", 0.0))
+    lines: list[str] = []
+    if other:
         lines.append(
-            f"  {trip.title} · {_gbp(row['low'])}–{_gbp(row['high'])} · "
-            f"{trip.price_label()} · {_multi_centre_kind_label(trip)} · "
-            f"{_multi_centre_verdict(row)}"
+            "Two-centre trips — " + _multi_centre_head(other)
+            + " Every leg here connects, so these are Economy flights like the rest "
+            "of this report. Low end against the " + budget + " budget:"
         )
-        if getattr(trip, "operator_ref", ""):
-            lines.append(f"    {trip.operator_ref}")
-        read = row.get("read")
-        if read:
-            lines.append(
-                f"    flights {_gbp(read.get('total_gbp'))} for {_read_party(read)} "
-                f"(read {_read_day_words(read.get('observed_at'))}): "
-                f"{read.get('source_url') or row['url']}"
-            )
-        lines.append(f"    why: {trip.why}")
-        lines.append(f"    catch: {trip.catch}")
-        for climate_warning in row.get("warnings") or ():
-            lines.append(f"    {climate_warning}")
-        lines.append(f"    flights ({len(trip.legs)} legs): {row['url']}")
+        for row in other:
+            lines.extend(_multi_centre_row_lines(row))
+    if africa:
+        lines.append(
+            "Africa safari + beach, multi-stop — " + AFRICA_HEAD + " "
+            + _multi_centre_head(africa) + " Low end against the " + budget + " budget:"
+        )
+        for row in africa:
+            lines.extend(_multi_centre_row_lines(row))
     return lines
 
 
