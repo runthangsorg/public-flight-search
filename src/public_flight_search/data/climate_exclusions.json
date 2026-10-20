@@ -33,6 +33,13 @@
       "place_words": ["tokyo", "kyoto", "osaka"],
       "months": [6, 7],
       "text": "rainy season (tsuyu) usually ends mid–late July"
+    },
+    {
+      "id": "cape-town-wet-winter",
+      "airports": ["CPT"],
+      "place_words": ["cape town", "garden route", "stellenbosch"],
+      "months": [6, 7, 8],
+      "text": "wet, cool winter (rain most weeks, 8–18 °C); Kruger and the bushveld are dry"
     }
   ]
 }

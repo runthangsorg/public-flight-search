@@ -51,6 +51,12 @@ PRICE_LABEL = "estimate"
 #: so this never says "price".
 PRICE_LABEL_DATED = "dated lines, still a range"
 
+#: Where a trip's shape came from. ``self-build`` is this report's own line-by-line
+#: build; ``operator`` is a package an agency actually sells and the row says
+#: which (``operator_ref``). A trip with no ``kind`` is a self-build, which is
+#: what every Asian trip in the file already was.
+KINDS: frozenset[str] = frozenset({"self-build", "operator"})
+
 
 @dataclass(frozen=True)
 class MultiCentreStop:
@@ -83,6 +89,12 @@ class MultiCentreTrip:
     catch: str
     confidence: str
     source_urls: tuple[str, ...]
+    #: ``self-build`` or ``operator`` (see ``KINDS``). Optional in the file.
+    kind: str = "self-build"
+    #: For a trip that copies or is an agency's package: whose, and which one.
+    operator_ref: str = ""
+    #: ``africa``, ``asia`` ...: a label for the reader, never a filter.
+    region: str = ""
 
     @property
     def total_nights(self) -> int:
@@ -200,6 +212,14 @@ def _trip(item: Any) -> Optional[MultiCentreTrip]:
     urls = tuple(
         str(u).strip() for u in item.get("source_urls", ()) or () if str(u).strip()
     )
+    kind = str(item.get("kind", "") or "self-build").strip().lower()
+    if kind not in KINDS:
+        _warn_skip(ident, f"unknown kind {kind!r}")
+        return None
+    operator_ref = str(item.get("operator_ref", "") or "").strip()
+    if kind == "operator" and not operator_ref:
+        _warn_skip(ident, "an operator trip must name its operator")
+        return None
     return MultiCentreTrip(
         id=ident,
         title=title,
@@ -214,6 +234,9 @@ def _trip(item: Any) -> Optional[MultiCentreTrip]:
         catch=str(item.get("catch", "")).strip(),
         confidence=str(item.get("confidence", "")).strip() or "estimate",
         source_urls=urls,
+        kind=kind,
+        operator_ref=operator_ref,
+        region=str(item.get("region", "") or "").strip().lower(),
     )
 
 
@@ -297,6 +320,7 @@ __all__ = [
     "DEFAULT_MULTI_CENTRE_PATH",
     "MultiCentreStop",
     "MultiCentreTrip",
+    "KINDS",
     "PRICE_LABEL",
     "SCHEMA",
     "consume_multi_centre_skip_log",

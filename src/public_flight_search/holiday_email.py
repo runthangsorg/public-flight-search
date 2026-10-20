@@ -1761,6 +1761,11 @@ MULTI_CENTRE_HEAD_PRICE_READ = "flights priced where shown; hotel costs are rang
 MULTI_CENTRE_HEAD_NO_READ = "cost RANGES, not quotes; flights not priced yet."
 
 
+def _multi_centre_kind_label(trip: Any) -> str:
+    """``operator package`` or ``self-build``: whose shape a trip is."""
+    return "operator package" if getattr(trip, "kind", "") == "operator" else "self-build"
+
+
 def _multi_centre_head(rows: Sequence[Mapping[str, Any]]) -> str:
     """Which of the two opening sentences this block carries.
 
@@ -1823,7 +1828,9 @@ def _multi_centre_html(config: HolidayConfig, *,
             f'<div style="font-size:12px; color:{_MUTED}; padding:6px 0 0 0;">'
             f'<strong style="color:{_INK};">{_esc(trip.title)}</strong> · '
             f'{_gbp(row["low"])}–{_gbp(row["high"])} · '
-            f'{_esc(trip.price_label())} · {_esc(_multi_centre_verdict(row))}<br>'
+            f'{_esc(trip.price_label())} · {_esc(_multi_centre_kind_label(trip))} · '
+            f'{_esc(_multi_centre_verdict(row))}<br>'
+            + (f'{_esc(trip.operator_ref)}<br>' if getattr(trip, "operator_ref", "") else "")
             + (_multi_centre_read_html(row) if row.get("read") else "")
             + f'why: {_esc(trip.why)}<br>'
             f'catch: {_esc(trip.catch)}{climate_warn} · '
@@ -1850,8 +1857,11 @@ def _multi_centre_lines(config: HolidayConfig, *,
         trip = row["trip"]
         lines.append(
             f"  {trip.title} · {_gbp(row['low'])}–{_gbp(row['high'])} · "
-            f"{trip.price_label()} · {_multi_centre_verdict(row)}"
+            f"{trip.price_label()} · {_multi_centre_kind_label(trip)} · "
+            f"{_multi_centre_verdict(row)}"
         )
+        if getattr(trip, "operator_ref", ""):
+            lines.append(f"    {trip.operator_ref}")
         read = row.get("read")
         if read:
             lines.append(
