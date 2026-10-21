@@ -12,6 +12,7 @@ must still be logged individually.
 from __future__ import annotations
 
 import io
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import tempfile
@@ -53,13 +54,18 @@ DEC_CONFIG = """
 """
 
 
+def _hours_ago(hours: float) -> str:
+    """A read this many hours old, so no fixture ages past the 30-day ceiling on its own."""
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+
+
 def _rec(airport: str, outbound: str, returning: str) -> dict:
     return {
         "airport": airport,
         "total_gbp": 2000.0,
         "basis": "whole_party_return_total",
         "source_url": "https://example.invalid/search",
-        "observed_at": "2026-09-21T00:00:00+00:00",
+        "observed_at": _hours_ago(1),
         "exact_dates": {"outbound": outbound, "return": returning},
         "travellers": 5,
     }
@@ -107,7 +113,7 @@ class OtherAirportNoiseTests(unittest.TestCase):
         config = load_holiday_config(JULY_CONFIG)
         aged = _rec("HKT", "2027-07-20", "2027-07-27")
         # Inside the stale-cache window (past 48h, under the 30-day ceiling).
-        aged["observed_at"] = "2026-09-29T00:00:00+00:00"
+        aged["observed_at"] = _hours_ago(24 * 5)
         path = self._write([aged])
         stderr = io.StringIO()
         with redirect_stderr(stderr):

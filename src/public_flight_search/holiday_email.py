@@ -1815,7 +1815,8 @@ AFRICA_HEAD = (
     "our own build of the same shape beside it. Figures are ranges from named "
     "agency guide prices (per person, two sharing, so a party of five needs room "
     "supplements) and rate cards; they are not quotes, and they say when the date "
-    "is not July 2027."
+    "is not July 2027. A flights line appears only where a fare was found; the "
+    "flights link opens the search for the rest."
 )
 
 
@@ -1881,7 +1882,7 @@ def _multi_centre_html(config: HolidayConfig, *,
         out.append(
             f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">'
             f'<strong style="color:{_INK};">Africa safari + beach, multi-stop</strong> — '
-            + AFRICA_HEAD + ' ' + _multi_centre_head(africa)
+            + AFRICA_HEAD
             + ' Low end against the ' + budget + ' budget:</div>'
         )
         out.extend(_multi_centre_row_html(row) for row in africa)
@@ -1931,8 +1932,8 @@ def _multi_centre_lines(config: HolidayConfig, *,
             lines.extend(_multi_centre_row_lines(row))
     if africa:
         lines.append(
-            "Africa safari + beach, multi-stop — " + AFRICA_HEAD + " "
-            + _multi_centre_head(africa) + " Low end against the " + budget + " budget:"
+            "Africa safari + beach, multi-stop — " + AFRICA_HEAD
+            + " Low end against the " + budget + " budget:"
         )
         for row in africa:
             lines.extend(_multi_centre_row_lines(row))

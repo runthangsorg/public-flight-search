@@ -829,6 +829,12 @@ class WarningTests(unittest.TestCase):
 
 class CompactnessTests(unittest.TestCase):
     def test_twelve_deals_stay_under_the_word_cap(self):
+        # 2,400, raised from 1,800 on 2026-10-21: the owner asked three times
+        # (15, 17 and 20 Oct) for Africa safari and multi-stop trips, and eleven
+        # rows (an operator package or a rate-card build each: title, kind, whose
+        # shape, one line of why, one of catch) are about 500 words of REQUIRED
+        # content. Each was cut to one clause per line; what the cap still does is
+        # bound the whole e-mail.
         # 1,800, raised from 1,500 on 2026-10-04 (H9). The Two-centre section
         # the owner asked for is about 300 words of REQUIRED content — five
         # itineraries, each a title, a cost range, a budget verdict, one line of
@@ -836,7 +842,7 @@ class CompactnessTests(unittest.TestCase):
         # hit a number. What the cap still does is bound the whole e-mail: a
         # report that grows past it is a report nobody reads on a phone.
         html = _render(deals=_deals(12))
-        self.assertLess(word_count(html), 1800)
+        self.assertLess(word_count(html), 2400)
 
     def test_the_dropped_sections_cannot_come_back(self):
         text = visible_text(_render(deals=_deals(12)))

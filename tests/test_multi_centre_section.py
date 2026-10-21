@@ -125,6 +125,13 @@ def _text(config, *, budget: float | None = None) -> str:
     )
 
 
+def _price_words(trip) -> str:
+    """How a trip's money reads: a range, or ``from £X`` when only a lead-in price backs it."""
+    if trip.cost_low_gbp == trip.cost_high_gbp:
+        return f"from £{trip.cost_low_gbp:,.0f}"
+    return f"£{trip.cost_low_gbp:,.0f}–£{trip.cost_high_gbp:,.0f}"
+
+
 class ShippedDataTests(unittest.TestCase):
     def test_the_file_is_the_schema_the_loader_demands(self):
         payload = json.loads(DATA.read_text(encoding="utf-8"))
@@ -340,7 +347,7 @@ class RenderTests(unittest.TestCase):
         for trip in load_multi_centre(_config(JULY)):
             with self.subTest(itinerary=trip.id):
                 self.assertIn(trip.title, section)
-                self.assertIn(f"£{trip.cost_low_gbp:,.0f}–£{trip.cost_high_gbp:,.0f}", section)
+                self.assertIn(_price_words(trip), section)
                 self.assertIn("low end", section)
 
     def test_no_range_is_ever_called_a_price_or_a_quote(self):
@@ -399,8 +406,8 @@ class RenderTests(unittest.TestCase):
         html = _html(config)
         text = _text(config)
         trip = load_multi_centre(config)[0]
-        self.assertIn(f"£{trip.cost_low_gbp:,.0f}–£{trip.cost_high_gbp:,.0f}", html)
-        self.assertIn(f"£{trip.cost_low_gbp:,.0f}–£{trip.cost_high_gbp:,.0f}", text)
+        self.assertIn(_price_words(trip), html)
+        self.assertIn(_price_words(trip), text)
         self.assertIn(trip.why, html)
         self.assertIn(trip.why, text)
         self.assertIn(trip.catch, html)
