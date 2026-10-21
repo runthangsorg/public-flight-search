@@ -26,11 +26,11 @@ runners, no credentials in the repo, no personalised output committed. The paire
 (flight-digest.yml) was deleted on 2026-09-28 at the owner's instruction — do not reintroduce it
 without an owner decision.
 
-## External actions default to preview
+## Acting for the owner
 
-A run must not send email, publish, or write to a third party unless that
-action was explicitly asked for. Dry-run is the default and must stay the
-default; `--send` (or equivalent) is opt-in per invocation.
+The owner's request is the authority to run a job live, send its email or
+publish: pass `--send` (or the workflow's equivalent input) when the task calls
+for it. Scripts keep dry-run as their default so a test never sends.
 
 ## Before you push
 
