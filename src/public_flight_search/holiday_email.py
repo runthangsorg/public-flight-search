@@ -1860,8 +1860,8 @@ def _multi_centre_html(config: HolidayConfig, *,
     line and the header stops saying none was readable (owner brief 2026-10-15).
     The low and high of each range are unchanged — they are whole-trip estimates,
     and a flight fare does not become a package price by sitting above one.
-    Africa trips (``region == "africa"``) get their own heading (owner 2026-10-20:
-    "i still dont see south africa"), after the Asian trips.
+    Africa trips (``region == "africa"``) get their own heading, FIRST (owner 2026-10-20:
+    "i still dont see south africa").
     """
     rows = _multi_centre_rows(config, fares=fares)
     if not rows:
@@ -1869,6 +1869,14 @@ def _multi_centre_html(config: HolidayConfig, *,
     other, africa = _multi_centre_split(rows)
     budget = _gbp(getattr(config, "max_budget_gbp", 0.0))
     out: list[str] = []
+    if africa:
+        out.append(
+            f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">'
+            f'<strong style="color:{_INK};">Africa safari + beach, multi-stop</strong> — '
+            + AFRICA_HEAD
+            + ' Low end against the ' + budget + ' budget:</div>'
+        )
+        out.extend(_multi_centre_row_html(row) for row in africa)
     if other:
         out.append(
             f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">'
@@ -1878,14 +1886,6 @@ def _multi_centre_html(config: HolidayConfig, *,
             'of this report. Low end against the ' + budget + ' budget:</div>'
         )
         out.extend(_multi_centre_row_html(row) for row in other)
-    if africa:
-        out.append(
-            f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">'
-            f'<strong style="color:{_INK};">Africa safari + beach, multi-stop</strong> — '
-            + AFRICA_HEAD
-            + ' Low end against the ' + budget + ' budget:</div>'
-        )
-        out.extend(_multi_centre_row_html(row) for row in africa)
     return "".join(out)
 
 
@@ -1922,6 +1922,13 @@ def _multi_centre_lines(config: HolidayConfig, *,
     other, africa = _multi_centre_split(rows)
     budget = _gbp(getattr(config, "max_budget_gbp", 0.0))
     lines: list[str] = []
+    if africa:
+        lines.append(
+            "Africa safari + beach, multi-stop — " + AFRICA_HEAD
+            + " Low end against the " + budget + " budget:"
+        )
+        for row in africa:
+            lines.extend(_multi_centre_row_lines(row))
     if other:
         lines.append(
             "Two-centre trips — " + _multi_centre_head(other)
@@ -1929,13 +1936,6 @@ def _multi_centre_lines(config: HolidayConfig, *,
             "of this report. Low end against the " + budget + " budget:"
         )
         for row in other:
-            lines.extend(_multi_centre_row_lines(row))
-    if africa:
-        lines.append(
-            "Africa safari + beach, multi-stop — " + AFRICA_HEAD
-            + " Low end against the " + budget + " budget:"
-        )
-        for row in africa:
             lines.extend(_multi_centre_row_lines(row))
     return lines
 

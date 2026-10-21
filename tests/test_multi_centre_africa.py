@@ -164,9 +164,12 @@ class RegionSectionTests(unittest.TestCase):
             self.assertIn("Africa safari", part)
             self.assertIn("Two-centre trips", part)
             head_africa = part.index("Africa safari")
-            self.assertLess(part.index("Two-centre trips"), head_africa)
+            head_two = part.index("Two-centre trips")
+            # Africa comes first: it is what the owner kept asking for.
+            self.assertLess(head_africa, head_two)
             self.assertGreater(part.index("Serengeti 4 nights"), head_africa)
-            self.assertLess(part.index("Bali 7 nights"), head_africa)
+            self.assertLess(part.index("Serengeti 4 nights"), head_two)
+            self.assertGreater(part.index("Bali 7 nights"), head_two)
 
     def test_no_africa_trip_means_no_africa_heading(self):
         html, text = self._render([self._both()[1]])

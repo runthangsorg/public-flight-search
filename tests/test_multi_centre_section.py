@@ -125,6 +125,12 @@ def _text(config, *, budget: float | None = None) -> str:
     )
 
 
+
+def _multi_start(text: str) -> int:
+    """Where the multi-stop blocks begin: Africa (first) or the two-centre trips."""
+    marks = [i for i in (text.find("Africa safari + beach"), text.find("Two-centre trips")) if i >= 0]
+    return min(marks) if marks else -1
+
 def _price_words(trip) -> str:
     """How a trip's money reads: a range, or ``from £X`` when only a lead-in price backs it."""
     if trip.cost_low_gbp == trip.cost_high_gbp:
@@ -304,7 +310,7 @@ class BudgetVerdictTests(unittest.TestCase):
 
     def test_a_tight_budget_turns_every_verdict_to_over(self):
         text = _text(_config(JULY), budget=TIGHT_GBP)
-        section = text.split("Two-centre trips")[1].split("Over the")[0]
+        section = text[_multi_start(text):].split("Over the")[0]
         self.assertNotIn("low end fits", section)
 
     def test_a_loose_budget_turns_a_verdict_to_fits(self):
@@ -335,7 +341,7 @@ class RenderTests(unittest.TestCase):
     def test_the_section_sits_between_the_cards_and_the_over_budget_list(self):
         html = _html(_config(JULY))
         self.assertIn("Two-centre trips", html)
-        section = html.index("Two-centre trips")
+        section = _multi_start(html)
         if "Over the" in html:
             self.assertLess(section, html.index("Over the"))
         if "Package operators" in html:
@@ -343,7 +349,7 @@ class RenderTests(unittest.TestCase):
 
     def test_each_itinerary_shows_a_title_a_range_and_a_verdict(self):
         text = _text(_config(JULY))
-        section = text.split("Two-centre trips")[1]
+        section = text[_multi_start(text):]
         for trip in load_multi_centre(_config(JULY)):
             with self.subTest(itinerary=trip.id):
                 self.assertIn(trip.title, section)
@@ -353,13 +359,13 @@ class RenderTests(unittest.TestCase):
     def test_no_range_is_ever_called_a_price_or_a_quote(self):
         for path in (JULY, DEC):
             text = _text(_config(path))
-            section = text.split("Two-centre trips")[1]
+            section = text[_multi_start(text):]
             for banned in ("price:", "priced at", "quoted", "book for"):
                 self.assertNotIn(banned, section.lower(), f"{path.name}: {banned}")
 
     def test_every_itinerary_carries_a_multi_city_search_link(self):
         html = _html(_config(JULY))
-        section = html.split("Two-centre trips")[1]
+        section = html[_multi_start(html):]
         self.assertIn("google.com/travel/flights", section)
         self.assertIn("tfs=", section)
         self.assertIn("flights ↗", section)

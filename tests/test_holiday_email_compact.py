@@ -184,6 +184,12 @@ def _render(deals=None, *, config=None, **kwargs) -> str:
     )
 
 
+
+def _multi_start(text: str) -> int:
+    """Where the multi-stop blocks begin: Africa (first) or the two-centre trips."""
+    marks = [i for i in (text.find("Africa safari + beach"), text.find("Two-centre trips")) if i >= 0]
+    return min(marks) if marks else -1
+
 class HeaderTests(unittest.TestCase):
     def test_the_header_states_the_departure_range_and_the_nights(self):
         text = visible_text(_render())
@@ -705,7 +711,7 @@ class FlightRowTests(unittest.TestCase):
         # 2026-10-15). That is a different section's statement about a different
         # journey, and reading it as this row's answer was the bug in this
         # assertion, not a reason to leave it saying so.
-        card = html.split("Two-centre trips")[0]
+        card = html[:_multi_start(html)]
         self.assertNotIn("not priced yet", card)
         self.assertIn("£6,542", card, "the priced stopover row shows its own total")
 
@@ -823,7 +829,7 @@ class WarningTests(unittest.TestCase):
         text = visible_text(_render(deals=[deal]))
         # The cap is per CARD. The two-centre block below it carries its own
         # climate warnings (Tokyo's tsuyu), so it is not counted here.
-        card = text.split("Two-centre trips")[0]
+        card = text[:_multi_start(text)]
         self.assertLessEqual(card.count("⚠"), 2)
 
 
