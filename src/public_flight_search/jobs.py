@@ -25,9 +25,11 @@ from .holidays import (
     stopover_wanted,
 )
 from .holiday_email import (
+    full_detail_filename,
     multi_centre_wanted,
     render_holiday_report_compact,
     render_holiday_report_compact_text,
+    render_holiday_report_full,
 )
 from .holiday_history import (
     append_history,
@@ -508,7 +510,14 @@ def run_holiday_planner(
             hotel_ratings=hotel_evidence_module.ratings_index(),
         )
     render = render_holiday_report if detailed else render_holiday_report_compact
-    html = render(config, **render_kwargs)
+    # THE FULL-DETAIL ATTACHMENT (22 Oct 2026). Gmail clips an HTML part near 102 KB, so the body sheds the last
+    # trips' detail; the compact e-mail therefore also carries ONE self-contained HTML file with every trip and
+    # every resort in full, built in memory from the same structures with no byte budget. It is never written to
+    # disk here (a dry run touches nothing) and the body names it in one line near the top.
+    attachment_name = "" if detailed else full_detail_filename(config, generated_at)
+    attachment_html = "" if detailed else render_holiday_report_full(config, **render_kwargs)
+    html = (render(config, **render_kwargs) if detailed
+            else render(config, attachment_name=attachment_name, **render_kwargs))
     # The plain-text part the mailer already sends used to say "open this in an
     # HTML-capable client", which carried none of the decision; it now mirrors
     # the HTML in the same order with the same numbers.
@@ -571,7 +580,11 @@ def run_holiday_planner(
         # holiday, and the cooldown is not the reason it was suppressed.
         send_email = False
     if send_email:
-        send_html(subject, html, text=text)
+        if attachment_html:
+            send_html(subject, html, text=text,
+                      attachments=[(attachment_name, attachment_html.encode("utf-8"), "text/html")])
+        else:
+            send_html(subject, html, text=text)
     date_combination_count = len(_date_pairs(config))
     result = {
         # Which config priced this report. A fallback or a legacy env name
@@ -609,6 +622,9 @@ def run_holiday_planner(
         "live_evidence_record_count": freshness["record_count"],
         "live_evidence_newest_observed_at": freshness["newest_observed_at"],
         "evidence_stamps": evidence_stamps,
+        # The full-detail file that travels with a compact e-mail (empty for the detailed style).
+        "full_detail_attachment": attachment_name,
+        "full_detail_attachment_bytes": len(attachment_html.encode("utf-8")),
         "live_evidence_age_hours": freshness["age_hours"],
         "live_evidence_stale": freshness["stale"],
         "live_evidence_future_dated": freshness["future_dated"],

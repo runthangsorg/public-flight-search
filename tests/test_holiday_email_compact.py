@@ -1160,7 +1160,9 @@ class StyleSwitchTests(unittest.TestCase):
 
         sent: dict = {}
 
-        def _capture(subject, html, *, text=""):
+        def _capture(subject, html, *, text="", **_attachments):
+            # ``attachments`` (22 Oct 2026): the compact e-mail now carries its full-detail file; pinned in
+            # test_full_detail_attachment.py.
             sent["html"] = html
             sent["text"] = text
 
@@ -1200,7 +1202,7 @@ class StyleSwitchTests(unittest.TestCase):
             with self.subTest(style=style or "compact"), tempfile.TemporaryDirectory() as tmp:
                 sent: list = []
 
-                def _capture(subject, html, *, text=""):
+                def _capture(subject, html, *, text="", **_attachments):
                     sent.append((html, text))
 
                 env = {

@@ -711,8 +711,9 @@ def _pair_html(d: Mapping[str, Any], level: int) -> str:
         return f'<tr><td {label}>{name}</td><td {cell}>{left}</td><td {cell}>{right}</td></tr>'
 
     def made(side: Mapping[str, Any]) -> str:
+        """What a side's figure is made of, as a sentence a full-width line can carry."""
         if side["lines"]:
-            return "<br>".join(f"£{gbp:,.0f} · {escape(text)}" for text, gbp, _b in side["lines"])
+            return " + ".join(f"£{gbp:,.0f} {escape(text)}" for text, gbp, _b in side["lines"])
         return escape(side["basis"])
 
     def price(side: Mapping[str, Any]) -> str:
@@ -724,18 +725,19 @@ def _pair_html(d: Mapping[str, Any], level: int) -> str:
             row("Nights", f'{package["nights"]} nights<br>{escape(package["per_night"])}',
                 f'{ours["nights"]} nights<br>{escape(ours["per_night"])}'),
             row("Flights", escape(package["flights_words"]), escape(ours["flights_words"]))]
-    if level == FULL:
-        rows.append(row("Made of", made(package), made(ours)))
     out = [_heading("Package vs our build"),
            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">'
            + "".join(rows) + "</table>",
            f'<div style="margin:4px 0 0 0">{_k(escape(pair["difference"][0]))}</div>']
-    extra = list(pair["difference"][1:])
+    extra = [escape(x) for x in pair["difference"][1:]]
     if level == FULL:
-        extra.append(f"Catch of the package: {package['catch']}")
-        extra.append(f"Catch of our build: {ours['catch']}")
+        # Full width, under the table: a sentence about how each figure was made does not fit a 150 px column.
+        extra.append(f"<b>The package is made of:</b> {made(package)}")
+        extra.append(f"<b>Our build is made of:</b> {made(ours)}")
+        extra.append(f"<b>Catch of the package:</b> {escape(package['catch'])}")
+        extra.append(f"<b>Catch of our build:</b> {escape(ours['catch'])}")
     if extra:
-        out.append("<div>" + "<br>".join(escape(x) for x in extra) + "</div>")
+        out.append("<div>" + "<br>".join(extra) + "</div>")
     return "".join(out)
 
 

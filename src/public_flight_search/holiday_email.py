@@ -2484,7 +2484,7 @@ def _quick_answers(config: HolidayConfig, rows: Sequence[Mapping[str, Any]],
     return answers
 
 
-def _start_here_html(answers: Mapping[str, Any]) -> str:
+def _start_here_html(answers: Mapping[str, Any], *, attachment_line: str = "") -> str:
     def link(anchor: str, label: str) -> str:
         return (f'<a href="#{_esc(anchor)}" style="color:{_ACCENT}; text-decoration:none; '
                 f'font-weight:700;">{_esc(label)} ↓</a>')
@@ -2509,7 +2509,10 @@ def _start_here_html(answers: Mapping[str, Any]) -> str:
         f'<strong style="font-size:13px;">{START_HERE_HEADING}</strong>'
         f'<div style="margin:2px 0 0 0;">{_esc(START_HERE_GUIDE)}</div>'
         f'<div style="margin:6px 0 0 0; font-size:11px; font-weight:700; color:{_MUTED}; text-transform:uppercase; '
-        f'letter-spacing:0.05em;">Quick answers</div>' + "".join(rows) + "</div>"
+        f'letter-spacing:0.05em;">Quick answers</div>' + "".join(rows)
+        + (f'<div style="margin:6px 0 0 0; padding:4px 0 0 0; border-top:1px solid {_LINE};">'
+           f'<strong>{_esc(attachment_line)}</strong></div>' if attachment_line else "")
+        + "</div>"
     )
 
 
@@ -2554,6 +2557,39 @@ def _shortened_summary_html(dossiers: Sequence[Mapping[str, Any]], levels: Mappi
     return f'<div style="font-size:12px; color:#92400e; margin:12px 0 0 0;">{_esc(text)}</div>'
 
 
+def full_detail_filename(config: HolidayConfig, generated_at: Any) -> str:
+    """``july-trips-full-2026-10-22.html``: the season, then the day, so the files sort by date."""
+    stamp = _instant(generated_at)
+    day = stamp.strftime("%Y-%m-%d") if stamp is not None else "undated"
+    return f"{'july' if hol.is_summer_trip(config) else 'december'}-trips-full-{day}.html"
+
+
+def render_holiday_report_full(
+    config: HolidayConfig,
+    *,
+    generated_at: str,
+    deals: Sequence[PackageDeal] = (),
+    trends: Optional[Sequence[Mapping[str, Any]]] = None,
+    multi_centre_fares: Optional[Mapping[Any, Any]] = None,
+    evidence_stamps: Optional[Mapping[str, Any]] = None,
+    hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None,
+    **_ignored: Any,
+) -> str:
+    """The full-detail file the e-mail attaches: every trip dossier and every resort card, nothing shortened.
+
+    Built by the same code as the body, from the same structures (``trip_dossier``, ``_cards``), with the byte budget
+    taken away: Gmail clips the BODY near 102 KB, but an attachment is not clipped. It is one self-contained
+    document: inline CSS only, no script, no image, no link element, nothing fetched; the only ``href``s are
+    anchors inside the file and the links to bookings. Same keywords as the body renderer (the job hands both one set
+    of arguments); the ones that only matter to the detailed renderer are ignored.
+    """
+    return _render_compact(
+        config, generated_at=generated_at, deals=deals, trends=trends,
+        multi_centre_fares=multi_centre_fares, evidence_stamps=evidence_stamps,
+        hotel_ratings=hotel_ratings, full_detail=True,
+    )
+
+
 def render_holiday_report_compact(
     config: HolidayConfig,
     *,
@@ -2567,8 +2603,12 @@ def render_holiday_report_compact(
     multi_centre_fares: Optional[Mapping[Any, Any]] = None,
     evidence_stamps: Optional[Mapping[str, Any]] = None,
     hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None,
+    attachment_name: str = "",
 ) -> str:
     """The compact holiday e-mail. Same arguments as the detailed renderer.
+
+    ``attachment_name``, when given, is the full-detail file that travels with this e-mail
+    (``render_holiday_report_full``): one line near the top says so. Empty claims nothing.
 
     There is no "What changed" block: the owner asked on 2026-10-08 for the
     price-change bullets to go ("I don't care about that"), so neither
@@ -2601,13 +2641,47 @@ def render_holiday_report_compact(
     second-choice links of the last dossiers, then the last dossiers down to a
     short form. A trip never leaves the table, and a line says what was shortened.
     """
+    return _render_compact(
+        config, generated_at=generated_at, deals=deals, trends=trends,
+        multi_centre_fares=multi_centre_fares, evidence_stamps=evidence_stamps,
+        hotel_ratings=hotel_ratings, attachment_name=attachment_name,
+    )
+
+
+FULL_COPY_LINE = (
+    "This file is the full-detail copy of the e-mail: every trip and every resort, nothing shortened."
+)
+
+
+def _render_compact(
+    config: HolidayConfig,
+    *,
+    generated_at: str,
+    deals: Sequence[PackageDeal],
+    trends: Optional[Sequence[Mapping[str, Any]]],
+    multi_centre_fares: Optional[Mapping[Any, Any]],
+    evidence_stamps: Optional[Mapping[str, Any]],
+    hotel_ratings: Optional[Mapping[str, Sequence[Any]]],
+    attachment_name: str = "",
+    full_detail: bool = False,
+) -> str:
+    """The one renderer behind the body and the attachment; ``full_detail`` lifts the byte budget."""
     cards = _cards(config, deals, generated_at=generated_at, trends=trends)
     multi_rows = _multi_centre_rows(config, fares=multi_centre_fares)
     dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
                                       hotel_ratings=hotel_ratings)
     answers = _quick_answers(config, multi_rows, cards, dossiers)
+    if full_detail:
+        attachment_line = FULL_COPY_LINE
+    elif attachment_name:
+        attachment_line = (f"The full detail of every trip and every resort is in the attached file, "
+                           f"{attachment_name}.")
+    else:
+        attachment_line = ""
+    # The attachment is opened in a browser, so it says how wide to be on a phone; a mail body is left to the client.
+    viewport = '<meta name="viewport" content="width=device-width, initial-scale=1">' if full_detail else ""
     out: list[str] = [
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>',
+        f'<!DOCTYPE html><html><head><meta charset="utf-8">{viewport}<title>',
         _esc(config.report_title),
         '</title></head><body style="margin:0; padding:0; background:#f1f5f9; ',
         'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; ',
@@ -2616,7 +2690,7 @@ def render_holiday_report_compact(
         '<table role="presentation" width="600" cellpadding="0" cellspacing="0" ',
         'style="width:100%; max-width:600px;"><tr><td>',
         _header_html(config, generated_at=generated_at),
-        _start_here_html(answers),
+        _start_here_html(answers, attachment_line=attachment_line),
         _freshness_html(evidence_stamps, generated_at=generated_at),
         _overview_html(config, multi_rows, generated_at=generated_at),
     ]
@@ -2665,7 +2739,8 @@ def render_holiday_report_compact(
     # flights, links), again from the end; and only then do resort cards beyond the minimum go, as they always
     # did. No trip leaves the table, and a line over the trips says what was shortened.
     levels = {d["id"]: td.FULL for d in dossiers}
-    if total(levels, shown_cards, shortened=False) > limit:
+    # (The attachment has no budget: Gmail clips a body, not an attached file.)
+    if not full_detail and total(levels, shown_cards, shortened=False) > limit:
         for target in (td.TRIMMED, td.SHORT):
             for d in reversed(dossiers):
                 if total(levels, shown_cards, shortened=True) <= limit:
