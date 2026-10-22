@@ -1335,18 +1335,7 @@ def _deal_flight_read(deal: PackageDeal) -> dict[str, Any]:
     arr_time, arr_day = td._clock(getattr(deal, "live_arrival_local", ""))
     timed = bool(dep_time and arr_time)
     origin = str(getattr(deal, "origin", "") or "").strip()
-    # The Economy row above names the catalogue's usual routing ("1-Stop via ..."); the fare that PRICED the card
-    # has the stops the read states. When they differ, the card says so rather than showing two answers.
-    route = route_words(deal)
-    match = re.match(r"(\d+)-Stop", route)
-    route_stops = 0 if route.startswith("Nonstop") else (int(match.group(1)) if match else None)
-    live_stops = getattr(deal, "live_stops", None)
-    mismatch = ""
-    if route_stops is not None and live_stops is not None and int(live_stops) != route_stops:
-        mismatch = (f"The Economy row above names the usual routing ({route}); the fare read behind the price "
-                    f"has {td.stops_words(live_stops)}.")
     return {
-        "mismatch": mismatch,
         "read_on": _read_day_words(observed),
         "origin": origin,
         "what": " · ".join(p for p in parts if p),
@@ -1662,8 +1651,6 @@ def _card_html(card: Mapping[str, Any]) -> str:
         )
         if read["times"]:
             out.append(f'<div style="font-size:11px; color:{_MUTED}; margin:2px 0 0 0;">{_esc(read["times"])}</div>')
-        if read["mismatch"]:
-            out.append(f'<div style="font-size:11px; color:#92400e; margin:2px 0 0 0;">{_esc(read["mismatch"])}</div>')
     out.append(
         f'<div style="font-size:11px; color:{_MUTED}; margin:2px 0 0 0;">'
         f'{_esc(read["note"] if read else td.NO_TIMES_WORDS)}</div>'
@@ -2789,8 +2776,6 @@ def render_holiday_report_compact_text(
                          + (f" from {read['origin']}" if read["origin"] else "") + f": {read['what']}")
             if read["times"]:
                 lines.append(f"  {read['times']}")
-            if read["mismatch"]:
-                lines.append(f"  ! {read['mismatch']}")
         lines.append(f"  {read['note'] if read else td.NO_TIMES_WORDS}")
         pair = card["pair"]
         if pair:

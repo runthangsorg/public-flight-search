@@ -6105,8 +6105,17 @@ the cards' own prices.
         if economy is not None:
             # No evidence read for these dates: exactly "benchmark", never
             # "read" and never a second provenance word (2026-10-02).
-            rows.append(_option_row("economy", "ECONOMY", economy,
-                                    _evidence_words(economy, "benchmark")))
+            economy_row = _option_row("economy", "ECONOMY", economy,
+                                      _evidence_words(economy, "benchmark"))
+            # What the fare IS, when THIS option was priced from a read (22 Oct 2026):
+            # the Business row has said so since 15 Oct, and the Economy row kept the
+            # catalogue's usual routing ("1-Stop via Addis Ababa") beside a headline
+            # that was a read of two stops. Where no fare was read, or the read states
+            # nothing about its stops, the route stays empty and the renderer keeps
+            # the card's own words.
+            economy_row["route"] = fare_route_words(
+                economy.get("evidence") if economy.get("evidence_used") else None)
+            rows.append(economy_row)
         # Live evidence is already read for PREMIUM_ECONOMY (evidence_consumption_contract
         # requests it per destination) and was previously discarded as an "unused key" —
         # this is the same _best_option seam Economy uses, just a different cabin/multiplier.

@@ -706,19 +706,21 @@ class ResortCardTests(unittest.TestCase):
         self.assertIn("789 reviews", card)
         self.assertNotIn("guest rating not collected", card)
 
-    def test_a_card_whose_read_has_other_stops_than_the_economy_row_names_says_so(self):
+    def test_a_card_never_shows_two_answers_about_the_stops_of_the_fare_that_priced_it(self):
+        # 22 Oct 2026: the Economy row used to name the catalogue's routing ("1-Stop via Addis Ababa") beside a read of
+        # two stops, and a note under it said the two disagreed. The row now takes the read's own stops (see
+        # test_economy_row_route.py), so there is nothing to disagree and no note: the row and the read line agree.
         from test_holiday_email_compact import _deal, _long_haul_options
 
-        deal = _deal(0, flight_options=_long_haul_options(), routing="1 stop via Addis Ababa",
-                     live_carrier="Ethiopian", live_observed_at="2026-10-04T17:09:15+00:00", live_stops=2,
-                     live_duration_minutes=1025)
+        deal = _deal(0, flight_options=_long_haul_options(route="2-Stop (Ethiopian)") [:1]
+                     + (dict(_long_haul_options()[1], route="2-Stop (Ethiopian)"),),
+                     routing="1 stop via Addis Ababa", live_carrier="Ethiopian",
+                     live_observed_at="2026-10-04T17:09:15+00:00", live_stops=2, live_duration_minutes=1025)
         html = _html(deals=[deal])
         card = visible_text(html[html.index('id="deal-1"'):])
-        self.assertIn("the fare read behind the price has 2 stops", card)
-        agree = _deal(0, flight_options=_long_haul_options(), routing="1 stop via Addis Ababa",
-                      live_carrier="Ethiopian", live_observed_at="2026-10-04T17:09:15+00:00", live_stops=1)
-        html = _html(deals=[agree])
-        self.assertNotIn("the fare read behind the price", visible_text(html[html.index('id="deal-1"'):]))
+        self.assertIn("2-Stop (Ethiopian)", card)
+        self.assertIn("Ethiopian · 2 stops", card)
+        self.assertNotIn("names the usual routing", card)
 
     def test_a_card_with_no_rating_says_not_collected_in_the_card_itself(self):
         from test_holiday_email_compact import _deal
