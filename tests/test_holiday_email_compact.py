@@ -186,9 +186,15 @@ def _render(deals=None, *, config=None, **kwargs) -> str:
 
 
 def _multi_start(text: str) -> int:
-    """Where the multi-stop blocks begin: Africa (first) or the two-centre trips."""
-    marks = [i for i in (text.find("Africa safari + beach"), text.find("Two-centre trips")) if i >= 0]
-    return min(marks) if marks else -1
+    """Where the blocks that FOLLOW the cards begin: the two-centre trips.
+
+    The Africa block now precedes the cards (owner 22 Oct 2026: the safari trips
+    were buried under four Asian cards), so everything before this point is the
+    freshness strip, the at-a-glance tables, the Africa block and the cards.
+    """
+    found = text.find("Two-centre trips")
+    return found if found >= 0 else len(text)
+
 
 class HeaderTests(unittest.TestCase):
     def test_the_header_states_the_departure_range_and_the_nights(self):
@@ -826,15 +832,20 @@ class WarningTests(unittest.TestCase):
             atol_protected=False,
             monsoon_months=(7,),
         )
-        text = visible_text(_render(deals=[deal]))
-        # The cap is per CARD. The two-centre block below it carries its own
-        # climate warnings (Tokyo's tsuyu), so it is not counted here.
-        card = text[:_multi_start(text)]
+        html = _render(deals=[deal])
+        # The cap is per CARD. The Africa block above the cards (Cape Town's wet
+        # winter) and the two-centre block below them (Tokyo's tsuyu) carry their
+        # own climate warnings, so only the cards' own region is counted here.
+        card = visible_text(html[html.index('id="deal-1"'):_multi_start(html)])
         self.assertLessEqual(card.count("⚠"), 2)
 
 
 class CompactnessTests(unittest.TestCase):
     def test_twelve_deals_stay_under_the_word_cap(self):
+        # 3,000, raised from 2,400 on 2026-10-22: the first screen the owner asked
+        # for ("rewritten from scratch"; every option in one table, Tanzania safari
+        # + Zanzibar first, and a strip saying how old the evidence is) is about
+        # 450 words of REQUIRED content. The detail below it is unchanged.
         # 2,400, raised from 1,800 on 2026-10-21: the owner asked three times
         # (15, 17 and 20 Oct) for Africa safari and multi-stop trips, and eleven
         # rows (an operator package or a rate-card build each: title, kind, whose
@@ -848,7 +859,7 @@ class CompactnessTests(unittest.TestCase):
         # hit a number. What the cap still does is bound the whole e-mail: a
         # report that grows past it is a report nobody reads on a phone.
         html = _render(deals=_deals(12))
-        self.assertLess(word_count(html), 2400)
+        self.assertLess(word_count(html), 3000)
 
     def test_the_dropped_sections_cannot_come_back(self):
         text = visible_text(_render(deals=_deals(12)))

@@ -1849,7 +1849,9 @@ def _multi_centre_row_html(row: Mapping[str, Any]) -> str:
 
 
 def _multi_centre_html(config: HolidayConfig, *,
-                       fares: Optional[Mapping[Any, Any]] = None) -> str:
+                       fares: Optional[Mapping[Any, Any]] = None,
+                       part: str = "all",
+                       rows: Optional[Sequence[Mapping[str, Any]]] = None) -> str:
     """The compact "Two-centre trips" block and the Africa block; empty when none.
 
     Placed after the cards and before the over-budget list: these are the
@@ -1863,10 +1865,15 @@ def _multi_centre_html(config: HolidayConfig, *,
     Africa trips (``region == "africa"``) get their own heading, FIRST (owner 2026-10-20:
     "i still dont see south africa").
     """
-    rows = _multi_centre_rows(config, fares=fares)
+    if rows is None:
+        rows = _multi_centre_rows(config, fares=fares)
     if not rows:
         return ""
     other, africa = _multi_centre_split(rows)
+    if part == "africa":
+        other = []
+    elif part == "other":
+        africa = []
     budget = _gbp(getattr(config, "max_budget_gbp", 0.0))
     out: list[str] = []
     if africa:
@@ -1914,12 +1921,19 @@ def _multi_centre_row_lines(row: Mapping[str, Any]) -> list[str]:
 
 
 def _multi_centre_lines(config: HolidayConfig, *,
-                        fares: Optional[Mapping[Any, Any]] = None) -> list[str]:
+                        fares: Optional[Mapping[Any, Any]] = None,
+                        part: str = "all",
+                        rows: Optional[Sequence[Mapping[str, Any]]] = None) -> list[str]:
     """The plain-text twin of ``_multi_centre_html``."""
-    rows = _multi_centre_rows(config, fares=fares)
+    if rows is None:
+        rows = _multi_centre_rows(config, fares=fares)
     if not rows:
         return []
     other, africa = _multi_centre_split(rows)
+    if part == "africa":
+        other = []
+    elif part == "other":
+        africa = []
     budget = _gbp(getattr(config, "max_budget_gbp", 0.0))
     lines: list[str] = []
     if africa:
@@ -2124,6 +2138,200 @@ def _notes_html(config: HolidayConfig, deals: Sequence[PackageDeal]) -> str:
     return "".join(out)
 
 
+# ---------------------------------------------------------------------------
+# The first screen: how current the evidence is, and every option in one place
+# ---------------------------------------------------------------------------
+#
+# Owner, 22 Oct 2026: "why aren't the new safari holidays making it into these
+# emails ... you should have rewritten it from scratch already". The 22 Oct report
+# carried eleven Africa trips, but BELOW four Asian resort cards, every row an
+# estimate, the hotel reads 17 days old, and nothing at the top saying any of it.
+
+#: Evidence read more than this many whole days ago is called stale, in words.
+STALE_AFTER_DAYS = 7
+
+#: The kinds of evidence the report rests on, in reading order: the key the job
+#: passes in ``evidence_stamps`` (the newest ``observed_at`` of each kind), and
+#: the label the strip prints.
+_EVIDENCE_CLASSES = (
+    ("safari_flights", "Safari and multi-stop flights"),
+    ("resort_flights", "Resort flights"),
+    ("hotel_rates", "Hotel and lodge rates"),
+    ("operator_packages", "Operator package prices"),
+)
+
+#: Tanzania safari + Zanzibar is the owner's July focus (17 Oct 2026: "Tanzania
+#: first: a few days' safari from top lodges, then Zanzibar"), so those trips
+#: lead every table. Matched on the trip's own title.
+_TANZANIA_FOCUS_RE = re.compile(r"Serengeti|Tanzania|Ngorongoro|Nyerere|Sayari", re.I)
+
+STRIP_HEADING = "How current this is"
+OVERVIEW_HEADING = "Every option at a glance"
+STRIP_STALE_WORDS = (
+    "\u26a0 Evidence older than a week is stale: its figures may have moved since it was read."
+)
+STRIP_MISSING_WORDS = "Where no reads are loaded, the figures are the catalogue's estimates."
+
+
+def _evidence_age_rows(stamps: Optional[Mapping[str, Any]], *,
+                       generated_at: Any) -> list[tuple[str, str, bool, bool]]:
+    """``(label, words, stale, read)`` for each kind of evidence the report rests on.
+
+    ``read`` is False when nothing was loaded for that kind, which is its own
+    state: it is not "fresh" and it is not "old", it is the catalogue speaking.
+    """
+    rows: list[tuple[str, str, bool, bool]] = []
+    for key, label in _EVIDENCE_CLASSES:
+        raw = (stamps or {}).get(key)
+        if not raw:
+            rows.append((label, "no reads loaded", False, False))
+            continue
+        age = observation_age_hours(raw, generated_at)
+        if age is None:
+            rows.append((label, "read date unreadable", False, False))
+            continue
+        days = max(0, int(age // 24))
+        words = "read today" if days == 0 else f"read {days} day{'s' if days != 1 else ''} ago"
+        rows.append((label, words, days > STALE_AFTER_DAYS, True))
+    return rows
+
+
+def _strip_warnings(rows: Sequence[tuple[str, str, bool, bool]]) -> list[str]:
+    warnings: list[str] = []
+    if any(stale for _label, _words, stale, _read in rows):
+        warnings.append(STRIP_STALE_WORDS)
+    if any(not read for _label, _words, _stale, read in rows):
+        warnings.append(STRIP_MISSING_WORDS)
+    return warnings
+
+
+def _freshness_html(stamps: Optional[Mapping[str, Any]], *, generated_at: Any) -> str:
+    rows = _evidence_age_rows(stamps, generated_at=generated_at)
+    lines = []
+    for label, words, stale, read in rows:
+        colour = "#92400e" if (stale or not read) else _INK
+        lines.append(
+            f'{_esc(label)}: <strong style="color:{colour};">{_esc(words)}</strong>'
+        )
+    warn = "".join(
+        f'<div style="margin:4px 0 0 0; color:#92400e;">{_esc(text)}</div>'
+        for text in _strip_warnings(rows)
+    )
+    return (
+        f'<div style="margin:12px 0 0 0; padding:8px 10px; background:#ffffff; '
+        f'border:1px solid {_LINE}; border-radius:8px; font-size:12px; color:{_MUTED}; line-height:1.5;">'
+        f'<strong style="color:{_INK};">{STRIP_HEADING}</strong><br>'
+        + "<br>".join(lines) + warn + "</div>"
+    )
+
+
+def _freshness_lines(stamps: Optional[Mapping[str, Any]], *, generated_at: Any) -> list[str]:
+    rows = _evidence_age_rows(stamps, generated_at=generated_at)
+    lines = [STRIP_HEADING]
+    lines.extend(f"  {label}: {words}" for label, words, _stale, _read in rows)
+    lines.extend(f"  {text}" for text in _strip_warnings(rows))
+    lines.append("")
+    return lines
+
+
+def _overview_trip_groups(config: HolidayConfig,
+                          rows: Sequence[Mapping[str, Any]], *,
+                          generated_at: Any) -> list[tuple[str, list[dict[str, str]]]]:
+    """The trips, grouped in the owner's order: Tanzania safari + Zanzibar, other Africa, Asia."""
+    other, africa = _multi_centre_split(rows)
+
+    def low(row: Mapping[str, Any]) -> float:
+        try:
+            return float(row.get("low") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def focus_first(row: Mapping[str, Any]) -> tuple[int, float]:
+        title = str(getattr(row["trip"], "title", ""))
+        focus = bool(_TANZANIA_FOCUS_RE.search(title)) and "zanzibar" in title.lower()
+        return (0 if focus else 1, low(row))
+
+    def entry(row: Mapping[str, Any]) -> dict[str, str]:
+        trip = row["trip"]
+        read = row.get("read")
+        flights = (f"flights read {_read_day_words(read.get('observed_at'))}"
+                   if read else "flights not priced")
+        return {
+            "title": str(trip.title),
+            "nights": f"{int(trip.total_nights)} nights",
+            "cost": _multi_centre_price_words(row["low"], row["high"]),
+            "basis": f"{_multi_centre_kind_label(trip)} \u00b7 {trip.price_label()} \u00b7 {flights}",
+            "fit": _multi_centre_verdict(row).replace("low end ", ""),
+        }
+
+    groups: list[tuple[str, list[dict[str, str]]]] = []
+    if africa:
+        groups.append(("Africa trips (safari first)", [entry(r) for r in sorted(africa, key=focus_first)]))
+    if other:
+        groups.append(("Asia two-centre trips", [entry(r) for r in sorted(other, key=low)]))
+    return groups
+
+
+def _overview_html(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
+                   generated_at: Any) -> str:
+    """The trips half of the at-a-glance table; the resort table follows it directly.
+
+    Two columns, because the owner reads this on a 380 px phone: the trip's name
+    with one small line under it (nights, whose shape, estimate or dated, flights
+    read or not), and the cost with the budget verdict under it.
+    """
+    groups = _overview_trip_groups(config, rows, generated_at=generated_at)
+    out = [
+        f'<div style="font-size:15px; font-weight:700; color:{_INK}; margin:16px 0 0 0;">'
+        f'{OVERVIEW_HEADING}</div>',
+    ]
+    if not groups:
+        return "".join(out)
+    out.append(
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+        'style="border-collapse:collapse; margin:6px 0 0 0;"><tr>'
+    )
+    for label, align in (("Trip", "left"), ("Cost for 5 · low end vs budget", "right")):
+        out.append(
+            f'<td align="{align}" style="padding:4px 4px; font-size:11px; color:{_MUTED}; '
+            f'border-bottom:2px solid {_LINE};">{_esc(label)}</td>'
+        )
+    out.append("</tr>")
+    for group, entries in groups:
+        out.append(
+            f'<tr><td colspan="2" style="padding:8px 4px 2px 4px; font-size:11px; font-weight:700; '
+            f'color:{_ACCENT}; text-transform:uppercase; letter-spacing:0.04em;">{_esc(group)}</td></tr>'
+        )
+        for item in entries:
+            out.append(
+                "<tr>"
+                f'<td valign="top" style="padding:6px 4px; font-size:12px; color:{_INK}; '
+                f'border-bottom:1px solid {_LINE};"><strong>{_esc(item["title"])}</strong><br>'
+                f'<span style="font-size:11px; color:{_MUTED};">{_esc(item["nights"])} &middot; '
+                f'{_esc(item["basis"])}</span></td>'
+                f'<td align="right" valign="top" style="padding:6px 4px; font-size:12px; white-space:nowrap; '
+                f'border-bottom:1px solid {_LINE};"><strong style="color:{_ACCENT};">{_esc(item["cost"])}</strong><br>'
+                f'<span style="font-size:11px; color:{_MUTED};">{_esc(item["fit"])}</span></td>'
+                "</tr>"
+            )
+    out.append("</table>")
+    return "".join(out)
+
+
+def _overview_lines(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
+                    generated_at: Any) -> list[str]:
+    lines = [OVERVIEW_HEADING]
+    for group, entries in _overview_trip_groups(config, rows, generated_at=generated_at):
+        lines.append(f"  {group}")
+        for item in entries:
+            lines.append(
+                f"    \u00b7 {item['title']} \u00b7 {item['nights']} \u00b7 {item['cost']} \u00b7 "
+                f"{item['basis']} \u00b7 {item['fit']}"
+            )
+    lines.append("")
+    return lines
+
+
 def render_holiday_report_compact(
     config: HolidayConfig,
     *,
@@ -2135,6 +2343,7 @@ def render_holiday_report_compact(
     digest: Optional[Mapping[str, Any]] = None,
     last_report_at: str = "",
     multi_centre_fares: Optional[Mapping[Any, Any]] = None,
+    evidence_stamps: Optional[Mapping[str, Any]] = None,
 ) -> str:
     """The compact holiday e-mail. Same arguments as the detailed renderer.
 
@@ -2151,8 +2360,16 @@ def render_holiday_report_compact(
     prices nothing rather than reaching for a file the caller did not name, which
     is also what keeps a render independent of whatever a batch on disk happens
     to hold.
+
+    ``evidence_stamps`` is the newest ``observed_at`` of each kind of evidence the
+    run loaded (``safari_flights``, ``resort_flights``, ``hotel_rates``,
+    ``operator_packages``); the strip at the top turns them into ages and says
+    plainly when anything is more than a week old. Order of the page: strip,
+    every option at a glance (trips in the owner's order, then the resorts), the
+    Africa block, the resort cards, then the rest.
     """
     cards = _cards(config, deals, generated_at=generated_at, trends=trends)
+    multi_rows = _multi_centre_rows(config, fares=multi_centre_fares)
     out: list[str] = [
         '<!DOCTYPE html><html><head><meta charset="utf-8"><title>',
         _esc(config.report_title),
@@ -2163,15 +2380,24 @@ def render_holiday_report_compact(
         '<table role="presentation" width="600" cellpadding="0" cellspacing="0" ',
         'style="width:100%; max-width:600px;"><tr><td>',
         _header_html(config, generated_at=generated_at),
+        _freshness_html(evidence_stamps, generated_at=generated_at),
+        _overview_html(config, multi_rows, generated_at=generated_at),
     ]
     if cards:
+        out.append(
+            f'<div style="font-size:12px; font-weight:700; color:{_ACCENT}; margin:10px 0 0 0; '
+            f'text-transform:uppercase; letter-spacing:0.04em;">Single resorts</div>'
+        )
         out.append(_glance_html(cards, travellers=int(config.travellers)))
+    # The Africa block leads the detail (owner 22 Oct: the safari trips were buried
+    # under four Asian cards), so it is part of what the cards must make room for.
+    out.append(_multi_centre_html(config, fares=multi_centre_fares, part="africa", rows=multi_rows))
     # The sections after the cards are built FIRST so the budget can hold their
     # room: they are always sent, so a card that does not fit beside them is
     # the one cut. Measured in UTF-8 bytes, because the budget is Gmail's byte
     # cap and every £, ★, — and ↗ on a card is two or three bytes.
     after_cards = [
-        _multi_centre_html(config, fares=multi_centre_fares),
+        _multi_centre_html(config, fares=multi_centre_fares, part="other", rows=multi_rows),
         _over_budget_html(config),
         _watch_html(config),
         _notes_html(config, deals),
@@ -2214,6 +2440,7 @@ def render_holiday_report_compact_text(
     digest: Optional[Mapping[str, Any]] = None,
     last_report_at: str = "",
     multi_centre_fares: Optional[Mapping[Any, Any]] = None,
+    evidence_stamps: Optional[Mapping[str, Any]] = None,
 ) -> str:
     """The plain-text twin of ``render_holiday_report_compact``.
 
@@ -2224,6 +2451,7 @@ def render_holiday_report_compact_text(
     would be a reader whose mail client disagreed with the report.
     """
     cards = _cards(config, deals, generated_at=generated_at, trends=trends)
+    multi_rows = _multi_centre_rows(config, fares=multi_centre_fares)
     lines: list[str] = [
         str(config.report_title),
         f"{party_words(config)} · departing "
@@ -2231,6 +2459,8 @@ def render_holiday_report_compact_text(
         prices_checked_words(generated_at),
         "",
     ]
+    lines.extend(_freshness_lines(evidence_stamps, generated_at=generated_at))
+    lines.extend(_overview_lines(config, multi_rows, generated_at=generated_at))
     if cards:
         lines.append(
             f"At a glance (every price is the total for {int(config.travellers)}, door to door)"
@@ -2241,6 +2471,7 @@ def render_holiday_report_compact_text(
                 f"{str(card['board']).split(' · ')[0]} · {card['headline']}"
             )
         lines.append("")
+    lines.extend(_multi_centre_lines(config, fares=multi_centre_fares, part="africa", rows=multi_rows))
     for card in cards:
         lines.append(
             f"{card['name']} {card['stars']} · {card['place']} · {card['dates']} · {card['nights']}"
@@ -2272,7 +2503,7 @@ def render_holiday_report_compact_text(
         for warning in card["warnings"]:
             lines.append(f"  ! {warning}")
         lines.append("")
-    lines.extend(_multi_centre_lines(config, fares=multi_centre_fares))
+    lines.extend(_multi_centre_lines(config, fares=multi_centre_fares, part="other", rows=multi_rows))
     keys = {d.key.lower() for d in config.destinations}
     over = [row for row in hol.LAST_OVER_BUDGET
             if str(row.get("destination_key", "")).lower() in keys]

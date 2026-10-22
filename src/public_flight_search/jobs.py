@@ -179,6 +179,27 @@ def _write_step_summary(result: dict) -> None:
         return
 
 
+def _newest_stamp(items) -> str:
+    """The newest ``observed_at`` among evidence entries, or ``""`` when there are none.
+
+    Entries are objects with an ``observed_at`` attribute, dicts with that key, or
+    lists of either (a loader may group several reads under one key). ISO-8601
+    stamps in one timezone sort as text, which is how the package loader already
+    picks its newest.
+    """
+    newest = ""
+    for item in items or ():
+        if isinstance(item, (list, tuple, set)):
+            stamp = _newest_stamp(item)
+        elif isinstance(item, dict):
+            stamp = str(item.get("observed_at", "") or "")
+        else:
+            stamp = str(getattr(item, "observed_at", "") or "")
+        if stamp > newest:
+            newest = stamp
+    return newest
+
+
 def run_holiday_planner(
     *,
     dry_run: bool,
@@ -453,6 +474,15 @@ def run_holiday_planner(
     digest = build_change_digest(trends, path=history_path)
     detailed = _report_style() == DETAILED_REPORT_STYLE
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    # How old each kind of evidence is, for the strip at the top of the e-mail
+    # (owner 22 Oct 2026: the report ran on hotel reads 17 days old and said
+    # nothing). The newest read of each kind; an empty string means none loaded.
+    evidence_stamps = {
+        "safari_flights": _newest_stamp(multi_centre_fares.values()),
+        "resort_flights": str(freshness.get("newest_observed_at") or ""),
+        "hotel_rates": _newest_stamp(hotel_rates.values()),
+        "operator_packages": package_newest_observed_at,
+    }
     render_kwargs: dict = {
         "generated_at": generated_at,
         "deals": deals,
@@ -470,7 +500,7 @@ def run_holiday_planner(
         # The compact card's "▼ £210" chip is measured against the LAST
         # observation, so it is given the trend rows themselves rather than
         # the detailed renderer's tracked-minimum chips (AMEND-H1 §2).
-        render_kwargs.update(trends=trends)
+        render_kwargs.update(trends=trends, evidence_stamps=evidence_stamps)
     render = render_holiday_report if detailed else render_holiday_report_compact
     html = render(config, **render_kwargs)
     # The plain-text part the mailer already sends used to say "open this in an
@@ -572,6 +602,7 @@ def run_holiday_planner(
         "live_evidence_unused_keys": gaps["unused"],
         "live_evidence_record_count": freshness["record_count"],
         "live_evidence_newest_observed_at": freshness["newest_observed_at"],
+        "evidence_stamps": evidence_stamps,
         "live_evidence_age_hours": freshness["age_hours"],
         "live_evidence_stale": freshness["stale"],
         "live_evidence_future_dated": freshness["future_dated"],
