@@ -49,6 +49,7 @@ from .holidays import (
     wet_season_words_compact,
 )
 from .google_flights import build_google_flights_legs_url
+from . import trip_dossier as td
 from .multi_centre import load_multi_centre, trip_legs_for_dates
 from .vendors import build_vendor_links, trip_from_deal
 
@@ -1295,6 +1296,107 @@ def warning_lines(deal: PackageDeal, config: HolidayConfig) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# What a resort card says about the flight read, the guest reviews and the package
+# ---------------------------------------------------------------------------
+
+def _duration_words(minutes: Any) -> str:
+    try:
+        total = int(minutes)
+    except (TypeError, ValueError):
+        return ""
+    if total <= 0:
+        return ""
+    hours, rest = divmod(total, 60)
+    return f"{hours} hrs {rest} min" if rest else f"{hours} hrs"
+
+
+def _deal_flight_read(deal: PackageDeal) -> dict[str, Any]:
+    """What the read behind the headline flight says about the OUTBOUND flight, or an empty dict.
+
+    Only a card whose own flights a read priced has one: a package-priced card's flights are the operator's. Each
+    part is shown only if the read stated it, and the clock times only if the record carried
+    ``departure_local`` / ``arrival_local``; the return flight's times are never in the read, and the card says so.
+    """
+    if bool(getattr(deal, "package_priced", False)):
+        return {}
+    carrier = str(getattr(deal, "live_carrier", "") or "").strip()
+    observed = str(getattr(deal, "live_observed_at", "") or "")
+    if not (carrier and observed):
+        return {}
+    parts = [td.carriers_words(carrier)]
+    stop_text = td.stops_words(getattr(deal, "live_stops", None))
+    layover = str(getattr(deal, "live_layover", "") or "").strip()
+    if stop_text:
+        parts.append(f"{stop_text} ({layover})" if layover and stop_text != "nonstop" else stop_text)
+    duration = _duration_words(getattr(deal, "live_duration_minutes", None))
+    if duration:
+        parts.append(duration)
+    dep_time, dep_day = td._clock(getattr(deal, "live_departure_local", ""))
+    arr_time, arr_day = td._clock(getattr(deal, "live_arrival_local", ""))
+    timed = bool(dep_time and arr_time)
+    origin = str(getattr(deal, "origin", "") or "").strip()
+    # The Economy row above names the catalogue's usual routing ("1-Stop via ..."); the fare that PRICED the card
+    # has the stops the read states. When they differ, the card says so rather than showing two answers.
+    route = route_words(deal)
+    match = re.match(r"(\d+)-Stop", route)
+    route_stops = 0 if route.startswith("Nonstop") else (int(match.group(1)) if match else None)
+    live_stops = getattr(deal, "live_stops", None)
+    mismatch = ""
+    if route_stops is not None and live_stops is not None and int(live_stops) != route_stops:
+        mismatch = (f"The Economy row above names the usual routing ({route}); the fare read behind the price "
+                    f"has {td.stops_words(live_stops)}.")
+    return {
+        "mismatch": mismatch,
+        "read_on": _read_day_words(observed),
+        "origin": origin,
+        "what": " · ".join(p for p in parts if p),
+        "times": (f"Outbound departs {dep_time} on {dep_day}, arrives {arr_time} on {arr_day} (local times)"
+                  if timed else ""),
+        "note": ("Times shown are for the outbound flight only; the return flight's times are not captured."
+                 if timed else td.NO_TIMES_WORDS),
+    }
+
+
+def _deal_pair(deal: PackageDeal, *, travellers: int) -> dict[str, Any]:
+    """The card's vendor package beside our flights + stay, with the gap in pounds; empty when none was read."""
+    package = getattr(deal, "operator_package", None)
+    if package is None:
+        return {}
+    try:
+        total = float(package.total_gbp)
+        gap = float(package.vs_engine_gbp)
+    except (TypeError, ValueError):
+        return {}
+    ours_total = total + gap
+    board = hol.BOARD_LABELS.get(str(package.board).strip().upper(), str(package.board or ""))
+    rooms = int(package.rooms or 0)
+    priced = bool(getattr(deal, "package_priced", False))
+    ours_what = ("flights and stay booked separately" if priced
+                 else (breakdown_words(deal) or "flights + stay"))
+    if gap > 0.5:
+        difference = f"The package comes to {_gbp(gap)} less than booking the flights and the stay yourself."
+    elif gap < -0.5:
+        difference = f"The package comes to {_gbp(abs(gap))} more than booking the flights and the stay yourself."
+    else:
+        difference = "The package and booking the flights and the stay yourself come to the same."
+    checked = _day_words(getattr(package, "observed_at", ""), generated_at="")
+    other_dates = ""
+    if (package.outbound_date, package.return_date) != (deal.outbound_date, deal.return_date) and package.outbound_date:
+        other_dates = f"quoted for {_range_words(package.outbound_date, package.return_date)}"
+    return {
+        "operator": str(package.operator),
+        "url": _package_link(deal),
+        "total": _gbp(total),
+        "what": f"flights + {board}, {rooms} {'room' if rooms == 1 else 'rooms'}",
+        "checked": f"checked {checked}" if checked else "",
+        "other_dates": other_dates,
+        "ours_total": _gbp(ours_total),
+        "ours_what": ours_what,
+        "difference": difference,
+    }
+
+
+# ---------------------------------------------------------------------------
 # The card structures both renderings are built from
 # ---------------------------------------------------------------------------
 
@@ -1351,6 +1453,9 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
             "why": why_lines(deal, config),
             "links": link_row(deal, config),
             "warnings": warning_lines(deal, config),
+            "ratings": td.rating_entries(getattr(deal, "hotel_ratings", ()) or ()),
+            "flight_read": _deal_flight_read(deal),
+            "pair": _deal_pair(deal, travellers=travellers),
         })
     return cards
 
@@ -1490,6 +1595,12 @@ def _flight_table_html(rows: Sequence[tuple[str, str, FlightPrice]]) -> str:
     return "".join(out)
 
 
+def _card_heading(text: str) -> str:
+    """A section label inside a resort card: the same small caps as a trip dossier's, at card size."""
+    return (f'<div style="font-size:11px; font-weight:700; color:{_ACCENT}; text-transform:uppercase; '
+            f'letter-spacing:0.05em; margin:12px 0 2px 0;">{_esc(text)}</div>')
+
+
 def _card_html(card: Mapping[str, Any]) -> str:
     tag_bg, tag_fg = _TAG_COLOURS.get(str(card["tag_colour"]), _TAG_COLOURS["grey"])
     out = [
@@ -1540,8 +1651,60 @@ def _card_html(card: Mapping[str, Any]) -> str:
         ),
         '</div>',
     ])
+    out.append(_card_heading("Flights"))
     if card["flights"]:
         out.append(_flight_table_html(card["flights"]))
+    read = card["flight_read"]
+    if read:
+        out.append(
+            f'<div style="font-size:11px; color:{_MUTED}; margin:4px 0 0 0;">Outbound flight behind the price, read '
+            f'{_esc(read["read_on"])}{_esc(" from " + read["origin"] if read["origin"] else "")}: {_esc(read["what"])}</div>'
+        )
+        if read["times"]:
+            out.append(f'<div style="font-size:11px; color:{_MUTED}; margin:2px 0 0 0;">{_esc(read["times"])}</div>')
+        if read["mismatch"]:
+            out.append(f'<div style="font-size:11px; color:#92400e; margin:2px 0 0 0;">{_esc(read["mismatch"])}</div>')
+    out.append(
+        f'<div style="font-size:11px; color:{_MUTED}; margin:2px 0 0 0;">'
+        f'{_esc(read["note"] if read else td.NO_TIMES_WORDS)}</div>'
+    )
+    out.append(_card_heading("Package vs our build"))
+    pair = card["pair"]
+    if pair:
+        cell = (f'valign="top" width="50%" style="padding:6px 8px; border:1px solid {_LINE}; background:#f8fafc;"')
+        operator = (f'<a href="{_esc(pair["url"])}" style="color:{_ACCENT}; text-decoration:none; font-weight:700;">'
+                    f'{_esc(pair["operator"])} ↗</a>' if pair["url"]
+                    else f'<strong>{_esc(pair["operator"])}</strong>')
+        left = (f'<div style="font-size:10px; font-weight:700; color:{_ACCENT}; text-transform:uppercase; '
+                f'letter-spacing:0.05em;">Vendor package</div>'
+                f'<div style="font-size:12px; margin:1px 0 0 0; color:{_INK};">{operator}</div>'
+                f'<div style="font-size:15px; font-weight:800; color:{_ACCENT}; margin:3px 0 0 0;">{_esc(pair["total"])}'
+                f' <span style="font-size:11px; font-weight:400; color:{_MUTED};">for 5</span></div>'
+                f'<div style="font-size:11px; color:{_MUTED};">{_esc(pair["what"])}</div>'
+                + (f'<div style="font-size:11px; color:{_MUTED};">{_esc(pair["checked"])}</div>' if pair["checked"] else "")
+                + (f'<div style="font-size:11px; color:#92400e;">{_esc(pair["other_dates"])}</div>' if pair["other_dates"] else ""))
+        right = (f'<div style="font-size:10px; font-weight:700; color:{_ACCENT}; text-transform:uppercase; '
+                 f'letter-spacing:0.05em;">Our build</div>'
+                 f'<div style="font-size:12px; margin:1px 0 0 0; color:{_INK};">Flights + stay</div>'
+                 f'<div style="font-size:15px; font-weight:800; color:{_ACCENT}; margin:3px 0 0 0;">{_esc(pair["ours_total"])}'
+                 f' <span style="font-size:11px; font-weight:400; color:{_MUTED};">for 5</span></div>'
+                 f'<div style="font-size:11px; color:{_MUTED};">{_esc(pair["ours_what"])}</div>')
+        out.append(
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            'style="border-collapse:separate; border-spacing:4px 0;"><tr>'
+            f'<td {cell}>{left}</td><td {cell}>{right}</td></tr></table>'
+            f'<div style="font-size:12px; color:{_INK}; margin:6px 0 0 0;"><strong>{_esc(pair["difference"])}</strong></div>'
+        )
+    else:
+        out.append(
+            f'<div style="font-size:12px; color:{_MUTED}; margin:2px 0 0 0;">'
+            f'None: {td.NO_CARD_PACKAGE_WORDS}.</div>'
+        )
+    if card["ratings"]:
+        bits = [td._a(r["url"], r["words"]) if r["url"] else _esc(r["words"]) for r in card["ratings"][:2]]
+        out.append(f'<div style="font-size:12px; color:{_INK}; margin:8px 0 0 0;">Reviews: ' + " · ".join(bits) + "</div>")
+    else:
+        out.append(f'<div style="font-size:12px; color:{_MUTED}; margin:8px 0 0 0;">Reviews: {td.NO_RATING_WORDS}</div>')
     if card["why"]:
         out.append(
             f'<div style="font-size:12px; color:{_MUTED}; margin:8px 0 0 0;">'
@@ -1792,31 +1955,13 @@ def _multi_centre_head(rows: Sequence[Mapping[str, Any]]) -> str:
     return MULTI_CENTRE_HEAD_NO_READ
 
 
-def _multi_centre_read_html(row: Mapping[str, Any]) -> str:
-    """A trip's dated fare line, linked to the page it was read from.
-
-    The range beside it is untouched: that is a whole-trip estimate, this is the
-    flights, and the reader has to be able to tell which number is which.
-    """
-    read = row.get("read") or {}
-    source = str(read.get("source_url") or row["url"])
-    return (
-        f'<a href="{_esc(source)}" style="color:{_ACCENT}; '
-        f'text-decoration:none; font-weight:600;">flights '
-        f'{_gbp(read.get("total_gbp"))} for {_read_party(read)} '
-        f'(read {_esc(_read_day_words(read.get("observed_at")))})</a><br>'
-    )
-
-
 #: The Africa block's own opening: where its figures come from, because an agency's
 #: guide price is for two sharing and a party of five is not two.
 AFRICA_HEAD = (
-    "safari + beach and city combinations, copied from what UK agencies sell, with "
-    "our own build of the same shape beside it. Figures are ranges from named "
-    "agency guide prices (per person, two sharing, so a party of five needs room "
-    "supplements) and rate cards; they are not quotes, and they say when the date "
-    "is not July 2027. A flights line appears only where a fare was found; the "
-    "flights link opens the search for the rest."
+    "Safari + beach and city combinations copied from what UK agencies sell, with our own build "
+    "of the same shape beside it. These are ranges from named agency guide prices (per person, two "
+    "sharing, so a party of five needs room supplements) and rate cards, not quotes. Each page says "
+    "where its figures came from and when a flight was read."
 )
 
 
@@ -1827,130 +1972,88 @@ def _multi_centre_split(rows: Sequence[Mapping[str, Any]]):
     return other, africa
 
 
-def _multi_centre_row_html(row: Mapping[str, Any]) -> str:
-    trip = row["trip"]
-    climate_warn = "".join(
-        f'<br><span style="color:#92400e;">{_esc(w)}</span>'
-        for w in row.get("warnings") or ()
+def _group_intro(group_key: str, group_rows: Sequence[Mapping[str, Any]], budget: str) -> tuple[str, str]:
+    """``(heading, sentence)`` that open one group of trip pages."""
+    if group_key == "africa":
+        return td.AFRICA_GROUP, AFRICA_HEAD + " Low end against the " + budget + " budget."
+    return td.OTHER_GROUP, (
+        "Two stops on one journey: " + _multi_centre_head(group_rows)
+        + " Every leg here connects, so these are Economy flights like the rest "
+        "of this report. Low end against the " + budget + " budget."
     )
+
+
+def _group_heading_html(group_key: str, group_rows: Sequence[Mapping[str, Any]], budget: str) -> str:
+    heading, sentence = _group_intro(group_key, group_rows, budget)
     return (
-        f'<div style="font-size:12px; color:{_MUTED}; padding:6px 0 0 0;">'
-        f'<strong style="color:{_INK};">{_esc(trip.title)}</strong> · '
-        f'{_esc(_multi_centre_price_words(row["low"], row["high"]))} · '
-        f'{_esc(trip.price_label())} · {_esc(_multi_centre_kind_label(trip))} · '
-        f'{_esc(_multi_centre_verdict(row))}<br>'
-        + (f'{_esc(trip.operator_ref)}<br>' if getattr(trip, "operator_ref", "") else "")
-        + (_multi_centre_read_html(row) if row.get("read") else "")
-        + f'why: {_esc(trip.why)}<br>'
-        f'catch: {_esc(trip.catch)}{climate_warn} · '
-        f'<a href="{_esc(row["url"])}" style="color:{_ACCENT}; '
-        f'text-decoration:none; font-weight:600;">flights ↗</a></div>'
+        f'<div style="margin:18px 0 0 0;"><div style="font-size:15px; font-weight:700; color:{_INK};">'
+        f'{_esc(heading)}</div><div style="font-size:12px; color:{_MUTED};">{_esc(sentence)}</div></div>'
     )
 
 
 def _multi_centre_html(config: HolidayConfig, *,
                        fares: Optional[Mapping[Any, Any]] = None,
                        part: str = "all",
-                       rows: Optional[Sequence[Mapping[str, Any]]] = None) -> str:
-    """The compact "Two-centre trips" block and the Africa block; empty when none.
+                       rows: Optional[Sequence[Mapping[str, Any]]] = None,
+                       dossiers: Optional[Sequence[Mapping[str, Any]]] = None,
+                       levels: Optional[Mapping[str, int]] = None,
+                       hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None) -> str:
+    """The trip pages: Africa safari + beach first, then the two-centre trips; empty when none.
 
-    Placed after the cards and before the over-budget list: these are the
-    alternatives to a single-centre trip, so they belong next to the cards the
-    reader has just read, not buried under the resorts that did not fit.
+    Owner, 22 Oct 2026: one self-contained DOSSIER per trip (price, package versus our build, itinerary with
+    dated stays and properties, flights, links), under a heading that says where the group's figures come from.
+    ``levels`` maps a trip id to how much of its dossier fits (``trip_dossier.FULL`` by default); the caller
+    asks for less of the LAST trips when the e-mail is near Gmail's size limit.
 
-    ``fares`` is this run's dated two-centre reads; a trip with one gains its fare
-    line and the header stops saying none was readable (owner brief 2026-10-15).
-    The low and high of each range are unchanged — they are whole-trip estimates,
-    and a flight fare does not become a package price by sitting above one.
-    Africa trips (``region == "africa"``) get their own heading, FIRST (owner 2026-10-20:
-    "i still dont see south africa").
+    ``fares`` is this run's dated two-centre reads; a trip with one gains its fare line and the header stops
+    saying none was readable (owner brief 2026-10-15). The low and high of each range are whole-trip
+    estimates, and a flight fare does not become a package price by sitting beside one.
     """
     if rows is None:
         rows = _multi_centre_rows(config, fares=fares)
     if not rows:
         return ""
-    other, africa = _multi_centre_split(rows)
-    if part == "africa":
-        other = []
-    elif part == "other":
-        africa = []
+    if dossiers is None:
+        dossiers = td.build_trip_dossiers(config, rows, generated_at="", hotel_ratings=hotel_ratings)
     budget = _gbp(getattr(config, "max_budget_gbp", 0.0))
     out: list[str] = []
-    if africa:
-        out.append(
-            f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">'
-            f'<strong style="color:{_INK};">Africa safari + beach, multi-stop</strong> — '
-            + AFRICA_HEAD
-            + ' Low end against the ' + budget + ' budget:</div>'
-        )
-        out.extend(_multi_centre_row_html(row) for row in africa)
-    if other:
-        out.append(
-            f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">'
-            f'<strong style="color:{_INK};">Two-centre trips</strong> — '
-            + _multi_centre_head(other)
-            + ' Every leg here connects, so these are Economy flights like the rest '
-            'of this report. Low end against the ' + budget + ' budget:</div>'
-        )
-        out.extend(_multi_centre_row_html(row) for row in other)
+    for key, _label, group_rows in td.owner_order(rows):
+        if part not in ("all", key):
+            continue
+        group = [d for d in dossiers if d["group"] == key]
+        if not group:
+            continue
+        out.append(_group_heading_html(key, group_rows, budget))
+        out.extend(td.dossier_html(d, (levels or {}).get(d["id"], td.FULL)) for d in group)
     return "".join(out)
-
-
-def _multi_centre_row_lines(row: Mapping[str, Any]) -> list[str]:
-    trip = row["trip"]
-    lines = [
-        f"  {trip.title} · {_multi_centre_price_words(row['low'], row['high'])} · "
-        f"{trip.price_label()} · {_multi_centre_kind_label(trip)} · "
-        f"{_multi_centre_verdict(row)}"
-    ]
-    if getattr(trip, "operator_ref", ""):
-        lines.append(f"    {trip.operator_ref}")
-    read = row.get("read")
-    if read:
-        lines.append(
-            f"    flights {_gbp(read.get('total_gbp'))} for {_read_party(read)} "
-            f"(read {_read_day_words(read.get('observed_at'))}): "
-            f"{read.get('source_url') or row['url']}"
-        )
-    lines.append(f"    why: {trip.why}")
-    lines.append(f"    catch: {trip.catch}")
-    for climate_warning in row.get("warnings") or ():
-        lines.append(f"    {climate_warning}")
-    lines.append(f"    flights ({len(trip.legs)} legs): {row['url']}")
-    return lines
 
 
 def _multi_centre_lines(config: HolidayConfig, *,
                         fares: Optional[Mapping[Any, Any]] = None,
                         part: str = "all",
-                        rows: Optional[Sequence[Mapping[str, Any]]] = None) -> list[str]:
-    """The plain-text twin of ``_multi_centre_html``."""
+                        rows: Optional[Sequence[Mapping[str, Any]]] = None,
+                        dossiers: Optional[Sequence[Mapping[str, Any]]] = None,
+                        hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None) -> list[str]:
+    """The plain-text twin of ``_multi_centre_html``; always every dossier in full."""
     if rows is None:
         rows = _multi_centre_rows(config, fares=fares)
     if not rows:
         return []
-    other, africa = _multi_centre_split(rows)
-    if part == "africa":
-        other = []
-    elif part == "other":
-        africa = []
+    if dossiers is None:
+        dossiers = td.build_trip_dossiers(config, rows, generated_at="", hotel_ratings=hotel_ratings)
     budget = _gbp(getattr(config, "max_budget_gbp", 0.0))
     lines: list[str] = []
-    if africa:
-        lines.append(
-            "Africa safari + beach, multi-stop — " + AFRICA_HEAD
-            + " Low end against the " + budget + " budget:"
-        )
-        for row in africa:
-            lines.extend(_multi_centre_row_lines(row))
-    if other:
-        lines.append(
-            "Two-centre trips — " + _multi_centre_head(other)
-            + " Every leg here connects, so these are Economy flights like the rest "
-            "of this report. Low end against the " + budget + " budget:"
-        )
-        for row in other:
-            lines.extend(_multi_centre_row_lines(row))
+    for key, _label, group_rows in td.owner_order(rows):
+        if part not in ("all", key):
+            continue
+        group = [d for d in dossiers if d["group"] == key]
+        if not group:
+            continue
+        heading, sentence = _group_intro(key, group_rows, budget)
+        lines.append(f"{heading} — {sentence}")
+        lines.append("")
+        for d in group:
+            lines.extend(td.dossier_lines(d))
     return lines
 
 
@@ -2122,8 +2225,8 @@ def _notes_html(config: HolidayConfig, deals: Sequence[PackageDeal]) -> str:
         lines.append(f"{_esc(name)} — {_esc(text)}")
     shown = {d.resort_name for d in deals}
     for name in sorted(shown):
-        if hol.tripadvisor_unverified(name):
-            lines.append(f"{_esc(name)} — guest rating not checked")
+        # "guest rating not checked" is now said on the resort's own card (Reviews),
+        # where the reader is looking at that resort, and not here.
         if not hol.is_summer_trip(config) and hol.pool_heating_unverified(name):
             lines.append(f"{_esc(name)} — heated pool not stated")
     if not lines:
@@ -2237,39 +2340,34 @@ def _freshness_lines(stamps: Optional[Mapping[str, Any]], *, generated_at: Any) 
 def _overview_trip_groups(config: HolidayConfig,
                           rows: Sequence[Mapping[str, Any]], *,
                           generated_at: Any) -> list[tuple[str, list[dict[str, str]]]]:
-    """The trips, grouped in the owner's order: Tanzania safari + Zanzibar, other Africa, Asia."""
-    other, africa = _multi_centre_split(rows)
+    """The trips, grouped in the owner's order: Tanzania safari + Zanzibar, other Africa, Asia.
 
-    def low(row: Mapping[str, Any]) -> float:
-        try:
-            return float(row.get("low") or 0.0)
-        except (TypeError, ValueError):
-            return 0.0
+    The order is ``trip_dossier.owner_order``, the same one the dossiers and the plain text use, so the table, the
+    pages under it and the text part list the trips identically. Each entry carries the anchor of its dossier.
+    """
+    labels = {"africa": "Africa trips (safari first)", "other": "Asia two-centre trips"}
 
-    def focus_first(row: Mapping[str, Any]) -> tuple[int, float]:
-        title = str(getattr(row["trip"], "title", ""))
-        focus = bool(_TANZANIA_FOCUS_RE.search(title)) and "zanzibar" in title.lower()
-        return (0 if focus else 1, low(row))
+    paired = {ident: others for ident, others in td.counterparts([r["trip"] for r in rows]).items() if others}
 
     def entry(row: Mapping[str, Any]) -> dict[str, str]:
         trip = row["trip"]
         read = row.get("read")
         flights = (f"flights read {_read_day_words(read.get('observed_at'))}"
                    if read else "flights not priced")
+        pair = ""
+        if trip.id in paired:
+            pair = " \u00b7 compared with " + ("our build" if trip.kind == "operator" else "an operator package")
         return {
             "title": str(trip.title),
+            "anchor": f"trip-{trip.id}",
             "nights": f"{int(trip.total_nights)} nights",
             "cost": _multi_centre_price_words(row["low"], row["high"]),
-            "basis": f"{_multi_centre_kind_label(trip)} \u00b7 {trip.price_label()} \u00b7 {flights}",
+            "basis": f"{_multi_centre_kind_label(trip)} \u00b7 {trip.price_label()} \u00b7 {flights}{pair}",
             "fit": _multi_centre_verdict(row).replace("low end ", ""),
         }
 
-    groups: list[tuple[str, list[dict[str, str]]]] = []
-    if africa:
-        groups.append(("Africa trips (safari first)", [entry(r) for r in sorted(africa, key=focus_first)]))
-    if other:
-        groups.append(("Asia two-centre trips", [entry(r) for r in sorted(other, key=low)]))
-    return groups
+    return [(labels[key], [entry(r) for r in group_rows])
+            for key, _label, group_rows in td.owner_order(rows)]
 
 
 def _overview_html(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
@@ -2277,8 +2375,11 @@ def _overview_html(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
     """The trips half of the at-a-glance table; the resort table follows it directly.
 
     Two columns, because the owner reads this on a 380 px phone: the trip's name
-    with one small line under it (nights, whose shape, estimate or dated, flights
-    read or not), and the cost with the budget verdict under it.
+    (a link to its page) with one small line under it (nights, whose shape, estimate
+    or dated, flights read or not), and the cost with the budget verdict under it.
+    The table's own style sets the small muted type once, so a row carries only
+    what differs: it is the biggest block above the trip pages, and every byte of
+    it is a byte a trip page does not get.
     """
     groups = _overview_trip_groups(config, rows, generated_at=generated_at)
     out = [
@@ -2287,32 +2388,26 @@ def _overview_html(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
     ]
     if not groups:
         return "".join(out)
+    cell = f'padding:6px 4px;border-bottom:1px solid {_LINE}'
     out.append(
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        'style="border-collapse:collapse; margin:6px 0 0 0;"><tr>'
+        f'style="border-collapse:collapse;margin:6px 0 0 0;font-size:11px;color:{_MUTED}"><tr>'
     )
     for label, align in (("Trip", "left"), ("Cost for 5 · low end vs budget", "right")):
-        out.append(
-            f'<td align="{align}" style="padding:4px 4px; font-size:11px; color:{_MUTED}; '
-            f'border-bottom:2px solid {_LINE};">{_esc(label)}</td>'
-        )
+        out.append(f'<td align="{align}" style="padding:4px;border-bottom:2px solid {_LINE}">{_esc(label)}</td>')
     out.append("</tr>")
     for group, entries in groups:
         out.append(
-            f'<tr><td colspan="2" style="padding:8px 4px 2px 4px; font-size:11px; font-weight:700; '
-            f'color:{_ACCENT}; text-transform:uppercase; letter-spacing:0.04em;">{_esc(group)}</td></tr>'
+            f'<tr><td colspan="2" style="padding:8px 4px 2px;font-weight:700;color:{_ACCENT};'
+            f'text-transform:uppercase;letter-spacing:.04em">{_esc(group)}</td></tr>'
         )
         for item in entries:
             out.append(
-                "<tr>"
-                f'<td valign="top" style="padding:6px 4px; font-size:12px; color:{_INK}; '
-                f'border-bottom:1px solid {_LINE};"><strong>{_esc(item["title"])}</strong><br>'
-                f'<span style="font-size:11px; color:{_MUTED};">{_esc(item["nights"])} &middot; '
-                f'{_esc(item["basis"])}</span></td>'
-                f'<td align="right" valign="top" style="padding:6px 4px; font-size:12px; white-space:nowrap; '
-                f'border-bottom:1px solid {_LINE};"><strong style="color:{_ACCENT};">{_esc(item["cost"])}</strong><br>'
-                f'<span style="font-size:11px; color:{_MUTED};">{_esc(item["fit"])}</span></td>'
-                "</tr>"
+                f'<tr><td valign="top" style="{cell}"><a href="#{item["anchor"]}" '
+                f'style="color:{_INK};text-decoration:none;font-size:12px"><b>{_esc(item["title"])}</b></a><br>'
+                f'{_esc(item["nights"])} &middot; {_esc(item["basis"])}</td>'
+                f'<td align="right" valign="top" style="{cell};white-space:nowrap">'
+                f'<b style="color:{_ACCENT};font-size:12px">{_esc(item["cost"])}</b><br>{_esc(item["fit"])}</td></tr>'
             )
     out.append("</table>")
     return "".join(out)
@@ -2332,6 +2427,146 @@ def _overview_lines(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
     return lines
 
 
+# ---------------------------------------------------------------------------
+# Start here: two lines of guidance and the three answers the owner asks first
+# ---------------------------------------------------------------------------
+
+START_HERE_HEADING = "Start here"
+START_HERE_GUIDE = (
+    "The table below lists every option; tap a name to jump to its page. Every trip page reads the "
+    "same way: price, package vs our build, itinerary, flights, links."
+)
+
+
+def _quick_answers(config: HolidayConfig, rows: Sequence[Mapping[str, Any]],
+                   cards: Sequence[Mapping[str, Any]],
+                   dossiers: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The three answers a tired reader wants first, each a link to the page that holds it.
+
+    * the cheapest option that fits the budget, trips (low end of the range) and resorts (the total) together,
+      or, when nothing fits, the closest and by how much;
+    * the cheapest Tanzania safari + Zanzibar trip;
+    * the trips that have a vendor package beside our build of the same shape.
+
+    Every figure is one the table already prints.
+    """
+    try:
+        budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        budget = 0.0
+    options: list[dict[str, Any]] = []
+    for row in rows:
+        trip = row["trip"]
+        options.append({
+            "anchor": f"trip-{trip.id}", "title": str(trip.title), "amount": float(row["low"]),
+            "words": f"from {_gbp(row['low'])} (low end of its range)", "trip": trip,
+        })
+    for card in cards:
+        options.append({
+            "anchor": str(card["anchor"]), "title": str(card["name"]),
+            "amount": float(headline_total(card["deal"])),
+            "words": f"{card['headline']} for {int(config.travellers)}, door to door", "trip": None,
+        })
+    answers: dict[str, Any] = {"cheapest": None, "tanzania": None, "pairs": []}
+    options = [o for o in options if o["amount"] > 0]
+    if options:
+        fitting = [o for o in options if budget > 0 and o["amount"] <= budget]
+        if fitting:
+            best = min(fitting, key=lambda o: o["amount"])
+            answers["cheapest"] = {"lead": f"Cheapest that fits the {_gbp(budget)} budget", **best}
+        elif budget > 0:
+            best = min(options, key=lambda o: o["amount"])
+            answers["cheapest"] = {
+                "lead": f"Nothing fits the {_gbp(budget)} budget at its low end; closest",
+                **best, "words": best["words"] + f", {_gbp(best['amount'] - budget)} over",
+            }
+        else:
+            best = min(options, key=lambda o: o["amount"])
+            answers["cheapest"] = {"lead": "Cheapest overall (no budget is set)", **best}
+    tanzania = [o for o in options if o["trip"] is not None and td.is_tanzania_focus(o["trip"])]
+    if tanzania:
+        answers["tanzania"] = min(tanzania, key=lambda o: o["amount"])
+    for d in dossiers:
+        pair = d["pair"]
+        if pair is None or d["trip"].kind != "operator":
+            continue
+        match = re.search(r"\(([^)]+)\)\s*$", d["title"])
+        operator = match.group(1) if match else "Package"
+        first = re.split(r"[\s,+]+", re.sub(r"\([^)]*\)", "", d["title"]).strip())[0]
+        answers["pairs"].append({"label": f"{operator} {first}", "anchor": d["anchor"]})
+    return answers
+
+
+def _start_here_html(answers: Mapping[str, Any]) -> str:
+    def link(anchor: str, label: str) -> str:
+        return (f'<a href="#{_esc(anchor)}" style="color:{_ACCENT}; text-decoration:none; '
+                f'font-weight:700;">{_esc(label)} ↓</a>')
+
+    rows: list[str] = []
+    best = answers.get("cheapest")
+    if best:
+        rows.append(f'<div style="margin:3px 0 0 0;"><strong>{_esc(best["lead"])}:</strong> '
+                    f'{link(best["anchor"], best["title"])} · {_esc(best["words"])}</div>')
+    tz = answers.get("tanzania")
+    if tz:
+        rows.append(f'<div style="margin:3px 0 0 0;"><strong>Tanzania safari + Zanzibar:</strong> cheapest is '
+                    f'{link(tz["anchor"], tz["title"])} · {_esc(tz["words"])}</div>')
+    pairs = answers.get("pairs") or []
+    if pairs:
+        rows.append(f'<div style="margin:3px 0 0 0;"><strong>Package vs our build:</strong> '
+                    + f'<span style="color:{_MUTED};"> · </span>'.join(link(p["anchor"], p["label"]) for p in pairs)
+                    + "</div>")
+    return (
+        f'<div id="start" style="margin:12px 0 0 0; padding:10px 12px; background:#ffffff; border:1px solid {_LINE}; '
+        f'border-left:4px solid {_ACCENT}; border-radius:8px; font-size:12px; line-height:1.5; color:{_INK};">'
+        f'<strong style="font-size:13px;">{START_HERE_HEADING}</strong>'
+        f'<div style="margin:2px 0 0 0;">{_esc(START_HERE_GUIDE)}</div>'
+        f'<div style="margin:6px 0 0 0; font-size:11px; font-weight:700; color:{_MUTED}; text-transform:uppercase; '
+        f'letter-spacing:0.05em;">Quick answers</div>' + "".join(rows) + "</div>"
+    )
+
+
+def _start_here_lines(answers: Mapping[str, Any]) -> list[str]:
+    lines = [START_HERE_HEADING, f"  {START_HERE_GUIDE}", "  Quick answers"]
+    best = answers.get("cheapest")
+    if best:
+        lines.append(f"    {best['lead']}: {best['title']} · {best['words']}")
+    tz = answers.get("tanzania")
+    if tz:
+        lines.append(f"    Tanzania safari + Zanzibar: cheapest is {tz['title']} · {tz['words']}")
+    pairs = answers.get("pairs") or []
+    if pairs:
+        lines.append("    Package vs our build: " + " · ".join(p["label"] for p in pairs))
+    lines.append("")
+    return lines
+
+
+def _shortened_summary_parts(dossiers: Sequence[Mapping[str, Any]],
+                             levels: Mapping[str, int]) -> str:
+    """What was shortened, in words, or "" when nothing was: never a silent cut."""
+    short = [d for d in dossiers if levels.get(d["id"], td.FULL) == td.SHORT]
+    trimmed = [d for d in dossiers if levels.get(d["id"], td.FULL) == td.TRIMMED]
+    if not (short or trimmed):
+        return ""
+    parts = []
+    if trimmed:
+        parts.append(f"{len(trimmed)} {'trip' if len(trimmed) == 1 else 'trips'} trimmed")
+    if short:
+        parts.append(f"{len(short)} in short form")
+    return (
+        f"Shortened to fit Gmail's size limit: {' and '.join(parts)} (the last trips listed are the shortest). "
+        f"Every trip is still in the table above and keeps its dates, properties, price, flights and links; "
+        f"the plain-text version of this e-mail carries the full detail of every trip."
+    )
+
+
+def _shortened_summary_html(dossiers: Sequence[Mapping[str, Any]], levels: Mapping[str, int]) -> str:
+    text = _shortened_summary_parts(dossiers, levels)
+    if not text:
+        return ""
+    return f'<div style="font-size:12px; color:#92400e; margin:12px 0 0 0;">{_esc(text)}</div>'
+
+
 def render_holiday_report_compact(
     config: HolidayConfig,
     *,
@@ -2344,6 +2579,7 @@ def render_holiday_report_compact(
     last_report_at: str = "",
     multi_centre_fares: Optional[Mapping[Any, Any]] = None,
     evidence_stamps: Optional[Mapping[str, Any]] = None,
+    hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None,
 ) -> str:
     """The compact holiday e-mail. Same arguments as the detailed renderer.
 
@@ -2364,12 +2600,25 @@ def render_holiday_report_compact(
     ``evidence_stamps`` is the newest ``observed_at`` of each kind of evidence the
     run loaded (``safari_flights``, ``resort_flights``, ``hotel_rates``,
     ``operator_packages``); the strip at the top turns them into ages and says
-    plainly when anything is more than a week old. Order of the page: strip,
-    every option at a glance (trips in the owner's order, then the resorts), the
-    Africa block, the resort cards, then the rest.
+    plainly when anything is more than a week old. ``hotel_ratings`` is
+    ``hotel_evidence.ratings_index()``: the guest ratings read for a property by
+    its normalised name, so a lodge on a trip can show the rating that was read
+    for it. ``None`` is exactly none collected.
+
+    Order of the page (owner, 22 Oct 2026): start here, how current the evidence
+    is, every option at a glance (trips in the owner's order, then the resorts),
+    then one self-contained dossier per trip in that same order, then one card per
+    resort, then the rest. Gmail clips an HTML part near 102 KB, so what is built
+    is measured against ``EMAIL_HTML_BUDGET_BYTES`` and the LEAST important detail
+    goes first: resort cards beyond the minimum, then the longest prose and the
+    second-choice links of the last dossiers, then the last dossiers down to a
+    short form. A trip never leaves the table, and a line says what was shortened.
     """
     cards = _cards(config, deals, generated_at=generated_at, trends=trends)
     multi_rows = _multi_centre_rows(config, fares=multi_centre_fares)
+    dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
+                                      hotel_ratings=hotel_ratings)
+    answers = _quick_answers(config, multi_rows, cards, dossiers)
     out: list[str] = [
         '<!DOCTYPE html><html><head><meta charset="utf-8"><title>',
         _esc(config.report_title),
@@ -2380,6 +2629,7 @@ def render_holiday_report_compact(
         '<table role="presentation" width="600" cellpadding="0" cellspacing="0" ',
         'style="width:100%; max-width:600px;"><tr><td>',
         _header_html(config, generated_at=generated_at),
+        _start_here_html(answers),
         _freshness_html(evidence_stamps, generated_at=generated_at),
         _overview_html(config, multi_rows, generated_at=generated_at),
     ]
@@ -2389,37 +2639,67 @@ def render_holiday_report_compact(
             f'text-transform:uppercase; letter-spacing:0.04em;">Single resorts</div>'
         )
         out.append(_glance_html(cards, travellers=int(config.travellers)))
-    # The Africa block leads the detail (owner 22 Oct: the safari trips were buried
-    # under four Asian cards), so it is part of what the cards must make room for.
-    out.append(_multi_centre_html(config, fares=multi_centre_fares, part="africa", rows=multi_rows))
     # The sections after the cards are built FIRST so the budget can hold their
-    # room: they are always sent, so a card that does not fit beside them is
-    # the one cut. Measured in UTF-8 bytes, because the budget is Gmail's byte
-    # cap and every £, ★, — and ↗ on a card is two or three bytes.
+    # room: they are always sent. Measured in UTF-8 bytes, because the budget is
+    # Gmail's byte cap and every £, ★, — and ↗ on a card is two or three bytes.
     after_cards = [
-        _multi_centre_html(config, fares=multi_centre_fares, part="other", rows=multi_rows),
         _over_budget_html(config),
         _watch_html(config),
         _notes_html(config, deals),
     ]
-    reserved = (sum(_utf8_len(chunk) for chunk in after_cards)
-                + hol._CLOSING_TAIL_ALLOWANCE_BYTES)
-    used = sum(_utf8_len(chunk) for chunk in out)
-    for rendered, card in enumerate(cards, start=1):
-        card_html = _card_html(card)
-        size = _utf8_len(card_html)
-        if (
-            rendered > hol.MIN_RENDERED_HOTEL_CARDS
-            and used + size + reserved > hol.EMAIL_HTML_BUDGET_BYTES
-        ):
-            out.append(
-                f'<div style="font-size:12px; color:{_MUTED}; margin:12px 0 0 0;">'
-                f'{len(cards) - rendered + 1} further deal(s) not shown: this e-mail is near '
-                f"Gmail's {hol.EMAIL_HTML_BUDGET_BYTES // 1000} KB payload cap.</div>"
-            )
-            break
-        out.append(card_html)
-        used += size
+    resorts_head = (
+        f'<div id="resorts" style="font-size:15px; font-weight:700; color:{_INK}; margin:18px 0 0 0;">'
+        f'Single resorts, one page each</div>'
+    ) if cards else ""
+    budget_words = _gbp(getattr(config, "max_budget_gbp", 0.0))
+    group_heads = {key: _group_heading_html(key, grp, budget_words) for key, _l, grp in td.owner_order(multi_rows)}
+    sizes = {d["id"]: [_utf8_len(td.dossier_html(d, level)) for level in (td.FULL, td.TRIMMED, td.SHORT)]
+             for d in dossiers}
+    card_html = [_card_html(card) for card in cards]
+    card_sizes = [_utf8_len(chunk) for chunk in card_html]
+    dropped_note_size = 260
+    summary_allowance = 520
+    fixed = (sum(_utf8_len(chunk) for chunk in out) + sum(_utf8_len(chunk) for chunk in after_cards)
+             + hol._CLOSING_TAIL_ALLOWANCE_BYTES + _utf8_len(resorts_head)
+             + sum(_utf8_len(chunk) for chunk in group_heads.values()) + _utf8_len('<div id="trips"></div>'))
+    shown_cards = len(cards)
+    limit = hol.EMAIL_HTML_BUDGET_BYTES
+
+    def total(chosen: Mapping[str, int], cards_shown: int, *, shortened: bool) -> int:
+        return (fixed + sum(sizes[d["id"]][chosen[d["id"]]] for d in dossiers)
+                + sum(card_sizes[:cards_shown])
+                + (dropped_note_size if cards_shown < len(cards) else 0)
+                + (summary_allowance if shortened else 0))
+
+    # What gives way, and in what order: the LEAST important detail first. If everything fits in full, nothing is
+    # shortened. If not, the trips lose their longest prose and their second-choice links (TRIMMED), starting with
+    # the LAST trip in the table's order, so the owner's Tanzania safari + Zanzibar pages are the last to lose
+    # anything; if that is still not enough, the last trips drop to the short form (dates, properties, price,
+    # flights, links), again from the end; and only then do resort cards beyond the minimum go, as they always
+    # did. No trip leaves the table, and a line over the trips says what was shortened.
+    levels = {d["id"]: td.FULL for d in dossiers}
+    if total(levels, shown_cards, shortened=False) > limit:
+        for target in (td.TRIMMED, td.SHORT):
+            for d in reversed(dossiers):
+                if total(levels, shown_cards, shortened=True) <= limit:
+                    break
+                levels[d["id"]] = max(levels[d["id"]], target)
+        while (total(levels, shown_cards, shortened=True) > limit
+               and shown_cards > min(len(cards), hol.MIN_RENDERED_HOTEL_CARDS)):
+            shown_cards -= 1
+    out.append('<div id="trips"></div>')
+    out.append(_shortened_summary_html(dossiers, levels))
+    for key, _label, _group in td.owner_order(multi_rows):
+        out.append(group_heads[key])
+        out.extend(td.dossier_html(d, levels[d["id"]]) for d in dossiers if d["group"] == key)
+    out.append(resorts_head)
+    out.extend(card_html[:shown_cards])
+    if shown_cards < len(cards):
+        out.append(
+            f'<div style="font-size:12px; color:{_MUTED}; margin:12px 0 0 0;">'
+            f'{len(cards) - shown_cards} further deal(s) not shown: this e-mail is near '
+            f"Gmail's {hol.EMAIL_HTML_BUDGET_BYTES // 1000} KB payload cap.</div>"
+        )
     out.extend(after_cards)
     out.append("</td></tr></table></td></tr></table></body></html>")
     return "".join(out)
@@ -2441,17 +2721,23 @@ def render_holiday_report_compact_text(
     last_report_at: str = "",
     multi_centre_fares: Optional[Mapping[Any, Any]] = None,
     evidence_stamps: Optional[Mapping[str, Any]] = None,
+    hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None,
 ) -> str:
     """The plain-text twin of ``render_holiday_report_compact``.
 
     ``mailer.send_html`` sends a text part, so a text part that says "open this
     in an HTML-capable client" is a part that carries none of the decision.
-    Built from the same card structures, in the same order, and from the same
-    dated two-centre reads — a price the HTML part shows and this one does not
-    would be a reader whose mail client disagreed with the report.
+    Built from the same card and dossier structures, in the same order, and from
+    the same dated two-centre reads — a price the HTML part shows and this one does
+    not would be a reader whose mail client disagreed with the report. It is also
+    the part that is never shortened: Gmail's size limit applies to the HTML part,
+    so every dossier is here in full.
     """
     cards = _cards(config, deals, generated_at=generated_at, trends=trends)
     multi_rows = _multi_centre_rows(config, fares=multi_centre_fares)
+    dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
+                                      hotel_ratings=hotel_ratings)
+    answers = _quick_answers(config, multi_rows, cards, dossiers)
     lines: list[str] = [
         str(config.report_title),
         f"{party_words(config)} · departing "
@@ -2459,6 +2745,7 @@ def render_holiday_report_compact_text(
         prices_checked_words(generated_at),
         "",
     ]
+    lines.extend(_start_here_lines(answers))
     lines.extend(_freshness_lines(evidence_stamps, generated_at=generated_at))
     lines.extend(_overview_lines(config, multi_rows, generated_at=generated_at))
     if cards:
@@ -2471,7 +2758,7 @@ def render_holiday_report_compact_text(
                 f"{str(card['board']).split(' · ')[0]} · {card['headline']}"
             )
         lines.append("")
-    lines.extend(_multi_centre_lines(config, fares=multi_centre_fares, part="africa", rows=multi_rows))
+    lines.extend(_multi_centre_lines(config, rows=multi_rows, dossiers=dossiers))
     for card in cards:
         lines.append(
             f"{card['name']} {card['stars']} · {card['place']} · {card['dates']} · {card['nights']}"
@@ -2496,14 +2783,38 @@ def render_holiday_report_compact_text(
                 + (" · " + " · ".join(label for label, _url in airlines) if airlines else "")
                 + (f" · {note}" if note else "")
             )
+        read = card["flight_read"]
+        if read:
+            lines.append(f"  Outbound flight behind the price, read {read['read_on']}"
+                         + (f" from {read['origin']}" if read["origin"] else "") + f": {read['what']}")
+            if read["times"]:
+                lines.append(f"  {read['times']}")
+            if read["mismatch"]:
+                lines.append(f"  ! {read['mismatch']}")
+        lines.append(f"  {read['note'] if read else td.NO_TIMES_WORDS}")
+        pair = card["pair"]
+        if pair:
+            lines.append("  Package vs our build")
+            lines.append(f"    Vendor package: {pair['operator']} · {pair['total']} for 5 · {pair['what']}"
+                         + (f" · {pair['checked']}" if pair["checked"] else "")
+                         + (f" · {pair['other_dates']}" if pair["other_dates"] else "")
+                         + (f" · {pair['url']}" if pair["url"] else ""))
+            lines.append(f"    Our build: {pair['ours_total']} for 5 · {pair['ours_what']}")
+            lines.append(f"    {pair['difference']}")
+        else:
+            lines.append(f"  Package vs our build: none, {td.NO_CARD_PACKAGE_WORDS}.")
+        if card["ratings"]:
+            for rating in card["ratings"][:2]:
+                lines.append(f"  Reviews: {rating['words']}" + (f" {rating['url']}" if rating["url"] else ""))
+        else:
+            lines.append(f"  Reviews: {td.NO_RATING_WORDS}")
         for line in card["why"]:
             lines.append(f"  • {line}")
-        if card["links"]:
-            lines.append("  " + " · ".join(label for label, _ in card["links"]))
+        for label, url in card["links"]:
+            lines.append(f"  {label}: {url}")
         for warning in card["warnings"]:
             lines.append(f"  ! {warning}")
         lines.append("")
-    lines.extend(_multi_centre_lines(config, fares=multi_centre_fares, part="other", rows=multi_rows))
     keys = {d.key.lower() for d in config.destinations}
     over = [row for row in hol.LAST_OVER_BUDGET
             if str(row.get("destination_key", "")).lower() in keys]
@@ -2550,8 +2861,6 @@ def _notes_lines(config: HolidayConfig, deals: Sequence[PackageDeal]) -> list[st
         lines.append(f"{name} — {text}")
     shown = {d.resort_name for d in deals}
     for name in sorted(shown):
-        if hol.tripadvisor_unverified(name):
-            lines.append(f"{name} — guest rating not checked")
         if not hol.is_summer_trip(config) and hol.pool_heating_unverified(name):
             lines.append(f"{name} — heated pool not stated")
     return lines

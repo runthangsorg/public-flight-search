@@ -141,8 +141,10 @@ class RenderingTests(unittest.TestCase):
     def test_the_plain_text_email_prints_the_same_labels(self):
         text = render_holiday_report_compact_text(
             _config(), generated_at=NOW, deals=[_deal()])
-        line = next(line for line in text.splitlines() if "Book" in line)
-        self.assertIn("Book the hotel", line)
+        # The text part now also carries a "Booking.com:" line for every named lodge on every trip page, so the
+        # card's own link is found by its label; each link is a "label: url" line (22 Oct 2026).
+        line = next(line for line in text.splitlines() if line.strip().startswith("Book the hotel"))
+        self.assertIn(f"Book the hotel: {HOTEL_SITE}", line)
         self.assertNotIn("Book this package", text)
 
     def test_a_package_priced_card_still_prints_book_this_package(self):

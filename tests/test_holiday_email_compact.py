@@ -186,14 +186,17 @@ def _render(deals=None, *, config=None, **kwargs) -> str:
 
 
 def _multi_start(text: str) -> int:
-    """Where the blocks that FOLLOW the cards begin: the two-centre trips.
+    """Where the blocks that FOLLOW the cards begin: the over-budget list, the watch list, the notes.
 
-    The Africa block now precedes the cards (owner 22 Oct 2026: the safari trips
-    were buried under four Asian cards), so everything before this point is the
-    freshness strip, the at-a-glance tables, the Africa block and the cards.
+    22 Oct 2026: the trip pages (Africa safari + beach, the two-centre trips) now come BEFORE the resort cards, so
+    "after the cards" is the over-budget list, the watch list or the notes, whichever the e-mail has first.
     """
-    found = text.find("Two-centre trips")
-    return found if found >= 0 else len(text)
+    start = text.rfind('id="deal-')
+    start = start if start >= 0 else 0
+    marks = [i for i in (text.find("Over the", start), text.find("On the watch list", start),
+                         text.find(">Notes<", start), text.find("<strong style=\"color:#0f172a;\">Notes", start))
+             if i >= 0]
+    return min(marks) if marks else len(text)
 
 
 class HeaderTests(unittest.TestCase):
@@ -717,7 +720,7 @@ class FlightRowTests(unittest.TestCase):
         # 2026-10-15). That is a different section's statement about a different
         # journey, and reading it as this row's answer was the bug in this
         # assertion, not a reason to leave it saying so.
-        card = html[:_multi_start(html)]
+        card = html[html.index('id="deal-1"'):_multi_start(html)]
         self.assertNotIn("not priced yet", card)
         self.assertIn("£6,542", card, "the priced stopover row shows its own total")
 
@@ -842,24 +845,25 @@ class WarningTests(unittest.TestCase):
 
 class CompactnessTests(unittest.TestCase):
     def test_twelve_deals_stay_under_the_word_cap(self):
-        # 3,000, raised from 2,400 on 2026-10-22: the first screen the owner asked
-        # for ("rewritten from scratch"; every option in one table, Tanzania safari
-        # + Zanzibar first, and a strip saying how old the evidence is) is about
-        # 450 words of REQUIRED content. The detail below it is unchanged.
-        # 2,400, raised from 1,800 on 2026-10-21: the owner asked three times
-        # (15, 17 and 20 Oct) for Africa safari and multi-stop trips, and eleven
-        # rows (an operator package or a rate-card build each: title, kind, whose
-        # shape, one line of why, one of catch) are about 500 words of REQUIRED
-        # content. Each was cut to one clause per line; what the cap still does is
-        # bound the whole e-mail.
-        # 1,800, raised from 1,500 on 2026-10-04 (H9). The Two-centre section
-        # the owner asked for is about 300 words of REQUIRED content — five
-        # itineraries, each a title, a cost range, a budget verdict, one line of
-        # why and one of catch — and it is not decoration that can be cut to
-        # hit a number. What the cap still does is bound the whole e-mail: a
-        # report that grows past it is a report nobody reads on a phone.
+        # The old single cap (1,500 -> 1,800 -> 2,400 -> 3,000 words) bounded an e-mail whose trips were one
+        # line each. 22 Oct 2026: the owner asked for "full verbose details of itineraries, flights, times
+        # stayed, hotel reviews, and deep links" for every trip, as one self-contained page per trip, so
+        # the e-mail is now long BY DESIGN and what keeps it readable is the structure, not a total:
+        #   * the first screen (start here, how current, the table of every option) stays short;
+        #   * no single trip page runs past 650 words, and each is cut into labelled sections;
+        #   * no resort card runs past 200 words;
+        #   * the whole message is bound by Gmail's byte limit (see test_trip_dossiers.py), which sheds the
+        #     last trips' detail first and says so.
         html = _render(deals=_deals(12))
-        self.assertLess(word_count(html), 3000)
+        first_screen = visible_text(html[:html.index('id="trips"')])
+        self.assertLess(len(first_screen.split()), 1000)
+        starts = [m.start() for m in re.finditer(r'id="(?:trip|deal)-', html)]
+        for begin, end in zip(starts, starts[1:] + [len(html)]):
+            part = visible_text(html[begin:end])
+            self.assertLess(len(part.split()), 650 if 'id="trip-' in html[begin:begin + 20] else 700)
+        for match in re.finditer(r'id="deal-\d+"', html):
+            card = visible_text(html[match.start():html.index("</table>", match.start())])
+            self.assertLess(len(card.split()), 200)
 
     def test_the_dropped_sections_cannot_come_back(self):
         text = visible_text(_render(deals=_deals(12)))
@@ -974,7 +978,11 @@ class NotesAndListsTests(unittest.TestCase):
         self.assertIn("Test Dropped Resort — board unverified", text)
         self.assertTrue(text.index("Notes") > text.index("Test Resort 1"))
 
-    def test_a_resort_whose_guest_rating_was_never_read_is_named_in_the_notes(self):
+    def test_a_resort_whose_guest_rating_was_never_read_is_named_on_its_own_card(self):
+        # Until 22 Oct 2026 this was a line in the Notes at the bottom ("guest rating not checked"). The owner asked
+        # for hotel reviews inside each trip's page, so the statement moved to where the reader is looking at that
+        # resort: its card says "guest rating not collected" (or shows the rating the deal holds), and the Notes
+        # no longer repeat it.
         hol.SUITE_ARCHITECTURE.setdefault(
             "Test Unread Resort",
             {
@@ -983,8 +991,10 @@ class NotesAndListsTests(unittest.TestCase):
                 "pool_heated_c": 28, "tripadvisor": None, "nonstop_from": (),
             },
         )
-        text = visible_text(_render(deals=[_deal(resort_name="Test Unread Resort")]))
-        self.assertIn("Test Unread Resort — guest rating not checked", text)
+        html = _render(deals=[_deal(resort_name="Test Unread Resort")])
+        card = visible_text(html[html.index('id="deal-1"'):_multi_start(html)])
+        self.assertIn("guest rating not collected", card)
+        self.assertNotIn("guest rating not checked", visible_text(html))
 
     def test_a_reason_cut_off_mid_clause_is_not_printed(self):
         # The shape that shipped three times (REVIEW-H3 P1). It is only 62

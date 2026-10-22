@@ -56,7 +56,9 @@ LOOSE_GBP = 40000.0
 #: range itself and the prose that says how it was built (``cost_basis`` and
 #: each stop's ``basis``). Everything else may not, because a ceiling is not a
 #: cost line — see ``test_no_budget_figure_is_stored_in_the_file``.
-COST_FIELDS = frozenset({"cost_low_gbp", "cost_high_gbp", "cost_basis"})
+#: ``cost_lines`` (22 Oct 2026) is the itemised form of ``cost_basis``: each line is a priced component of a
+#: self-build, so it is a cost field too; the loader refuses lines that do not add up to the trip's own figure.
+COST_FIELDS = frozenset({"cost_low_gbp", "cost_high_gbp", "cost_basis", "cost_lines"})
 
 #: Google Flights' seat selector: field 9, value 1 is Economy and 3 is Business
 #: (``google_flights._seat_field``). Decoded here rather than matched as a

@@ -24,11 +24,11 @@ So this module is deliberately not an evidence loader:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 import json
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 #: Where the compiled itineraries live. It ships with the package (it is
 #: committed source data, unlike ``data/`` at the repository root, which holds
@@ -59,6 +59,44 @@ KINDS: frozenset[str] = frozenset({"self-build", "operator"})
 
 
 @dataclass(frozen=True)
+class Lodge:
+    """One named property inside a stop, with the nights it holds when the source says.
+
+    A stop's ``hotel`` field is free text, and three of the safari stops hold TWO
+    properties (a night in town, then three at the lodge). A name is never lifted
+    out of that text with a pattern: where a property is known and bookable it is
+    written here, and where it is not the stop simply has no lodges and says so.
+    """
+
+    name: str
+    #: Nights at this property, or ``None`` when the source does not itemise them
+    #: ("Naivasha and Amboseli lodges not itemised"). ``None`` is not zero.
+    nights: Optional[int] = None
+    #: The board words the source states ("full board", "half board"); empty when
+    #: it states none, which the e-mail prints as "board not stated".
+    board: str = ""
+    #: The place to search the property in (``Zanzibar``, ``Serengeti``): the stop's
+    #: own ``place`` is often a sentence, and a booking site resolves a name plus a
+    #: town far better than a name plus a sentence.
+    area: str = ""
+    #: A rule that comes from the source about THIS property's room or unit
+    #: ("the Presidential Villa is the only unit that sleeps 5").
+    note: str = ""
+    #: A page we hold for this property (its own page, or the rate page the figure
+    #: came from). Empty means we hold none: a link is never built from a guess.
+    url: str = ""
+
+
+@dataclass(frozen=True)
+class CostLine:
+    """One itemised line of a self-build's price, in whole pounds."""
+
+    label: str
+    gbp: float
+    basis: str = ""
+
+
+@dataclass(frozen=True)
 class MultiCentreStop:
     """One stop of a two-centre trip: where, how long, and what it costs."""
 
@@ -67,6 +105,7 @@ class MultiCentreStop:
     airport: str
     hotel: str
     basis: str
+    lodges: tuple[Lodge, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -95,6 +134,15 @@ class MultiCentreTrip:
     operator_ref: str = ""
     #: ``africa``, ``asia`` ...: a label for the reader, never a filter.
     region: str = ""
+    #: The id of the trip that is the other half of a vendor-versus-ours pair: an
+    #: ``operator`` package names the ``self-build`` of the same shape, and the
+    #: other way round. Optional, and checked at load (``_link_counterparts``): an id
+    #: that is not in this season's file, or whose kind is the same, is dropped
+    #: with a reason, never guessed at.
+    compare_with: str = ""
+    #: The lines of a self-build's price where the source itemises them. They are
+    #: shown only when they add up to the trip's own cost, to the pound.
+    cost_lines: tuple[CostLine, ...] = ()
 
     @property
     def total_nights(self) -> int:
@@ -152,6 +200,66 @@ def _warn_skip(what: str, reason: str) -> None:
     _SKIP_LOG.append(f"{what or '?'}: {reason}")
 
 
+def _lodge(item: Any) -> Optional[Lodge]:
+    """One property of a stop, or ``None`` when it names nothing or its nights are not a number."""
+    if not isinstance(item, dict):
+        return None
+    name = str(item.get("name", "")).strip()
+    if not name:
+        return None
+    nights: Optional[int] = None
+    raw = item.get("nights")
+    if raw not in (None, ""):
+        try:
+            nights = int(raw)
+        except (TypeError, ValueError):
+            return None
+        if nights <= 0:
+            return None
+    url = str(item.get("url", "") or "").strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = ""
+    return Lodge(
+        name=name,
+        nights=nights,
+        board=str(item.get("board", "") or "").strip(),
+        area=str(item.get("area", "") or "").strip(),
+        note=str(item.get("note", "") or "").strip(),
+        url=url,
+    )
+
+
+def _cost_lines(item: Any, ident: str, low: float, high: float) -> tuple[CostLine, ...]:
+    """The itemised lines of a price, but only when they ARE the price.
+
+    A breakdown that does not add up to the trip's own figure is worse than none:
+    it reads as an audit and fails it. A range cannot be itemised, so lines are
+    accepted only for a trip with one figure (``low == high``), and only when their
+    sum is that figure to the pound.
+    """
+    raw_lines = item.get("cost_lines")
+    if not raw_lines:
+        return ()
+    lines: list[CostLine] = []
+    for raw in raw_lines:
+        if not isinstance(raw, dict):
+            _warn_skip(ident, "a cost line is not an object; the lines are dropped")
+            return ()
+        label = str(raw.get("label", "")).strip()
+        try:
+            gbp = float(raw.get("gbp"))
+        except (TypeError, ValueError):
+            gbp = -1.0
+        if not label or gbp < 0:
+            _warn_skip(ident, f"cost line {raw!r} has no label or amount; the lines are dropped")
+            return ()
+        lines.append(CostLine(label=label, gbp=gbp, basis=str(raw.get("basis", "") or "").strip()))
+    if low != high or abs(sum(line.gbp for line in lines) - low) > 1.0:
+        _warn_skip(ident, "cost lines do not add up to the trip's one figure; the lines are dropped")
+        return ()
+    return tuple(lines)
+
+
 def _stop(item: Any) -> Optional[MultiCentreStop]:
     if not isinstance(item, dict):
         return None
@@ -165,12 +273,20 @@ def _stop(item: Any) -> Optional[MultiCentreStop]:
         return None
     if nights <= 0:
         return None
+    lodges = tuple(l for l in (_lodge(raw) for raw in item.get("lodges", ()) or ()) if l)
+    itemised = [l.nights for l in lodges if l.nights is not None]
+    if sum(itemised) > nights:
+        # Properties that hold more nights than the stop has contradict the stop;
+        # the stop stands and the properties are dropped, with the reason.
+        _warn_skip(place, "its properties hold more nights than the stop; the properties are dropped")
+        lodges = ()
     return MultiCentreStop(
         place=place,
         nights=nights,
         airport=airport,
         hotel=str(item.get("hotel", "")).strip(),
         basis=str(item.get("basis", "")).strip(),
+        lodges=lodges,
     )
 
 
@@ -237,6 +353,8 @@ def _trip(item: Any) -> Optional[MultiCentreTrip]:
         kind=kind,
         operator_ref=operator_ref,
         region=str(item.get("region", "") or "").strip().lower(),
+        compare_with=str(item.get("compare_with", "") or "").strip(),
+        cost_lines=_cost_lines(item, ident, low, high),
     )
 
 
@@ -271,7 +389,58 @@ def load_multi_centre(
         trip = _trip(raw)
         if trip is not None and trip.season == wanted:
             trips.append(trip)
-    return trips
+    return _link_counterparts(trips)
+
+
+def _link_counterparts(trips: list[MultiCentreTrip]) -> list[MultiCentreTrip]:
+    """Drop a ``compare_with`` that points nowhere sensible, saying why.
+
+    A pair is an operator package and a self-build of the SAME shape. An id that is
+    not among this season's trips, that is the trip's own, or whose kind is the same
+    as the trip's, would print a comparison of two things that are not a pair, so
+    the field is cleared (the trip stays) and the skip log names the reason.
+    """
+    by_id = {trip.id: trip for trip in trips}
+    out: list[MultiCentreTrip] = []
+    for trip in trips:
+        other_id = trip.compare_with
+        if not other_id:
+            out.append(trip)
+            continue
+        other = by_id.get(other_id)
+        if other is None or other_id == trip.id:
+            _warn_skip(trip.id, f"compare_with {other_id!r} is not another trip of this season")
+        elif (other.kind == "operator") == (trip.kind == "operator"):
+            _warn_skip(trip.id, f"compare_with {other_id!r} is the same kind ({trip.kind}); a pair is one of each")
+        else:
+            out.append(trip)
+            continue
+        out.append(replace(trip, compare_with=""))
+    return out
+
+
+def counterparts(trips: Sequence[MultiCentreTrip]) -> dict[str, list[MultiCentreTrip]]:
+    """``{trip id: the trips it is paired with}``, from either side's ``compare_with``.
+
+    One side declaring the pair is enough: Kuoni's package does not have to say
+    which self-build copies it for the self-build's own ``compare_with`` to put the
+    two side by side in both directions. Order is the file's order.
+    """
+    by_id = {trip.id: trip for trip in trips}
+    pairs: dict[str, list[str]] = {trip.id: [] for trip in trips}
+    for trip in trips:
+        other = by_id.get(trip.compare_with)
+        if other is None:
+            continue
+        if other.id not in pairs[trip.id]:
+            pairs[trip.id].append(other.id)
+        if trip.id not in pairs[other.id]:
+            pairs[other.id].append(trip.id)
+    order = {trip.id: index for index, trip in enumerate(trips)}
+    return {
+        ident: [by_id[o] for o in sorted(others, key=order.__getitem__)]
+        for ident, others in pairs.items()
+    }
 
 
 def trip_legs_for_dates(
@@ -316,15 +485,122 @@ def trip_legs_for_dates(
     return tuple(out)
 
 
+@dataclass(frozen=True)
+class LodgeStay:
+    """One property's own dated window inside a stop; empty dates when its nights are not itemised."""
+
+    lodge: Lodge
+    check_in: str
+    check_out: str
+    nights: Optional[int]
+
+
+@dataclass(frozen=True)
+class Stay:
+    """One stop with its check-in and check-out, and its properties dated inside it."""
+
+    stop: MultiCentreStop
+    check_in: str
+    check_out: str
+    nights: int
+    lodges: tuple[LodgeStay, ...]
+
+
+@dataclass(frozen=True)
+class StayPlan:
+    """The whole trip dated against one date pair, and what that pair leaves over.
+
+    ``unplanned_nights`` is the stay between where the plan ends and the flight
+    home: the trip's stops add up to their own nights (9 for a nine-night package),
+    the report's date pair is a fortnight or more, and the difference is real
+    nights nobody has planned or priced. ``cut_nights`` is the opposite: a plan
+    longer than the pair, cut at the flight home.
+    """
+
+    stays: tuple[Stay, ...]
+    plan_end: str
+    return_date: str
+    unplanned_nights: int
+    cut_nights: int
+
+
+def trip_stays_for_dates(trip: MultiCentreTrip, outbound: str, returning: str) -> StayPlan:
+    """Each stop's (and each property's) check-in and check-out for the report's date pair.
+
+    The first stay starts on the outbound date and each stay starts where the last
+    one ended, by the stops' OWN nights: the same chain ``trip_legs_for_dates``
+    uses to date the flights between stops, so the day a flight leaves is the day
+    the stay it leaves ends. Nothing is stretched to reach the return date. Where
+    the stops add up to fewer nights than the pair, the gap is reported in
+    ``unplanned_nights`` and the last stay still ends on the day the plan does;
+    where they add up to more, the last stays are cut at the flight home and the
+    nights cut are reported in ``cut_nights``.
+
+    A property's window is given only when its nights are known: its own
+    ``nights``, or the whole stop when it is the stop's only property. A property
+    whose nights the source does not itemise gets empty dates, never a guess.
+    """
+    try:
+        start = datetime.strptime(outbound, "%Y-%m-%d")
+        end = datetime.strptime(returning, "%Y-%m-%d")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"bad date pair: {outbound!r} -> {returning!r}") from exc
+    if end <= start:
+        raise ValueError(f"return date is not after the outbound: {outbound!r} -> {returning!r}")
+    fmt = "%Y-%m-%d"
+    cursor = start
+    cut = 0
+    stays: list[Stay] = []
+    for stop in trip.stops:
+        available = (end - cursor).days
+        nights = max(0, min(stop.nights, available))
+        cut += stop.nights - nights
+        check_in = cursor
+        check_out = cursor + timedelta(days=nights)
+        lodge_cursor = check_in
+        lodge_stays: list[LodgeStay] = []
+        for lodge in stop.lodges:
+            held = lodge.nights
+            if held is None and len(stop.lodges) == 1:
+                held = stop.nights
+            if held is None:
+                lodge_stays.append(LodgeStay(lodge, "", "", None))
+                continue
+            span = max(0, min(held, (check_out - lodge_cursor).days))
+            lodge_stays.append(LodgeStay(
+                lodge,
+                lodge_cursor.strftime(fmt),
+                (lodge_cursor + timedelta(days=span)).strftime(fmt),
+                span,
+            ))
+            lodge_cursor += timedelta(days=span)
+        stays.append(Stay(stop, check_in.strftime(fmt), check_out.strftime(fmt), nights, tuple(lodge_stays)))
+        cursor = check_out
+    return StayPlan(
+        stays=tuple(stays),
+        plan_end=cursor.strftime(fmt),
+        return_date=end.strftime(fmt),
+        unplanned_nights=max(0, (end - cursor).days),
+        cut_nights=cut,
+    )
+
+
 __all__ = [
     "DEFAULT_MULTI_CENTRE_PATH",
     "MultiCentreStop",
     "MultiCentreTrip",
+    "CostLine",
     "KINDS",
+    "Lodge",
+    "LodgeStay",
     "PRICE_LABEL",
     "SCHEMA",
+    "Stay",
+    "StayPlan",
     "consume_multi_centre_skip_log",
+    "counterparts",
     "load_multi_centre",
     "season_for",
     "trip_legs_for_dates",
+    "trip_stays_for_dates",
 ]

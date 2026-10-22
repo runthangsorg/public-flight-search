@@ -500,7 +500,13 @@ def run_holiday_planner(
         # The compact card's "▼ £210" chip is measured against the LAST
         # observation, so it is given the trend rows themselves rather than
         # the detailed renderer's tracked-minimum chips (AMEND-H1 §2).
-        render_kwargs.update(trends=trends, evidence_stamps=evidence_stamps)
+        render_kwargs.update(
+            trends=trends, evidence_stamps=evidence_stamps,
+            # The guest ratings the hotel evidence holds, by property name, so a
+            # lodge on a multi-stop trip shows the rating that was read for it
+            # (and says "not collected" when none was).
+            hotel_ratings=hotel_evidence_module.ratings_index(),
+        )
     render = render_holiday_report if detailed else render_holiday_report_compact
     html = render(config, **render_kwargs)
     # The plain-text part the mailer already sends used to say "open this in an

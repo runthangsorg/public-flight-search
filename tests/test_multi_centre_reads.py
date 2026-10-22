@@ -29,6 +29,7 @@ import dataclasses
 import io
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -84,6 +85,11 @@ STOPOVER_OUTLIER_TOTAL = 28000.0
 def _config(path=JULY, *, budget=SYNTHETIC_CEILING_GBP):
     config = load_holiday_config(path.read_text(encoding="utf-8"))
     return dataclasses.replace(config, max_budget_gbp=budget)
+
+
+def deals_for_config(config):
+    """The deals the byte-budget test renders: the whole catalogue for this config, unfiltered."""
+    return collect_holiday_deals(config)
 
 
 def _declared(config):
@@ -371,7 +377,8 @@ class MultiCentreRenderTests(unittest.TestCase):
         want = _trip(config)
         html = self._render(config, self._fares(want))
         text = self._text(config, self._fares(want))
-        line = f"flights £{SYNTHETIC_TOTAL:,.0f} for 5 (read {SYNTHETIC_READ_DAY})"
+        # 22 Oct 2026: the read is the first line of the trip page's Flights section, in words.
+        line = f"£{SYNTHETIC_TOTAL:,.0f} for 5, the whole trip, Economy, read {SYNTHETIC_READ_DAY} for these exact dates"
         self.assertIn(line, html)
         self.assertIn(line, text)
         # Linked to the page the fare was read from, not to the search link.
@@ -402,12 +409,14 @@ class MultiCentreRenderTests(unittest.TestCase):
                          [True] + [False] * (len(rows) - 1))
         html = self._render(config, fares)
         text = self._text(config, fares)
-        self.assertEqual(html.count(f"flights £{SYNTHETIC_TOTAL:,.0f} for 5 (read "), 1)
-        self.assertEqual(text.count(f"flights £{SYNTHETIC_TOTAL:,.0f} for 5 (read "), 1)
-        # The unread trips still show their range and their own verdict.
+        phrase = f"£{SYNTHETIC_TOTAL:,.0f} for 5, the whole trip, Economy, read "
+        self.assertEqual(html.count(phrase), 1)
+        self.assertEqual(text.count(phrase), 1)
+        # The unread trips still show their range and their own verdict, and say they were not read.
         other = rows[1]
         self.assertIn(f"£{other['low']:,.0f}–£{other['high']:,.0f}", html)
         self.assertIn(other["trip"].why, html)
+        self.assertEqual(text.count("Not read for these dates yet"), len(rows) - 1)
 
     def test_the_header_says_priced_where_shown_only_when_a_read_is_shown(self):
         config = _config()
@@ -439,7 +448,7 @@ class MultiCentreRenderTests(unittest.TestCase):
         html = self._render(config, elsewhere)
         self.assertIn(MULTI_CENTRE_HEAD_NO_READ, html)
         self.assertNotIn(MULTI_CENTRE_HEAD_PRICE_READ, html)
-        self.assertNotIn(f"flights £{SYNTHETIC_TOTAL:,.0f} for 5", html)
+        self.assertNotIn(f"£{SYNTHETIC_TOTAL:,.0f} for 5, the whole trip", html)
 
     def test_the_priced_block_stays_inside_the_mail_byte_budget(self):
         """A read adds a line to every priced row, and the report must still fit.
@@ -457,10 +466,15 @@ class MultiCentreRenderTests(unittest.TestCase):
                 html = self._render(config, fares)
                 size = len(html.encode("utf-8"))
                 self.assertLessEqual(size, hol.EMAIL_HTML_BUDGET_BYTES)
-                self.assertNotIn(
-                    "not shown", html,
-                    "the byte budget dropped a card to make room for a fare line",
-                )
+                # 22 Oct 2026: a trip page is far longer than the old one-line row, so with this many cards (the
+                # whole catalogue, unfiltered) the budget sheds the cards beyond the fifth and the last trips'
+                # detail, and SAYS so; what must hold is that it never drops a trip, and that every card it
+                # does drop is named in a "not shown" line rather than missing without a word.
+                for row in _declared(config):
+                    self.assertIn(f'id="trip-{row["trip"]}"', html)
+                cards = len(re.findall(r'id="deal-\d+"', html))
+                if cards < len(deals_for_config(config)):
+                    self.assertIn("not shown", html)
 
     def test_the_block_prices_from_the_registry_the_run_was_handed_and_no_other(self):
         """No module state, no file, no fallback: a render prices only what it was given."""
@@ -469,10 +483,12 @@ class MultiCentreRenderTests(unittest.TestCase):
         self.assertIsNone(multi_centre_fare_for(want["trip"], want["legs"]))
         self.assertEqual(multi_centre_fares_registry(), {})
         html = self._render(config, {})
-        self.assertNotIn(f"flights £{SYNTHETIC_TOTAL:,.0f} for 5", html)
+        self.assertNotIn(f"£{SYNTHETIC_TOTAL:,.0f} for 5, the whole trip", html)
         lines = _multi_centre_lines(config)
         self.assertTrue(lines)
-        self.assertNotIn("read ", " ".join(lines))
+        joined = " ".join(lines)
+        self.assertNotIn("the whole trip, Economy, read", joined)
+        self.assertIn("Not read for these dates yet", joined)
 
 
 class RunWiringTests(unittest.TestCase):

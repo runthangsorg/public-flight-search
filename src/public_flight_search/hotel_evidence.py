@@ -1388,6 +1388,25 @@ def _index_supplemental(payload) -> dict[str, dict[str, tuple]]:
     return index
 
 
+def normalise_property_name(name: str) -> str:
+    """The key ``ratings_index`` is filed under: the name as comparable letters and digits."""
+    return _normalise_property(name)
+
+
+def ratings_index() -> dict[str, tuple]:
+    """Every property's guest ratings from the last load, by normalised name.
+
+    A copy: a caller that renders a property it has no card for (a lodge on a
+    multi-stop trip) can ask "was a rating read for this name?" without reaching
+    into the loader's state, and a property with no rating is simply absent.
+    """
+    return {
+        key: tuple(entry["ratings"])
+        for key, entry in _SUPPLEMENTAL_BY_PROPERTY.items()
+        if entry.get("ratings")
+    }
+
+
 def supplemental_for(
     property_name: str, section: str, *, dates: tuple[str, ...] = ()
 ) -> tuple:

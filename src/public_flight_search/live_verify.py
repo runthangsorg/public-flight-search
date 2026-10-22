@@ -118,6 +118,12 @@ class LiveFareEvidence:
     #: (or when its local timestamps do). ``None`` means the record says nothing,
     #: which ranks LAST in the "most direct fare" comparison and never wins it.
     duration_minutes: Optional[int] = None
+    #: The local departure and arrival of the fare's OUTBOUND flight, as the record
+    #: states them (``2026-12-20T14:15:00``), or ``""`` when it states none. The
+    #: records carry them for the outbound only: a return flight's clock times are
+    #: not in the read, and the e-mail says so rather than inventing them.
+    departure_local: str = ""
+    arrival_local: str = ""
     #: Other fares read for this SAME key — same airport, cabin, dates and origin
     #: — that the freshest-wins rule did not keep as the slot's record. The slot
     #: still holds one fare (every caller's contract, unchanged); these ride
@@ -221,6 +227,17 @@ def _parse_local_stamp(value: object) -> Optional[datetime]:
         return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
     except (ValueError, TypeError):
         return None
+
+
+def _record_local_stamp(value: object) -> str:
+    """A record's local clock stamp as ``YYYY-MM-DDTHH:MM:SS``, or ``""`` when unreadable.
+
+    Only a stamp that parses is kept, and it is kept as the record wrote it, minus
+    any offset: a time the card prints is a time the reader acts on, so an
+    unreadable one says nothing instead of being repaired.
+    """
+    parsed = _parse_local_stamp(value)
+    return parsed.isoformat(timespec="seconds") if parsed is not None else ""
 
 
 def _record_layover(item: dict) -> str:
@@ -892,6 +909,8 @@ def load_live_flight_evidence(
             stops=_record_stops(item.get("stops")),
             layover=_record_layover(item),
             duration_minutes=_record_duration_minutes(item),
+            departure_local=_record_local_stamp(item.get("departure_local")),
+            arrival_local=_record_local_stamp(item.get("arrival_local")),
         )
         # Keyed by (airport, cabin, outbound, return, origin). The cabin
         # component is the 2026-09-22 seam — an ECONOMY fare must never price

@@ -72,7 +72,7 @@ def _text(stamps=None, **kw):
 
 def _overview_region(html: str) -> str:
     start = html.index(OVERVIEW)
-    end = html.index(AFRICA)
+    end = html.index('id="trips"')
     return html[start:end]
 
 
@@ -89,22 +89,27 @@ def _asia_titles():
 
 
 class FirstScreenOrderTests(unittest.TestCase):
-    def test_the_strip_then_the_overview_then_africa_then_the_resort_cards(self):
+    def test_start_here_then_the_strip_then_the_overview_then_the_trip_pages_then_the_resort_cards(self):
         html = _html(STAMPS_AS_ON_22_OCT)
-        order = [html.index(STRIP), html.index(OVERVIEW), html.index(AFRICA), html.index('id="deal-1"')]
-        self.assertEqual(order, sorted(order), "freshness, overview, Africa block, then the resort cards")
+        order = [html.index("Start here"), html.index(STRIP), html.index(OVERVIEW), html.index(AFRICA),
+                 html.index('id="deal-1"')]
+        self.assertEqual(order, sorted(order), "start here, freshness, overview, trip pages, then the resort cards")
 
-    def test_the_two_centre_block_and_the_rest_still_follow_the_cards(self):
+    def test_the_two_centre_pages_now_come_before_the_cards_and_the_rest_still_follows_them(self):
+        # 22 Oct 2026: one self-contained page per trip, in the table's order (Africa, then the Asian two-centre
+        # trips), and only then the resort cards; the old order put the two-centre block after the cards.
         html = _html(STAMPS_AS_ON_22_OCT)
-        self.assertGreater(html.index("Two-centre trips"), html.index('id="deal-4"'))
-        self.assertGreater(html.index("Over the"), html.index("Two-centre trips")) if "Over the" in html else None
+        self.assertLess(html.index("Two-centre trips"), html.index('id="deal-1"'))
+        if "Over the" in html:
+            self.assertGreater(html.index("Over the"), html.index('id="deal-4"'))
 
     def test_the_plain_text_twin_has_the_same_order(self):
         text = _text(STAMPS_AS_ON_22_OCT)
-        order = [text.index(STRIP), text.index(OVERVIEW), text.index(AFRICA), text.index("Test Resort 0")]
-        # the resort name appears in the overview too, so the card is the LAST occurrence before the two-centre block
-        self.assertEqual(order[:3], sorted(order[:3]))
-        self.assertGreater(text.rindex("Test Resort 0", 0, text.index("Two-centre trips")), text.index(AFRICA))
+        order = [text.index("Start here"), text.index(STRIP), text.index(OVERVIEW), text.index(AFRICA),
+                 text.index("Two-centre trips")]
+        self.assertEqual(order, sorted(order))
+        # the resort name appears in the overview too, so the card is the LAST occurrence
+        self.assertGreater(text.rindex("Test Resort 0"), text.index("Two-centre trips"))
 
 
 class OverviewCoversEveryOptionTests(unittest.TestCase):
