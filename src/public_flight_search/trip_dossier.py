@@ -21,12 +21,19 @@ a date, a figure or a link. Every figure and word comes from a trip row the e-ma
 * a package and our build of the same shape (``compare_with``) sit side by side with the pound difference computed
   from the two figures.
 
-DATA CONTRACT for clock times (not yet exported by the private reader): a ``stopover_reads/1`` multi-centre row may
-carry ``departure_local`` and ``arrival_local`` (``YYYY-MM-DDTHH:MM:SS``, the airport's local time) for the FIRST
-flight on its card, the same two fields the resort evidence (``holiday_live_evidence.json``) already carries. When
-present they are printed; when absent nothing is guessed. The fields for the other legs would be a ``flights`` list
-of ``{origin, destination, departure_local, arrival_local, carrier}``; until the reader writes it, the dossier says
-the other flights' times are not captured.
+DATA CONTRACT for flight details (what the private pricer writes on a priced ``stopover_reads/1`` multi-centre row, and
+what this page prints). Older rows carry only the FIRST flight's ``carrier``, ``stops``, ``layovers`` and ``duration``,
+and optionally its ``departure_local`` / ``arrival_local`` (``YYYY-MM-DDTHH:MM:SS``, local to each airport); a page built
+from one prints those and says, once, that the other flights' times are not captured. Newer rows (dealsearch 509fdbf)
+also carry ``flights``: one object per leg in date order,
+``{origin, destination, departure_local, arrival_local, carrier, stops, duration, layover, cabin, vendor}``
+(for example ``"duration": "14h 30m"``, ``"layover": "1h 40m AUH"``), plus the row's ``cabin`` (``ECONOMY`` |
+``BUSINESS`` | ``MIXED``) and, when MIXED, ``cabin_mix`` ("Business LHR-JRO, ZNZ-LHR + Economy JRO-ZNZ"). When ``flights`` is
+present each flight is matched to its dated leg by airports (and the departure date where two legs share airports; the
+list's order is not trusted and nothing is matched by position) and printed on that leg's line with its own times,
+carrier, stops, layover, duration and cabin; a leg with no matching flight, or a flight that states no clock time, says
+"times not captured for this flight" for itself alone, and nothing says the other flights' times are missing. A field a
+flight does not state is not printed: an arrival that is absent is never replaced by a guess.
 """
 
 from __future__ import annotations
@@ -58,6 +65,8 @@ NO_PROPERTY_WORDS = "no property chosen yet, so no booking link"
 NO_NIGHTS_WORDS = "nights per property not stated"
 NO_TIMES_WORDS = "Departure and arrival times not captured for these flights."
 FIRST_TIMES_WORDS = "Times shown are for the first flight only; the other flights' times are not captured."
+NO_LEG_TIMES_WORDS = "times not captured for this flight"
+TIMES_ARE_LOCAL_WORDS = "All clock times are local to each airport."
 
 #: Airports the trip data names, in plain words. An airport not listed prints as its code: a name is never guessed.
 AIRPORT_PLACES: dict[str, str] = {
@@ -265,6 +274,81 @@ def rating_entries(ratings: Sequence[Any]) -> list[dict[str, str]]:
 # The structure
 # ---------------------------------------------------------------------------
 
+def _flight_facts(item: Mapping[str, Any]) -> dict[str, str]:
+    """One flight of the read's ``flights`` list as words, from only the fields it states.
+
+    Nothing is derived: a flight with no arrival prints no arrival, a stop count that is not a number prints no stops,
+    and a time that does not parse prints no time.
+    """
+    dep_time, dep_day = _clock(item.get("departure_local"))
+    arr_time, arr_day = _clock(item.get("arrival_local"))
+    stop_text = stops_words(item.get("stops"))
+    layover = str(item.get("layover") or item.get("layovers") or "").strip()
+    route = (f"{stop_text} ({layover})" if layover and stop_text and stop_text != "nonstop" else stop_text)
+    cabin = str(item.get("cabin") or "").strip()
+    return {
+        "departs": dep_time,
+        # the arrival's date is printed only when it is not the day of departure (an overnight flight)
+        "arrives": (arr_time if not arr_time or arr_day == dep_day else f"{arr_day} {arr_time}"),
+        "carrier": carriers_words(item.get("carrier")),
+        "route": route,
+        "duration": str(item.get("duration") or "").strip(),
+        "cabin": cabin.capitalize() if cabin else "",
+        "vendor": str(item.get("vendor") or "").strip(),
+    }
+
+
+def leg_flight_words(facts: Optional[Mapping[str, str]]) -> str:
+    """One flight on one line: ``departs 09:30 · arrives 28 Jun 02:00 · Etihad Airways · 1 stop (...) · 14h 30m · Business``.
+
+    ``None`` (no flight in the read matched this leg) and a flight that states no clock time both say, for THIS
+    flight only, that its times are not captured; they never borrow another flight's times.
+    """
+    if facts is None:
+        return NO_LEG_TIMES_WORDS
+    parts = []
+    if facts["departs"]:
+        parts.append(f"departs {facts['departs']}")
+    if facts["arrives"]:
+        parts.append(f"arrives {facts['arrives']}")
+    parts += [facts[k] for k in ("carrier", "route", "duration", "cabin") if facts[k]]
+    if not (facts["departs"] or facts["arrives"]):
+        parts.append(NO_LEG_TIMES_WORDS)
+    return " · ".join(parts)
+
+
+def _match_flights(legs: Sequence[tuple[str, str, str]], flights: Any) -> list[dict[str, Any]]:
+    """Each dated leg with the flight of the read's ``flights`` list that is ITS flight, or ``None``.
+
+    A flight belongs to the leg whose airports it names; where two legs share airports the departure date decides.
+    The list's order is not trusted and nothing is matched by position, so a list that is short, shuffled or partly
+    junk can only leave a leg without a flight, never give it somebody else's.
+    """
+    clean = [item for item in flights if isinstance(item, dict)] if isinstance(flights, (list, tuple)) else []
+    used: set[int] = set()
+    out: list[dict[str, Any]] = []
+    for origin, destination, day in legs:
+        picked: Optional[int] = None
+        for need_date in (True, False):
+            for index, item in enumerate(clean):
+                if index in used:
+                    continue
+                if (str(item.get("origin", "")).strip().upper() != origin
+                        or str(item.get("destination", "")).strip().upper() != destination):
+                    continue
+                if need_date and str(item.get("departure_local", ""))[:10] != day:
+                    continue
+                picked = index
+                break
+            if picked is not None:
+                break
+        if picked is not None:
+            used.add(picked)
+        out.append({"leg": (origin, destination, day),
+                    "flight": _flight_facts(clean[picked]) if picked is not None else None})
+    return out
+
+
 def _flight_block(row: Mapping[str, Any]) -> dict[str, Any]:
     he = _he()
     trip: MultiCentreTrip = row["trip"]
@@ -282,6 +366,8 @@ def _flight_block(row: Mapping[str, Any]) -> dict[str, Any]:
         "cabin": str(row.get("cabin") or "ECONOMY").strip().capitalize() if str(row.get("cabin") or "ECONOMY") != "ECONOMY" else "Economy",
         "read_line": "", "read_url": "", "first_flight": "", "times": "", "times_note": NO_TIMES_WORDS,
         "same_search": False,
+        "has_flights": False, "leg_flights": [{"leg": leg, "flight": None} for leg in legs],
+        "vendor": "", "search_cabin_note": "",
     }
     if not read:
         return block
@@ -314,10 +400,25 @@ def _flight_block(row: Mapping[str, Any]) -> dict[str, Any]:
     if dep_time and arr_time:
         block["times"] = f"departs {dep_time} on {dep_day}, arrives {arr_time} on {arr_day} (local times)"
         block["times_note"] = FIRST_TIMES_WORDS
+    # A read in a cabin other than Economy was not made on the Economy search this page links.
+    if read_cabin and read_cabin != "ECONOMY":
+        block["search_cabin_note"] = "The flights search link opens Economy, not the cabin this price was read in."
+    # The newer rows carry every flight, in date order. When they do, each leg prints its own flight and the
+    # first-flight shortcut (and its "other flights are not captured") is not used: nothing is missing to say.
+    if isinstance(read.get("flights"), (list, tuple)) and read.get("flights"):
+        block["has_flights"] = True
+        block["leg_flights"] = _match_flights(legs, read.get("flights"))
+        block["first_flight"], block["times"], block["times_note"] = "", "", ""
+        vendors = []
+        for lf in block["leg_flights"]:
+            vendor = (lf["flight"] or {}).get("vendor", "")
+            if vendor and vendor not in vendors:
+                vendors.append(vendor)
+        block["vendor"] = ", ".join(vendors)
     return block
 
 
-def _step_sequence(row: Mapping[str, Any], plan) -> list[dict[str, Any]]:
+def _step_sequence(row: Mapping[str, Any], plan, details: Optional[Mapping[tuple, str]] = None) -> list[dict[str, Any]]:
     """The itinerary in order: each flight (slim) and each stay, from the legs and the dated stays.
 
     A flight is shown after the stay whose airport it leaves from; a change of plane (a leg that starts where the last
@@ -329,7 +430,8 @@ def _step_sequence(row: Mapping[str, Any], plan) -> list[dict[str, Any]]:
 
     def emit(leg: tuple[str, str, str]) -> None:
         steps.append({"type": "flight", "when": weekday_words(leg[2]),
-                      "text": f"Fly {place_words(leg[0])} → {place_words(leg[1])}", "iso": leg[2]})
+                      "text": f"Fly {place_words(leg[0])} → {place_words(leg[1])}", "iso": leg[2],
+                      "detail": (details or {}).get(tuple(leg), "")})
 
     def follow(from_airport: str, until: str, *, include_last: bool) -> None:
         nonlocal used
@@ -505,8 +607,11 @@ def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, gener
                 plan = trip_stays_for_dates(trip, row["outbound"], row["return"])
             except ValueError:
                 continue
+            flight = _flight_block(row)
+            details = ({tuple(lf["leg"]): leg_flight_words(lf["flight"]) for lf in flight["leg_flights"]}
+                       if flight["has_flights"] else {})
             steps = []
-            for step in _step_sequence(row, plan):
+            for step in _step_sequence(row, plan, details):
                 if step["type"] == "stay":
                     steps.append({"type": "stay", **_stay_block(step["stay"], travellers=travellers,
                                                                ratings_by_name=ratings_by_name)})
@@ -550,7 +655,7 @@ def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, gener
                 "has_lodges": any(lodge for s in steps if s["type"] == "stay" for lodge in s["lodges"]),
                 "any_rated": any(lodge["ratings"] for s in steps if s["type"] == "stay" for lodge in s["lodges"]),
                 "plan_note": plan_note,
-                "flight": _flight_block(row),
+                "flight": flight,
                 "pair": pair,
                 "no_pair_words": (NO_BUILD_WORDS if trip.kind == "operator" else NO_PACKAGE_WORDS),
                 "lines": [(line.label, line.gbp, line.basis) for line in trip.cost_lines],
@@ -652,7 +757,9 @@ def _itinerary_html(d: Mapping[str, Any], level: int) -> str:
     unrated_everywhere = d["has_lodges"] and not d["any_rated"]
     for step in d["steps"]:
         if step["type"] == "flight":
-            out.append(f'<div style="margin:2px 0">{escape(step["when"])} · {escape(step["text"])}</div>')
+            detail = (f'<br><span style="color:{_palette()[0]}">{escape(step["detail"])}</span>'
+                      if step.get("detail") else "")
+            out.append(f'<div style="margin:2px 0">{escape(step["when"])} · {escape(step["text"])}{detail}</div>')
         else:
             out.append(_stay_html(step, level, show_basis=not d["lines"], say_unrated=not unrated_everywhere))
     if unrated_everywhere:
@@ -662,6 +769,31 @@ def _itinerary_html(d: Mapping[str, Any], level: int) -> str:
     return "".join(out)
 
 
+def _flights_notes(f: Mapping[str, Any], level: int) -> list[str]:
+    """The plain words under the read line, as unescaped text pieces (the callers escape and join them)."""
+    notes: list[str] = []
+    if f["price_uses"]:
+        notes.append(f["price_uses"])
+    if f["status"] == "read":
+        if f["has_flights"]:
+            notes.append("Each flight's own times, carrier, stops, duration and cabin are on its line in the "
+                         "Itinerary above. " + TIMES_ARE_LOCAL_WORDS)
+            if f["vendor"]:
+                notes.append(f"Read through {f['vendor']}.")
+        else:
+            if f["first_flight"]:
+                notes.append(f"First flight on that read: {f['first_flight']}")
+            if f["times"]:
+                notes.append(f"First flight {f['times']}")
+            notes.append("The other flights on this trip were not itemised by the read.")
+    if f["times_note"]:
+        notes.append(f["times_note"])
+    notes.append(f["search_cabin_note"] or f"Searched as {f['cabin']}, 5 travellers.")
+    if level == FULL and f["shape"]:
+        notes.append(f["shape"])
+    return notes
+
+
 def _flights_html(d: Mapping[str, Any], level: int) -> str:
     f = d["flight"]
     out = [_heading("Flights")]
@@ -669,21 +801,24 @@ def _flights_html(d: Mapping[str, Any], level: int) -> str:
         out.append("<div>" + _a(f["read_url"], f["read_line"], bold=True) + "</div>")
     else:
         out.append("<div>Not read for these dates yet. " + _a(f["search_url"], "Search these flights", bold=True) + "</div>")
-    notes = []
-    if f["price_uses"]:
-        notes.append(escape(f["price_uses"]))
-    if f["status"] == "read":
-        if f["first_flight"]:
-            notes.append(f"First flight on that read: {escape(f['first_flight'])}")
-        if f["times"]:
-            notes.append(f"First flight {escape(f['times'])}")
-        notes.append("The other flights on this trip were not itemised by the read.")
-    notes.append(escape(f["times_note"]))
-    notes.append(f"Searched as {escape(f['cabin'])}, 5 travellers.")
-    if level == FULL and f["shape"]:
-        notes.append(escape(f["shape"]))
-    out.append("<div>" + "<br>".join(notes) + "</div>")
+    out.append("<div>" + "<br>".join(escape(n) for n in _flights_notes(f, level)) + "</div>")
     return "".join(out)
+
+
+def _short_flights_html(d: Mapping[str, Any]) -> str:
+    """The short form's Flights section: the read, and when the read has every flight, each leg's line."""
+    f = d["flight"]
+    ink = _palette()[0]
+    head = ("<div>" + (_a(f["read_url"], f["read_line"], bold=True) if f["status"] == "read"
+                       else "Not read for these dates yet. " + _a(f["search_url"], "Search these flights", bold=True))
+            + "</div>")
+    if f["has_flights"]:
+        lines = "<br>".join(
+            f'{escape(day_words(lf["leg"][2]))} {escape(place_words(lf["leg"][0]))} → {escape(place_words(lf["leg"][1]))}: '
+            f'<span style="color:{ink}">{escape(leg_flight_words(lf["flight"]))}</span>'
+            for lf in f["leg_flights"])
+        return _heading("Flights") + head + "<div>" + lines + "<br>" + escape(TIMES_ARE_LOCAL_WORDS) + "</div>"
+    return _heading("Flights") + head + "<div>" + escape(f["times_note"]) + "</div>"
 
 
 def _pair_html(d: Mapping[str, Any], level: int) -> str:
@@ -805,10 +940,7 @@ def dossier_html(d: Mapping[str, Any], level: int = FULL) -> str:
         out.append("<div>" + "<br>".join(_short_stop_line(step) for step in d["stays"]) + "</div>")
         if d["plan_note"]:
             out.append(f'<div style="color:#92400e">{escape(d["plan_note"])}</div>')
-        out.append(_heading("Flights"))
-        out.append("<div>" + (_a(f["read_url"], f["read_line"], bold=True) if f["status"] == "read"
-                              else "Not read for these dates yet. " + _a(f["search_url"], "Search these flights", bold=True))
-                   + "<br>" + escape(f["times_note"]) + "</div>")
+        out.append(_short_flights_html(d))
         out.append(_heading("Package vs our build"))
         if d["pair"] is not None:
             out.append(f'<div>{escape(d["pair"]["difference"][0])} <a href="#{d["pair"]["other_anchor"]}" '
@@ -867,6 +999,8 @@ def dossier_lines(d: Mapping[str, Any]) -> list[str]:
     for step in d["steps"]:
         if step["type"] == "flight":
             out.append(f"    {step['when']}: {step['text']}")
+            if step.get("detail"):
+                out.append(f"      {step['detail']}")
             continue
         out.append(f"    {step['window']} · {nights_phrase(step['nights'])} · {step['place']}")
         if step["cut"]:
@@ -894,20 +1028,11 @@ def dossier_lines(d: Mapping[str, Any]) -> list[str]:
     out.append("  Flights")
     if f["status"] == "read":
         out.append(f"    {f['read_line']}: {f['read_url']}")
-        if f["first_flight"]:
-            out.append(f"    First flight on that read: {f['first_flight']}")
-        if f["times"]:
-            out.append(f"    First flight {f['times']}")
-        out.append("    The other flights on this trip were not itemised by the read.")
     else:
         out.append(f"    Not read for these dates yet. Search these flights: {f['search_url']}")
-        if f["price_uses"]:
-            out.append(f"    {f['price_uses']}")
-    out.append(f"    {f['times_note']}")
-    out.append("    Searched as " + f["cabin"] + ", 5 travellers: " + " · ".join(
+    out.extend(f"    {note}" for note in _flights_notes(f, FULL))
+    out.append("    Searched legs: " + " · ".join(
         f"{o} → {dst} {day_words(day)}" for o, dst, day in f["legs"]))
-    if f["shape"]:
-        out.append(f"    {f['shape']}")
     if f["status"] == "read":
         out.append(f"    Open the same search yourself: {f['search_url']}")
     out.append("  What the price covers")

@@ -3776,13 +3776,15 @@ def _is_multi_centre_read(row: Mapping[str, Any]) -> bool:
     """True when this batch row is a two-centre read rather than a stopover one.
 
     DATA CONTRACT for what the trip pages print from such a row (``trip_dossier``): ``total_gbp``, ``travellers``,
-    ``observed_at``, ``source_url`` and, for the FIRST flight on the results card the read took the price from,
-    ``carrier``, ``stops``, ``layovers`` and ``duration``. The row does NOT yet carry clock times, so each page says
-    "not captured". It may carry, and the page then prints, ``departure_local`` and ``arrival_local``
-    (``YYYY-MM-DDTHH:MM:SS``, local to each airport) for that first flight: the private reader already parses both
-    from the card into its ``Itinerary`` and drops them on export, and the resort evidence records
-    (``live_verify.LiveFareEvidence``) already carry them. Times for the other legs would need a per-leg list the
-    reader does not write; until it does, nothing about them is shown or guessed.
+    ``observed_at``, ``source_url``, ``cabin`` (``ECONOMY`` | ``BUSINESS`` | ``MIXED``) and, when MIXED, ``cabin_mix``;
+    for the FIRST flight, ``carrier``, ``stops``, ``layovers``, ``duration`` and optionally ``departure_local`` /
+    ``arrival_local`` (``YYYY-MM-DDTHH:MM:SS``, local to each airport); and, on the newer rows the private pricer writes
+    (dealsearch 509fdbf), ``flights``: one object per leg in date order, ``{origin, destination, departure_local,
+    arrival_local, carrier, stops, duration, layover, cabin, vendor}``. With ``flights`` every leg prints its own
+    flight, matched to its dated leg by airports (and the date where two legs share airports); without it the page
+    prints the first flight and says the others' times are not captured. A field a row does not state is never
+    printed or guessed. The loader keeps the WHOLE row (``_keep_multi_centre_read`` copies it), so the list reaches
+    the page untouched.
     """
     return str(row.get("kind", "")).strip().lower() == MULTI_CENTRE_READ_KIND
 
