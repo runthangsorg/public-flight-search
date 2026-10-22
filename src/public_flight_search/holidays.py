@@ -4006,8 +4006,15 @@ def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
     exactly what that read means). A row with no trip id or unreadable legs cannot
     answer anything at all and IS named, because nothing else would show it.
 
-    Two reads for one key are two looks at one journey: the cheaper is kept, the
-    same rule ``_stopover_fares`` applies, so the dearer can never be quoted.
+    Two reads for one key in the SAME cabin are two looks at one journey: the
+    cheaper is kept, the same rule ``_stopover_fares`` applies, so the dearer can
+    never be quoted. Two reads in DIFFERENT cabins are two products, and the owner's
+    rule (a leg over eight hours is Business, a shorter one economy) says which one
+    answers the trip: a read that is not pure Economy (``MIXED`` or ``BUSINESS``)
+    is made to that rule, an Economy-all-the-way read of the same legs is not, so
+    it can never hide the other however much cheaper it is (22 Oct 2026: the 20 Oct
+    Economy reads of about 5,100 would have shadowed the new Business-over-eight-hours
+    reads of about 20,000, and the report would have kept quoting the cheap ones).
     """
     key = _multi_centre_read_key(item)
     if key is None:
@@ -4017,9 +4024,12 @@ def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
     if total is None:
         return
     existing = index.get(key)
-    if existing is not None and (keep := _priced_read_total(existing)) is not None \
-            and keep <= total:
-        return
+    if existing is not None and (keep := _priced_read_total(existing)) is not None:
+        new_cabin, kept_cabin = _read_cabin(item), _read_cabin(existing)
+        if new_cabin == "ECONOMY" and kept_cabin != "ECONOMY":
+            return                          # an economy read never replaces a rule-following one
+        if (new_cabin == kept_cabin or kept_cabin != "ECONOMY") and keep <= total:
+            return                          # same cabin, or both rule-following: the cheaper look
     index[key] = dict(item)
 
 

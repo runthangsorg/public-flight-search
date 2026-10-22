@@ -286,7 +286,15 @@ def _flight_block(row: Mapping[str, Any]) -> dict[str, Any]:
     if not read:
         return block
     party = he._read_party(read)
-    block["read_line"] = (f"{he._gbp(read.get('total_gbp'))} for {party}, the whole trip, {block['cabin']}, "
+    # What the read's price is made of: a mixed read names which legs are in which cabin, never "Economy".
+    read_cabin = str(read.get("cabin") or "").strip().upper()
+    if read_cabin == "MIXED":
+        cabin_words = str(read.get("cabin_mix") or "").strip() or "mixed cabins"
+    elif read_cabin:
+        cabin_words = read_cabin.capitalize()
+    else:
+        cabin_words = block["cabin"]
+    block["read_line"] = (f"{he._gbp(read.get('total_gbp'))} for {party}, the whole trip, {cabin_words}, "
                           f"read {he._read_day_words(read.get('observed_at'))} for these exact dates")
     block["read_url"] = _http(read.get("source_url")) or row["url"]
     # The read's page IS the search when it carries the same legs (the private reader builds it with the same

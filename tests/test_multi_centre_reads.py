@@ -284,6 +284,36 @@ class MultiCentreFareIndexTests(_BatchCase):
         self.assertEqual(float(fare["total_gbp"]), SYNTHETIC_TOTAL)
         self.assertEqual(fare["observed_at"], SYNTHETIC_FIRST_READ_AT)
 
+    def test_a_read_that_follows_the_owners_cabin_rule_is_not_hidden_by_a_cheaper_economy_read(self):
+        """22 Oct 2026. The 20 Oct Google reads are Economy all the way (about 5,100 for the whole trip); the owner's
+        rule puts any leg over eight hours in Business, so the new reads cost far more and, under the old
+        cheapest-wins rule, would never have been quoted. A different cabin is a different product, not a second look
+        at the same fare."""
+        economy = _multi_centre_read(self.want, total=5134.0, observed_at=SYNTHETIC_FIRST_READ_AT)
+        mixed = dict(_multi_centre_read(self.want, total=20000.0, observed_at=SYNTHETIC_SECOND_READ_AT),
+                     cabin="MIXED", cabin_mix="Business LHR-XYZ + Economy hop")
+        for order in ([economy, mixed], [mixed, economy]):
+            with self.subTest(first=order[0]["cabin"]):
+                (fare,) = self._registry(order).values()
+                self.assertEqual(float(fare["total_gbp"]), 20000.0)
+                self.assertEqual(fare["cabin"], "MIXED")
+                self.assertEqual(fare["cabin_mix"], "Business LHR-XYZ + Economy hop")
+
+    def test_two_mixed_reads_of_one_journey_keep_the_cheaper(self):
+        a = dict(_multi_centre_read(self.want, total=20000.0), cabin="MIXED", cabin_mix="x")
+        b = dict(_multi_centre_read(self.want, total=18000.0, observed_at=SYNTHETIC_SECOND_READ_AT),
+                 cabin="MIXED", cabin_mix="x")
+        (fare,) = self._registry([a, b]).values()
+        self.assertEqual(float(fare["total_gbp"]), 18000.0)
+
+    def test_a_mixed_and_a_business_read_of_one_journey_keep_the_cheaper(self):
+        mixed = dict(_multi_centre_read(self.want, total=20000.0), cabin="MIXED", cabin_mix="x")
+        business = dict(_multi_centre_read(self.want, total=26000.0, observed_at=SYNTHETIC_SECOND_READ_AT),
+                        cabin="BUSINESS")
+        for order in ([mixed, business], [business, mixed]):
+            (fare,) = self._registry(order).values()
+            self.assertEqual(float(fare["total_gbp"]), 20000.0)
+
     def test_an_unpriced_read_is_a_gap_and_not_a_fare(self):
         fares = self._registry([_multi_centre_read(self.want, status="no_priced_economy_card")])
         self.assertEqual(fares, {})

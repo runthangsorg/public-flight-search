@@ -257,6 +257,19 @@ class NotCollectedIsSaidNotInventedTests(unittest.TestCase):
             with self.subTest(trip=ident):
                 self.assertEqual(visible_text(_slice(html, f"trip-{ident}")).count("not captured"), 1)
 
+    def test_a_mixed_cabin_read_says_which_legs_are_in_which_cabin_and_is_not_called_economy(self):
+        mix = "Business LHR-JRO, ZNZ-LHR + Economy JRO-ZNZ"
+        fares = _reads(["AF-01"], cabin="MIXED", cabin_mix=mix, total_gbp=21000.0)
+        part = visible_text(_slice(_html(fares=fares), "trip-AF-01"))
+        self.assertIn(f"the whole trip, {mix}, read", part)
+        self.assertNotIn("the whole trip, Economy, read", part)
+        text = _text(fares=fares)
+        self.assertIn(mix, text)
+
+    def test_a_pure_economy_read_still_says_economy(self):
+        part = visible_text(_slice(_html(fares=_reads(["AF-01"])), "trip-AF-01"))
+        self.assertIn("the whole trip, Economy, read", part)
+
     def test_times_that_the_read_carries_are_shown_and_not_called_missing(self):
         fares = _reads(["AF-01"], departure_local="2027-06-27T21:40:00", arrival_local="2027-06-28T13:05:00")
         part = visible_text(_slice(_html(fares=fares), "trip-AF-01"))
