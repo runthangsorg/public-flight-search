@@ -1,0 +1,14 @@
+{
+  "reviewed_on": "2026-10-23",
+  "note": "Photos a person looked at (a contact sheet of every stored photo) and refused. A refused URL is never stored again; the tool looks for another photo for that property or leaves it without one.",
+  "rejected": {
+    "https://static.wixstatic.com/media/26fdd9_6b7dbb588bfa4fce953c4180ddf16630%7Emv2.jpg/v1/fit/w_2500,h_1330,al_c/26fdd9_6b7dbb588bfa4fce953c4180ddf16630%7Emv2.jpg": "Bluebay Beach Resort & Spa: a logo banner, not a photograph of the resort",
+    "https://wa-uploads.profitroom.com/thecommodorehotel/1729667768891_thecommodorehotelwhite.png": "Commodore Hotel: a white logo, not a photograph of the hotel",
+    "https://masaimara.ke/wp-content/uploads/2024/09/toyota-noah-minivan-for-hire-nairobi-to-masai-mara-transfer-rental-transport-road.jpg": "Enkorok Mara Camp: a minivan-hire photo from an unrelated page",
+    "https://dam.melia.com/melia/file/T5TwRojUxR61huBVqHRm.jpg?fp=1796.0%2C2696.0&width=1332&height=2000": "Melia Serengeti Lodge: a close-up of a lion, not the lodge",
+    "https://tunakresort.com/wp-content/uploads/elementor/thumbs/Wave-qxf4uy5q1irbm91c7htxzcn15xznan6dm9u7ftqznk.png": "TUNAK Resort Lombok: an almost blank grey placeholder",
+    "https://framerusercontent.com/images/VoSXq8lRrpHPK9EGxTNG98HeeyM.jpg": "Titanic Mardan Palace: a marketing banner with text laid over it",
+    "https://framerusercontent.com/images/fdBS1uVRpHYCCxjgd5Cr5mIYIhg.jpg?lossless=1&width=1920&height=1360": "Titanic Mardan Palace: a blurred placeholder gradient, not a photograph",
+    "https://tunakresort.com/wp-content/uploads/elementor/thumbs/Wave-qxf4uy5q1irbm91c7htxzcn15xznan6dm9u8fjrey8.png": "TUNAK Resort Lombok: a pale texture thumbnail, not a photograph of the resort"
+  }
+}

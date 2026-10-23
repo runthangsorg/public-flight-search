@@ -6,7 +6,9 @@
       "name": "Africa Safari Camp",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "anantararasanandakohphanganvillas": {
@@ -30,14 +32,18 @@
       "name": "Annabelle Hotel",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "argylegrandhotelnairobi": {
       "name": "Argyle Grand Hotel Nairobi",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "banyantreesamui": {
@@ -68,56 +74,72 @@
       "name": "Bluebay Beach Resort & Spa",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: http-202",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "breezesbeachclubspa": {
       "name": "Breezes Beach Club & Spa",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "commodorehotel": {
       "name": "Commodore Hotel",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "concordedeluxeresort": {
       "name": "Concorde De Luxe Resort",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "dreamstulumresortspa": {
       "name": "Dreams Tulum Resort & Spa",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "elysiumhotel": {
       "name": "Elysium Hotel",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "enkorokmaracamp": {
       "name": "Enkorok Mara Camp",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "garongasafaricamp": {
       "name": "Garonga Safari Camp",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "garryatongsaibaysamui": {
@@ -148,7 +170,9 @@
       "name": "Giraffe Manor",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "grandfiestaamericanacoralbeachcancúnallinclusivesparesort": {
@@ -163,7 +187,10 @@
           "source_url": "https://www.google.com/travel/search?q=Grand+Fiesta+Americana+Coral+Beach+Canc%C3%BAn+All+Inclusive+Spa+%26+Resort+Canc%C3%BAn%2C+Mexico&hl=en-GB"
         }
       ],
-      "not_read": {}
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
+      }
     },
     "grandvelasrivieramaya": {
       "name": "Grand Velas Riviera Maya",
@@ -178,49 +205,72 @@
       "name": "Gran Hotel Atlantis Bahía Real",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "no page found"
       }
     },
     "halekulaniokinawa": {
       "name": "Halekulani Okinawa",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "hardrockhoteltenerife": {
       "name": "Hard Rock Hotel Tenerife",
-      "ratings": [],
+      "ratings": [
+        {
+          "source": "TUI",
+          "score": 4.5,
+          "scale": 5.0,
+          "count": "15,175",
+          "observed_at": "2026-10-23T10:23:04+00:00",
+          "source_url": "https://www.tui.co.uk/destinations/europe/spain/tenerife/playa-paraiso/hotels/hard-rock-tenerife.html"
+        }
+      ],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "hotel20degressud": {
       "name": "Hotel 20 Degres Sud",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "intercontinentalmuscat": {
       "name": "InterContinental Muscat",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "jazaquaviva": {
       "name": "Jaz Aquaviva",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "jwmarriotthotelcairo": {
       "name": "JW Marriott Hotel Cairo",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "kalandararesortlombok": {
@@ -244,7 +294,9 @@
       "name": "Kempinski Nile Hotel Cairo",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "kimptonkitalaysamui": {
@@ -258,30 +310,47 @@
     },
     "kirurumutarangirelodge": {
       "name": "Kirurumu Tarangire Lodge",
-      "ratings": [],
+      "ratings": [
+        {
+          "source": "Kuoni",
+          "score": 4.6,
+          "scale": 5.0,
+          "count": "157",
+          "observed_at": "2026-10-23T10:27:22+00:00",
+          "source_url": "https://www.kuoni.co.uk/destinations/africa/tanzania/tarangire/hotels/kirurumu-tarangire-lodge/"
+        }
+      ],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "larabarutcollection": {
       "name": "Lara Barut Collection",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "lopesancostamelonerasresortspa": {
       "name": "Lopesan Costa Meloneras Resort & Spa",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "marriottmenahouse": {
       "name": "Marriott Mena House",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "melatibeachresortspa": {
@@ -312,28 +381,36 @@
       "name": "Melia Serengeti Lodge",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: http-202",
+        "google": "no read",
+        "tripadvisor": "wall: datadome-challenge"
       }
     },
     "mountmeruhotel": {
       "name": "Mount Meru Hotel",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "ngorongorocratercamp": {
       "name": "Ngorongoro Crater Camp",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "nkambenisafaritentedcamp": {
       "name": "Nkambeni Safari Tented Camp",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "novotellombokresortvillas": {
@@ -386,37 +463,74 @@
     },
     "oceanparadiseresort": {
       "name": "Ocean Paradise Resort",
-      "ratings": [],
+      "ratings": [
+        {
+          "source": "TUI",
+          "score": 4.6,
+          "scale": 5.0,
+          "count": "1,763",
+          "observed_at": "2026-10-23T10:25:28+00:00",
+          "source_url": "https://www.tui.co.uk/destinations/tanzania/zanzibar/pwani-mchangani/hotels/ocean-paradise-resort-and-spa.html"
+        }
+      ],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "paradisebeachresort": {
       "name": "Paradise Beach Resort",
-      "ratings": [],
+      "ratings": [
+        {
+          "source": "TUI",
+          "score": 4.0,
+          "scale": 5.0,
+          "count": "1,154",
+          "observed_at": "2026-10-23T10:47:13+00:00",
+          "source_url": "https://www.tui.co.uk/destinations/africa/tanzania/zanzibar/marumbi/hotels/paradise-beach-resort.html"
+        }
+      ],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "peermontdorealegrandehotel": {
       "name": "Peermont D'Oreale Grande Hotel",
-      "ratings": [],
+      "ratings": [
+        {
+          "source": "Kuoni",
+          "score": 4.0,
+          "scale": 5.0,
+          "count": "1,293",
+          "observed_at": "2026-10-23T10:22:50+00:00",
+          "source_url": "https://www.kuoni.co.uk/destinations/africa/south-africa/johannesburg/hotels/peermont-doreale-grande/"
+        }
+      ],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "premierhotelcapemanor": {
       "name": "Premier Hotel Cape Manor",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "princesayaizasuitehotelresort": {
       "name": "Princesa Yaiza Suite Hotel Resort",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "pullmanlombokmerujanimandalikabeachresort": {
@@ -447,49 +561,63 @@
       "name": "Rivertrees Country Inn",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "rixosgulfhoteldoha": {
       "name": "Rixos Gulf Hotel Doha",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "satararestcamp": {
       "name": "Satara Rest Camp",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "sayaricamp": {
       "name": "Sayari Camp",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "seasidepalmbeach": {
       "name": "Seaside Palm Beach",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "serengetisafarilodge": {
       "name": "Serengeti Safari Lodge",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "sheratonfuerteventurabeachgolfsparesort": {
       "name": "Sheraton Fuerteventura Beach, Golf & Spa Resort",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "sofitelmauritiuslimpérialresortspa": {
@@ -504,13 +632,27 @@
           "source_url": "https://www.google.com/travel/search?q=Sofitel+Mauritius+L%27Imp%C3%A9rial+Resort+%26+Spa+Flic+en+Flac%2C+Mauritius&hl=en-GB"
         }
       ],
-      "not_read": {}
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
+      }
     },
     "steigenbergeraldaubeachhotel": {
       "name": "Steigenberger ALDAU Beach Hotel",
-      "ratings": [],
+      "ratings": [
+        {
+          "source": "TUI",
+          "score": 4.8,
+          "scale": 5.0,
+          "count": "10,178",
+          "observed_at": "2026-10-23T10:32:52+00:00",
+          "source_url": "https://www.tui.co.uk/destinations/egypt/hurghada/hotels/steigenberger-aldau-beach-hotel.html"
+        }
+      ],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "thelomboklodge": {
@@ -543,21 +685,14 @@
       "name": "Titanic Mardan Palace",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "tunakresortlombok": {
       "name": "TUNAK Resort Lombok",
-      "ratings": [
-        {
-          "source": "lombok-hotel.com",
-          "score": 9.3,
-          "scale": 10.0,
-          "count": "62",
-          "observed_at": "2026-10-23T10:15:30+00:00",
-          "source_url": "https://lombok-hotel.com/hotel/tunak-resort-lombok"
-        }
-      ],
+      "ratings": [],
       "not_read": {
         "booking": "wall: not asked again this run after repeated walls",
         "google": "no read",
@@ -568,14 +703,18 @@
       "name": "Veranda Tamarin",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     },
     "vidamarresortmadeira": {
       "name": "Vidamar Resort Madeira",
       "ratings": [],
       "not_read": {
-        "google": "no read"
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
       }
     }
   }

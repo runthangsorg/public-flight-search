@@ -39,7 +39,7 @@ import urllib.parse
 from datetime import datetime, timezone
 from html import unescape
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -47,6 +47,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from public_flight_search.hotel_evidence import normalise_property_name  # noqa: E402
 
 DATA = ROOT / "src" / "public_flight_search" / "data"
+REJECTS_PATH = ROOT / "tools" / "hotel_image_rejects.json"
 IMAGES_PATH = DATA / "hotel_images.json"
 REVIEWS_PATH = DATA / "hotel_reviews.json"
 
@@ -315,6 +316,28 @@ def source_label(page_url: str, name: str) -> str:
     return "other"
 
 
+#: The operators whose own page may supply a rating when none of Google, TripAdvisor or Booking has one, and the name the
+#: e-mail shows for them. A directory or affiliate site that merely lists a hotel's rating is NOT one, and neither is the
+#: hotel's own site (a self-published figure).
+OPERATOR_RATING_SITES = {
+    "tui.co.uk": "TUI", "kuoni.co.uk": "Kuoni", "loveholidays.com": "loveholidays", "jet2holidays.com": "Jet2holidays",
+    "onthebeach.co.uk": "On the Beach", "rainbowtours.co.uk": "Rainbow Tours", "tourcompass.com": "TourCompass",
+}
+
+
+def operator_label(page_url: str) -> str:
+    """The shown name of an accepted operator for a page, or ``""`` when the page is not an operator's own."""
+    return OPERATOR_RATING_SITES.get(registrable_domain(host_of(page_url)), "")
+
+
+def load_rejects(path: Path = REJECTS_PATH) -> dict[str, str]:
+    """``{image url: why}`` for photos a person looked at and refused."""
+    try:
+        return dict(json.loads(path.read_text(encoding="utf-8")).get("rejected", {}))
+    except (OSError, ValueError):
+        return {}
+
+
 def google_page(name: str, area: str = "") -> str:
     """The clean Google Hotels search for a property: its name, nothing about dates or a visitor."""
     query = f"{name} {area}".strip()
@@ -399,6 +422,51 @@ def tripadvisor_ratings(path: Path) -> dict[str, dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# The browser check: a photo that a plain HTTP client can fetch may still be refused to a browser
+# ---------------------------------------------------------------------------
+
+def browser_check(urls: Sequence[str], loader: Optional[Callable[[Sequence[str]], Mapping[str, tuple[int, bool]]]] = None,
+                  ) -> dict[str, bool]:
+    """``{url: loads}``: does a real, ordinary Chrome show this picture when an ``<img>`` asks for it?
+
+    Two photos that passed the HTTP check (200, ``image/*``) were refused by Chrome with ``ERR_BLOCKED_BY_ORB``: a mail
+    client loads a hot-linked picture the same way a browser does, so the browser's answer is the one that counts. An
+    image counts when it completes with a natural width of at least ``MIN_WIDTH``. ``loader`` is injected so the rule
+    is tested without a browser; the default drives Patchright with no stealth and no challenge handling.
+    """
+    loader = loader or _chrome_loader
+    answers = loader(list(urls))
+    return {url: bool(answers.get(url, (0, False))[1] and answers[url][0] >= MIN_WIDTH) for url in urls}
+
+
+def _chrome_loader(urls: Sequence[str]) -> Mapping[str, tuple[int, bool]]:
+    import os
+    import tempfile
+
+    from patchright.sync_api import sync_playwright  # type: ignore
+
+    out: dict[str, tuple[int, bool]] = {}
+    with sync_playwright() as playwright, tempfile.TemporaryDirectory() as tmp:
+        browser = playwright.chromium.launch(headless=True, args=["--disable-features=FontationsFontBackend"])
+        page = browser.new_page(viewport={"width": 420, "height": 800})
+        for start in range(0, len(urls), 10):
+            batch = urls[start:start + 10]
+            path = os.path.join(tmp, "check.html")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("<html><body>" + "".join(f'<img src="{u}" width="200">' for u in batch) + "</body></html>")
+            page.goto("file://" + path)
+            try:
+                page.wait_for_load_state("networkidle", timeout=60000)
+            except Exception:  # noqa: BLE001 - what had not loaded by then did not load
+                pass
+            for url, (width, complete) in zip(batch, page.evaluate(
+                    "Array.from(document.images).map(i => [i.naturalWidth, i.complete && i.naturalWidth > 0])")):
+                out[url] = (int(width), bool(complete))
+        browser.close()
+    return out
+
+
+# ---------------------------------------------------------------------------
 # The live part
 # ---------------------------------------------------------------------------
 
@@ -449,7 +517,8 @@ class Researcher:
         except Exception as exc:  # noqa: BLE001
             return {"status": 0, "content_type": "", "length": 0, "body": b"", "error": type(exc).__name__}
 
-    def research(self, key: str, info: Mapping[str, str], earlier: Mapping[str, Any]) -> dict[str, Any]:
+    def research(self, key: str, info: Mapping[str, str], earlier: Mapping[str, Any],
+                 exclude: frozenset = frozenset()) -> dict[str, Any]:
         name, area = info["name"], info.get("area", "")
         found: dict[str, Any] = {"image": None, "ratings": [], "not_read": {}}
         pages: dict[str, list[str]] = {"booking": [], "tripadvisor": [], "agoda": [], "expedia": [], "other": []}
@@ -489,17 +558,20 @@ class Researcher:
                     continue
                 if not title_names_property(name, page_title(result.text), url):
                     continue
-                self._read_page(site, url, result, name, found)
+                self._read_page(site, url, result, name, found, exclude)
         for site in ("booking", "tripadvisor"):
             if not found["ratings"] or all(r["source"].lower() != site for r in found["ratings"]):
                 found["not_read"].setdefault(site, "not read")
         return found
 
-    def _read_page(self, site: str, url: str, result, name: str, found: dict[str, Any]) -> bool:
+    def _read_page(self, site: str, url: str, result, name: str, found: dict[str, Any],
+                   exclude: frozenset = frozenset()) -> bool:
         base = clean_url(result.final_url or url) or clean_url(url)
         got = False
         if not found["image"]:
             for candidate in image_candidates(result.text, base):
+                if candidate in exclude or (clean_url(candidate) or candidate) in exclude:
+                    continue
                 ok, why = verify_image(candidate, self.head_image)
                 self._count(site, "photo_ok" if ok else "photo_rejected")
                 if ok:
@@ -525,13 +597,15 @@ class Researcher:
 
 def build_files(researched: Mapping[str, Mapping[str, Any]], properties: Mapping[str, Mapping[str, str]],
                 google_and_accor: Mapping[str, list], tripadvisor: Mapping[str, Mapping[str, Any]],
-                *, today: str) -> tuple[dict[str, Any], dict[str, Any]]:
+                *, today: str, browser_ok: Optional[Mapping[str, bool]] = None,
+                rejects: Optional[Mapping[str, str]] = None) -> tuple[dict[str, Any], dict[str, Any]]:
     """The two data documents, from what was read live and what earlier reads hold. Pure: no network."""
     images: dict[str, Any] = {}
     reviews: dict[str, Any] = {}
     for key, info in properties.items():
         live = researched.get(key) or {"image": None, "ratings": [], "not_read": {}}
-        if live.get("image"):
+        if live.get("image") and live["image"]["image_url"] not in (rejects or {}) \
+                and (browser_ok is None or browser_ok.get(live["image"]["image_url"], False)):
             image = live["image"]
             images[key] = {"name": info["name"], "image_url": image["image_url"], "page_url": image["page_url"],
                            "source": source_label(image["page_url"], info["name"])}
@@ -550,8 +624,9 @@ def build_files(researched: Mapping[str, Mapping[str, Any]], properties: Mapping
                     ratings["Accor"] = {"source": "Accor", "score": record["score"], "scale": record["scale"],
                                         "count": record["count"], "observed_at": record["observed_at"],
                                         "source_url": ""}
-            if "Accor" not in ratings and live.get("operator_rating"):
-                ratings[live["operator_rating"]["source"]] = live["operator_rating"]
+            operator = live.get("operator_rating")
+            if "Accor" not in ratings and operator and operator_label(operator.get("source_url", "")):
+                ratings[operator_label(operator["source_url"])] = {**operator, "source": operator_label(operator["source_url"])}
             if "Agoda" in ratings:
                 pass
         ratings = {s: r for s, r in ratings.items() if r.get("source_url", "").startswith("https://")}
@@ -574,6 +649,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument("--reverse", action="store_true", help="work from the end of the list (a second process can meet the first)")
     parser.add_argument("--also-progress", type=Path, action="append", default=[],
                         help="another run's progress file: its properties are skipped, and merged into the output")
+    parser.add_argument("--browser-verify", action="store_true",
+                        help="finally load every photo in a real Chrome; a refused one is re-researched, then dropped")
     parser.add_argument("--merge-only", action="store_true", help="research nothing; build the files from the progress files")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
@@ -610,9 +687,26 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         got = researched[key]
         print(f"    photo={'yes' if got['image'] else 'no'} ratings={[r['source'] for r in got['ratings']]} not_read={got['not_read']}", flush=True)
     researched = {**others, **researched}
+    browser_ok: Optional[dict[str, bool]] = None
+    rejects = load_rejects()
+    if args.browser_verify:
+        excluded: dict[str, set] = {}
+        for attempt in range(3):
+            urls = sorted({r["image"]["image_url"] for r in researched.values() if r.get("image")})
+            browser_ok = browser_check(urls)
+            failed = [k for k, r in researched.items() if r.get("image") and (
+                not browser_ok.get(r["image"]["image_url"], False) or r["image"]["image_url"] in rejects)]
+            print(f"browser check {attempt + 1}: {len(urls) - sum(browser_ok.values())} of {len(urls)} photos refused by Chrome", flush=True)
+            if not failed or researcher is None or attempt == 2:
+                break
+            for key in failed:
+                excluded.setdefault(key, set(rejects)).add(researched[key]["image"]["image_url"])
+                print(f"  re-researching {properties[key]['name']} without {len(excluded[key])} refused photo(s)", flush=True)
+                researched[key] = researcher.research(key, properties[key], {}, frozenset(excluded[key]))
+            args.progress.write_text(json.dumps(researched), encoding="utf-8")
     images, reviews = build_files(researched, properties, evidence_ratings(args.evidence_dir),
                                   tripadvisor_ratings(ROOT / "research" / "hotel_facts.json"),
-                                  today=datetime.now(timezone.utc).date().isoformat())
+                                  today=datetime.now(timezone.utc).date().isoformat(), browser_ok=browser_ok, rejects=rejects)
     if not args.only:
         IMAGES_PATH.write_text(json.dumps(images, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         REVIEWS_PATH.write_text(json.dumps(reviews, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

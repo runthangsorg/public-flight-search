@@ -135,6 +135,66 @@ class SearchResultsAreSortedIntoSitesTests(unittest.TestCase):
         self.assertEqual(hr.search_results(html), ["https://www.example.org/a", "https://www.example.org/b"])
 
 
+class ABrowserMustShowThePhotoTests(unittest.TestCase):
+    def test_a_photo_a_browser_refuses_does_not_count_even_if_http_said_200(self):
+        loader = lambda urls: {u: ((1920, True) if "ok" in u else (0, False)) for u in urls}  # noqa: E731
+        got = hr.browser_check(["https://a.example.org/ok.jpg", "https://a.example.org/blocked.jpg"], loader)
+        self.assertEqual(got, {"https://a.example.org/ok.jpg": True, "https://a.example.org/blocked.jpg": False})
+
+    def test_a_picture_that_loads_but_is_tiny_does_not_count(self):
+        self.assertEqual(hr.browser_check(["https://a.example.org/ok.jpg"], lambda urls: {urls[0]: (120, True)}),
+                         {"https://a.example.org/ok.jpg": False})
+
+    def test_a_refused_photo_is_left_out_of_the_data_file_and_the_property_gets_no_entry(self):
+        props = {"giraffemanor": {"name": "Giraffe Manor", "area": "Nairobi"}}
+        live = {"giraffemanor": {"image": {"image_url": "https://a.example.org/x.jpg", "page_url": "https://www.giraffemanor.com/"},
+                                 "ratings": [], "not_read": {}}}
+        images, _ = hr.build_files(live, props, {}, {}, today="2026-10-23", browser_ok={"https://a.example.org/x.jpg": False})
+        self.assertEqual(images["properties"], {})
+        images, _ = hr.build_files(live, props, {}, {}, today="2026-10-23", browser_ok={"https://a.example.org/x.jpg": True})
+        self.assertIn("giraffemanor", images["properties"])
+
+
+class OnlyRealOperatorsAndRealPhotosGetThroughTests(unittest.TestCase):
+    PROPS = {"hardrockhoteltenerife": {"name": "Hard Rock Hotel Tenerife", "area": "Tenerife"}}
+
+    def _live(self, url, **extra):
+        return {"hardrockhoteltenerife": {"image": None, "not_read": {}, "ratings": [], "operator_rating": {
+            "source": hr.host_of(url), "score": 4.5, "scale": 5.0, "count": "15,175", "observed_at": "2026-10-23T09:00:00+00:00",
+            "source_url": url}, **extra}}
+
+    def test_a_tour_operators_own_figure_is_shown_under_the_operators_name_when_no_big_site_has_one(self):
+        _i, reviews = hr.build_files(self._live("https://www.tui.co.uk/destinations/hard-rock"), self.PROPS, {}, {}, today="2026-10-23")
+        rows = reviews["properties"]["hardrockhoteltenerife"]["ratings"]
+        self.assertEqual([(r["source"], r["score"], r["scale"], r["count"]) for r in rows], [("TUI", 4.5, 5.0, "15,175")])
+
+    def test_a_directory_or_the_hotels_own_site_is_not_an_operator_and_its_figure_is_not_used(self):
+        for url in ("https://jaz-aquaviva.hotel-hurghada.com/en/", "https://www.melia.com/en/hotels/x", "https://www.safari.com/x"):
+            with self.subTest(url=url):
+                _i, reviews = hr.build_files(self._live(url), self.PROPS, {}, {}, today="2026-10-23")
+                self.assertEqual(reviews["properties"]["hardrockhoteltenerife"]["ratings"], [])
+
+    def test_an_operator_figure_is_not_added_beside_google(self):
+        google = {"hardrockhoteltenerife": [{"source": "Google", "score": 4.4, "scale": 5.0, "count": "1k",
+                                              "observed_at": "2026-10-02T00:00:00+00:00", "name": "H"}]}
+        _i, reviews = hr.build_files(self._live("https://www.tui.co.uk/x"), self.PROPS, google, {}, today="2026-10-23")
+        self.assertEqual([r["source"] for r in reviews["properties"]["hardrockhoteltenerife"]["ratings"]], ["Google"])
+
+    def test_a_photo_a_person_refused_is_never_stored(self):
+        live = {"hardrockhoteltenerife": {"image": {"image_url": "https://a.example.org/logo-banner.jpg",
+                                                     "page_url": "https://www.hardrockhotels.com/"}, "ratings": [], "not_read": {}}}
+        images, _ = hr.build_files(live, self.PROPS, {}, {}, today="2026-10-23",
+                                   rejects={"https://a.example.org/logo-banner.jpg": "a logo"})
+        self.assertEqual(images["properties"], {})
+
+    def test_the_committed_reject_list_names_a_reason_for_every_url(self):
+        rejects = hr.load_rejects()
+        self.assertTrue(rejects)
+        for url, why in rejects.items():
+            self.assertTrue(url.startswith("https://"))
+            self.assertTrue(why.strip())
+
+
 class TheFilesAreBuiltFromWhatWasReadTests(unittest.TestCase):
     PROPS = {"novotellombokresortvillas": {"name": "Novotel Lombok Resort & Villas", "area": "Lombok"},
              "giraffemanor": {"name": "Giraffe Manor", "area": "Nairobi"}}

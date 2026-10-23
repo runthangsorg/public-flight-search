@@ -122,3 +122,19 @@ class TheReviewsFileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OnlyAllowedSitesAndNoRefusedPhotosTests(unittest.TestCase):
+    ALLOWED = {"Google", "TripAdvisor", "Booking", "Accor"} | set(hr.OPERATOR_RATING_SITES.values())
+
+    def test_every_rating_names_one_of_the_allowed_sites(self):
+        for key, item in _strict_load(DEFAULT_REVIEWS_PATH)["properties"].items():
+            for rating in item["ratings"]:
+                with self.subTest(property=key, source=rating["source"]):
+                    self.assertIn(rating["source"], self.ALLOWED)
+
+    def test_no_photo_a_person_refused_is_committed(self):
+        refused = set(hr.load_rejects())
+        for key, item in _strict_load(DEFAULT_IMAGES_PATH)["properties"].items():
+            with self.subTest(property=key):
+                self.assertNotIn(item["image_url"], refused)

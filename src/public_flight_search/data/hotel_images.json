@@ -2,22 +2,70 @@
   "schema": "hotel_images/1",
   "researched_on": "2026-10-23",
   "properties": {
+    "africasafaricamp": {
+      "name": "Africa Safari Camp",
+      "image_url": "https://africa-safari.com/wp-content/uploads/africa-safari-nyerere-01.jpg",
+      "page_url": "https://africa-safari.com/accommodations/africa-safari-nyerere/",
+      "source": "official"
+    },
     "anantararasanandakohphanganvillas": {
       "name": "Anantara Rasananda Koh Phangan Villas",
       "image_url": "https://assets.anantara.com/image/upload/q_auto,f_auto/media/minor/anantara/images/anantara-rasananda-koh-phangan-villas/the-resort/desktop-banner/anantara_rasananda_beach_header_1920x1080.jpg",
       "page_url": "https://www.anantara.com/en/rasananda-koh-phangan",
       "source": "official"
     },
-    "banyantreesamui": {
-      "name": "Banyan Tree Samui",
-      "image_url": "https://www.banyantree.com/_next/image?url=https%3A%2F%2Fwww.banyantree.com%2Fassets%2F2021-10%2Fresort-masthead_0.jpg&w=2048&q=75",
-      "page_url": "https://www.banyantree.com/thailand/samui",
+    "annabellehotel": {
+      "name": "Annabelle Hotel",
+      "image_url": "https://content.tui.co.uk/adamtui/2024_9/17_13/c39c7966-b3c9-4c0a-b489-b1ee00e4d925/ACC_002070_CYP_84WebOriginalCompressed.jpg?i10c=img.resize%28width%3A658%29%3Bimg.crop%28width%3A658%2Cheight%3A370%29",
+      "page_url": "https://www.tui.co.uk/destinations/europe/cyprus/paphos-region/paphos/hotels/hotel-annabelle.html",
+      "source": "other"
+    },
+    "argylegrandhotelnairobi": {
+      "name": "Argyle Grand Hotel Nairobi",
+      "image_url": "https://argylehotelkenya.ke/wp-content/uploads/2026/07/DJI_0228-scaled-1-2048x1152.jpg",
+      "page_url": "https://argylehotelkenya.ke/",
       "source": "official"
     },
-    "garryatongsaibaysamui": {
-      "name": "Garrya Tongsai Bay Samui",
-      "image_url": "https://www.garrya.com/sites/garrya/files/styles/embed/public/media/images/2022-12/The%20Tongsai%20Bay%202-Edit-Edit.JPG.webp?itok=nrfNiGOD",
-      "page_url": "https://www.garrya.com/en/destinations/samui",
+    "bluebaybeachresortspa": {
+      "name": "Bluebay Beach Resort & Spa",
+      "image_url": "https://static.wixstatic.com/media/26fdd9_a26e925840ad4919848febdd3418a9a6~mv2.jpg/v1/fill/w_422,h_317,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/Deluxe%20Room%20double.jpg",
+      "page_url": "https://www.bluebayhotelszanzibar.com/bluebay",
+      "source": "official"
+    },
+    "concordedeluxeresort": {
+      "name": "Concorde De Luxe Resort",
+      "image_url": "https://pixcdn.co/photos/1920x1080/18280/1828086/1828086272.webp",
+      "page_url": "https://resortconcordedeluxe.hotelantalya.net/en/",
+      "source": "other"
+    },
+    "dreamstulumresortspa": {
+      "name": "Dreams Tulum Resort & Spa",
+      "image_url": "https://www.tulumresortspa.com/images/slides/slide-1.jpg",
+      "page_url": "https://www.tulumresortspa.com/index.asp",
+      "source": "official"
+    },
+    "elysiumhotel": {
+      "name": "Elysium Hotel",
+      "image_url": "https://www.elysium-hotel.com/api/media/file/elysium-1780999499100-hotel_general_view_a_sq.webp",
+      "page_url": "https://www.elysium-hotel.com/",
+      "source": "official"
+    },
+    "enkorokmaracamp": {
+      "name": "Enkorok Mara Camp",
+      "image_url": "https://demo.enkoroksafaricamp.com/wp-content/uploads/2026/01/Enkorok-safari-camp-outside-002.webp",
+      "page_url": "https://enkoroksafaricamp.com/",
+      "source": "official"
+    },
+    "garongasafaricamp": {
+      "name": "Garonga Safari Camp",
+      "image_url": "https://www.garonga.com/camps/garonga-safari-camp-poster.webp",
+      "page_url": "https://www.garonga.com/",
+      "source": "official"
+    },
+    "grandfiestaamericanacoralbeachcancúnallinclusivesparesort": {
+      "name": "Grand Fiesta Americana Coral Beach Cancún All Inclusive Spa & Resort",
+      "image_url": "https://www.coralbeachcancunresort.com/wp-content/uploads/2015/09/fagcb_pool_ocean_exterior.jpg",
+      "page_url": "https://www.coralbeachcancunresort.com/",
       "source": "official"
     },
     "grandvelasrivieramaya": {
@@ -26,11 +74,59 @@
       "page_url": "https://www.grandvelas.com/resorts/grand-velas-riviera-maya",
       "source": "official"
     },
+    "granhotelatlantisbahíareal": {
+      "name": "Gran Hotel Atlantis Bahía Real",
+      "image_url": "https://www.fuerteventura-beaches.com/images/atlantis-bahia-real-main.jpg",
+      "page_url": "https://www.fuerteventura-beaches.com/atlantis-bahia-real.html",
+      "source": "other"
+    },
+    "halekulaniokinawa": {
+      "name": "Halekulani Okinawa",
+      "image_url": "https://www.okinawa.halekulani.com/en/ogp.jpg",
+      "page_url": "https://www.okinawa.halekulani.com/en/",
+      "source": "official"
+    },
+    "hardrockhoteltenerife": {
+      "name": "Hard Rock Hotel Tenerife",
+      "image_url": "https://content.tui.co.uk/adamtui/2017_9/21_9/6128ff1f-0f85-440c-80f8-a7f500971d85/ACC_972197_TEN_84WebOriginalCompressed.jpg?i10c=img.resize%28width%3A658%29%3Bimg.crop%28width%3A658%2Cheight%3A370%29",
+      "page_url": "https://www.tui.co.uk/destinations/europe/spain/tenerife/playa-paraiso/hotels/hard-rock-tenerife.html",
+      "source": "other"
+    },
+    "hotel20degressud": {
+      "name": "Hotel 20 Degres Sud",
+      "image_url": "https://cdn.prod.website-files.com/654e22bcf33553328d887fae/654e22bcf33553328d88804e_Opengrapgh.jpg",
+      "page_url": "https://en.20degressud.com/",
+      "source": "other"
+    },
+    "intercontinentalmuscat": {
+      "name": "InterContinental Muscat",
+      "image_url": "https://digital.ihg.com/is/image/ihg/intercontinental-muscat-11003692682-2x1",
+      "page_url": "https://www.intercontinental.com/hotels/gb/en/muscat/mscha/hoteldetail/directions",
+      "source": "official"
+    },
+    "jazaquaviva": {
+      "name": "Jaz Aquaviva",
+      "image_url": "https://content.tui.co.uk/adamtui/2016_9/30_19/1cef90cd-ef66-43c7-81fc-a6910145a02f/EGY_HUR_8451WebOriginalCompressed.jpg?i10c=img.resize%28width%3A658%29%3Bimg.crop%28width%3A658%2Cheight%3A370%29",
+      "page_url": "https://www.tui.co.uk/destinations/africa/egypt/egypt-red-sea/hurghada/hotels/jaz-makadi-aquaviva.html",
+      "source": "other"
+    },
+    "jwmarriotthotelcairo": {
+      "name": "JW Marriott Hotel Cairo",
+      "image_url": "https://pixcdn.co/photos/1920x1080/16838/1683806/1683806408.webp",
+      "page_url": "https://jwmarriott.hotelcairo.net/en/",
+      "source": "other"
+    },
     "kalandararesortlombok": {
       "name": "Kalandara Resort Lombok",
       "image_url": "https://hotels-in-lombok.com/img/id/kalandara-resort9.webp",
       "page_url": "https://kalandara-resort.hotels-in-lombok.com/en/",
       "source": "other"
+    },
+    "kempinskinilehotelcairo": {
+      "name": "Kempinski Nile Hotel Cairo",
+      "image_url": "https://storage.kempinski.com/cdn-cgi/image/w=1920,f=auto,fit=scale-down/ki-cms-prod/images/1/7/1/5/65171-1-eng-GB/abb1d7474666-73654605_4K.jpg",
+      "page_url": "https://www.kempinski.com/en/nile-hotel",
+      "source": "official"
     },
     "kimptonkitalaysamui": {
       "name": "Kimpton Kitalay Samui",
@@ -38,10 +134,58 @@
       "page_url": "https://www.kimptonkitalaysamui.com/",
       "source": "official"
     },
+    "kirurumutarangirelodge": {
+      "name": "Kirurumu Tarangire Lodge",
+      "image_url": "https://kirurumu-undercanvas.com/wp-content/uploads/2024/02/Bsh-Lunch-KT-700x641.jpg",
+      "page_url": "https://kirurumu-undercanvas.com/kirurumu-tarangire-lodge/",
+      "source": "official"
+    },
+    "larabarutcollection": {
+      "name": "Lara Barut Collection",
+      "image_url": "https://barutlara.com/images/og-cover.jpg",
+      "page_url": "https://barutlara.com/en",
+      "source": "official"
+    },
+    "lopesancostamelonerasresortspa": {
+      "name": "Lopesan Costa Meloneras Resort & Spa",
+      "image_url": "https://www.lopesan.com/documents/d/lopesan-hotel-group/om-thalasso",
+      "page_url": "https://www.lopesan.com/en/hotels/spain/gran-canaria/meloneras/costa-meloneras",
+      "source": "official"
+    },
+    "marriottmenahouse": {
+      "name": "Marriott Mena House",
+      "image_url": "https://cache.marriott.com/content/dam/marriott-renditions/CAIMN/caimn-grounds-0019-hor-wide.jpg?output-quality=70&interpolation=progressive-bilinear&downsize=1336px%3A%2A",
+      "page_url": "https://www.marriott.com/en-us/hotels/caimn-marriott-mena-house-cairo/rooms/",
+      "source": "official"
+    },
     "melatibeachresortspa": {
       "name": "Melati Beach Resort & Spa",
       "image_url": "https://melatiresort.com/wp-content/uploads/2025/03/Home-Header.jpg",
       "page_url": "https://melatiresort.com/",
+      "source": "official"
+    },
+    "meliaserengetilodge": {
+      "name": "Melia Serengeti Lodge",
+      "image_url": "https://dam.melia.com/melia/file/iWS1EwHR1J4pyWnxHipp.jpg?im=RegionOfInterestCrop%3D%282000%2C1000%29%2CregionOfInterest%3D%282150%2C1433.5%29",
+      "page_url": "https://www.melia.com/en/hotels/tanzania/serengeti-national-park/hotel-serengeti-lodge-melia-collection",
+      "source": "official"
+    },
+    "mountmeruhotel": {
+      "name": "Mount Meru Hotel",
+      "image_url": "https://www.mountmeruhotel.co.tz/images/banner.jpg",
+      "page_url": "https://www.mountmeruhotel.co.tz/",
+      "source": "official"
+    },
+    "ngorongorocratercamp": {
+      "name": "Ngorongoro Crater Camp",
+      "image_url": "https://www.ngorongorocratertanzania.org/wp-content/uploads/2019/07/Webp.net-compress-image-9.jpg",
+      "page_url": "https://www.ngorongorocratertanzania.org/sanctuary-ngorongoro-crater-camp/",
+      "source": "official"
+    },
+    "nkambenisafaritentedcamp": {
+      "name": "Nkambeni Safari Tented Camp",
+      "image_url": "https://nkambeni.com/wp-content/uploads/2026/07/TRP_0218.jpg",
+      "page_url": "https://nkambeni.com/",
       "source": "official"
     },
     "novotellombokresortvillas": {
@@ -56,11 +200,77 @@
       "page_url": "https://www.nungwidreams.com/",
       "source": "official"
     },
+    "oceanparadiseresort": {
+      "name": "Ocean Paradise Resort",
+      "image_url": "https://s3.eu-central-2.wasabisys.com/oceanparadisezanzibar/wp-media-folder-ocean-paradise-resort-zanzibar/wp-content/uploads/2017/11/zanzibar.jpg",
+      "page_url": "https://oceanparadisezanzibar.com/locate-us/",
+      "source": "official"
+    },
+    "peermontdorealegrandehotel": {
+      "name": "Peermont D'Oreale Grande Hotel",
+      "image_url": "https://www.peermont.com/wp-content/uploads/Peermont-Doreale-Grande-Hotel.webp",
+      "page_url": "https://www.peermont.com/refurbishment-elevates-the-peermont-doreale-grande-hotel-at-emperors-palace-to-new-heights-of-luxury/",
+      "source": "official"
+    },
+    "princesayaizasuitehotelresort": {
+      "name": "Princesa Yaiza Suite Hotel Resort",
+      "image_url": "https://princesayaiza.com/wp-content/uploads/2025/04/HOTEL-FARIONES-_-LIFESTYLE-36-e1744015512505.jpeg",
+      "page_url": "https://princesayaiza.com/en/",
+      "source": "official"
+    },
     "pullmanlombokmerujanimandalikabeachresort": {
       "name": "Pullman Lombok Merujani Mandalika Beach Resort",
       "image_url": "https://d2e5ushqwiltxm.cloudfront.net/wp-content/uploads/sites/280/2022/12/16065445/AERIAL_HEROSHOT.jpg",
       "page_url": "https://pullman-lombok-mandalika.com/",
       "source": "official"
+    },
+    "rivertreescountryinn": {
+      "name": "Rivertrees Country Inn",
+      "image_url": "https://www.easytravel.co.tz/wp-content/uploads/2025/04/image-120.jpeg",
+      "page_url": "https://www.easytravel.co.tz/accommodation/rivertrees-country-inn/",
+      "source": "other"
+    },
+    "rixosgulfhoteldoha": {
+      "name": "Rixos Gulf Hotel Doha",
+      "image_url": "https://www.ahstatic.com/photos/b9l0_ho_00_p_1024x768.jpg",
+      "page_url": "https://www.rixos.com/hotel-resort/rixos-gulf-hotel-doha",
+      "source": "official"
+    },
+    "sayaricamp": {
+      "name": "Sayari Camp",
+      "image_url": "https://www.asiliaafrica.com/wp-content/uploads/2024/04/Asilia-Africa-Sayari-Camp-Aerial-View.jpg",
+      "page_url": "https://www.asiliaafrica.com/camps-lodges/sayari-camp/",
+      "source": "other"
+    },
+    "seasidepalmbeach": {
+      "name": "Seaside Palm Beach",
+      "image_url": "https://www.hotel-palm-beach.com/sites/default/files/styles/imagen_dos_colum_480x322_/public/2024-11/2.%20Seaside_Palm_Beach_Drone_II-2220-min.jpg?h=60a2d821&itok=s3lPF6yJ",
+      "page_url": "https://www.hotel-palm-beach.com/hotel",
+      "source": "other"
+    },
+    "serengetisafarilodge": {
+      "name": "Serengeti Safari Lodge",
+      "image_url": "https://heartofserengeti.com/wp-content/uploads/2025/07/SERENGETI-SAFARI-LODGE00109-1-scaled-1.webp",
+      "page_url": "https://heartofserengeti.com/accommodations/serengeti-safari-lodge/",
+      "source": "other"
+    },
+    "sheratonfuerteventurabeachgolfsparesort": {
+      "name": "Sheraton Fuerteventura Beach, Golf & Spa Resort",
+      "image_url": "https://www.visitfuerteventura.com/sites/default/files/styles/16_9_desktop/public/resources/header_images/sheraton_fuerteventura_golf_beach_%26_spa_resort-cab-D_0.jpg?itok=gwFYFK0_",
+      "page_url": "https://www.visitfuerteventura.com/en/accommodation/fuerteventura/sheraton-fuerteventura-golf-beach-spa-resort/",
+      "source": "other"
+    },
+    "sofitelmauritiuslimpérialresortspa": {
+      "name": "Sofitel Mauritius L'Impérial Resort & Spa",
+      "image_url": "https://content.tui.co.uk/adamtui/2024_10/29_8/0c19d0a4-f8c4-421c-9003-b21800873be0/ACC_011958_MAU_06_FlamboyantWebOriginalCompressed.jpg?i10c=img.resize%28width%3A658%29%3Bimg.resize%28height%3A370%29%3Bimg.crop%28width%3A658%2Cheight%3A370%29",
+      "page_url": "https://www.tui.co.uk/destinations/mauritius/flic-en-flac/hotels/sofitel-mauritius-limperial-resort-and-spa.html",
+      "source": "other"
+    },
+    "steigenbergeraldaubeachhotel": {
+      "name": "Steigenberger ALDAU Beach Hotel",
+      "image_url": "https://content.tui.co.uk/adamtui/2025_10/9_12/6cd209de-5c57-45d9-9c8c-b37100d2e19c/ACC_057342_EGY_47WebOriginalCompressed.jpg?i10c=img.resize%28width%3A658%29%3Bimg.crop%28width%3A658%2Cheight%3A370%29",
+      "page_url": "https://www.tui.co.uk/destinations/egypt/hurghada/hotels/steigenberger-aldau-beach-hotel.html",
+      "source": "other"
     },
     "thelomboklodge": {
       "name": "The Lombok Lodge",
@@ -68,10 +278,16 @@
       "page_url": "https://www.thelomboklodge.com/",
       "source": "other"
     },
-    "tunakresortlombok": {
-      "name": "TUNAK Resort Lombok",
-      "image_url": "https://tunakresort.com/wp-content/uploads/elementor/thumbs/Wave-qxf4uy5q1irbm91c7htxzcn15xznan6dm9u7ftqznk.png",
-      "page_url": "https://tunakresort.com/",
+    "verandatamarin": {
+      "name": "Veranda Tamarin",
+      "image_url": "https://veranda-resorts.com//_gatsby/image/19c11bdf3dd64331d8e321825ff14000/0afe4d122dbe760190732b36ab06970c/explorer-ouest-ile-maurice-veranda-hotel-tamarin.webp?u=https%3A%2F%2Fbo.veranda-resorts.com%2Fsites%2Fdefault%2Ffiles%2F2022-10%2Fexplorer-ouest-ile-maurice-veranda-hotel-tamarin_0.jpg&a=w%3D1920%26h%3D1080%26fm%3Dwebp%26q%3D75&cd=dc26eae284a736fd1454aad981c2ea5b",
+      "page_url": "https://veranda-resorts.com/en/mauritius-hotel-tamarin/",
+      "source": "official"
+    },
+    "vidamarresortmadeira": {
+      "name": "Vidamar Resort Madeira",
+      "image_url": "https://static-resources-elementor.mirai.com/wp-content/uploads/sites/1961/Outdoor-VidaMar-Madeira-18.webp",
+      "page_url": "https://www.vidamarresorts.com/",
       "source": "official"
     }
   }
