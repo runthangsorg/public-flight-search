@@ -705,7 +705,7 @@ def run_holiday_planner(
         # showing ranges means the reads are for date pairs this config no longer
         # prices, which is waste the next read can be aimed away from.
         "multi_centre_wanted": multi_centre_wants,
-        "multi_centre_reads_loaded": len(multi_centre_fares),
+        "multi_centre_reads_loaded": sum(1 for k in multi_centre_fares if len(k) == 2),
         # The stays the climate gate dropped this run (owner direction
         # 2026-10-15): one entry per place per area, collected while the cards,
         # the watch list and the two-centre block were being built. Read through

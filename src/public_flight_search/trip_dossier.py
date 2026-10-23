@@ -367,10 +367,33 @@ def _flight_block(row: Mapping[str, Any]) -> dict[str, Any]:
         "read_line": "", "read_url": "", "first_flight": "", "times": "", "times_note": NO_TIMES_WORDS,
         "same_search": False,
         "has_flights": False, "leg_flights": [{"leg": leg, "flight": None} for leg in legs],
-        "vendor": "", "search_cabin_note": "",
+        "vendor": "", "search_cabin_note": "", "options": [],
     }
     if not read:
         return block
+    block.update(_read_block(row, read, legs, cabin_default=block["cabin"]))
+    # Both products (23 Oct 2026): one option per cabin that was read, the Business-long-haul one first. Each carries its
+    # own price, date, vendor, cabin words and, where the read has them, every flight; ``options`` is what the page
+    # prints when there are two, and the top-level fields above stay the primary read's, so one-read pages are unchanged.
+    options = []
+    for key in ("business", "economy"):
+        option_read = (row.get("reads") or {}).get(key)
+        if option_read:
+            options.append({"key": key, "label": _he().cabin_label(key, option_read), "read": option_read,
+                            **_read_block(row, option_read, legs, cabin_default=block["cabin"])})
+    block["options"] = options
+    return block
+
+
+def _read_block(row: Mapping[str, Any], read: Mapping[str, Any], legs: Sequence[tuple[str, str, str]], *,
+                cabin_default: str) -> dict[str, Any]:
+    """What ONE read says: its price line, page, first flight, times and (when it has them) every flight."""
+    he = _he()
+    block: dict[str, Any] = {
+        "read_line": "", "read_url": "", "first_flight": "", "times": "", "times_note": NO_TIMES_WORDS,
+        "same_search": False, "has_flights": False,
+        "leg_flights": [{"leg": leg, "flight": None} for leg in legs], "vendor": "", "search_cabin_note": "",
+    }
     party = he._read_party(read)
     # What the read's price is made of: a mixed read names which legs are in which cabin, never "Economy".
     read_cabin = str(read.get("cabin") or "").strip().upper()
@@ -379,7 +402,7 @@ def _flight_block(row: Mapping[str, Any]) -> dict[str, Any]:
     elif read_cabin:
         cabin_words = read_cabin.capitalize()
     else:
-        cabin_words = block["cabin"]
+        cabin_words = cabin_default
     block["read_line"] = (f"{he._gbp(read.get('total_gbp'))} for {party}, the whole trip, {cabin_words}, "
                           f"read {he._read_day_words(read.get('observed_at'))} for these exact dates")
     block["read_url"] = _http(read.get("source_url")) or row["url"]
@@ -415,6 +438,9 @@ def _flight_block(row: Mapping[str, Any]) -> dict[str, Any]:
             if vendor and vendor not in vendors:
                 vendors.append(vendor)
         block["vendor"] = ", ".join(vendors)
+    if not block["vendor"] and str(read.get("vendor") or "").strip():
+        block["vendor"] = str(read.get("vendor")).strip()
+    block["cabin_words"] = cabin_words
     return block
 
 
@@ -608,8 +634,10 @@ def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, gener
             except ValueError:
                 continue
             flight = _flight_block(row)
+            # With ONE read each flight is printed on its leg's Itinerary line; with two products the Flights section
+            # carries both sets, so the Itinerary stays the plan and does not pick one of them.
             details = ({tuple(lf["leg"]): leg_flight_words(lf["flight"]) for lf in flight["leg_flights"]}
-                       if flight["has_flights"] else {})
+                       if flight["has_flights"] and len(flight["options"]) < 2 else {})
             steps = []
             for step in _step_sequence(row, plan, details):
                 if step["type"] == "stay":
@@ -656,6 +684,9 @@ def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, gener
                 "any_rated": any(lodge["ratings"] for s in steps if s["type"] == "stay" for lodge in s["lodges"]),
                 "plan_note": plan_note,
                 "flight": flight,
+                "cabin_totals": list(row.get("cabin_totals") or ()),
+                "cabin_missing": list(row.get("cabin_missing") or ()),
+                "bundled_flights": bool(flight["options"]) and not row.get("cabin_totals"),
                 "pair": pair,
                 "no_pair_words": (NO_BUILD_WORDS if trip.kind == "operator" else NO_PACKAGE_WORDS),
                 "lines": [(line.label, line.gbp, line.basis) for line in trip.cost_lines],
@@ -794,7 +825,64 @@ def _flights_notes(f: Mapping[str, Any], level: int) -> list[str]:
     return notes
 
 
+def _upper_first(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
+def _option_leg_lines(option: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """``[(leg words, that flight's words)]`` for an option whose read carries every flight."""
+    return [(f"{day_words(lf['leg'][2])} {place_words(lf['leg'][0])} → {place_words(lf['leg'][1])}",
+             leg_flight_words(lf["flight"])) for lf in option["leg_flights"]]
+
+
+def _two_option_notes(d: Mapping[str, Any], level: int) -> list[str]:
+    """Words under the two reads: what each product is, the local-time line, and what is not captured, once each."""
+    f = d["flight"]
+    notes = [_he().CABIN_NOTE]
+    if any(o["has_flights"] for o in f["options"]):
+        notes.append(TIMES_ARE_LOCAL_WORDS)
+    lacking = next((o for o in f["options"] if not o["has_flights"]), None)
+    if lacking is not None and lacking["times_note"]:
+        notes.append(lacking["times_note"])
+    if d["bundled_flights"]:
+        notes.append("This trip's price includes its own flights, so it does not change with these reads; "
+                     "they are shown for comparison.")
+    cabin_note = next((o["search_cabin_note"] for o in f["options"] if o["search_cabin_note"]), "")
+    notes.append(cabin_note or f"Searched as {f['cabin']}, 5 travellers.")
+    if level == FULL and f["shape"]:
+        notes.append(f["shape"])
+    return notes
+
+
+def _flights_two_html(d: Mapping[str, Any], level: int) -> str:
+    """Both products' reads under Flights: price, date, vendor, cabin words, link, and every flight where the read has them.
+
+    The Business-long-haul option's flights are printed at every level and the all-economy option's from the full
+    level up: when the page has to be shortened, the second product's per-flight lines go before the first's.
+    """
+    ink = _palette()[0]
+    f = d["flight"]
+    out = [_heading("Flights")]
+    for index, option in enumerate(f["options"]):
+        out.append(f'<div style="margin:{"0" if index == 0 else "7px"} 0 0 0"><b style="color:{ink}">{escape(_upper_first(option["label"]))}:</b> '
+                   + _a(option["read_url"], option["read_line"], bold=True) + "</div>")
+        lines = []
+        if option["vendor"]:
+            lines.append(f"Read through {escape(option['vendor'])}.")
+        if option["has_flights"] and (level == FULL or index == 0):
+            lines += [f'{escape(leg)}: <span style="color:{ink}">{escape(words)}</span>'
+                      for leg, words in _option_leg_lines(option)]
+        elif not option["has_flights"] and option["first_flight"] and level == FULL:
+            lines.append(f"First flight on that read: {escape(option['first_flight'])}")
+        if lines:
+            out.append("<div>" + "<br>".join(lines) + "</div>")
+    out.append('<div style="margin:7px 0 0 0">' + "<br>".join(escape(n) for n in _two_option_notes(d, level)) + "</div>")
+    return "".join(out)
+
+
 def _flights_html(d: Mapping[str, Any], level: int) -> str:
+    if len(d["flight"]["options"]) == 2:
+        return _flights_two_html(d, level)
     f = d["flight"]
     out = [_heading("Flights")]
     if f["status"] == "read":
@@ -808,6 +896,8 @@ def _flights_html(d: Mapping[str, Any], level: int) -> str:
 def _short_flights_html(d: Mapping[str, Any]) -> str:
     """The short form's Flights section: the read, and when the read has every flight, each leg's line."""
     f = d["flight"]
+    if len(f["options"]) == 2:
+        return _flights_two_html(d, SHORT)
     ink = _palette()[0]
     head = ("<div>" + (_a(f["read_url"], f["read_line"], bold=True) if f["status"] == "read"
                        else "Not read for these dates yet. " + _a(f["search_url"], "Search these flights", bold=True))
@@ -883,6 +973,9 @@ def _price_html(d: Mapping[str, Any], level: int) -> str:
             f"<b>£{gbp:,.0f}</b> · {escape(text)}" + (f" — {escape(basis)}" if basis and level == FULL else "")
             for text, gbp, basis in d["lines"]) + "</div>")
     notes: list[str] = []
+    if d["cabin_totals"]:
+        notes.append("The flights line is the figure this price was first built with; the totals at the top "
+                     "replace it with the read for these exact dates.")
     if level == FULL and d["cost_basis"]:
         notes.append(escape(d["cost_basis"]))
     elif not d["lines"]:
@@ -909,10 +1002,26 @@ def _header_html(d: Mapping[str, Any]) -> str:
            f'<div style="font-size:16px;font-weight:700;line-height:1.3;color:{ink}">{escape(d["title"])}</div>']
     if d["operator_ref"]:
         out.append(f'<div>{escape(d["operator_ref"])}</div>')
-    out += [f'<div style="margin:5px 0 0 0"><b style="font-size:24px;line-height:1.1;color:{accent}">'
-           f'{escape(d["price_words"])}</b> for 5, door to door</div>',
-           f'<div style="margin:4px 0 0 0"><span style="background:{chip[0]};color:{chip[1]};'
-           f'padding:2px 8px;border-radius:9999px">{escape(chip[2])}</span></div>']
+    if d["cabin_totals"]:
+        # The trip's own price itemises its flights, so its total can be said under each read (23 Oct 2026).
+        for item in d["cabin_totals"]:
+            if item["fits"] is None:
+                tchip = ("#f1f5f9", "#475569", "no budget set, no verdict")
+            elif item["fits"]:
+                tchip = ("#dcfce7", "#166534", f"fits the {he._gbp(d['budget'])} budget")
+            else:
+                tchip = ("#fef3c7", "#92400e", f"{he._gbp(item['gap'])} over the {he._gbp(d['budget'])} budget")
+            out.append(f'<div style="margin:6px 0 0 0">{escape(item["label"])}<br>'
+                       f'<b style="font-size:22px;line-height:1.1;color:{accent}">{escape(he._gbp(item["total"]))}</b> '
+                       f'for 5, door to door <span style="background:{tchip[0]};color:{tchip[1]};padding:2px 8px;'
+                       f'border-radius:9999px">{escape(tchip[2])}</span></div>')
+        for label in d["cabin_missing"]:
+            out.append(f'<div style="margin:4px 0 0 0">{escape(label)} has not been read for these dates yet.</div>')
+    else:
+        out += [f'<div style="margin:5px 0 0 0"><b style="font-size:24px;line-height:1.1;color:{accent}">'
+                f'{escape(d["price_words"])}</b> for 5, door to door</div>',
+                f'<div style="margin:4px 0 0 0"><span style="background:{chip[0]};color:{chip[1]};'
+                f'padding:2px 8px;border-radius:9999px">{escape(chip[2])}</span></div>']
     for warning in d["warnings"]:
         out.append(f'<div style="margin:3px 0 0 0;color:#92400e">{escape(f"⚠ {warning}")}</div>')
     return "".join(out)
@@ -974,7 +1083,13 @@ def dossier_lines(d: Mapping[str, Any]) -> list[str]:
            f"  {d['kind_label']} · {d['nights']} nights · {d['price_words']} for 5, door to door · {d['price_label']}"]
     if d["operator_ref"]:
         out.append(f"  {d['operator_ref']}")
-    out.append(f"  {d['verdict'] if d['fits'] is not True else 'low end fits the budget'}")
+    if d["cabin_totals"]:
+        he = _he()
+        for item in d["cabin_totals"]:
+            out.append(f"  {item['label']}: {he._cabin_total_words(item, d['budget'])} (for 5, door to door)")
+        out.extend(f"  {label} has not been read for these dates yet." for label in d["cabin_missing"])
+    else:
+        out.append(f"  {d['verdict'] if d['fits'] is not True else 'low end fits the budget'}")
     for warning in d["warnings"]:
         out.append(f"  ! {warning}")
     out.append("")
@@ -1026,11 +1141,22 @@ def dossier_lines(d: Mapping[str, Any]) -> list[str]:
         out.append(f"    {d['plan_note']}")
     f = d["flight"]
     out.append("  Flights")
-    if f["status"] == "read":
+    if len(f["options"]) == 2:
+        for option in f["options"]:
+            out.append(f"    {_upper_first(option['label'])}: {option['read_line']}: {option['read_url']}")
+            if option["vendor"]:
+                out.append(f"      Read through {option['vendor']}.")
+            if option["has_flights"]:
+                out.extend(f"      {leg}: {words}" for leg, words in _option_leg_lines(option))
+            elif option["first_flight"]:
+                out.append(f"      First flight on that read: {option['first_flight']}")
+        out.extend(f"    {note}" for note in _two_option_notes(d, FULL))
+    elif f["status"] == "read":
         out.append(f"    {f['read_line']}: {f['read_url']}")
+        out.extend(f"    {note}" for note in _flights_notes(f, FULL))
     else:
         out.append(f"    Not read for these dates yet. Search these flights: {f['search_url']}")
-    out.extend(f"    {note}" for note in _flights_notes(f, FULL))
+        out.extend(f"    {note}" for note in _flights_notes(f, FULL))
     out.append("    Searched legs: " + " · ".join(
         f"{o} → {dst} {day_words(day)}" for o, dst, day in f["legs"]))
     if f["status"] == "read":

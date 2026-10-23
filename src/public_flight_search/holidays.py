@@ -4008,15 +4008,13 @@ def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
     exactly what that read means). A row with no trip id or unreadable legs cannot
     answer anything at all and IS named, because nothing else would show it.
 
-    Two reads for one key in the SAME cabin are two looks at one journey: the
-    cheaper is kept, the same rule ``_stopover_fares`` applies, so the dearer can
-    never be quoted. Two reads in DIFFERENT cabins are two products, and the owner's
-    rule (a leg over eight hours is Business, a shorter one economy) says which one
-    answers the trip: a read that is not pure Economy (``MIXED`` or ``BUSINESS``)
-    is made to that rule, an Economy-all-the-way read of the same legs is not, so
-    it can never hide the other however much cheaper it is (22 Oct 2026: the 20 Oct
-    Economy reads of about 5,100 would have shadowed the new Business-over-eight-hours
-    reads of about 20,000, and the report would have kept quoting the cheap ones).
+    One read is kept PER CABIN (23 Oct 2026, owner: "i want both business and economy"). Two reads in the SAME cabin
+    are two looks at one journey: the cheaper is kept, the same rule ``_stopover_fares`` applies, so the dearer can
+    never be quoted. Two reads in DIFFERENT cabins are two products and BOTH are kept: ``ECONOMY`` (Economy on every
+    flight) and the owner's rule (Business on a leg over eight hours, economy on a shorter one: ``MIXED``, or
+    ``BUSINESS`` all the way). Neither can hide the other, however much cheaper. They are filed under
+    ``(trip, legs, cabin)``; ``(trip, legs)`` keeps answering the old single question with the rule-following read
+    (the cheaper of ``MIXED``/``BUSINESS``) when there is one, else the Economy read, so existing callers are unchanged.
     """
     key = _multi_centre_read_key(item)
     if key is None:
@@ -4025,14 +4023,21 @@ def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
     total = _priced_read_total(item)
     if total is None:
         return
-    existing = index.get(key)
-    if existing is not None and (keep := _priced_read_total(existing)) is not None:
-        new_cabin, kept_cabin = _read_cabin(item), _read_cabin(existing)
-        if new_cabin == "ECONOMY" and kept_cabin != "ECONOMY":
-            return                          # an economy read never replaces a rule-following one
-        if (new_cabin == kept_cabin or kept_cabin != "ECONOMY") and keep <= total:
-            return                          # same cabin, or both rule-following: the cheaper look
-    index[key] = dict(item)
+    cabin = _read_cabin(item)
+    cabin_key = key + (cabin,)
+    existing = index.get(cabin_key)
+    if existing is not None and (keep := _priced_read_total(existing)) is not None and keep <= total:
+        return                              # same cabin: the cheaper look
+    index[cabin_key] = dict(item)
+    # The one answer to the old question: a rule-following read (MIXED or BUSINESS, the cheaper) before an Economy one.
+    candidates = [index[key + (c,)] for c in _CABIN_ORDER if (key + (c,)) in index]
+    rule_following = [r for r in candidates if _read_cabin(r) != "ECONOMY"]
+    pool = rule_following or candidates
+    index[key] = min(pool, key=lambda r: _priced_read_total(r) or float("inf"))
+
+
+#: The cabins a two-centre read can answer for, in the order they are looked up.
+_CABIN_ORDER = ("MIXED", "BUSINESS", "ECONOMY")
 
 
 def load_batch_reads(
@@ -4243,6 +4248,23 @@ def multi_centre_fare_for(trip: Any, legs: Any, *,
         return None
     source = MULTI_CENTRE_FARES if fares is None else fares
     return source.get(key)
+
+
+def multi_centre_fares_for(trip: Any, legs: Any, *, fares: Any = None) -> dict[str, dict[str, Any]]:
+    """EVERY priced read for exactly this trip on exactly these legs, by cabin: ``{"ECONOMY": read, "MIXED": read}``.
+
+    The same dates-in-the-key rule as ``multi_centre_fare_for``; what it adds is that the cabins are not collapsed
+    into one answer. A registry that only has the plain ``(trip, legs)`` entry (a hand-built one) answers with that
+    read under its own cabin. Empty when nothing was read for these legs.
+    """
+    key = multi_centre_fare_key(trip, legs)
+    if key is None:
+        return {}
+    source = MULTI_CENTRE_FARES if fares is None else fares
+    out = {c: source[key + (c,)] for c in _CABIN_ORDER if (key + (c,)) in source}
+    if not out and key in source:
+        out[_read_cabin(source[key])] = source[key]
+    return out
 
 
 def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,

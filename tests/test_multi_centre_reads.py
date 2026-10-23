@@ -87,6 +87,12 @@ def _config(path=JULY, *, budget=SYNTHETIC_CEILING_GBP):
     return dataclasses.replace(config, max_budget_gbp=budget)
 
 
+def _journeys(fares):
+    """One entry per (trip, legs): the registry also files each read under ``(trip, legs, cabin)`` (23 Oct 2026), and a
+    test that counts journeys or asks for THE read of one wants the ``(trip, legs)`` entries only."""
+    return [read for key, read in fares.items() if len(key) == 2]
+
+
 def deals_for_config(config):
     """The deals the byte-budget test renders: the whole catalogue for this config, unfiltered."""
     return collect_holiday_deals(config)
@@ -258,7 +264,7 @@ class MultiCentreFareIndexTests(_BatchCase):
 
     def test_a_priced_read_answers_its_own_trip_and_its_own_legs(self):
         fares = self._registry([_multi_centre_read(self.want)])
-        self.assertEqual(len(fares), 1)
+        self.assertEqual(len(_journeys(fares)), 1)
         self.assertEqual(
             multi_centre_fare_for(self.want["trip"], self.want["legs"], fares=fares)["total_gbp"],
             SYNTHETIC_TOTAL,
@@ -280,7 +286,7 @@ class MultiCentreFareIndexTests(_BatchCase):
         dearer = _multi_centre_read(self.want, total=9000.0,
                                     observed_at=SYNTHETIC_SECOND_READ_AT)
         fares = self._registry([dearer, _multi_centre_read(self.want)])
-        (fare,) = fares.values()
+        (fare,) = _journeys(fares)
         self.assertEqual(float(fare["total_gbp"]), SYNTHETIC_TOTAL)
         self.assertEqual(fare["observed_at"], SYNTHETIC_FIRST_READ_AT)
 
@@ -294,7 +300,7 @@ class MultiCentreFareIndexTests(_BatchCase):
                      cabin="MIXED", cabin_mix="Business LHR-XYZ + Economy hop")
         for order in ([economy, mixed], [mixed, economy]):
             with self.subTest(first=order[0]["cabin"]):
-                (fare,) = self._registry(order).values()
+                (fare,) = _journeys(self._registry(order))
                 self.assertEqual(float(fare["total_gbp"]), 20000.0)
                 self.assertEqual(fare["cabin"], "MIXED")
                 self.assertEqual(fare["cabin_mix"], "Business LHR-XYZ + Economy hop")
@@ -303,7 +309,7 @@ class MultiCentreFareIndexTests(_BatchCase):
         a = dict(_multi_centre_read(self.want, total=20000.0), cabin="MIXED", cabin_mix="x")
         b = dict(_multi_centre_read(self.want, total=18000.0, observed_at=SYNTHETIC_SECOND_READ_AT),
                  cabin="MIXED", cabin_mix="x")
-        (fare,) = self._registry([a, b]).values()
+        (fare,) = _journeys(self._registry([a, b]))
         self.assertEqual(float(fare["total_gbp"]), 18000.0)
 
     def test_a_mixed_and_a_business_read_of_one_journey_keep_the_cheaper(self):
@@ -311,7 +317,7 @@ class MultiCentreFareIndexTests(_BatchCase):
         business = dict(_multi_centre_read(self.want, total=26000.0, observed_at=SYNTHETIC_SECOND_READ_AT),
                         cabin="BUSINESS")
         for order in ([mixed, business], [business, mixed]):
-            (fare,) = self._registry(order).values()
+            (fare,) = _journeys(self._registry(order))
             self.assertEqual(float(fare["total_gbp"]), 20000.0)
 
     def test_an_unpriced_read_is_a_gap_and_not_a_fare(self):

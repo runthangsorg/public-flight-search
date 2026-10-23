@@ -50,7 +50,7 @@ from .holidays import (
 )
 from .google_flights import build_google_flights_legs_url
 from . import trip_dossier as td
-from .multi_centre import load_multi_centre, trip_legs_for_dates
+from .multi_centre import load_multi_centre, trip_flights_line, trip_legs_for_dates
 from .vendors import build_vendor_links, trip_from_deal
 
 #: Per-card caps. A card that answers "what does this cost, is it fresh, has it
@@ -1746,6 +1746,72 @@ def two_centre_cabin(config: HolidayConfig) -> str:
 _TWO_CENTRE_CABIN = SHORT_HAUL_CABIN
 
 
+#: What a cabin option is called on the page. A MIXED read is the owner's rule (Business on a leg over eight hours,
+#: Economy hops, separate tickets) and must never be called Economy; an all-Economy read is a different product.
+CABIN_LABELS = {"business": "with Business long-haul", "business_all": "with Business on every flight",
+                "economy": "all economy"}
+CABIN_NOTE = (
+    "Business long-haul is Business on every flight over 8 hours and Economy on the shorter ones, on separate "
+    "tickets; all economy is Economy on every flight. They are different products, so neither is called the other."
+)
+
+
+def cabin_label(key: str, read: Optional[Mapping[str, Any]] = None) -> str:
+    """``with Business long-haul`` / ``with Business on every flight`` / ``all economy``."""
+    if key == "economy":
+        return CABIN_LABELS["economy"]
+    if read is not None and str(read.get("cabin", "")).strip().upper() == "BUSINESS":
+        return CABIN_LABELS["business_all"]
+    return CABIN_LABELS["business"]
+
+
+def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: float) -> dict[str, Any]:
+    """A trip's two flight products from what was read, and its total under each where that can be said.
+
+    ``reads`` is ``holidays.multi_centre_fares_for``: one read per cabin. The ``business`` option is the cheaper of the
+    MIXED and BUSINESS reads, the ``economy`` option the ECONOMY one; a cabin nobody read is absent, never estimated.
+    A trip total under a cabin exists only where the trip's own price itemises its flights (``cost_lines``): the rest of
+    the trip is that price less its flights line, plus the read. A package or an estimate bundles its own flights, so it
+    keeps its stated figure and ``totals`` is empty. ``missing`` names the options not read, for those itemised trips.
+    """
+    def total_of(read: Mapping[str, Any]) -> float:
+        try:
+            return float(read.get("total_gbp"))
+        except (TypeError, ValueError):
+            return float("inf")
+
+    rule = [reads[c] for c in ("MIXED", "BUSINESS") if c in reads]
+    business = min(rule, key=total_of) if rule else None
+    economy = reads.get("ECONOMY")
+    chosen = {"business": business, "economy": economy}
+    out: dict[str, Any] = {"reads": chosen, "totals": [], "missing": []}
+    line = trip_flights_line(trip)
+    if line is None or not (business or economy):
+        return out
+    rest = float(trip.cost_low_gbp) - float(line.gbp)
+    for key in ("business", "economy"):
+        read = chosen[key]
+        if read is None:
+            out["missing"].append(cabin_label(key))
+            continue
+        total = rest + total_of(read)
+        out["totals"].append({
+            "key": key, "label": cabin_label(key, read), "total": total, "read": read,
+            "fits": (total <= budget) if budget > 0 else None,
+            "gap": max(total - budget, 0.0) if budget > 0 else 0.0,
+        })
+    return out
+
+
+def _cabin_total_words(item: Mapping[str, Any], budget: float) -> str:
+    """``£24,164: £12,164 over the £12,000 budget`` or ``£9,164: fits the £12,000 budget``."""
+    if item["fits"] is None:
+        return f"{_gbp(item['total'])}: no budget set, no verdict"
+    if item["fits"]:
+        return f"{_gbp(item['total'])}: fits the {_gbp(budget)} budget"
+    return f"{_gbp(item['total'])}: {_gbp(item['gap'])} over the {_gbp(budget)} budget"
+
+
 def _multi_centre_rows(config: HolidayConfig, *,
                        fares: Optional[Mapping[Any, Any]] = None) -> list[dict[str, Any]]:
     """This season's two-centre itineraries with the runtime verdict on each.
@@ -1809,12 +1875,18 @@ def _multi_centre_rows(config: HolidayConfig, *,
             # reason this section exists. The itinerary is named in the skip log
             # rather than rendered as a dead end.
             continue
+        options = cabin_options(trip, hol.multi_centre_fares_for(trip.id, legs, fares=fares), budget)
         rows.append({
             "trip": trip,
             # The legs are the trip's identity for a fare as well as for the
             # link, so they are kept on the row rather than rebuilt later.
             "legs": legs,
             "read": hol.multi_centre_fare_for(trip.id, legs, fares=fares),
+            # Both products (23 Oct 2026): the Business-long-haul read and the all-Economy read, each when read,
+            # and, where the trip's own price itemises its flights, the trip's total under each.
+            "reads": options["reads"],
+            "cabin_totals": options["totals"],
+            "cabin_missing": options["missing"],
             "outbound": outbound,
             "return": returning,
             "nights": trip.total_nights,
@@ -2324,6 +2396,25 @@ def _freshness_lines(stamps: Optional[Mapping[str, Any]], *, generated_at: Any) 
     return lines
 
 
+def _flights_read_words(row: Mapping[str, Any], *, with_amounts: bool = True) -> str:
+    """``flights not priced`` / ``flights read 20 Oct: Economy £5,134`` / ``flights read 22 Oct: Business £20,240 · Economy £5,134``.
+
+    The date is the newest of the reads; each amount is the whole-party price of that read for these exact dates.
+    """
+    reads = row.get("reads") or {}
+    chosen = [(name, reads.get(key)) for name, key in (("Business", "business"), ("Economy", "economy")) if reads.get(key)]
+    if not chosen:
+        read = row.get("read")
+        chosen = [("Economy" if str((read or {}).get("cabin", "")).upper() in ("", "ECONOMY") else "Business", read)] if read else []
+    if not chosen:
+        return "flights not priced"
+    newest = max((str(r.get("observed_at") or "") for _n, r in chosen))
+    words = f"flights read {_read_day_words(newest)}"
+    if with_amounts:
+        words += ": " + " \u00b7 ".join(f"{name} {_gbp(r.get('total_gbp'))}" for name, r in chosen)
+    return words
+
+
 def _overview_trip_groups(config: HolidayConfig,
                           rows: Sequence[Mapping[str, Any]], *,
                           generated_at: Any) -> list[tuple[str, list[dict[str, str]]]]:
@@ -2336,14 +2427,14 @@ def _overview_trip_groups(config: HolidayConfig,
 
     paired = {ident: others for ident, others in td.counterparts([r["trip"] for r in rows]).items() if others}
 
-    def entry(row: Mapping[str, Any]) -> dict[str, str]:
+    def entry(row: Mapping[str, Any]) -> dict[str, Any]:
         trip = row["trip"]
-        read = row.get("read")
-        flights = (f"flights read {_read_day_words(read.get('observed_at'))}"
-                   if read else "flights not priced")
+        totals = list(row.get("cabin_totals") or ())
+        flights = _flights_read_words(row, with_amounts=not totals)
         pair = ""
         if trip.id in paired:
             pair = " \u00b7 compared with " + ("our build" if trip.kind == "operator" else "an operator package")
+        budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
         return {
             "title": str(trip.title),
             "anchor": f"trip-{trip.id}",
@@ -2351,6 +2442,12 @@ def _overview_trip_groups(config: HolidayConfig,
             "cost": _multi_centre_price_words(row["low"], row["high"]),
             "basis": f"{_multi_centre_kind_label(trip)} \u00b7 {trip.price_label()} \u00b7 {flights}{pair}",
             "fit": _multi_centre_verdict(row).replace("low end ", ""),
+            # Where the trip's own price itemises its flights: its total under each flight read, each with its verdict.
+            "totals": [(f"{'Business' if t['key'] == 'business' else 'Economy'} {_gbp(t['total'])}",
+                        "fits" if t["fits"] else ("no verdict" if t["fits"] is None else f"{_gbp(t['gap'])} over"))
+                       for t in totals],
+            "totals_missing": [("Business" if "Business" in label else "Economy")
+                               for label in (row.get("cabin_missing") or ())] if totals else [],
         }
 
     return [(labels[key], [entry(r) for r in group_rows])
@@ -2394,7 +2491,12 @@ def _overview_html(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
                 f'style="color:{_INK};text-decoration:none;font-size:12px"><b>{_esc(item["title"])}</b></a><br>'
                 f'{_esc(item["nights"])} &middot; {_esc(item["basis"])}</td>'
                 f'<td align="right" valign="top" style="{cell};white-space:nowrap">'
-                f'<b style="color:{_ACCENT};font-size:12px">{_esc(item["cost"])}</b><br>{_esc(item["fit"])}</td></tr>'
+                + (("<br>".join(f'<b style="color:{_ACCENT};font-size:12px">{_esc(name)}</b><br>{_esc(fit)}'
+                                for name, fit in item["totals"])
+                    + "".join(f"<br>{_esc(name)} not read yet" for name in item["totals_missing"]))
+                   if item["totals"] else
+                   f'<b style="color:{_ACCENT};font-size:12px">{_esc(item["cost"])}</b><br>{_esc(item["fit"])}')
+                + "</td></tr>"
             )
     out.append("</table>")
     return "".join(out)
@@ -2406,10 +2508,10 @@ def _overview_lines(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
     for group, entries in _overview_trip_groups(config, rows, generated_at=generated_at):
         lines.append(f"  {group}")
         for item in entries:
-            lines.append(
-                f"    \u00b7 {item['title']} \u00b7 {item['nights']} \u00b7 {item['cost']} \u00b7 "
-                f"{item['basis']} \u00b7 {item['fit']}"
-            )
+            money = (" \u00b7 ".join([f"{name} ({fit})" for name, fit in item["totals"]]
+                                     + [f"{name} not read yet" for name in item["totals_missing"]])
+                     if item["totals"] else f"{item['cost']} \u00b7 {item['fit']}")
+            lines.append(f"    \u00b7 {item['title']} \u00b7 {item['nights']} \u00b7 {item['basis']} \u00b7 {money}")
     lines.append("")
     return lines
 
@@ -2444,6 +2546,15 @@ def _quick_answers(config: HolidayConfig, rows: Sequence[Mapping[str, Any]],
     options: list[dict[str, Any]] = []
     for row in rows:
         trip = row["trip"]
+        totals = list(row.get("cabin_totals") or ())
+        if totals:
+            # The trip's own price itemises its flights: each cabin's total is an option, and the answer says which.
+            for item in totals:
+                options.append({
+                    "anchor": f"trip-{trip.id}", "title": str(trip.title), "amount": float(item["total"]),
+                    "words": f"{_gbp(item['total'])} {item['label']}", "trip": trip,
+                })
+            continue
         options.append({
             "anchor": f"trip-{trip.id}", "title": str(trip.title), "amount": float(row["low"]),
             "words": f"from {_gbp(row['low'])} (low end of its range)", "trip": trip,

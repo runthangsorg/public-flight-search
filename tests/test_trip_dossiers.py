@@ -240,7 +240,11 @@ class EveryDossierHasItsSectionsTests(unittest.TestCase):
             with self.subTest(trip=ident):
                 # A full dossier is the verbose page the owner asked for, in labelled sections; this is the bound
                 # that keeps it from becoming a wall (the whole e-mail is bound by bytes, not by this).
-                self.assertLess(len(visible_text(_slice(self.html, f"trip-{ident}")).split()), 650)
+                # 650 until 23 Oct 2026. A page whose price itemises its flights now carries two totals, the note on what
+                # each product is, and, when both reads have every flight, six flight lines: measured worst case 886
+                # words (AF-10 with both products and per-leg lists), 685 with the Economy-only reads used here. The
+                # structure (short labelled sections) is what keeps it readable; this bound still stops a wall.
+                self.assertLess(len(visible_text(_slice(self.html, f"trip-{ident}")).split()), 950)
 
 
 class NotCollectedIsSaidNotInventedTests(unittest.TestCase):

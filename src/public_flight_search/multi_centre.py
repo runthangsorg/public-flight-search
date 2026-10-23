@@ -176,6 +176,19 @@ class MultiCentreTrip:
         return self.cost_low_gbp <= ceiling
 
 
+def trip_flights_line(trip: MultiCentreTrip) -> Optional[CostLine]:
+    """The line of an itemised price that is the flights, or ``None``.
+
+    Only a self-build whose price is itemised (``cost_lines``, one figure) has one. Its flights can be swapped for a
+    read in another cabin, because the rest of the trip is stated separately; a package's price, or an estimate,
+    bundles its own flights and cannot.
+    """
+    for line in trip.cost_lines:
+        if "flight" in line.label.lower():
+            return line
+    return None
+
+
 def season_for(config: Any) -> str:
     """``summer`` or ``winter`` for this config — the catalogue's own test."""
     from .holidays import is_summer_trip
@@ -601,6 +614,7 @@ __all__ = [
     "counterparts",
     "load_multi_centre",
     "season_for",
+    "trip_flights_line",
     "trip_legs_for_dates",
     "trip_stays_for_dates",
 ]
