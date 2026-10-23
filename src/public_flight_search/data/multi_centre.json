@@ -1,1136 +1,1358 @@
 {
-  "schema": "multi_centre/1",
-  "compiled_on": "2026-10-04",
-  "party": "5 travellers, ONE booking per stop: a 2-bedroom unit, or 2 rooms (2+3 adults)",
-  "read_only_confirmation": "Compiled from public pages and the private evidence file on 2026-10-04. No rate in this file was invented: every cost range is a line-by-line build whose dated lines are named in cost_basis, and the rest are estimates. No budget figure appears here — whether a range fits is decided at render time against the configured budget.",
-  "notes": [
-    "legs are (origin, destination) airport pairs with no dates: the dates are derived at render time from the report's own priceable date pair, so a search link always matches the trip being priced.",
-    "cabin is what the engine prices for these routes (all of them are over eight hours from London, so BUSINESS).",
-    "confidence is 'dated-rate' only where a dated public rate or fare backs the figure, 'estimate' where every line is a build."
-  ],
-  "itineraries": [
+ "schema": "multi_centre/1",
+ "compiled_on": "2026-10-04",
+ "party": "5 travellers, ONE booking per stop: a 2-bedroom unit, or 2 rooms (2+3 adults)",
+ "read_only_confirmation": "Compiled from public pages and the private evidence file on 2026-10-04. No rate in this file was invented: every cost range is a line-by-line build whose dated lines are named in cost_basis, and the rest are estimates. No budget figure appears here — whether a range fits is decided at render time against the configured budget.",
+ "notes": [
+  "legs are (origin, destination) airport pairs with no dates: the dates are derived at render time from the report's own priceable date pair, so a search link always matches the trip being priced.",
+  "cabin is what the engine prices for these routes (all of them are over eight hours from London, so BUSINESS).",
+  "confidence is 'dated-rate' only where a dated public rate or fare backs the figure, 'estimate' where every line is a build."
+ ],
+ "itineraries": [
+  {
+   "id": "MC-01",
+   "title": "Bali 7 nights + Lombok 7 nights",
+   "season": "summer",
+   "stops": [
     {
-      "id": "MC-01",
-      "title": "Bali 7 nights + Lombok 7 nights",
-      "season": "summer",
-      "stops": [
-        {
-          "place": "Bali (south or east coast)",
-          "nights": 7,
-          "airport": "DPS",
-          "hotel": "2-bedroom villa, B&B (no dated Bali rate was readable — pick one on the property's own engine)",
-          "basis": "estimate"
-        },
-        {
-          "place": "Lombok (Senggigi)",
-          "nights": 7,
-          "airport": "LOP",
-          "hotel": "Kalandara Resort Lombok — AKASA 2-bedroom pool villa stated for 5",
-          "basis": "dated rate, Google Hotels, 7 nights from 20 Jul 2027",
-          "lodges": [
-            {
-              "name": "Kalandara Resort Lombok",
-              "nights": 7,
-              "area": "Senggigi, Lombok",
-              "note": "AKASA 2-bedroom pool villa stated for 5",
-              "url": "https://kalandararesortlombok.com/"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "DPS"
-        ],
-        [
-          "DPS",
-          "LOP"
-        ],
-        [
-          "LOP",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "open-jaw: London to Bali, home from Lombok. One internal hop of under an hour, about 11 flights a day (Lion Air, Citilink, Garuda, Batik Air).",
-      "cost_low_gbp": 13032,
-      "cost_high_gbp": 17682,
-      "cost_basis": "built line by line; the only dated line is the Lombok villa (GBP 376 x 7). Flights, the Bali half and transfers are estimates.",
-      "why": "the only pairing where a real 2-bedroom unit for 5 carries a dated price, and Lombok is 50 minutes from Bali so no day is lost",
-      "catch": "the Bali half is entirely an estimate, and the two stops use different food models",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.flightsfrom.com/DPS-LOP",
-        "https://kalandararesortlombok.com/"
-      ]
+     "place": "Bali (south or east coast)",
+     "nights": 7,
+     "airport": "DPS",
+     "hotel": "2-bedroom villa, B&B (no dated Bali rate was readable — pick one on the property's own engine)",
+     "basis": "estimate"
     },
     {
-      "id": "MC-05",
-      "title": "Da Nang 7 nights + Hoi An 6 nights",
-      "season": "summer",
-      "stops": [
-        {
-          "place": "Da Nang (My Khe or Non Nuoc beach)",
-          "nights": 7,
-          "airport": "DAD",
-          "hotel": "a 2-bedroom villa or two connecting rooms for 5 on one booking (no dated rate was readable)",
-          "basis": "estimate"
-        },
-        {
-          "place": "Hoi An (An Bang beach, 15 km from the old town)",
-          "nights": 6,
-          "airport": "DAD",
-          "hotel": "2-bedroom villa for 5, B&B (no dated rate was readable)",
-          "basis": "estimate"
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "DAD"
-        ],
-        [
-          "DAD",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "a single round trip into Da Nang — Da Nang is the airport for BOTH stops, so this is the one pairing here with no internal travel leg at all. Hoi An is 30-45 minutes by road, twice.",
-      "cost_low_gbp": 12500,
-      "cost_high_gbp": 19300,
-      "cost_basis": "ALL estimate, including the flights — this is a shape, not a quote. Do not read it as a price.",
-      "why": "no internal flight and no airport change: the same flights as a single-centre trip",
-      "catch": "nothing in it is sourced, and July is Vietnam's wet season",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://hoiantransportservice.com/danang-airport-transfers/",
-        "https://www.kkday.com/en/blog/61743/asia-vietnam-traveling-from-da-nang-to-hoi-an-vice-versa"
-      ]
-    },
-    {
-      "id": "MC-07",
-      "title": "Tokyo 5 nights + Okinawa 7 nights",
-      "season": "summer",
-      "stops": [
-        {
-          "place": "Tokyo (city)",
-          "nights": 5,
-          "airport": "HND",
-          "hotel": "two rooms or a 5-person suite, B&B (no dated rate was readable)",
-          "basis": "estimate"
-        },
-        {
-          "place": "Okinawa main island, Onna Village",
-          "nights": 7,
-          "airport": "OKA",
-          "hotel": "Halekulani Okinawa — 50 m² rooms with terrace, or one of five villas. A 5-adult single unit is NOT confirmed",
-          "basis": "estimate: an aggregator showed an undated \"$288 nightly\", which is not a rate for these dates",
-          "lodges": [
-            {
-              "name": "Halekulani Okinawa",
-              "nights": 7,
-              "area": "Okinawa",
-              "note": "50 m2 rooms with terrace, or one of five villas; a single unit for 5 adults is not confirmed",
-              "url": "https://www.okinawa.halekulani.com/en/stay/"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "HND"
-        ],
-        [
-          "HND",
-          "OKA"
-        ],
-        [
-          "OKA",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "multi-city: London to Tokyo, then ANA, JAL, Skymark or Solaseed to Naha (2h40, about 17 flights a day), home from Okinawa. No London nonstop to Okinawa exists; the whole journey is about 16h30 door to door.",
-      "cost_low_gbp": 17700,
-      "cost_high_gbp": 26200,
-      "cost_basis": "built line by line and nothing in it is priced — flights and both hotels are estimates.",
-      "why": "the strongest July weather case, and the only pairing with a real internal flight",
-      "catch": "nothing is priced, food for 5 is unbudgeted, and it is 16h30 from home",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.flightconnections.com/flights-from-hnd-to-oka",
-        "https://www.okinawa.halekulani.com/en/stay/"
-      ]
-    },
-    {
-      "id": "MC-11",
-      "title": "Muscat 4 nights + Abu Dhabi or Dubai 4 nights",
-      "season": "winter",
-      "stops": [
-        {
-          "place": "Muscat, Oman (Al Khuwair)",
-          "nights": 4,
-          "airport": "MCT",
-          "hotel": "InterContinental Muscat — two City View Balcony rooms (3+2 adults) in one 2-room search",
-          "basis": "dated rate: GBP 2,120-2,832 for 8 nights B&B",
-          "lodges": [
-            {
-              "name": "InterContinental Muscat",
-              "nights": 4,
-              "board": "bed & breakfast",
-              "area": "Muscat",
-              "note": "two City View Balcony rooms (3+2 adults) in one 2-room search"
-            }
-          ]
-        },
-        {
-          "place": "Abu Dhabi or Dubai",
-          "nights": 4,
-          "airport": "AUH",
-          "hotel": "two rooms or a 5-person suite, B&B (no dated rate was readable)",
-          "basis": "estimate"
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "MCT"
-        ],
-        [
-          "MCT",
-          "AUH"
-        ],
-        [
-          "AUH",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "open-jaw into Muscat, home from Abu Dhabi or Dubai, with a 1h15 hop between them on Etihad or Oman Air (up to four a day).",
-      "cost_low_gbp": 6360,
-      "cost_high_gbp": 9116,
-      "cost_basis": "built line by line; the Muscat line is dated. This is the cheapest pairing in this research by a wide margin, with the most headroom — whether it fits the configured budget is decided at render time.",
-      "why": "the cheapest pairing here by far: two short-hop Gulf cities, warm in December",
-      "catch": "NOT a beach holiday — beach access, not a beach to lie on",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.flightsfrom.com/MCT-AUH",
-        "https://www.etihad.com/en/flights/flights-from-muscat-to-abu-dhabi"
-      ]
-    },
-    {
-      "id": "MC-12",
-      "title": "Zanzibar 5 nights + Muscat 3 nights",
-      "season": "winter",
-      "stops": [
-        {
-          "place": "Zanzibar (Nungwi)",
-          "nights": 5,
-          "airport": "ZNZ",
-          "hotel": "Nungwi Dreams by Mantis — the Presidential Villa is the ONLY unit that sleeps 5 on one booking; there is no 2-bedroom or connecting unit on sale",
-          "basis": "dated rate, Google Hotels, nightly GBP 1,735 including breakfast",
-          "lodges": [
-            {
-              "name": "Nungwi Dreams by Mantis",
-              "nights": 5,
-              "board": "breakfast included",
-              "area": "Nungwi, Zanzibar",
-              "note": "the Presidential Villa is the only unit that sleeps 5 on one booking; no 2-bedroom or connecting unit is on sale",
-              "url": "https://www.mantiscollection.com/hotel/nungwi-dreams-zanzibar/"
-            }
-          ]
-        },
-        {
-          "place": "Muscat, Oman (Al Khuwair)",
-          "nights": 3,
-          "airport": "MCT",
-          "hotel": "InterContinental Muscat — two City View Balcony rooms (3+2 adults), one booking",
-          "basis": "dated rate: GBP 2,120-2,832 for 8 nights B&B",
-          "lodges": [
-            {
-              "name": "InterContinental Muscat",
-              "nights": 3,
-              "board": "bed & breakfast",
-              "area": "Muscat",
-              "note": "two City View Balcony rooms (3+2 adults), one booking"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "ZNZ"
-        ],
-        [
-          "ZNZ",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "open-jaw into Zanzibar and home from Muscat, with Muscat as the routing point rather than a separate ticket. Costed on the dated London-Muscat-Zanzibar routing, which OVER-states an open-jaw.",
-      "cost_low_gbp": 16451,
-      "cost_high_gbp": 17118,
-      "cost_basis": "three dated lines of four: the routing fare for 5, the villa (GBP 1,735 x 5) and the Muscat rooms.",
-      "why": "the only December option with a real beach, and 3 of its 4 lines are dated",
-      "catch": "the villa books a year ahead, and Nungwi rates 4.4",
-      "confidence": "dated-rate",
-      "source_urls": [
-        "https://www.mantiscollection.com/hotel/nungwi-dreams-zanzibar/",
-        "https://www.ihg.com/intercontinental/hotels/gb/en/find-hotels/select-roomrate"
-      ]
-    },
-    {
-      "id": "AF-01",
-      "region": "africa",
-      "kind": "operator",
-      "season": "summer",
-      "title": "Tanzania safari 4 nights + Zanzibar 5 nights (Kuoni)",
-      "operator_ref": "Kuoni 'Tanzania Safari & Zanzibar Beach', 9 nights, flights included",
-      "stops": [
-        {
-          "place": "Arusha + Tarangire safari",
-          "nights": 4,
-          "airport": "JRO",
-          "hotel": "Mount Meru Hotel (1 night), Kirurumu Tarangire Lodge (3 nights, full board, drives and park fees in)",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Mount Meru Hotel",
-              "nights": 1,
-              "area": "Arusha"
-            },
-            {
-              "name": "Kirurumu Tarangire Lodge",
-              "nights": 3,
-              "board": "full board, drives and park fees in",
-              "area": "Tarangire"
-            }
-          ]
-        },
-        {
-          "place": "Zanzibar (Bwejuu/Paje coast)",
-          "nights": 5,
-          "airport": "ZNZ",
-          "hotel": "Breezes Beach Club & Spa, half board",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Breezes Beach Club & Spa",
-              "nights": 5,
-              "board": "half board",
-              "area": "Bwejuu, Zanzibar"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "JRO"
-        ],
-        [
-          "JRO",
-          "ZNZ"
-        ],
-        [
-          "ZNZ",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "British Airways from Gatwick via Kilimanjaro to Zanzibar on the operator's June 2027 departures; safari by private 4x4.",
-      "cost_low_gbp": 21385,
-      "cost_high_gbp": 25235,
-      "cost_basis": "Kuoni's own season table: GBP 4,277 per person for 15-30 Jun, GBP 5,047 for 1 Jul-31 Aug, two sharing, flights included, x5. A fifth adult needs a room supplement the page does not price.",
-      "why": "dated to our departures and names every lodge; Tarangire suits families",
-      "catch": "only 3 safari nights; a fifth adult needs a room supplement the page does not price",
-      "confidence": "dated-rate",
-      "source_urls": [
-        "https://www.kuoni.co.uk/destinations/africa/tanzania/tarangire/tours/tanzania-safari-and-zanzibar-beach/"
-      ]
-    },
-    {
-      "id": "AF-02",
-      "region": "africa",
-      "kind": "operator",
-      "season": "summer",
-      "title": "Serengeti fly-in safari 4 nights + Zanzibar 6 nights (TourCompass)",
-      "operator_ref": "TourCompass fly-in Serengeti and Zanzibar, 13 days with flights",
-      "stops": [
-        {
-          "place": "Arusha + central Serengeti",
-          "nights": 4,
-          "airport": "JRO",
-          "hotel": "Rivertrees Country Inn (1 night), Serengeti Safari Lodge, 4 star (3 nights, full board, park fees and small-aircraft transfers in)",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Rivertrees Country Inn",
-              "nights": 1,
-              "area": "Arusha"
-            },
-            {
-              "name": "Serengeti Safari Lodge",
-              "nights": 3,
-              "board": "full board, park fees and small-aircraft transfers in",
-              "area": "Serengeti",
-              "note": "4 star"
-            }
-          ]
-        },
-        {
-          "place": "Zanzibar (Kiwengwa)",
-          "nights": 6,
-          "airport": "ZNZ",
-          "hotel": "Ocean Paradise Resort, 4 star, half board",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Ocean Paradise Resort",
-              "nights": 6,
-              "board": "half board",
-              "area": "Kiwengwa, Zanzibar",
-              "note": "4 star"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "JRO"
-        ],
-        [
-          "JRO",
-          "ZNZ"
-        ],
-        [
-          "ZNZ",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Flights included; fly-in Serengeti by light aircraft, Zanzibar by air.",
-      "cost_low_gbp": 20395,
-      "cost_high_gbp": 20395,
-      "cost_basis": "the operator's 'from' price GBP 4,079 per person including flights, two sharing, x5. Its calendar spans Dec 2026 to 2028 (cheapest seen in spring 2028, dearest GBP 6,469 in Dec 2026), so July 2027 is not shown on the page we found.",
-      "why": "a real Serengeti fly-in, then a 4-star beach",
-      "catch": "'from' is the cheapest date on a calendar running into 2028, so July costs more; no Ngorongoro Crater",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.tourcompass.com/tanzania/tours/luxurious-fly-in-safari-in-tanzania.htm"
-      ]
-    },
-    {
-      "id": "AF-03",
-      "region": "africa",
-      "kind": "operator",
-      "season": "summer",
-      "title": "Masai Mara 2 nights + Kenya parks + Zanzibar 4 nights (TourCompass)",
-      "operator_ref": "TourCompass Masai Mara, Naivasha, Amboseli and Zanzibar, 13 days with flights",
-      "stops": [
-        {
-          "place": "Nairobi, Masai Mara, Naivasha, Amboseli",
-          "nights": 6,
-          "airport": "NBO",
-          "hotel": "Argyle Grand Hotel Nairobi, Enkorok Mara Camp (full board, park fees in); Naivasha and Amboseli lodges not itemised",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Argyle Grand Hotel Nairobi",
-              "area": "Nairobi"
-            },
-            {
-              "name": "Enkorok Mara Camp",
-              "board": "full board, park fees in",
-              "area": "Masai Mara",
-              "note": "Naivasha and Amboseli lodges are not itemised by the operator"
-            }
-          ]
-        },
-        {
-          "place": "Zanzibar",
-          "nights": 4,
-          "airport": "ZNZ",
-          "hotel": "Ocean Paradise Resort, 4 star, half board",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Ocean Paradise Resort",
-              "nights": 4,
-              "board": "half board",
-              "area": "Kiwengwa, Zanzibar",
-              "note": "4 star"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "NBO"
-        ],
-        [
-          "NBO",
-          "ZNZ"
-        ],
-        [
-          "ZNZ",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Flights included; the Kenya parks are by road in a 4x4.",
-      "cost_low_gbp": 17645,
-      "cost_high_gbp": 17645,
-      "cost_basis": "the operator's 'from' price GBP 3,529 per person including flights, two sharing, x5; the departure calendar months were unreadable, so July dates may cost more.",
-      "why": "the Mara in July is the Great Migration; the cheapest Kenya shape with flights we found",
-      "catch": "the beach is Zanzibar, not Diani; only 2 Mara nights; July costs more than 'from'",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.tourcompass.com/kenya/tours/safari-in-masai-mara-lake-naivasha-and-amboseli-with-beach-holiday-in-zanzibar.htm"
-      ]
-    },
-    {
-      "id": "AF-04",
-      "region": "africa",
-      "kind": "operator",
-      "season": "summer",
-      "title": "Kruger 4 nights + Cape Town 4 nights + Mauritius 5 nights (TourCompass)",
-      "operator_ref": "TourCompass Kruger, Cape Town and Mauritius, 16 days with flights",
-      "stops": [
-        {
-          "place": "Kruger (Nkambeni private concession)",
-          "nights": 4,
-          "airport": "JNB",
-          "hotel": "Nkambeni Safari Tented Camp, half board, one full-day drive and park fees in",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Nkambeni Safari Tented Camp",
-              "nights": 4,
-              "board": "half board, one full-day drive and park fees in",
-              "area": "Kruger"
-            }
-          ]
-        },
-        {
-          "place": "Cape Town (Sea Point)",
-          "nights": 4,
-          "airport": "CPT",
-          "hotel": "Premier Hotel Cape Manor, breakfast",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Premier Hotel Cape Manor",
-              "nights": 4,
-              "board": "breakfast",
-              "area": "Cape Town"
-            }
-          ]
-        },
-        {
-          "place": "Mauritius (Tamarin Bay)",
-          "nights": 5,
-          "airport": "MRU",
-          "hotel": "Veranda Tamarin, half board",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Veranda Tamarin",
-              "nights": 5,
-              "board": "half board",
-              "area": "Tamarin, Mauritius"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "JNB"
-        ],
-        [
-          "JNB",
-          "CPT"
-        ],
-        [
-          "CPT",
-          "MRU"
-        ],
-        [
-          "MRU",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "All international and domestic flights included (Johannesburg, Nelspruit, Cape Town, Mauritius).",
-      "cost_low_gbp": 19945,
-      "cost_high_gbp": 19945,
-      "cost_basis": "the operator's 'from' price GBP 3,989 per person including all flights, two sharing, x5; its calendar runs to GBP 5,729 but the month labels were unreadable, so July 2027 is not known.",
-      "why": "South Africa's three classic stops in one booking",
-      "catch": "'from' is the cheapest date; Cape Town is wet and Mauritius cool in July; one game drive included",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.tourcompass.com/south-africa/tours/kruger-safari-cape-town-beach-holiday-in-mauritius.htm"
-      ]
-    },
-    {
-      "id": "AF-05",
-      "region": "africa",
-      "kind": "operator",
-      "season": "summer",
-      "title": "Greater Kruger 3 nights + Mauritius 6 nights (Rainbow Tours)",
-      "operator_ref": "Rainbow Tours 'South Africa Safari & Mauritius Classic', 10 nights with flights",
-      "stops": [
-        {
-          "place": "Greater Kruger (Timbavati) + Johannesburg night",
-          "nights": 4,
-          "airport": "JNB",
-          "hotel": "Garonga Safari Camp (3 nights, all meals and drives), Peermont D'Oreale Grande Hotel (1 night, breakfast)",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Garonga Safari Camp",
-              "nights": 3,
-              "board": "all meals and drives",
-              "area": "Timbavati"
-            },
-            {
-              "name": "Peermont D'Oreale Grande Hotel",
-              "nights": 1,
-              "board": "breakfast",
-              "area": "Johannesburg"
-            }
-          ]
-        },
-        {
-          "place": "Mauritius (Grand Baie)",
-          "nights": 6,
-          "airport": "MRU",
-          "hotel": "Hotel 20 Degres Sud, breakfast and dinner",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Hotel 20 Degres Sud",
-              "nights": 6,
-              "board": "breakfast and dinner",
-              "area": "Grand Baie, Mauritius"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "JNB"
-        ],
-        [
-          "JNB",
-          "MRU"
-        ],
-        [
-          "MRU",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Return flights from the UK plus Johannesburg-Hoedspruit and Johannesburg-Mauritius included.",
-      "cost_low_gbp": 28325,
-      "cost_high_gbp": 28475,
-      "cost_basis": "Rainbow's 2027 table: GBP 5,665 per person for 1 Jul-30 Sep 2027 and GBP 5,695 for 1 Apr-30 Jun 2027, two sharing, flights included, x5.",
-      "why": "a dated 2027 price for a named Greater Kruger camp plus a Mauritius beach",
-      "catch": "Garonga is a couples' camp, so five adults need extra rooms; Mauritius is cool in July",
-      "confidence": "dated-rate",
-      "source_urls": [
-        "https://www.rainbowtours.co.uk/tours/africa/south-africa-safari-mauritius-classic"
-      ]
-    },
-    {
-      "id": "AF-06",
-      "region": "africa",
-      "kind": "operator",
-      "season": "summer",
-      "title": "Zanzibar 8 nights + Nyerere safari 2 nights (TourCompass)",
-      "operator_ref": "TourCompass Zanzibar and Nyerere safari, 13 days with flights",
-      "stops": [
-        {
-          "place": "Zanzibar (Marumbi, east coast), first stay",
-          "nights": 3,
-          "airport": "ZNZ",
-          "hotel": "Paradise Beach Resort, Marumbi, all inclusive",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Paradise Beach Resort",
-              "nights": 3,
-              "board": "all inclusive",
-              "area": "Marumbi, Zanzibar"
-            }
-          ]
-        },
-        {
-          "place": "Nyerere National Park (formerly Selous), via Dar es Salaam",
-          "nights": 2,
-          "airport": "DAR",
-          "hotel": "Africa Safari Camp, Nyerere, full board",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Africa Safari Camp",
-              "nights": 2,
-              "board": "full board",
-              "area": "Nyerere"
-            }
-          ]
-        },
-        {
-          "place": "Zanzibar (Marumbi, east coast), after the safari",
-          "nights": 5,
-          "airport": "ZNZ",
-          "hotel": "Paradise Beach Resort, Marumbi, all inclusive",
-          "basis": "operator guide price",
-          "lodges": [
-            {
-              "name": "Paradise Beach Resort",
-              "nights": 5,
-              "board": "all inclusive",
-              "area": "Marumbi, Zanzibar"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "ZNZ"
-        ],
-        [
-          "ZNZ",
-          "DAR"
-        ],
-        [
-          "DAR",
-          "ZNZ"
-        ],
-        [
-          "ZNZ",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Flights included; Zanzibar to the Nyerere airstrip and back by light aircraft.",
-      "cost_low_gbp": 14695,
-      "cost_high_gbp": 14695,
-      "cost_basis": "the operator's 'from' price GBP 2,939 per person including flights, two sharing, x5; a single-room supplement from GBP 299 per person applies to the fifth adult, and July dates may cost more.",
-      "why": "the cheapest safari-and-beach shape with flights we found",
-      "catch": "only 2 safari nights, in a basic camp; the east-coast beach has big tides",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.tourcompass.com/tanzania/tours/beach-holiday-in-zanzibar-and-safari-in-nyerere-national-park.htm"
-      ]
-    },
-    {
-      "id": "AF-07",
-      "region": "africa",
-      "kind": "operator",
-      "season": "summer",
-      "title": "Kruger + Cape Town + Winelands, 12 nights (TourCompass)",
-      "operator_ref": "TourCompass Kruger, Cape Town and Winelands, 13 days with flights (headline price only)",
-      "stops": [
-        {
-          "place": "Kruger area",
-          "nights": 4,
-          "airport": "JNB",
-          "hotel": "base camp not named: the tour page itself was not read",
-          "basis": "operator headline price"
-        },
-        {
-          "place": "Cape Town + Winelands",
-          "nights": 8,
-          "airport": "CPT",
-          "hotel": "not named: the tour page itself was not read",
-          "basis": "operator headline price"
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "JNB"
-        ],
-        [
-          "JNB",
-          "CPT"
-        ],
-        [
-          "CPT",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Flights included.",
-      "cost_low_gbp": 16245,
-      "cost_high_gbp": 16245,
-      "cost_basis": "the operator's 'from' price GBP 3,249 per person including flights (tours index headline), two sharing, x5; dates and room supplement unknown.",
-      "why": "South Africa's cheapest flight-inclusive shape we found",
-      "catch": "index headline only, so lodges and board are unconfirmed; Cape Town is wet and cool in July",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.tourcompass.com/south-africa/tours.htm"
-      ]
-    },
-    {
-      "id": "AF-08",
-      "region": "africa",
-      "kind": "self-build",
-      "season": "summer",
-      "title": "Self-build: Ngorongoro Crater Camp 2 nights + Zanzibar 12 nights",
-      "operator_ref": "Our build of the Kuoni and TourCompass safari-plus-Zanzibar shape, from rate cards",
-      "stops": [
-        {
-          "place": "Ngorongoro Conservation Area",
-          "nights": 2,
-          "airport": "JRO",
-          "hotel": "Ngorongoro Crater Camp, all meals, drinks and activities",
-          "basis": "USD 1,050 per person sharing per night from 1 Jun 2027 (rate card), 2 nights x5 = GBP 7,886",
-          "lodges": [
-            {
-              "name": "Ngorongoro Crater Camp",
-              "nights": 2,
-              "board": "all meals, drinks and activities",
-              "area": "Ngorongoro",
-              "url": "https://www.safari.co.za/Tanzania_Safari_Lodges-travel/pricing_ngorongoro-crater-camp.html"
-            }
-          ]
-        },
-        {
-          "place": "Zanzibar (Kiwengwa)",
-          "nights": 12,
-          "airport": "ZNZ",
-          "hotel": "Bluebay Beach Resort & Spa, all inclusive",
-          "basis": "USD 229 per person sharing per night in June, USD 265 in July (rate card), 2 + 10 nights x5 = GBP 11,672",
-          "lodges": [
-            {
-              "name": "Bluebay Beach Resort & Spa",
-              "nights": 12,
-              "board": "all inclusive",
-              "area": "Kiwengwa, Zanzibar",
-              "url": "https://www.siyabona.com/pricing_blue-bay-beach-resort.html"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "JRO"
-        ],
-        [
-          "JRO",
-          "ZNZ"
-        ],
-        [
-          "ZNZ",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Economy multi-city London-Kilimanjaro, Kilimanjaro-Zanzibar, Zanzibar-London.",
-      "cost_low_gbp": 24692,
-      "cost_high_gbp": 24692,
-      "cost_basis": "lodge GBP 7,886 + resort GBP 11,672 from rate cards at USD 1 = GBP 0.7511, plus Economy flights GBP 5,134 read on Google Flights 20 Oct for the nearest dates; transfers and the single supplement for a fifth adult are not in it.",
-      "why": "the 'top lodge, then beach' shape asked for, priced line by line",
-      "catch": "'from' rate cards, not quotes; the crater-rim camp is the dear part",
-      "confidence": "dated-rate",
-      "source_urls": [
-        "https://www.safari.co.za/Tanzania_Safari_Lodges-travel/pricing_ngorongoro-crater-camp.html",
-        "https://www.siyabona.com/pricing_blue-bay-beach-resort.html"
-      ],
-      "cost_lines": [
-        {
-          "label": "Ngorongoro Crater Camp, 2 nights",
-          "gbp": 7886,
-          "basis": "USD 1,050 per person sharing per night from 1 Jun 2027 (rate card), x5"
-        },
-        {
-          "label": "Bluebay Beach Resort & Spa, 12 nights",
-          "gbp": 11672,
-          "basis": "USD 229 per person sharing per night in June, USD 265 in July (rate card), x5"
-        },
-        {
-          "label": "Economy flights, London-Kilimanjaro-Zanzibar-London",
-          "gbp": 5134,
-          "basis": "read on Google Flights 20 Oct for the nearest dates"
-        }
-      ],
-      "compare_with": "AF-01"
-    },
-    {
-      "id": "AF-09",
-      "region": "africa",
-      "kind": "self-build",
-      "season": "summer",
-      "title": "Self-build: Sayari Camp Serengeti 3 nights + Zanzibar 11 nights",
-      "operator_ref": "Our top-lodge version of the same shape, from rate cards",
-      "stops": [
-        {
-          "place": "Northern Serengeti",
-          "nights": 3,
-          "airport": "JRO",
-          "hotel": "Sayari Camp (Asilia), full board and activities",
-          "basis": "USD 3,605 per adult sharing for 2 nights + USD 1,275 for the extra night, June 2027 (rate card); four sharing and one single room (USD 4,615 + USD 1,780) = GBP 19,464; July is USD 6,000 per adult for 2 nights",
-          "lodges": [
-            {
-              "name": "Sayari Camp",
-              "nights": 3,
-              "board": "full board and activities",
-              "area": "Serengeti",
-              "note": "Asilia camp",
-              "url": "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/northern/sayari-camp/room-rates"
-            }
-          ]
-        },
-        {
-          "place": "Zanzibar (Kiwengwa)",
-          "nights": 11,
-          "airport": "ZNZ",
-          "hotel": "Bluebay Beach Resort & Spa, all inclusive",
-          "basis": "USD 229 per person sharing per night in June, USD 265 in July, 1 + 10 nights x5 = GBP 10,812",
-          "lodges": [
-            {
-              "name": "Bluebay Beach Resort & Spa",
-              "nights": 11,
-              "board": "all inclusive",
-              "area": "Kiwengwa, Zanzibar",
-              "url": "https://www.siyabona.com/pricing_blue-bay-beach-resort.html"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "JRO"
-        ],
-        [
-          "JRO",
-          "ZNZ"
-        ],
-        [
-          "ZNZ",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Economy multi-city London-Kilimanjaro, Kilimanjaro-Zanzibar, Zanzibar-London.",
-      "cost_low_gbp": 35410,
-      "cost_high_gbp": 35410,
-      "cost_basis": "lodge GBP 19,464 + resort GBP 10,812 from rate cards at USD 1 = GBP 0.7511, plus Economy flights GBP 5,134 read on Google Flights 20 Oct for the nearest dates; four adults share and one takes a single room; the bush flight to the camp is not included.",
-      "why": "what a genuinely top Serengeti camp costs for five",
-      "catch": "June rate for the camp; from 1 July it is far dearer",
-      "confidence": "dated-rate",
-      "source_urls": [
-        "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/northern/sayari-camp/room-rates",
-        "https://www.siyabona.com/pricing_blue-bay-beach-resort.html"
-      ],
-      "cost_lines": [
-        {
-          "label": "Sayari Camp, 3 nights",
-          "gbp": 19464,
-          "basis": "June 2027 rate card: four sharing and one single room"
-        },
-        {
-          "label": "Bluebay Beach Resort & Spa, 11 nights",
-          "gbp": 10812,
-          "basis": "USD 229 per person sharing per night in June, USD 265 in July (rate card), x5"
-        },
-        {
-          "label": "Economy flights, London-Kilimanjaro-Zanzibar-London",
-          "gbp": 5134,
-          "basis": "read on Google Flights 20 Oct for the nearest dates"
-        }
-      ],
-      "compare_with": "AF-02"
-    },
-    {
-      "id": "AF-10",
-      "region": "africa",
-      "kind": "self-build",
-      "season": "summer",
-      "title": "Self-build: Kruger self-drive 4 nights + Cape Town 8 nights",
-      "operator_ref": "Our build of the Kruger and Cape Town shape, from rate cards",
-      "stops": [
-        {
-          "place": "Kruger National Park (Satara, self-drive)",
-          "nights": 4,
-          "airport": "JNB",
-          "hotel": "Satara Rest Camp guest cottage, self-catering",
-          "basis": "ZAR 3,980 per unit per night (rate card, to 31 Oct 2027), 4 nights = GBP 724; conservation fee GBP 548 at the 2025-26 tariff",
-          "lodges": [
-            {
-              "name": "Satara Rest Camp",
-              "nights": 4,
-              "board": "self-catering",
-              "area": "Kruger",
-              "note": "guest cottage",
-              "url": "https://www.krugerpark.co.za/Kruger_National_Park_Lodging_&_Camping_Guide-travel/pricing_satara-camp.html"
-            }
-          ]
-        },
-        {
-          "place": "Cape Town (V&A Waterfront)",
-          "nights": 8,
-          "airport": "CPT",
-          "hotel": "Commodore Hotel, 2 rooms, bed & breakfast",
-          "basis": "ZAR 3,975 per room per night, 1 Jun-31 Aug 2027 (rate card), 2 rooms x 8 nights = GBP 2,892",
-          "lodges": [
-            {
-              "name": "Commodore Hotel",
-              "nights": 8,
-              "board": "bed & breakfast",
-              "area": "Cape Town",
-              "note": "2 rooms",
-              "url": "https://capetown.hotelguide.co.za/Cape_Town_Waterfront-travel/pricing_cape-town-hotel-commodore.html"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "JNB"
-        ],
-        [
-          "JNB",
-          "CPT"
-        ],
-        [
-          "CPT",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Economy multi-city London-Johannesburg, Johannesburg-Cape Town, Cape Town-London; Kruger by self-drive from Johannesburg.",
-      "cost_low_gbp": 9287,
-      "cost_high_gbp": 9287,
-      "cost_basis": "cottage GBP 724 + park fee GBP 548 + hotel GBP 2,892 (rand at GBP 1 = ZAR 21.989) plus Economy flights GBP 5,123 read on Google Flights 20 Oct; it leaves out car hire for five (no rate could be read) and meals.",
-      "why": "the cheap way to see South Africa: rand rates beat the packages",
-      "catch": "a floor: no car hire, meals or transfers; unit sizes for five unconfirmed; Cape Town is wet and cool",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.krugerpark.co.za/Kruger_National_Park_Lodging_&_Camping_Guide-travel/pricing_satara-camp.html",
-        "https://capetown.hotelguide.co.za/Cape_Town_Waterfront-travel/pricing_cape-town-hotel-commodore.html",
-        "https://www.sanparks.org/parks/kruger/rates-entry-fees"
-      ],
-      "cost_lines": [
-        {
-          "label": "Satara Rest Camp cottage, 4 nights",
-          "gbp": 724,
-          "basis": "ZAR 3,980 per unit per night (rate card, to 31 Oct 2027)"
-        },
-        {
-          "label": "Kruger conservation fee",
-          "gbp": 548,
-          "basis": "2025-26 tariff"
-        },
-        {
-          "label": "Commodore Hotel, 2 rooms x 8 nights, bed & breakfast",
-          "gbp": 2892,
-          "basis": "ZAR 3,975 per room per night, 1 Jun-31 Aug 2027 (rate card)"
-        },
-        {
-          "label": "Economy flights, London-Johannesburg-Cape Town-London",
-          "gbp": 5123,
-          "basis": "read on Google Flights 20 Oct"
-        }
-      ],
-      "compare_with": "AF-07"
-    },
-    {
-      "id": "AF-11",
-      "region": "africa",
-      "kind": "self-build",
-      "season": "summer",
-      "title": "Owner's shape: Giraffe Manor 2 nights + Melia Serengeti 4 nights + Zanzibar beach 7 nights",
-      "operator_ref": "The owner's pick: Giraffe Manor, Melia Serengeti, then a better Zanzibar beach",
-      "stops": [
-        {
-          "place": "Nairobi (Giraffe Manor, 2 nights) then Serengeti (Melia Serengeti Lodge, 4 nights)",
-          "nights": 6,
-          "airport": "NBO",
-          "hotel": "Giraffe Manor, full board and drives; Melia Serengeti Lodge, full board and shared game drives",
-          "basis": "Giraffe Manor USD 1,554 per person sharing (rate card, 2027; read as per night) x5 x2 = GBP 11,672; Melia: USD 3,685 for 2 nights + USD 1,310 per extra day per adult, four sharing and one single room (USD 5,210 + 2 x 2,075) = GBP 25,973",
-          "lodges": [
-            {
-              "name": "Giraffe Manor",
-              "nights": 2,
-              "board": "full board and drives",
-              "area": "Nairobi",
-              "url": "https://www.kenyasafari.com/pricing_giraffe-manor-nairobi.html"
-            },
-            {
-              "name": "Melia Serengeti Lodge",
-              "nights": 4,
-              "board": "full board and shared game drives",
-              "area": "Serengeti",
-              "url": "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/central/melia-serengeti-lodge/room-rates"
-            }
-          ]
-        },
-        {
-          "place": "Zanzibar (Nungwi): The Z Hotel",
-          "nights": 7,
-          "airport": "ZNZ",
-          "hotel": "The Z Hotel, 4-star boutique, bed & breakfast, a triple and a double on one booking",
-          "basis": "USD 340 + USD 300 per night in July (rate card) + USD 5 per person per night tax, x7 = GBP 3,496",
-          "lodges": [
-            {
-              "name": "The Z Hotel",
-              "nights": 7,
-              "board": "bed & breakfast",
-              "area": "Nungwi, Zanzibar",
-              "note": "4-star boutique; a triple and a double on one booking",
-              "url": "https://www.thezhotel.com/rates"
-            }
-          ]
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "NBO"
-        ],
-        [
-          "NBO",
-          "ZNZ"
-        ],
-        [
-          "ZNZ",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Economy London-Nairobi out, Zanzibar-London back; Nairobi-Serengeti and Serengeti-Zanzibar by light aircraft are not in the figure.",
-      "cost_low_gbp": 45885,
-      "cost_high_gbp": 45885,
-      "cost_basis": "Giraffe Manor GBP 11,672 + Melia GBP 25,973 + The Z Hotel GBP 3,496 (USD 1 = GBP 0.7511) plus Economy flights GBP 4,744 read on Google Flights 20 Oct for London-Nairobi-Zanzibar-London; it leaves out the two light-aircraft sectors, visas and transfers, so it is a floor.",
-      "why": "the shape he liked, with a swimmable north-coast Zanzibar beach",
-      "catch": "the two safari stays dwarf everything else; Giraffe Manor's room for five is unconfirmed; Zuri Zanzibar, the better beach, has no readable 2027 rate",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.kenyasafari.com/pricing_giraffe-manor-nairobi.html",
-        "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/central/melia-serengeti-lodge/room-rates",
-        "https://www.thezhotel.com/rates"
-      ],
-      "cost_lines": [
-        {
-          "label": "Giraffe Manor, 2 nights",
-          "gbp": 11672,
-          "basis": "USD 1,554 per person sharing (rate card, 2027; read as per night) x5 x2"
-        },
-        {
-          "label": "Melia Serengeti Lodge, 4 nights",
-          "gbp": 25973,
-          "basis": "rate card, USD 1 = GBP 0.7511"
-        },
-        {
-          "label": "The Z Hotel, 7 nights, bed & breakfast",
-          "gbp": 3496,
-          "basis": "USD 340 + USD 300 per night in July (rate card) + USD 5 per person per night tax"
-        },
-        {
-          "label": "Economy flights, London-Nairobi-Zanzibar-London",
-          "gbp": 4744,
-          "basis": "read on Google Flights 20 Oct"
-        }
-      ]
+     "place": "Lombok (Senggigi)",
+     "nights": 7,
+     "airport": "LOP",
+     "hotel": "Kalandara Resort Lombok — AKASA 2-bedroom pool villa stated for 5",
+     "basis": "dated rate, Google Hotels, 7 nights from 20 Jul 2027",
+     "lodges": [
+      {
+       "name": "Kalandara Resort Lombok",
+       "nights": 7,
+       "area": "Senggigi, Lombok",
+       "note": "AKASA 2-bedroom pool villa stated for 5",
+       "url": "https://kalandararesortlombok.com/"
+      }
+     ]
     }
-  ]
+   ],
+   "legs": [
+    [
+     "LHR",
+     "DPS"
+    ],
+    [
+     "DPS",
+     "LOP"
+    ],
+    [
+     "LOP",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "open-jaw: London to Bali, home from Lombok. One internal hop of under an hour, about 11 flights a day (Lion Air, Citilink, Garuda, Batik Air).",
+   "cost_low_gbp": 13032,
+   "cost_high_gbp": 17682,
+   "cost_basis": "built line by line; the only dated line is the Lombok villa (GBP 376 x 7). Flights, the Bali half and transfers are estimates.",
+   "why": "the only pairing where a real 2-bedroom unit for 5 carries a dated price, and Lombok is 50 minutes from Bali so no day is lost",
+   "catch": "the Bali half is entirely an estimate, and the two stops use different food models",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.flightsfrom.com/DPS-LOP",
+    "https://kalandararesortlombok.com/"
+   ]
+  },
+  {
+   "id": "MC-05",
+   "title": "Da Nang 7 nights + Hoi An 6 nights",
+   "season": "summer",
+   "stops": [
+    {
+     "place": "Da Nang (My Khe or Non Nuoc beach)",
+     "nights": 7,
+     "airport": "DAD",
+     "hotel": "a 2-bedroom villa or two connecting rooms for 5 on one booking (no dated rate was readable)",
+     "basis": "estimate"
+    },
+    {
+     "place": "Hoi An (An Bang beach, 15 km from the old town)",
+     "nights": 6,
+     "airport": "DAD",
+     "hotel": "2-bedroom villa for 5, B&B (no dated rate was readable)",
+     "basis": "estimate"
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "DAD"
+    ],
+    [
+     "DAD",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "a single round trip into Da Nang — Da Nang is the airport for BOTH stops, so this is the one pairing here with no internal travel leg at all. Hoi An is 30-45 minutes by road, twice.",
+   "cost_low_gbp": 12500,
+   "cost_high_gbp": 19300,
+   "cost_basis": "ALL estimate, including the flights — this is a shape, not a quote. Do not read it as a price.",
+   "why": "no internal flight and no airport change: the same flights as a single-centre trip",
+   "catch": "nothing in it is sourced, and July is Vietnam's wet season",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://hoiantransportservice.com/danang-airport-transfers/",
+    "https://www.kkday.com/en/blog/61743/asia-vietnam-traveling-from-da-nang-to-hoi-an-vice-versa"
+   ]
+  },
+  {
+   "id": "MC-07",
+   "title": "Tokyo 5 nights + Okinawa 7 nights",
+   "season": "summer",
+   "stops": [
+    {
+     "place": "Tokyo (city)",
+     "nights": 5,
+     "airport": "HND",
+     "hotel": "two rooms or a 5-person suite, B&B (no dated rate was readable)",
+     "basis": "estimate"
+    },
+    {
+     "place": "Okinawa main island, Onna Village",
+     "nights": 7,
+     "airport": "OKA",
+     "hotel": "Halekulani Okinawa — 50 m² rooms with terrace, or one of five villas. A 5-adult single unit is NOT confirmed",
+     "basis": "estimate: an aggregator showed an undated \"$288 nightly\", which is not a rate for these dates",
+     "lodges": [
+      {
+       "name": "Halekulani Okinawa",
+       "nights": 7,
+       "area": "Okinawa",
+       "note": "50 m2 rooms with terrace, or one of five villas; a single unit for 5 adults is not confirmed",
+       "url": "https://www.okinawa.halekulani.com/en/stay/"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "HND"
+    ],
+    [
+     "HND",
+     "OKA"
+    ],
+    [
+     "OKA",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "multi-city: London to Tokyo, then ANA, JAL, Skymark or Solaseed to Naha (2h40, about 17 flights a day), home from Okinawa. No London nonstop to Okinawa exists; the whole journey is about 16h30 door to door.",
+   "cost_low_gbp": 17700,
+   "cost_high_gbp": 26200,
+   "cost_basis": "built line by line and nothing in it is priced — flights and both hotels are estimates.",
+   "why": "the strongest July weather case, and the only pairing with a real internal flight",
+   "catch": "nothing is priced, food for 5 is unbudgeted, and it is 16h30 from home",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.flightconnections.com/flights-from-hnd-to-oka",
+    "https://www.okinawa.halekulani.com/en/stay/"
+   ]
+  },
+  {
+   "id": "MC-11",
+   "title": "Muscat 4 nights + Abu Dhabi or Dubai 4 nights",
+   "season": "winter",
+   "stops": [
+    {
+     "place": "Muscat, Oman (Al Khuwair)",
+     "nights": 4,
+     "airport": "MCT",
+     "hotel": "InterContinental Muscat — two City View Balcony rooms (3+2 adults) in one 2-room search",
+     "basis": "dated rate: GBP 2,120-2,832 for 8 nights B&B",
+     "lodges": [
+      {
+       "name": "InterContinental Muscat",
+       "nights": 4,
+       "board": "bed & breakfast",
+       "area": "Muscat",
+       "note": "two City View Balcony rooms (3+2 adults) in one 2-room search"
+      }
+     ]
+    },
+    {
+     "place": "Abu Dhabi or Dubai",
+     "nights": 4,
+     "airport": "AUH",
+     "hotel": "two rooms or a 5-person suite, B&B (no dated rate was readable)",
+     "basis": "estimate"
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "MCT"
+    ],
+    [
+     "MCT",
+     "AUH"
+    ],
+    [
+     "AUH",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "open-jaw into Muscat, home from Abu Dhabi or Dubai, with a 1h15 hop between them on Etihad or Oman Air (up to four a day).",
+   "cost_low_gbp": 6360,
+   "cost_high_gbp": 9116,
+   "cost_basis": "built line by line; the Muscat line is dated. This is the cheapest pairing in this research by a wide margin, with the most headroom — whether it fits the configured budget is decided at render time.",
+   "why": "the cheapest pairing here by far: two short-hop Gulf cities, warm in December",
+   "catch": "NOT a beach holiday — beach access, not a beach to lie on",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.flightsfrom.com/MCT-AUH",
+    "https://www.etihad.com/en/flights/flights-from-muscat-to-abu-dhabi"
+   ]
+  },
+  {
+   "id": "MC-12",
+   "title": "Zanzibar 5 nights + Muscat 3 nights",
+   "season": "winter",
+   "stops": [
+    {
+     "place": "Zanzibar (Nungwi)",
+     "nights": 5,
+     "airport": "ZNZ",
+     "hotel": "Nungwi Dreams by Mantis — the Presidential Villa is the ONLY unit that sleeps 5 on one booking; there is no 2-bedroom or connecting unit on sale",
+     "basis": "dated rate, Google Hotels, nightly GBP 1,735 including breakfast",
+     "lodges": [
+      {
+       "name": "Nungwi Dreams by Mantis",
+       "nights": 5,
+       "board": "breakfast included",
+       "area": "Nungwi, Zanzibar",
+       "note": "the Presidential Villa is the only unit that sleeps 5 on one booking; no 2-bedroom or connecting unit is on sale",
+       "url": "https://www.mantiscollection.com/hotel/nungwi-dreams-zanzibar/"
+      }
+     ]
+    },
+    {
+     "place": "Muscat, Oman (Al Khuwair)",
+     "nights": 3,
+     "airport": "MCT",
+     "hotel": "InterContinental Muscat — two City View Balcony rooms (3+2 adults), one booking",
+     "basis": "dated rate: GBP 2,120-2,832 for 8 nights B&B",
+     "lodges": [
+      {
+       "name": "InterContinental Muscat",
+       "nights": 3,
+       "board": "bed & breakfast",
+       "area": "Muscat",
+       "note": "two City View Balcony rooms (3+2 adults), one booking"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "ZNZ"
+    ],
+    [
+     "ZNZ",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "open-jaw into Zanzibar and home from Muscat, with Muscat as the routing point rather than a separate ticket. Costed on the dated London-Muscat-Zanzibar routing, which OVER-states an open-jaw.",
+   "cost_low_gbp": 16451,
+   "cost_high_gbp": 17118,
+   "cost_basis": "three dated lines of four: the routing fare for 5, the villa (GBP 1,735 x 5) and the Muscat rooms.",
+   "why": "the only December option with a real beach, and 3 of its 4 lines are dated",
+   "catch": "the villa books a year ahead, and Nungwi rates 4.4",
+   "confidence": "dated-rate",
+   "source_urls": [
+    "https://www.mantiscollection.com/hotel/nungwi-dreams-zanzibar/",
+    "https://www.ihg.com/intercontinental/hotels/gb/en/find-hotels/select-roomrate"
+   ]
+  },
+  {
+   "id": "AF-01",
+   "region": "africa",
+   "kind": "operator",
+   "season": "summer",
+   "title": "Tanzania safari 4 nights + Zanzibar 5 nights (Kuoni)",
+   "operator_ref": "Kuoni 'Tanzania Safari & Zanzibar Beach', 9 nights, flights included",
+   "stops": [
+    {
+     "place": "Arusha + Tarangire safari",
+     "nights": 4,
+     "airport": "JRO",
+     "hotel": "Mount Meru Hotel (1 night), Kirurumu Tarangire Lodge (3 nights, full board, drives and park fees in)",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Mount Meru Hotel",
+       "nights": 1,
+       "area": "Arusha"
+      },
+      {
+       "name": "Kirurumu Tarangire Lodge",
+       "nights": 3,
+       "board": "full board, drives and park fees in",
+       "area": "Tarangire"
+      }
+     ]
+    },
+    {
+     "place": "Zanzibar (Bwejuu/Paje coast)",
+     "nights": 5,
+     "airport": "ZNZ",
+     "hotel": "Breezes Beach Club & Spa, half board",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Breezes Beach Club & Spa",
+       "nights": 5,
+       "board": "half board",
+       "area": "Bwejuu, Zanzibar"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "JRO"
+    ],
+    [
+     "JRO",
+     "ZNZ"
+    ],
+    [
+     "ZNZ",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "British Airways from Gatwick via Kilimanjaro to Zanzibar on the operator's June 2027 departures; safari by private 4x4.",
+   "cost_low_gbp": 21385,
+   "cost_high_gbp": 25235,
+   "cost_basis": "Kuoni's own season table: GBP 4,277 per person for 15-30 Jun, GBP 5,047 for 1 Jul-31 Aug, two sharing, flights included, x5. A fifth adult needs a room supplement the page does not price.",
+   "why": "dated to our departures and names every lodge; Tarangire suits families",
+   "catch": "only 3 safari nights; a fifth adult needs a room supplement the page does not price",
+   "confidence": "dated-rate",
+   "source_urls": [
+    "https://www.kuoni.co.uk/destinations/africa/tanzania/tarangire/tours/tanzania-safari-and-zanzibar-beach/"
+   ]
+  },
+  {
+   "id": "AF-02",
+   "region": "africa",
+   "kind": "operator",
+   "season": "summer",
+   "title": "Serengeti fly-in safari 4 nights + Zanzibar 6 nights (TourCompass)",
+   "operator_ref": "TourCompass fly-in Serengeti and Zanzibar, 13 days with flights",
+   "stops": [
+    {
+     "place": "Arusha + central Serengeti",
+     "nights": 4,
+     "airport": "JRO",
+     "hotel": "Rivertrees Country Inn (1 night), Serengeti Safari Lodge, 4 star (3 nights, full board, park fees and small-aircraft transfers in)",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Rivertrees Country Inn",
+       "nights": 1,
+       "area": "Arusha"
+      },
+      {
+       "name": "Serengeti Safari Lodge",
+       "nights": 3,
+       "board": "full board, park fees and small-aircraft transfers in",
+       "area": "Serengeti",
+       "note": "4 star"
+      }
+     ]
+    },
+    {
+     "place": "Zanzibar (Kiwengwa)",
+     "nights": 6,
+     "airport": "ZNZ",
+     "hotel": "Ocean Paradise Resort, 4 star, half board",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Ocean Paradise Resort",
+       "nights": 6,
+       "board": "half board",
+       "area": "Kiwengwa, Zanzibar",
+       "note": "4 star"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "JRO"
+    ],
+    [
+     "JRO",
+     "ZNZ"
+    ],
+    [
+     "ZNZ",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "Flights included; fly-in Serengeti by light aircraft, Zanzibar by air.",
+   "cost_low_gbp": 20395,
+   "cost_high_gbp": 20395,
+   "cost_basis": "the operator's 'from' price GBP 4,079 per person including flights, two sharing, x5. Its calendar spans Dec 2026 to 2028 (cheapest seen in spring 2028, dearest GBP 6,469 in Dec 2026), so July 2027 is not shown on the page we found.",
+   "why": "a real Serengeti fly-in, then a 4-star beach",
+   "catch": "'from' is the cheapest date on a calendar running into 2028, so July costs more; no Ngorongoro Crater",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.tourcompass.com/tanzania/tours/luxurious-fly-in-safari-in-tanzania.htm"
+   ]
+  },
+  {
+   "id": "AF-03",
+   "region": "africa",
+   "kind": "operator",
+   "season": "summer",
+   "title": "Masai Mara 2 nights + Kenya parks + Zanzibar 4 nights (TourCompass)",
+   "operator_ref": "TourCompass Masai Mara, Naivasha, Amboseli and Zanzibar, 13 days with flights",
+   "stops": [
+    {
+     "place": "Nairobi, Masai Mara, Naivasha, Amboseli",
+     "nights": 6,
+     "airport": "NBO",
+     "hotel": "Argyle Grand Hotel Nairobi, Enkorok Mara Camp (full board, park fees in); Naivasha and Amboseli lodges not itemised",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Argyle Grand Hotel Nairobi",
+       "area": "Nairobi"
+      },
+      {
+       "name": "Enkorok Mara Camp",
+       "board": "full board, park fees in",
+       "area": "Masai Mara",
+       "note": "Naivasha and Amboseli lodges are not itemised by the operator"
+      }
+     ]
+    },
+    {
+     "place": "Zanzibar",
+     "nights": 4,
+     "airport": "ZNZ",
+     "hotel": "Ocean Paradise Resort, 4 star, half board",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Ocean Paradise Resort",
+       "nights": 4,
+       "board": "half board",
+       "area": "Kiwengwa, Zanzibar",
+       "note": "4 star"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "NBO"
+    ],
+    [
+     "NBO",
+     "ZNZ"
+    ],
+    [
+     "ZNZ",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "Flights included; the Kenya parks are by road in a 4x4.",
+   "cost_low_gbp": 17645,
+   "cost_high_gbp": 17645,
+   "cost_basis": "the operator's 'from' price GBP 3,529 per person including flights, two sharing, x5; the departure calendar months were unreadable, so July dates may cost more.",
+   "why": "the Mara in July is the Great Migration; the cheapest Kenya shape with flights we found",
+   "catch": "the beach is Zanzibar, not Diani; only 2 Mara nights; July costs more than 'from'",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.tourcompass.com/kenya/tours/safari-in-masai-mara-lake-naivasha-and-amboseli-with-beach-holiday-in-zanzibar.htm"
+   ]
+  },
+  {
+   "id": "AF-04",
+   "region": "africa",
+   "kind": "operator",
+   "season": "summer",
+   "title": "Kruger 4 nights + Cape Town 4 nights + Mauritius 5 nights (TourCompass)",
+   "operator_ref": "TourCompass Kruger, Cape Town and Mauritius, 16 days with flights",
+   "stops": [
+    {
+     "place": "Kruger (Nkambeni private concession)",
+     "nights": 4,
+     "airport": "JNB",
+     "hotel": "Nkambeni Safari Tented Camp, half board, one full-day drive and park fees in",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Nkambeni Safari Tented Camp",
+       "nights": 4,
+       "board": "half board, one full-day drive and park fees in",
+       "area": "Kruger"
+      }
+     ]
+    },
+    {
+     "place": "Cape Town (Sea Point)",
+     "nights": 4,
+     "airport": "CPT",
+     "hotel": "Premier Hotel Cape Manor, breakfast",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Premier Hotel Cape Manor",
+       "nights": 4,
+       "board": "breakfast",
+       "area": "Cape Town"
+      }
+     ]
+    },
+    {
+     "place": "Mauritius (Tamarin Bay)",
+     "nights": 5,
+     "airport": "MRU",
+     "hotel": "Veranda Tamarin, half board",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Veranda Tamarin",
+       "nights": 5,
+       "board": "half board",
+       "area": "Tamarin, Mauritius"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "JNB"
+    ],
+    [
+     "JNB",
+     "CPT"
+    ],
+    [
+     "CPT",
+     "MRU"
+    ],
+    [
+     "MRU",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "All international and domestic flights included (Johannesburg, Nelspruit, Cape Town, Mauritius).",
+   "cost_low_gbp": 19945,
+   "cost_high_gbp": 19945,
+   "cost_basis": "the operator's 'from' price GBP 3,989 per person including all flights, two sharing, x5; its calendar runs to GBP 5,729 but the month labels were unreadable, so July 2027 is not known.",
+   "why": "South Africa's three classic stops in one booking",
+   "catch": "'from' is the cheapest date; Cape Town is wet and Mauritius cool in July; one game drive included",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.tourcompass.com/south-africa/tours/kruger-safari-cape-town-beach-holiday-in-mauritius.htm"
+   ]
+  },
+  {
+   "id": "AF-05",
+   "region": "africa",
+   "kind": "operator",
+   "season": "summer",
+   "title": "Greater Kruger 3 nights + Mauritius 6 nights (Rainbow Tours)",
+   "operator_ref": "Rainbow Tours 'South Africa Safari & Mauritius Classic', 10 nights with flights",
+   "stops": [
+    {
+     "place": "Greater Kruger (Timbavati) + Johannesburg night",
+     "nights": 4,
+     "airport": "JNB",
+     "hotel": "Garonga Safari Camp (3 nights, all meals and drives), Peermont D'Oreale Grande Hotel (1 night, breakfast)",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Garonga Safari Camp",
+       "nights": 3,
+       "board": "all meals and drives",
+       "area": "Timbavati"
+      },
+      {
+       "name": "Peermont D'Oreale Grande Hotel",
+       "nights": 1,
+       "board": "breakfast",
+       "area": "Johannesburg"
+      }
+     ]
+    },
+    {
+     "place": "Mauritius (Grand Baie)",
+     "nights": 6,
+     "airport": "MRU",
+     "hotel": "Hotel 20 Degres Sud, breakfast and dinner",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Hotel 20 Degres Sud",
+       "nights": 6,
+       "board": "breakfast and dinner",
+       "area": "Grand Baie, Mauritius"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "JNB"
+    ],
+    [
+     "JNB",
+     "MRU"
+    ],
+    [
+     "MRU",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "Return flights from the UK plus Johannesburg-Hoedspruit and Johannesburg-Mauritius included.",
+   "cost_low_gbp": 28325,
+   "cost_high_gbp": 28475,
+   "cost_basis": "Rainbow's 2027 table: GBP 5,665 per person for 1 Jul-30 Sep 2027 and GBP 5,695 for 1 Apr-30 Jun 2027, two sharing, flights included, x5.",
+   "why": "a dated 2027 price for a named Greater Kruger camp plus a Mauritius beach",
+   "catch": "Garonga is a couples' camp, so five adults need extra rooms; Mauritius is cool in July",
+   "confidence": "dated-rate",
+   "source_urls": [
+    "https://www.rainbowtours.co.uk/tours/africa/south-africa-safari-mauritius-classic"
+   ]
+  },
+  {
+   "id": "AF-06",
+   "region": "africa",
+   "kind": "operator",
+   "season": "summer",
+   "title": "Zanzibar 8 nights + Nyerere safari 2 nights (TourCompass)",
+   "operator_ref": "TourCompass Zanzibar and Nyerere safari, 13 days with flights",
+   "stops": [
+    {
+     "place": "Zanzibar (Marumbi, east coast), first stay",
+     "nights": 3,
+     "airport": "ZNZ",
+     "hotel": "Paradise Beach Resort, Marumbi, all inclusive",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Paradise Beach Resort",
+       "nights": 3,
+       "board": "all inclusive",
+       "area": "Marumbi, Zanzibar"
+      }
+     ]
+    },
+    {
+     "place": "Nyerere National Park (formerly Selous), via Dar es Salaam",
+     "nights": 2,
+     "airport": "DAR",
+     "hotel": "Africa Safari Camp, Nyerere, full board",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Africa Safari Camp",
+       "nights": 2,
+       "board": "full board",
+       "area": "Nyerere"
+      }
+     ]
+    },
+    {
+     "place": "Zanzibar (Marumbi, east coast), after the safari",
+     "nights": 5,
+     "airport": "ZNZ",
+     "hotel": "Paradise Beach Resort, Marumbi, all inclusive",
+     "basis": "operator guide price",
+     "lodges": [
+      {
+       "name": "Paradise Beach Resort",
+       "nights": 5,
+       "board": "all inclusive",
+       "area": "Marumbi, Zanzibar"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "ZNZ"
+    ],
+    [
+     "ZNZ",
+     "DAR"
+    ],
+    [
+     "DAR",
+     "ZNZ"
+    ],
+    [
+     "ZNZ",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "Flights included; Zanzibar to the Nyerere airstrip and back by light aircraft.",
+   "cost_low_gbp": 14695,
+   "cost_high_gbp": 14695,
+   "cost_basis": "the operator's 'from' price GBP 2,939 per person including flights, two sharing, x5; a single-room supplement from GBP 299 per person applies to the fifth adult, and July dates may cost more.",
+   "why": "the cheapest safari-and-beach shape with flights we found",
+   "catch": "only 2 safari nights, in a basic camp; the east-coast beach has big tides",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.tourcompass.com/tanzania/tours/beach-holiday-in-zanzibar-and-safari-in-nyerere-national-park.htm"
+   ]
+  },
+  {
+   "id": "AF-07",
+   "region": "africa",
+   "kind": "operator",
+   "season": "summer",
+   "title": "Kruger + Cape Town + Winelands, 12 nights (TourCompass)",
+   "operator_ref": "TourCompass Kruger, Cape Town and Winelands, 13 days with flights (headline price only)",
+   "stops": [
+    {
+     "place": "Kruger area",
+     "nights": 4,
+     "airport": "JNB",
+     "hotel": "base camp not named: the tour page itself was not read",
+     "basis": "operator headline price"
+    },
+    {
+     "place": "Cape Town + Winelands",
+     "nights": 8,
+     "airport": "CPT",
+     "hotel": "not named: the tour page itself was not read",
+     "basis": "operator headline price"
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "JNB"
+    ],
+    [
+     "JNB",
+     "CPT"
+    ],
+    [
+     "CPT",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "Flights included.",
+   "cost_low_gbp": 16245,
+   "cost_high_gbp": 16245,
+   "cost_basis": "the operator's 'from' price GBP 3,249 per person including flights (tours index headline), two sharing, x5; dates and room supplement unknown.",
+   "why": "South Africa's cheapest flight-inclusive shape we found",
+   "catch": "index headline only, so lodges and board are unconfirmed; Cape Town is wet and cool in July",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.tourcompass.com/south-africa/tours.htm"
+   ]
+  },
+  {
+   "id": "AF-08",
+   "region": "africa",
+   "kind": "self-build",
+   "season": "summer",
+   "title": "Self-build: Ngorongoro Crater Camp 2 nights + Zanzibar 12 nights",
+   "operator_ref": "Our build of the Kuoni and TourCompass safari-plus-Zanzibar shape, from rate cards",
+   "stops": [
+    {
+     "place": "Ngorongoro Conservation Area",
+     "nights": 2,
+     "airport": "JRO",
+     "hotel": "Ngorongoro Crater Camp, all meals, drinks and activities",
+     "basis": "USD 1,050 per person sharing per night from 1 Jun 2027 (rate card), 2 nights x5 = GBP 7,886",
+     "lodges": [
+      {
+       "name": "Ngorongoro Crater Camp",
+       "nights": 2,
+       "board": "all meals, drinks and activities",
+       "area": "Ngorongoro",
+       "url": "https://www.safari.co.za/Tanzania_Safari_Lodges-travel/pricing_ngorongoro-crater-camp.html"
+      }
+     ]
+    },
+    {
+     "place": "Zanzibar (Kiwengwa)",
+     "nights": 12,
+     "airport": "ZNZ",
+     "hotel": "Bluebay Beach Resort & Spa, all inclusive",
+     "basis": "USD 229 per person sharing per night in June, USD 265 in July (rate card), 2 + 10 nights x5 = GBP 11,672",
+     "lodges": [
+      {
+       "name": "Bluebay Beach Resort & Spa",
+       "nights": 12,
+       "board": "all inclusive",
+       "area": "Kiwengwa, Zanzibar",
+       "url": "https://www.siyabona.com/pricing_blue-bay-beach-resort.html"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "JRO"
+    ],
+    [
+     "JRO",
+     "ZNZ"
+    ],
+    [
+     "ZNZ",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "Economy multi-city London-Kilimanjaro, Kilimanjaro-Zanzibar, Zanzibar-London.",
+   "cost_low_gbp": 24692,
+   "cost_high_gbp": 24692,
+   "cost_basis": "lodge GBP 7,886 + resort GBP 11,672 from rate cards at USD 1 = GBP 0.7511, plus Economy flights GBP 5,134 read on Google Flights 20 Oct for the nearest dates; transfers and the single supplement for a fifth adult are not in it.",
+   "why": "the 'top lodge, then beach' shape asked for, priced line by line",
+   "catch": "'from' rate cards, not quotes; the crater-rim camp is the dear part",
+   "confidence": "dated-rate",
+   "source_urls": [
+    "https://www.safari.co.za/Tanzania_Safari_Lodges-travel/pricing_ngorongoro-crater-camp.html",
+    "https://www.siyabona.com/pricing_blue-bay-beach-resort.html"
+   ],
+   "cost_lines": [
+    {
+     "label": "Ngorongoro Crater Camp, 2 nights",
+     "gbp": 7886,
+     "basis": "USD 1,050 per person sharing per night from 1 Jun 2027 (rate card), x5"
+    },
+    {
+     "label": "Bluebay Beach Resort & Spa, 12 nights",
+     "gbp": 11672,
+     "basis": "USD 229 per person sharing per night in June, USD 265 in July (rate card), x5"
+    },
+    {
+     "label": "Economy flights, London-Kilimanjaro-Zanzibar-London",
+     "gbp": 5134,
+     "basis": "read on Google Flights 20 Oct for the nearest dates"
+    }
+   ],
+   "compare_with": "AF-01"
+  },
+  {
+   "id": "AF-09",
+   "region": "africa",
+   "kind": "self-build",
+   "season": "summer",
+   "title": "Self-build: Sayari Camp Serengeti 3 nights + Zanzibar 11 nights",
+   "operator_ref": "Our top-lodge version of the same shape, from rate cards",
+   "stops": [
+    {
+     "place": "Northern Serengeti",
+     "nights": 3,
+     "airport": "JRO",
+     "hotel": "Sayari Camp (Asilia), full board and activities",
+     "basis": "USD 3,605 per adult sharing for 2 nights + USD 1,275 for the extra night, June 2027 (rate card); four sharing and one single room (USD 4,615 + USD 1,780) = GBP 19,464; July is USD 6,000 per adult for 2 nights",
+     "lodges": [
+      {
+       "name": "Sayari Camp",
+       "nights": 3,
+       "board": "full board and activities",
+       "area": "Serengeti",
+       "note": "Asilia camp",
+       "url": "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/northern/sayari-camp/room-rates"
+      }
+     ]
+    },
+    {
+     "place": "Zanzibar (Kiwengwa)",
+     "nights": 11,
+     "airport": "ZNZ",
+     "hotel": "Bluebay Beach Resort & Spa, all inclusive",
+     "basis": "USD 229 per person sharing per night in June, USD 265 in July, 1 + 10 nights x5 = GBP 10,812",
+     "lodges": [
+      {
+       "name": "Bluebay Beach Resort & Spa",
+       "nights": 11,
+       "board": "all inclusive",
+       "area": "Kiwengwa, Zanzibar",
+       "url": "https://www.siyabona.com/pricing_blue-bay-beach-resort.html"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "JRO"
+    ],
+    [
+     "JRO",
+     "ZNZ"
+    ],
+    [
+     "ZNZ",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "Economy multi-city London-Kilimanjaro, Kilimanjaro-Zanzibar, Zanzibar-London.",
+   "cost_low_gbp": 35410,
+   "cost_high_gbp": 35410,
+   "cost_basis": "lodge GBP 19,464 + resort GBP 10,812 from rate cards at USD 1 = GBP 0.7511, plus Economy flights GBP 5,134 read on Google Flights 20 Oct for the nearest dates; four adults share and one takes a single room; the bush flight to the camp is not included.",
+   "why": "what a genuinely top Serengeti camp costs for five",
+   "catch": "June rate for the camp; from 1 July it is far dearer",
+   "confidence": "dated-rate",
+   "source_urls": [
+    "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/northern/sayari-camp/room-rates",
+    "https://www.siyabona.com/pricing_blue-bay-beach-resort.html"
+   ],
+   "cost_lines": [
+    {
+     "label": "Sayari Camp, 3 nights",
+     "gbp": 19464,
+     "basis": "June 2027 rate card: four sharing and one single room"
+    },
+    {
+     "label": "Bluebay Beach Resort & Spa, 11 nights",
+     "gbp": 10812,
+     "basis": "USD 229 per person sharing per night in June, USD 265 in July (rate card), x5"
+    },
+    {
+     "label": "Economy flights, London-Kilimanjaro-Zanzibar-London",
+     "gbp": 5134,
+     "basis": "read on Google Flights 20 Oct for the nearest dates"
+    }
+   ],
+   "compare_with": "AF-02"
+  },
+  {
+   "id": "AF-10",
+   "region": "africa",
+   "kind": "self-build",
+   "season": "summer",
+   "title": "Self-build: Kruger self-drive 4 nights + Cape Town 8 nights",
+   "operator_ref": "Our build of the Kruger and Cape Town shape, from rate cards",
+   "stops": [
+    {
+     "place": "Kruger National Park (Satara, self-drive)",
+     "nights": 4,
+     "airport": "JNB",
+     "hotel": "Satara Rest Camp guest cottage, self-catering",
+     "basis": "ZAR 3,980 per unit per night (rate card, to 31 Oct 2027), 4 nights = GBP 724; conservation fee GBP 548 at the 2025-26 tariff",
+     "lodges": [
+      {
+       "name": "Satara Rest Camp",
+       "nights": 4,
+       "board": "self-catering",
+       "area": "Kruger",
+       "note": "guest cottage",
+       "url": "https://www.krugerpark.co.za/Kruger_National_Park_Lodging_&_Camping_Guide-travel/pricing_satara-camp.html"
+      }
+     ]
+    },
+    {
+     "place": "Cape Town (V&A Waterfront)",
+     "nights": 8,
+     "airport": "CPT",
+     "hotel": "Commodore Hotel, 2 rooms, bed & breakfast",
+     "basis": "ZAR 3,975 per room per night, 1 Jun-31 Aug 2027 (rate card), 2 rooms x 8 nights = GBP 2,892",
+     "lodges": [
+      {
+       "name": "Commodore Hotel",
+       "nights": 8,
+       "board": "bed & breakfast",
+       "area": "Cape Town",
+       "note": "2 rooms",
+       "url": "https://capetown.hotelguide.co.za/Cape_Town_Waterfront-travel/pricing_cape-town-hotel-commodore.html"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "JNB"
+    ],
+    [
+     "JNB",
+     "CPT"
+    ],
+    [
+     "CPT",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "Economy multi-city London-Johannesburg, Johannesburg-Cape Town, Cape Town-London; Kruger by self-drive from Johannesburg.",
+   "cost_low_gbp": 9287,
+   "cost_high_gbp": 9287,
+   "cost_basis": "cottage GBP 724 + park fee GBP 548 + hotel GBP 2,892 (rand at GBP 1 = ZAR 21.989) plus Economy flights GBP 5,123 read on Google Flights 20 Oct; it leaves out car hire for five (no rate could be read) and meals.",
+   "why": "the cheap way to see South Africa: rand rates beat the packages",
+   "catch": "a floor: no car hire, meals or transfers; unit sizes for five unconfirmed; Cape Town is wet and cool",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.krugerpark.co.za/Kruger_National_Park_Lodging_&_Camping_Guide-travel/pricing_satara-camp.html",
+    "https://capetown.hotelguide.co.za/Cape_Town_Waterfront-travel/pricing_cape-town-hotel-commodore.html",
+    "https://www.sanparks.org/parks/kruger/rates-entry-fees"
+   ],
+   "cost_lines": [
+    {
+     "label": "Satara Rest Camp cottage, 4 nights",
+     "gbp": 724,
+     "basis": "ZAR 3,980 per unit per night (rate card, to 31 Oct 2027)"
+    },
+    {
+     "label": "Kruger conservation fee",
+     "gbp": 548,
+     "basis": "2025-26 tariff"
+    },
+    {
+     "label": "Commodore Hotel, 2 rooms x 8 nights, bed & breakfast",
+     "gbp": 2892,
+     "basis": "ZAR 3,975 per room per night, 1 Jun-31 Aug 2027 (rate card)"
+    },
+    {
+     "label": "Economy flights, London-Johannesburg-Cape Town-London",
+     "gbp": 5123,
+     "basis": "read on Google Flights 20 Oct"
+    }
+   ],
+   "compare_with": "AF-07"
+  },
+  {
+   "id": "AF-11",
+   "region": "africa",
+   "kind": "self-build",
+   "season": "summer",
+   "title": "Owner's shape: Giraffe Manor 2 nights + Melia Serengeti 4 nights + Zanzibar beach 7 nights",
+   "operator_ref": "The owner's pick: Giraffe Manor, Melia Serengeti, then a better Zanzibar beach",
+   "stops": [
+    {
+     "place": "Nairobi (Giraffe Manor, 2 nights) then Serengeti (Melia Serengeti Lodge, 4 nights)",
+     "nights": 6,
+     "airport": "NBO",
+     "hotel": "Giraffe Manor, full board and drives; Melia Serengeti Lodge, full board and shared game drives",
+     "basis": "Giraffe Manor USD 1,554 per person sharing (rate card, 2027; read as per night) x5 x2 = GBP 11,672; Melia: USD 3,685 for 2 nights + USD 1,310 per extra day per adult, four sharing and one single room (USD 5,210 + 2 x 2,075) = GBP 25,973",
+     "lodges": [
+      {
+       "name": "Giraffe Manor",
+       "nights": 2,
+       "board": "full board and drives",
+       "area": "Nairobi",
+       "url": "https://www.kenyasafari.com/pricing_giraffe-manor-nairobi.html"
+      },
+      {
+       "name": "Melia Serengeti Lodge",
+       "nights": 4,
+       "board": "full board and shared game drives",
+       "area": "Serengeti",
+       "url": "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/central/melia-serengeti-lodge/room-rates"
+      }
+     ]
+    },
+    {
+     "place": "Zanzibar (Nungwi): The Z Hotel",
+     "nights": 7,
+     "airport": "ZNZ",
+     "hotel": "The Z Hotel, 4-star boutique, bed & breakfast, a triple and a double on one booking",
+     "basis": "USD 340 + USD 300 per night in July (rate card) + USD 5 per person per night tax, x7 = GBP 3,496",
+     "lodges": [
+      {
+       "name": "The Z Hotel",
+       "nights": 7,
+       "board": "bed & breakfast",
+       "area": "Nungwi, Zanzibar",
+       "note": "4-star boutique; a triple and a double on one booking",
+       "url": "https://www.thezhotel.com/rates"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "NBO"
+    ],
+    [
+     "NBO",
+     "ZNZ"
+    ],
+    [
+     "ZNZ",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "Economy London-Nairobi out, Zanzibar-London back; Nairobi-Serengeti and Serengeti-Zanzibar by light aircraft are not in the figure.",
+   "cost_low_gbp": 45885,
+   "cost_high_gbp": 45885,
+   "cost_basis": "Giraffe Manor GBP 11,672 + Melia GBP 25,973 + The Z Hotel GBP 3,496 (USD 1 = GBP 0.7511) plus Economy flights GBP 4,744 read on Google Flights 20 Oct for London-Nairobi-Zanzibar-London; it leaves out the two light-aircraft sectors, visas and transfers, so it is a floor.",
+   "why": "the shape he liked, with a swimmable north-coast Zanzibar beach",
+   "catch": "the two safari stays dwarf everything else; Giraffe Manor's room for five is unconfirmed; Zuri Zanzibar, the better beach, has no readable 2027 rate",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.kenyasafari.com/pricing_giraffe-manor-nairobi.html",
+    "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/central/melia-serengeti-lodge/room-rates",
+    "https://www.thezhotel.com/rates"
+   ],
+   "cost_lines": [
+    {
+     "label": "Giraffe Manor, 2 nights",
+     "gbp": 11672,
+     "basis": "USD 1,554 per person sharing (rate card, 2027; read as per night) x5 x2"
+    },
+    {
+     "label": "Melia Serengeti Lodge, 4 nights",
+     "gbp": 25973,
+     "basis": "rate card, USD 1 = GBP 0.7511"
+    },
+    {
+     "label": "The Z Hotel, 7 nights, bed & breakfast",
+     "gbp": 3496,
+     "basis": "USD 340 + USD 300 per night in July (rate card) + USD 5 per person per night tax"
+    },
+    {
+     "label": "Economy flights, London-Nairobi-Zanzibar-London",
+     "gbp": 4744,
+     "basis": "read on Google Flights 20 Oct"
+    }
+   ]
+  },
+  {
+   "id": "EU-02",
+   "region": "europe",
+   "kind": "self-build",
+   "season": "summer",
+   "operator_ref": "",
+   "title": "Lucerne 5 nights + Lake Como (Bellagio) 6 nights + Venice 6 nights",
+   "stops": [
+    {
+     "place": "Lucerne",
+     "nights": 5,
+     "airport": "ZRH",
+     "hotel": "Hotel Schweizerhof Luzern, 5-star, 2 x Style Double 25 m2 (the 5th adult needs an extra bed, rate on request), breakfast buffet (rate text does not say included)",
+     "basis": "Style Double 'from CHF 335' per room per night (page, 23 Oct 2026, not date-specific) x2 rooms; CHF 0.91; 5 nights = GBP 3,048",
+     "lodges": [
+      {
+       "name": "Hotel Schweizerhof Luzern",
+       "nights": 5,
+       "board": "breakfast buffet (rate text does not say included)",
+       "area": "Lucerne, lakefront",
+       "url": "https://www.schweizerhof-luzern.ch/en/rooms/style-double-room"
+      }
+     ]
+    },
+    {
+     "place": "Bellagio, Lake Como",
+     "nights": 6,
+     "airport": "MXP",
+     "hotel": "Grand Hotel Villa Serbelloni, 5-star Relais & Chateaux, Deluxe Park/Town View 34 m2 (3) + Classic Park/Town View 29 m2 (2), board not stated on the page",
+     "basis": "Deluxe 'From $1,078' + Classic 'From $965' per night, taxes included (page, 23 Oct 2026, not date-specific); USD 0.75; 6 nights = GBP 9,194",
+     "lodges": [
+      {
+       "name": "Grand Hotel Villa Serbelloni",
+       "nights": 6,
+       "board": "board not stated on the page",
+       "area": "Bellagio, Lake Como, lakefront",
+       "url": "https://www.relaischateaux.com/us/hotel/grand-hotel-villa-serbelloni/"
+      }
+     ]
+    },
+    {
+     "place": "Venice",
+     "nights": 6,
+     "airport": "VCE",
+     "hotel": "Hotel dei Dragomanni, 4-star, Triple 25-35 m2 + Classic Double Grand Canal view, room only (board not stated)",
+     "basis": "Triple 'from EUR 261' + Classic Double 'from EUR 252' per night (page, 23 Oct 2026, not date-specific); EUR 0.86; 6 nights = GBP 2,647",
+     "lodges": [
+      {
+       "name": "Hotel dei Dragomanni",
+       "nights": 6,
+       "board": "room only (board not stated)",
+       "area": "Venice, near the Grand Canal",
+       "url": "https://www.hoteldragomanni.com/en/rooms/"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "ZRH"
+    ],
+    [
+     "VCE",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "London-Zurich out 27 Jun 2027, VCE-London home 14 Jul 2027; trains/ferries between the stops",
+   "cost_low_gbp": 15475,
+   "cost_high_gbp": 15475,
+   "cost_basis": "Hotels: each hotel's own 'from' rate read on its page on 23 Oct 2026 (undated: July 2027 will likely cost more, so this is a floor), 2 rooms, CHF 0.91 / USD 0.75 / EUR 0.86 to GBP. Rail, ferries and transfers are ESTIMATES. Flights are NOT included: priced separately for the exact dates.",
+   "why": "the lowest-cost of the set: Swiss lake, Italian lake and Venice with open-jaw flights",
+   "catch": "Dragomanni is room only and Serbelloni states no board; rail lines are estimates; halal dining not verified",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.hoteldragomanni.com/en/rooms/",
+    "https://www.relaischateaux.com/us/hotel/grand-hotel-villa-serbelloni/",
+    "https://www.schweizerhof-luzern.ch/en/rooms/style-double-room"
+   ],
+   "cost_lines": [
+    {
+     "label": "Hotel Schweizerhof Luzern, 5 nights, 2 rooms (from-rate, undated)",
+     "gbp": 3048
+    },
+    {
+     "label": "Grand Hotel Villa Serbelloni, 6 nights, 2 rooms (from-rate, undated)",
+     "gbp": 9194
+    },
+    {
+     "label": "Hotel dei Dragomanni, 6 nights, 2 rooms (from-rate, undated)",
+     "gbp": 2647
+    },
+    {
+     "label": "Lucerne-Como rail via the Gotthard, 5 adults 2nd class (estimate: no fare page was readable)",
+     "gbp": 260
+    },
+    {
+     "label": "Como-Bellagio ferry, 5 adults (estimate: no fare page was readable)",
+     "gbp": 26
+    },
+    {
+     "label": "Bellagio-Venice (ferry, Milan, Frecciarossa), 5 adults (estimate: no fare page was readable)",
+     "gbp": 300
+    },
+    {
+     "label": "Flights LHR-ZRH-LHR (read nightly for the exact dates; not in this figure)",
+     "gbp": 0,
+     "basis": "replaced by the dated read in the report"
+    }
+   ]
+  },
+  {
+   "id": "EU-03",
+   "region": "europe",
+   "kind": "self-build",
+   "season": "summer",
+   "operator_ref": "",
+   "title": "Zermatt 5 nights + St. Moritz 6 nights + Venice 6 nights",
+   "stops": [
+    {
+     "place": "Zermatt",
+     "nights": 5,
+     "airport": "ZRH",
+     "hotel": "Riffelalp Resort 2222m, 5-star, 2 x Matterhorn Superior 40 m2 (the 5th adult needs an extra bed, on request), bed & breakfast (stated on the page)",
+     "basis": "Matterhorn Superior 'From: CHF 680 per night, including breakfast' (page, 23 Oct 2026, not date-specific) x2 rooms; CHF 0.91; 5 nights = GBP 6,188",
+     "lodges": [
+      {
+       "name": "Riffelalp Resort 2222m",
+       "nights": 5,
+       "board": "bed & breakfast (stated on the page)",
+       "area": "Zermatt, 2222 m, Matterhorn view",
+       "url": "https://www.riffelalp.com/en/rooms-and-suites/matterhorn-superior/"
+      }
+     ]
+    },
+    {
+     "place": "St. Moritz",
+     "nights": 6,
+     "airport": "ZRH",
+     "hotel": "Art Boutique Hotel Monopol, 4-star boutique, Junior Suite 33-38 m2 (up to 4) + Deluxe Double 27-30 m2, room only on the page (board not stated)",
+     "basis": "Junior Suite 'From CHF 470' + Deluxe Double 'From CHF 420' per night (page, 23 Oct 2026, not date-specific); CHF 0.91; 6 nights = GBP 4,859",
+     "lodges": [
+      {
+       "name": "Art Boutique Hotel Monopol",
+       "nights": 6,
+       "board": "room only on the page (board not stated)",
+       "area": "St. Moritz centre",
+       "url": "https://www.monopol.ch/en/"
+      }
+     ]
+    },
+    {
+     "place": "Venice",
+     "nights": 6,
+     "airport": "VCE",
+     "hotel": "Hotel dei Dragomanni, 4-star, Triple 25-35 m2 + Classic Double Grand Canal view, room only (board not stated)",
+     "basis": "Triple 'from EUR 261' + Classic Double 'from EUR 252' per night (page, 23 Oct 2026, not date-specific); EUR 0.86; 6 nights = GBP 2,647",
+     "lodges": [
+      {
+       "name": "Hotel dei Dragomanni",
+       "nights": 6,
+       "board": "room only (board not stated)",
+       "area": "Venice, near the Grand Canal",
+       "url": "https://www.hoteldragomanni.com/en/rooms/"
+      }
+     ]
+    }
+   ],
+   "legs": [
+    [
+     "LHR",
+     "ZRH"
+    ],
+    [
+     "VCE",
+     "LHR"
+    ]
+   ],
+   "flight_shape": "London-Zurich out 27 Jun 2027, VCE-London home 14 Jul 2027; trains/ferries between the stops",
+   "cost_low_gbp": 16412,
+   "cost_high_gbp": 16412,
+   "cost_basis": "Hotels: each hotel's own 'from' rate read on its page on 23 Oct 2026 (undated: July 2027 will likely cost more, so this is a floor), 2 rooms, CHF 0.91 / USD 0.75 / EUR 0.86 to GBP. Rail, ferries and transfers are ESTIMATES. Flights are NOT included: priced separately for the exact dates.",
+   "why": "the two great scenic trains (Glacier and Bernina Express) between Matterhorn, the Engadine and Venice",
+   "catch": "Riffelalp is the only hotel whose page states breakfast; 5th adult needs an extra bed there; rail lines are estimates; halal dining not verified",
+   "confidence": "estimate",
+   "source_urls": [
+    "https://www.hoteldragomanni.com/en/rooms/",
+    "https://www.monopol.ch/en/",
+    "https://www.riffelalp.com/en/rooms-and-suites/matterhorn-superior/"
+   ],
+   "cost_lines": [
+    {
+     "label": "Riffelalp Resort 2222m, 5 nights, 2 rooms (from-rate, undated)",
+     "gbp": 6188
+    },
+    {
+     "label": "Art Boutique Hotel Monopol, 6 nights, 2 rooms (from-rate, undated)",
+     "gbp": 4859
+    },
+    {
+     "label": "Hotel dei Dragomanni, 6 nights, 2 rooms (from-rate, undated)",
+     "gbp": 2647
+    },
+    {
+     "label": "Swiss Travel Pass 8 days, 2nd class, 5 adults (estimate: no fare page was readable)",
+     "gbp": 1997
+    },
+    {
+     "label": "Glacier Express seat reservations Zermatt-St. Moritz, 5 adults (estimate: no fare page was readable)",
+     "gbp": 246
+    },
+    {
+     "label": "Bernina Express reservation + St. Moritz-Tirano-Venice rail, 5 adults (estimate: no fare page was readable)",
+     "gbp": 475
+    },
+    {
+     "label": "Flights LHR-ZRH-LHR (read nightly for the exact dates; not in this figure)",
+     "gbp": 0,
+     "basis": "replaced by the dated read in the report"
+    }
+   ]
+  }
+ ]
 }
