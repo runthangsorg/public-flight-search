@@ -39,6 +39,7 @@ from .holiday_history import (
     render_history_html,
     summarize_trends,
 )
+from .hotel_media import load_hotel_media
 from .mailer import send_html
 
 
@@ -508,6 +509,9 @@ def run_holiday_planner(
             # lodge on a multi-stop trip shows the rating that was read for it
             # (and says "not collected" when none was).
             hotel_ratings=hotel_evidence_module.ratings_index(),
+            # The researched photo and each site's own rating per property: public data files, read once here
+            # (tools/hotel_research.py wrote them by hand; nothing is fetched at send time). The e-mail only hot-links.
+            hotel_media=load_hotel_media(),
         )
     render = render_holiday_report if detailed else render_holiday_report_compact
     # THE FULL-DETAIL ATTACHMENT (22 Oct 2026). Gmail clips an HTML part near 102 KB, so the body sheds the last

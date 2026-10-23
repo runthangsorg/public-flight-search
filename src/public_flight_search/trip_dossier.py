@@ -46,6 +46,7 @@ from urllib.parse import urlparse
 
 from . import holidays as hol
 from .hotel_evidence import normalise_property_name
+from .hotel_media import HotelMedia, merge_ratings
 from .multi_centre import MultiCentreTrip, counterparts, trip_legs_for_dates, trip_stays_for_dates
 
 #: Levels of detail, most detail first. Level 0 is the whole dossier; level 1 drops the longest prose and the
@@ -251,7 +252,11 @@ def hotel_links(name: str, area: str, check_in: str, check_out: str, *, travelle
 
 
 def rating_entries(ratings: Sequence[Any]) -> list[dict[str, str]]:
-    """Each guest rating a property holds, as words, count, read date and the page it came from."""
+    """Each site's own guest rating as words, with the page it came from: ``Booking 8.9/10 (640 reviews, read 23 Oct)``.
+
+    One entry per figure, on the scale the site states (Booking out of 10, Google and TripAdvisor out of 5), with its own
+    count and its own read date. Nothing is converted, combined or averaged.
+    """
     out: list[dict[str, str]] = []
     for rating in ratings or ():
         try:
@@ -259,15 +264,34 @@ def rating_entries(ratings: Sequence[Any]) -> list[dict[str, str]]:
             scale = float(getattr(rating, "scale", 5) or 5)
         except (TypeError, ValueError):
             continue
-        words = f"{str(getattr(rating, 'source', '') or 'Guests').strip()} {score:g}/{scale:g}"
+        source = str(getattr(rating, "source", "") or "Guests").strip()
         count = str(getattr(rating, "review_count", "") or "").strip()
-        if count:
-            words += f" ({count} reviews)"
         read = day_words(str(getattr(rating, "observed_at", "") or "")[:10]) if getattr(rating, "observed_at", "") else ""
-        if read:
-            words += f", read {read}"
-        out.append({"words": words, "url": _http(getattr(rating, "source_url", ""))})
+        inside = ", ".join(p for p in ((f"{count} reviews" if count else ""), (f"read {read}" if read else "")) if p)
+        out.append({"words": f"{source} {score:g}/{scale:g}" + (f" ({inside})" if inside else ""),
+                    "url": _http(getattr(rating, "source_url", "")), "source": source})
     return out
+
+
+_NOT_READ_SITES = (("google", "Google"), ("tripadvisor", "TripAdvisor"), ("booking", "Booking"))
+
+
+def not_read_words(not_read: Mapping[str, str], entries: Sequence[Mapping[str, str]]) -> str:
+    """``not read: TripAdvisor (walled), Booking (no page found)``: the sites that gave nothing, in plain words.
+
+    Only Google, TripAdvisor and Booking are named, only when no figure from them is shown, and only when the research
+    recorded a reason; a wall is called a wall. Empty when there is nothing to say.
+    """
+    shown = {e.get("source", "").casefold() for e in entries}
+    parts = []
+    for key, label in _NOT_READ_SITES:
+        reason = str((not_read or {}).get(key, "")).strip()
+        if not reason or key in shown:
+            continue
+        gist = ("walled" if reason.startswith("wall") else "no page found" if reason.startswith("no page")
+                else "page was not this property" if "not this property" in reason else "no read")
+        parts.append(f"{label} ({gist})")
+    return ("not read: " + ", ".join(parts)) if parts else ""
 
 
 # ---------------------------------------------------------------------------
@@ -482,11 +506,22 @@ def _step_sequence(row: Mapping[str, Any], plan, details: Optional[Mapping[tuple
     return steps
 
 
-def _lodge_block(lodge_stay, stop, *, travellers: int, ratings_by_name: Mapping[str, Sequence[Any]]) -> dict[str, Any]:
+#: The levels at which a property's photo is shown. The photo is the first thing to go when a page is shortened: it is the
+#: least important detail beside the dates, the price and the booking link.
+PHOTO_LEVELS = (FULL, TRIMMED)
+THUMB_WIDTH = 120
+
+
+def _lodge_block(lodge_stay, stop, *, travellers: int, ratings_by_name: Mapping[str, Sequence[Any]],
+                 hotel_media: Optional[HotelMedia] = None) -> dict[str, Any]:
     lodge = lodge_stay.lodge
     dated = bool(lodge_stay.check_in and lodge_stay.check_out)
     area = lodge.area or str(stop.place).split("(")[0].split(",")[0].strip()
     held = ratings_by_name.get(normalise_property_name(lodge.name), ()) if ratings_by_name else ()
+    researched = hotel_media.ratings_for(lodge.name) if hotel_media is not None else ()
+    entries = rating_entries(merge_ratings(held, researched))
+    links = hotel_links(lodge.name, area, lodge_stay.check_in, lodge_stay.check_out, travellers=travellers, page=lodge.url)
+    photo = hotel_media.image_for(lodge.name) if hotel_media is not None else None
     return {
         "name": lodge.name,
         "check_in": lodge_stay.check_in,
@@ -496,13 +531,17 @@ def _lodge_block(lodge_stay, stop, *, travellers: int, ratings_by_name: Mapping[
                    if dated else NO_NIGHTS_WORDS),
         "board": lodge.board or "board not stated",
         "note": lodge.note,
-        "ratings": rating_entries(held),
-        "links": hotel_links(lodge.name, area, lodge_stay.check_in, lodge_stay.check_out,
-                             travellers=travellers, page=lodge.url),
+        "ratings": entries,
+        "not_read": (not_read_words(hotel_media.not_read_for(lodge.name), entries) if hotel_media is not None else ""),
+        "links": links,
+        # The verified photo, linked to the booking search the property already has (its page when it has no dates).
+        "image": ({"url": photo["image_url"], "alt": lodge.name,
+                   "link": links[0][1] if links else photo["page_url"]} if photo else None),
     }
 
 
-def _stay_block(stay, *, travellers: int, ratings_by_name: Mapping[str, Sequence[Any]]) -> dict[str, Any]:
+def _stay_block(stay, *, travellers: int, ratings_by_name: Mapping[str, Sequence[Any]],
+                hotel_media: Optional[HotelMedia] = None) -> dict[str, Any]:
     stop = stay.stop
     return {
         "place": stop.place,
@@ -511,7 +550,7 @@ def _stay_block(stay, *, travellers: int, ratings_by_name: Mapping[str, Sequence
         "nights": stay.nights,
         "window": window_words(stay.check_in, stay.check_out),
         "cut": stay.nights < stop.nights,
-        "lodges": [_lodge_block(ls, stop, travellers=travellers, ratings_by_name=ratings_by_name)
+        "lodges": [_lodge_block(ls, stop, travellers=travellers, ratings_by_name=ratings_by_name, hotel_media=hotel_media)
                    for ls in stay.lodges],
         # The source's own words about the rooms and board, shown only when no property is named for the stop.
         "hotel_text": "" if stay.lodges else stop.hotel,
@@ -609,7 +648,8 @@ def _pair_block(row: Mapping[str, Any], other_row: Mapping[str, Any], *, first: 
 
 
 def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, generated_at: Any,
-                        hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None) -> list[dict[str, Any]]:
+                        hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None,
+                        hotel_media: Optional[HotelMedia] = None) -> list[dict[str, Any]]:
     """One structure per trip, in the owner's order (Tanzania safari + Zanzibar first).
 
     ``rows`` are ``holiday_email._multi_centre_rows``; ``hotel_ratings`` maps a normalised property name to the
@@ -642,7 +682,8 @@ def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, gener
             for step in _step_sequence(row, plan, details):
                 if step["type"] == "stay":
                     steps.append({"type": "stay", **_stay_block(step["stay"], travellers=travellers,
-                                                               ratings_by_name=ratings_by_name)})
+                                                               ratings_by_name=ratings_by_name,
+                                                               hotel_media=hotel_media)})
                 else:
                     steps.append(step)
             other_rows = [by_id[t.id] for t in pairs.get(trip.id, []) if t.id in by_id]
@@ -738,14 +779,22 @@ def _links_html(links: Sequence[tuple[str, str]]) -> str:
     return " · ".join(_a(url, label, bold=True) for label, url in links)
 
 
+def _img_html(image: Mapping[str, str], width: int, *, style: str = "") -> str:
+    """A hot-linked photo wrapped in its link: fixed ``width`` attribute (Gmail lays it out), ``max-width:100%`` so a
+    phone shrinks it, ``alt`` the property's name, never a ``data:`` URI, no border."""
+    return (f'<a href="{escape(image["link"], quote=True)}"><img src="{escape(image["url"], quote=True)}" '
+            f'alt="{escape(image["alt"], quote=True)}" width="{width}" '
+            f'style="display:block;width:{width}px;max-width:100%;height:auto;border:0;{style}"></a>')
+
+
 def _lodge_html(lodge: Mapping[str, Any], level: int, *, say_unrated: bool) -> str:
     note = f' · {escape(lodge["note"])}' if lodge["note"] and level == FULL else ""
-    parts = [f'<div class="lodge" style="margin:5px 0 0 0">{_k(escape(lodge["name"]))} · {escape(lodge["window"])}'
+    parts = [f'{_k(escape(lodge["name"]))} · {escape(lodge["window"])}'
              f'<br>{escape(lodge["board"])}{note}']
-    ratings = lodge["ratings"][:1] if level != FULL else lodge["ratings"][:2]
-    if ratings:
-        bits = [_a(r["url"], r["words"]) if r["url"] else escape(r["words"]) for r in ratings]
-        parts.append("<br>Reviews: " + " · ".join(bits))
+    if lodge["ratings"]:
+        bits = [_a(r["url"], r["words"], arrow=False) if r["url"] else escape(r["words"]) for r in lodge["ratings"]]
+        extra = f' · {escape(lodge["not_read"])}' if lodge["not_read"] and level == FULL else ""
+        parts.append("<br>Reviews: " + " · ".join(bits) + extra)
     elif say_unrated:
         parts.append(f"<br>Reviews: {NO_RATING_WORDS}")
     links = lodge["links"] if level == FULL else [lk for lk in lodge["links"] if lk[0] != "Google Hotels"]
@@ -753,8 +802,13 @@ def _lodge_html(lodge: Mapping[str, Any], level: int, *, say_unrated: bool) -> s
         parts.append("<br>" + _links_html(links))
     elif lodge["check_in"] == "":
         parts.append("<br>no dated booking link: the nights at this property are not stated")
-    parts.append("</div>")
-    return "".join(parts)
+    text = "".join(parts)
+    if lodge.get("image") and level in PHOTO_LEVELS:
+        text = ('<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
+                f'<td valign="top" width="{THUMB_WIDTH}" style="padding:0 8px 0 0;width:{THUMB_WIDTH}px">'
+                f'{_img_html(lodge["image"], THUMB_WIDTH, style="border-radius:6px;")}</td>'
+                f'<td valign="top">{text}</td></tr></table>')
+    return f'<div class="lodge" style="margin:5px 0 0 0">{text}</div>'
 
 
 def _stay_html(stay: Mapping[str, Any], level: int, *, show_basis: bool, say_unrated: bool) -> str:
@@ -1125,8 +1179,9 @@ def dossier_lines(d: Mapping[str, Any]) -> list[str]:
                 out.append(f"      {lodge['name']} · {lodge['window']} · {lodge['board']}"
                            + (f" · {lodge['note']}" if lodge["note"] else ""))
                 if lodge["ratings"]:
-                    for rating in lodge["ratings"]:
-                        out.append(f"        Reviews: {rating['words']}" + (f" {rating['url']}" if rating["url"] else ""))
+                    out.append("        Reviews: " + " · ".join(
+                        r["words"] + (f" {r['url']}" if r["url"] else "") for r in lodge["ratings"])
+                        + (f" · {lodge['not_read']}" if lodge["not_read"] else ""))
                 else:
                     out.append(f"        Reviews: {NO_RATING_WORDS}")
                 for label, url in lodge["links"]:

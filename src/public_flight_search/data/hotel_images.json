@@ -1,0 +1,78 @@
+{
+  "schema": "hotel_images/1",
+  "researched_on": "2026-10-23",
+  "properties": {
+    "anantararasanandakohphanganvillas": {
+      "name": "Anantara Rasananda Koh Phangan Villas",
+      "image_url": "https://assets.anantara.com/image/upload/q_auto,f_auto/media/minor/anantara/images/anantara-rasananda-koh-phangan-villas/the-resort/desktop-banner/anantara_rasananda_beach_header_1920x1080.jpg",
+      "page_url": "https://www.anantara.com/en/rasananda-koh-phangan",
+      "source": "official"
+    },
+    "banyantreesamui": {
+      "name": "Banyan Tree Samui",
+      "image_url": "https://www.banyantree.com/_next/image?url=https%3A%2F%2Fwww.banyantree.com%2Fassets%2F2021-10%2Fresort-masthead_0.jpg&w=2048&q=75",
+      "page_url": "https://www.banyantree.com/thailand/samui",
+      "source": "official"
+    },
+    "garryatongsaibaysamui": {
+      "name": "Garrya Tongsai Bay Samui",
+      "image_url": "https://www.garrya.com/sites/garrya/files/styles/embed/public/media/images/2022-12/The%20Tongsai%20Bay%202-Edit-Edit.JPG.webp?itok=nrfNiGOD",
+      "page_url": "https://www.garrya.com/en/destinations/samui",
+      "source": "official"
+    },
+    "grandvelasrivieramaya": {
+      "name": "Grand Velas Riviera Maya",
+      "image_url": "https://www.grandvelas.com/resourcefiles/hero-image/experience-luxury-at-grand-velas-riviera-maya-a-beachfront-resort.jpg",
+      "page_url": "https://www.grandvelas.com/resorts/grand-velas-riviera-maya",
+      "source": "official"
+    },
+    "kalandararesortlombok": {
+      "name": "Kalandara Resort Lombok",
+      "image_url": "https://hotels-in-lombok.com/img/id/kalandara-resort9.webp",
+      "page_url": "https://kalandara-resort.hotels-in-lombok.com/en/",
+      "source": "other"
+    },
+    "kimptonkitalaysamui": {
+      "name": "Kimpton Kitalay Samui",
+      "image_url": "https://www.kimptonkitalaysamui.com/wp-content/uploads/2023/12/USMKM_Hero-Shot.jpg",
+      "page_url": "https://www.kimptonkitalaysamui.com/",
+      "source": "official"
+    },
+    "melatibeachresortspa": {
+      "name": "Melati Beach Resort & Spa",
+      "image_url": "https://melatiresort.com/wp-content/uploads/2025/03/Home-Header.jpg",
+      "page_url": "https://melatiresort.com/",
+      "source": "official"
+    },
+    "novotellombokresortvillas": {
+      "name": "Novotel Lombok Resort & Villas",
+      "image_url": "https://d2e5ushqwiltxm.cloudfront.net/wp-content/uploads/sites/31/2016/07/25025746/IMG_7774.jpg",
+      "page_url": "https://www.novotellombok.com/",
+      "source": "official"
+    },
+    "nungwidreamsbymantis": {
+      "name": "Nungwi Dreams by Mantis",
+      "image_url": "https://images.squarespace-cdn.com/content/v1/599f19dbbe6594169d40b462/1508256340102-628RAA8LZSB01D0D267M/NE8A9112.jpg",
+      "page_url": "https://www.nungwidreams.com/",
+      "source": "official"
+    },
+    "pullmanlombokmerujanimandalikabeachresort": {
+      "name": "Pullman Lombok Merujani Mandalika Beach Resort",
+      "image_url": "https://d2e5ushqwiltxm.cloudfront.net/wp-content/uploads/sites/280/2022/12/16065445/AERIAL_HEROSHOT.jpg",
+      "page_url": "https://pullman-lombok-mandalika.com/",
+      "source": "official"
+    },
+    "thelomboklodge": {
+      "name": "The Lombok Lodge",
+      "image_url": "https://www.thelomboklodge.com/wordpress/wp-content/uploads/2026/04/boutique-hotel-lombok.webp",
+      "page_url": "https://www.thelomboklodge.com/",
+      "source": "other"
+    },
+    "tunakresortlombok": {
+      "name": "TUNAK Resort Lombok",
+      "image_url": "https://tunakresort.com/wp-content/uploads/elementor/thumbs/Wave-qxf4uy5q1irbm91c7htxzcn15xznan6dm9u7ftqznk.png",
+      "page_url": "https://tunakresort.com/",
+      "source": "official"
+    }
+  }
+}

@@ -1,0 +1,582 @@
+{
+  "schema": "hotel_reviews/1",
+  "researched_on": "2026-10-23",
+  "properties": {
+    "africasafaricamp": {
+      "name": "Africa Safari Camp",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "anantararasanandakohphanganvillas": {
+      "name": "Anantara Rasananda Koh Phangan Villas",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.7,
+          "scale": 5.0,
+          "count": "1.3k",
+          "observed_at": "2026-10-03T08:38:59+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Anantara+Rasananda+Koh+Phangan+Villas+Koh+Phangan%2C+Thailand&hl=en-GB"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "annabellehotel": {
+      "name": "Annabelle Hotel",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "argylegrandhotelnairobi": {
+      "name": "Argyle Grand Hotel Nairobi",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "banyantreesamui": {
+      "name": "Banyan Tree Samui",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.8,
+          "scale": 5.0,
+          "count": "1.8k",
+          "observed_at": "2026-10-02T15:18:50+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Banyan+Tree+Samui+Koh+Samui%2C+Thailand&hl=en-GB"
+        },
+        {
+          "source": "TripAdvisor",
+          "score": 4.8,
+          "scale": 5.0,
+          "count": "3,230",
+          "observed_at": "2026-10-15T19:45:00+00:00",
+          "source_url": "https://www.tripadvisor.com/HotelsList-Ko_Samui-Luxury-Spa-Resorts-zfp40012.html"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "bluebaybeachresortspa": {
+      "name": "Bluebay Beach Resort & Spa",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "breezesbeachclubspa": {
+      "name": "Breezes Beach Club & Spa",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "commodorehotel": {
+      "name": "Commodore Hotel",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "concordedeluxeresort": {
+      "name": "Concorde De Luxe Resort",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "dreamstulumresortspa": {
+      "name": "Dreams Tulum Resort & Spa",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "elysiumhotel": {
+      "name": "Elysium Hotel",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "enkorokmaracamp": {
+      "name": "Enkorok Mara Camp",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "garongasafaricamp": {
+      "name": "Garonga Safari Camp",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "garryatongsaibaysamui": {
+      "name": "Garrya Tongsai Bay Samui",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.8,
+          "scale": 5.0,
+          "count": "1.0k",
+          "observed_at": "2026-10-02T15:19:41+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Garrya+Tongsai+Bay+Samui+Koh+Samui%2C+Thailand&hl=en-GB"
+        },
+        {
+          "source": "TripAdvisor",
+          "score": 4.8,
+          "scale": 5.0,
+          "count": "3,649",
+          "observed_at": "2026-10-15T19:45:00+00:00",
+          "source_url": "https://www.tripadvisor.com/HotelsList-Ko_Samui-Luxury-Spa-Resorts-zfp40012.html"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "giraffemanor": {
+      "name": "Giraffe Manor",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "grandfiestaamericanacoralbeachcancúnallinclusivesparesort": {
+      "name": "Grand Fiesta Americana Coral Beach Cancún All Inclusive Spa & Resort",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.5,
+          "scale": 5.0,
+          "count": "6.6k",
+          "observed_at": "2026-10-03T07:34:53+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Grand+Fiesta+Americana+Coral+Beach+Canc%C3%BAn+All+Inclusive+Spa+%26+Resort+Canc%C3%BAn%2C+Mexico&hl=en-GB"
+        }
+      ],
+      "not_read": {}
+    },
+    "grandvelasrivieramaya": {
+      "name": "Grand Velas Riviera Maya",
+      "ratings": [],
+      "not_read": {
+        "booking": "no page found",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "granhotelatlantisbahíareal": {
+      "name": "Gran Hotel Atlantis Bahía Real",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "halekulaniokinawa": {
+      "name": "Halekulani Okinawa",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "hardrockhoteltenerife": {
+      "name": "Hard Rock Hotel Tenerife",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "hotel20degressud": {
+      "name": "Hotel 20 Degres Sud",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "intercontinentalmuscat": {
+      "name": "InterContinental Muscat",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "jazaquaviva": {
+      "name": "Jaz Aquaviva",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "jwmarriotthotelcairo": {
+      "name": "JW Marriott Hotel Cairo",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "kalandararesortlombok": {
+      "name": "Kalandara Resort Lombok",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.7,
+          "scale": 5.0,
+          "count": "733",
+          "observed_at": "2026-10-03T08:41:23+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Kalandara+Resort+Lombok+Kuta+Mandalika%2C+Lombok%2C+Indonesia&hl=en-GB"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "kempinskinilehotelcairo": {
+      "name": "Kempinski Nile Hotel Cairo",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "kimptonkitalaysamui": {
+      "name": "Kimpton Kitalay Samui",
+      "ratings": [],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "kirurumutarangirelodge": {
+      "name": "Kirurumu Tarangire Lodge",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "larabarutcollection": {
+      "name": "Lara Barut Collection",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "lopesancostamelonerasresortspa": {
+      "name": "Lopesan Costa Meloneras Resort & Spa",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "marriottmenahouse": {
+      "name": "Marriott Mena House",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "melatibeachresortspa": {
+      "name": "Melati Beach Resort & Spa",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.5,
+          "scale": 5.0,
+          "count": "1.2k",
+          "observed_at": "2026-10-02T15:25:35+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Melati+Beach+Resort+%26+Spa+Koh+Samui%2C+Thailand&hl=en-GB"
+        },
+        {
+          "source": "TripAdvisor",
+          "score": 4.5,
+          "scale": 5.0,
+          "count": "2,211",
+          "observed_at": "2026-10-15T19:45:00+00:00",
+          "source_url": "https://www.tripadvisor.com/HotelsList-Ko_Samui-Luxury-Spa-Resorts-zfp40012.html"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "meliaserengetilodge": {
+      "name": "Melia Serengeti Lodge",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "mountmeruhotel": {
+      "name": "Mount Meru Hotel",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "ngorongorocratercamp": {
+      "name": "Ngorongoro Crater Camp",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "nkambenisafaritentedcamp": {
+      "name": "Nkambeni Safari Tented Camp",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "novotellombokresortvillas": {
+      "name": "Novotel Lombok Resort & Villas",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.5,
+          "scale": 5.0,
+          "count": "3.9k",
+          "observed_at": "2026-10-02T15:20:33+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Novotel+Lombok+Resort+%26+Villas+Kuta+Mandalika%2C+Lombok%2C+Indonesia&hl=en-GB"
+        },
+        {
+          "source": "TripAdvisor",
+          "score": 4.1,
+          "scale": 5.0,
+          "count": "2,643",
+          "observed_at": "2026-10-15T19:45:00+00:00",
+          "source_url": "https://www.tripadvisor.co.uk/Hotel_Review-g3607401-d299542-Reviews-Novotel_Lombok_Resort_Villas-Pujut_Lombok_West_Nusa_Tenggara.html"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "nungwidreamsbymantis": {
+      "name": "Nungwi Dreams by Mantis",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.4,
+          "scale": 5.0,
+          "count": "789",
+          "observed_at": "2026-10-02T15:21:26+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Nungwi+Dreams+by+Mantis+Nungwi%2C+Zanzibar%2C+Tanzania&hl=en-GB"
+        },
+        {
+          "source": "TripAdvisor",
+          "score": 4.5,
+          "scale": 5.0,
+          "count": "462",
+          "observed_at": "2026-10-15T19:45:00+00:00",
+          "source_url": "https://www.tripadvisor.com/Hotel_Review-g616016-d12786499-Reviews-Nungwi_Dreams_By_Mantis-Nungwi_Zanzibar_Island_Zanzibar_Archipelago.html"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "oceanparadiseresort": {
+      "name": "Ocean Paradise Resort",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "paradisebeachresort": {
+      "name": "Paradise Beach Resort",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "peermontdorealegrandehotel": {
+      "name": "Peermont D'Oreale Grande Hotel",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "premierhotelcapemanor": {
+      "name": "Premier Hotel Cape Manor",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "princesayaizasuitehotelresort": {
+      "name": "Princesa Yaiza Suite Hotel Resort",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "pullmanlombokmerujanimandalikabeachresort": {
+      "name": "Pullman Lombok Merujani Mandalika Beach Resort",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.8,
+          "scale": 5.0,
+          "count": "2.3k",
+          "observed_at": "2026-10-02T15:22:18+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Pullman+Lombok+Merujani+Mandalika+Beach+Resort+Kuta+Mandalika%2C+Lombok%2C+Indonesia&hl=en-GB"
+        },
+        {
+          "source": "TripAdvisor",
+          "score": 4.7,
+          "scale": 5.0,
+          "count": "699",
+          "observed_at": "2026-10-15T19:45:00+00:00",
+          "source_url": "https://www.tripadvisor.com/Hotel_Review-g2155769-d23663712-Reviews-Pullman_Lombok_Merujani_Mandalika_Beach_Resort-Kuta_Lombok_West_Nusa_Tenggara.html"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: http-202"
+      }
+    },
+    "rivertreescountryinn": {
+      "name": "Rivertrees Country Inn",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "rixosgulfhoteldoha": {
+      "name": "Rixos Gulf Hotel Doha",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "satararestcamp": {
+      "name": "Satara Rest Camp",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "sayaricamp": {
+      "name": "Sayari Camp",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "seasidepalmbeach": {
+      "name": "Seaside Palm Beach",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "serengetisafarilodge": {
+      "name": "Serengeti Safari Lodge",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "sheratonfuerteventurabeachgolfsparesort": {
+      "name": "Sheraton Fuerteventura Beach, Golf & Spa Resort",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "sofitelmauritiuslimpérialresortspa": {
+      "name": "Sofitel Mauritius L'Impérial Resort & Spa",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.4,
+          "scale": 5.0,
+          "count": "2.6k",
+          "observed_at": "2026-10-03T07:27:50+00:00",
+          "source_url": "https://www.google.com/travel/search?q=Sofitel+Mauritius+L%27Imp%C3%A9rial+Resort+%26+Spa+Flic+en+Flac%2C+Mauritius&hl=en-GB"
+        }
+      ],
+      "not_read": {}
+    },
+    "steigenbergeraldaubeachhotel": {
+      "name": "Steigenberger ALDAU Beach Hotel",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "thelomboklodge": {
+      "name": "The Lombok Lodge",
+      "ratings": [
+        {
+          "source": "Google",
+          "score": 4.8,
+          "scale": 5.0,
+          "count": "296",
+          "observed_at": "2026-10-02T15:28:08+00:00",
+          "source_url": "https://www.google.com/travel/search?q=The+Lombok+Lodge+Kuta+Mandalika%2C+Lombok%2C+Indonesia&hl=en-GB"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "thezhotel": {
+      "name": "The Z Hotel",
+      "ratings": [],
+      "not_read": {
+        "booking": "wall: http-202",
+        "google": "no read",
+        "tripadvisor": "wall: datadome-challenge"
+      }
+    },
+    "titanicmardanpalace": {
+      "name": "Titanic Mardan Palace",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "tunakresortlombok": {
+      "name": "TUNAK Resort Lombok",
+      "ratings": [
+        {
+          "source": "lombok-hotel.com",
+          "score": 9.3,
+          "scale": 10.0,
+          "count": "62",
+          "observed_at": "2026-10-23T10:15:30+00:00",
+          "source_url": "https://lombok-hotel.com/hotel/tunak-resort-lombok"
+        }
+      ],
+      "not_read": {
+        "booking": "wall: not asked again this run after repeated walls",
+        "google": "no read",
+        "tripadvisor": "wall: not asked again this run after repeated walls"
+      }
+    },
+    "verandatamarin": {
+      "name": "Veranda Tamarin",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    },
+    "vidamarresortmadeira": {
+      "name": "Vidamar Resort Madeira",
+      "ratings": [],
+      "not_read": {
+        "google": "no read"
+      }
+    }
+  }
+}

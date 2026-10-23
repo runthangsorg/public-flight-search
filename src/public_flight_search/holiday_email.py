@@ -50,6 +50,7 @@ from .holidays import (
 )
 from .google_flights import build_google_flights_legs_url
 from . import trip_dossier as td
+from .hotel_media import HotelMedia, merge_ratings
 from .multi_centre import load_multi_centre, trip_flights_line, trip_legs_for_dates
 from .vendors import build_vendor_links, trip_from_deal
 
@@ -1390,6 +1391,7 @@ def _deal_pair(deal: PackageDeal, *, travellers: int) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
+           hotel_media: Optional[HotelMedia] = None,
            generated_at: Any,
            trends: Optional[Sequence[Mapping[str, Any]]] = None) -> list[dict[str, Any]]:
     """One structure per card, cheapest cabin per resort first.
@@ -1442,10 +1444,23 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
             "why": why_lines(deal, config),
             "links": link_row(deal, config),
             "warnings": warning_lines(deal, config),
-            "ratings": td.rating_entries(getattr(deal, "hotel_ratings", ()) or ()),
+            # What the deal's own evidence holds, merged with what the research read, one figure per site (the newest).
+            "ratings": td.rating_entries(merge_ratings(
+                getattr(deal, "hotel_ratings", ()) or (),
+                hotel_media.ratings_for(deal.resort_name) if hotel_media is not None else ())),
+            "not_read": "",
+            "image": None,
             "flight_read": _deal_flight_read(deal),
             "pair": _deal_pair(deal, travellers=travellers),
         })
+    if hotel_media is not None:
+        for card in cards:
+            name = str(card["name"])
+            card["not_read"] = td.not_read_words(hotel_media.not_read_for(name), card["ratings"])
+            photo = hotel_media.image_for(name)
+            # The photo is linked to the link the card already has first (its booking link), else to the page it came from.
+            card["image"] = ({"url": photo["image_url"], "alt": name,
+                              "link": card["links"][0][1] if card["links"] else photo["page_url"]} if photo else None)
     return cards
 
 
@@ -1584,6 +1599,10 @@ def _flight_table_html(rows: Sequence[tuple[str, str, FlightPrice]]) -> str:
     return "".join(out)
 
 
+#: The width attribute a card photo is laid out at: the card's inner width in a 600 px mail; ``max-width:100%`` shrinks it.
+CARD_PHOTO_WIDTH = 570
+
+
 def _card_heading(text: str) -> str:
     """A section label inside a resort card: the same small caps as a trip dossier's, at card size."""
     return (f'<div style="font-size:11px; font-weight:700; color:{_ACCENT}; text-transform:uppercase; '
@@ -1596,6 +1615,9 @@ def _card_html(card: Mapping[str, Any]) -> str:
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" id="{card["anchor"]}" ',
         f'style="border-collapse:collapse; background:#ffffff; border:1px solid {_LINE}; ',
         'border-radius:10px; margin:12px 0 0 0;"><tr><td style="padding:12px 14px;">',
+        # The photo across the top of the card, in its link (the card's own booking link).
+        (td._img_html(card["image"], CARD_PHOTO_WIDTH, style="border-radius:8px;margin:0 0 10px 0;")
+         if card.get("image") else ""),
         '<div style="font-size:16px; font-weight:700; color:', _INK, ';">',
         _esc(card["name"]),
         f' <span style="color:#f59e0b; font-size:12px;">{_esc(card["stars"])}</span></div>',
@@ -1688,8 +1710,9 @@ def _card_html(card: Mapping[str, Any]) -> str:
             f'None: {td.NO_CARD_PACKAGE_WORDS}.</div>'
         )
     if card["ratings"]:
-        bits = [td._a(r["url"], r["words"]) if r["url"] else _esc(r["words"]) for r in card["ratings"][:2]]
-        out.append(f'<div style="font-size:12px; color:{_INK}; margin:8px 0 0 0;">Reviews: ' + " · ".join(bits) + "</div>")
+        bits = [td._a(r["url"], r["words"], arrow=False) if r["url"] else _esc(r["words"]) for r in card["ratings"]]
+        out.append(f'<div style="font-size:12px; color:{_INK}; margin:8px 0 0 0;">Reviews: ' + " · ".join(bits)
+                   + (f' · {_esc(card["not_read"])}' if card["not_read"] else "") + "</div>")
     else:
         out.append(f'<div style="font-size:12px; color:{_MUTED}; margin:8px 0 0 0;">Reviews: {td.NO_RATING_WORDS}</div>')
     if card["why"]:
@@ -2684,6 +2707,7 @@ def render_holiday_report_full(
     multi_centre_fares: Optional[Mapping[Any, Any]] = None,
     evidence_stamps: Optional[Mapping[str, Any]] = None,
     hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None,
+    hotel_media: Optional[HotelMedia] = None,
     **_ignored: Any,
 ) -> str:
     """The full-detail file the e-mail attaches: every trip dossier and every resort card, nothing shortened.
@@ -2697,7 +2721,7 @@ def render_holiday_report_full(
     return _render_compact(
         config, generated_at=generated_at, deals=deals, trends=trends,
         multi_centre_fares=multi_centre_fares, evidence_stamps=evidence_stamps,
-        hotel_ratings=hotel_ratings, full_detail=True,
+        hotel_ratings=hotel_ratings, hotel_media=hotel_media, full_detail=True,
     )
 
 
@@ -2715,6 +2739,7 @@ def render_holiday_report_compact(
     evidence_stamps: Optional[Mapping[str, Any]] = None,
     hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None,
     attachment_name: str = "",
+    hotel_media: Optional[HotelMedia] = None,
 ) -> str:
     """The compact holiday e-mail. Same arguments as the detailed renderer.
 
@@ -2755,7 +2780,7 @@ def render_holiday_report_compact(
     return _render_compact(
         config, generated_at=generated_at, deals=deals, trends=trends,
         multi_centre_fares=multi_centre_fares, evidence_stamps=evidence_stamps,
-        hotel_ratings=hotel_ratings, attachment_name=attachment_name,
+        hotel_ratings=hotel_ratings, attachment_name=attachment_name, hotel_media=hotel_media,
     )
 
 
@@ -2775,12 +2800,13 @@ def _render_compact(
     hotel_ratings: Optional[Mapping[str, Sequence[Any]]],
     attachment_name: str = "",
     full_detail: bool = False,
+    hotel_media: Optional[HotelMedia] = None,
 ) -> str:
     """The one renderer behind the body and the attachment; ``full_detail`` lifts the byte budget."""
-    cards = _cards(config, deals, generated_at=generated_at, trends=trends)
+    cards = _cards(config, deals, generated_at=generated_at, trends=trends, hotel_media=hotel_media)
     multi_rows = _multi_centre_rows(config, fares=multi_centre_fares)
     dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
-                                      hotel_ratings=hotel_ratings)
+                                      hotel_ratings=hotel_ratings, hotel_media=hotel_media)
     answers = _quick_answers(config, multi_rows, cards, dossiers)
     if full_detail:
         attachment_line = FULL_COPY_LINE
@@ -2895,6 +2921,7 @@ def render_holiday_report_compact_text(
     multi_centre_fares: Optional[Mapping[Any, Any]] = None,
     evidence_stamps: Optional[Mapping[str, Any]] = None,
     hotel_ratings: Optional[Mapping[str, Sequence[Any]]] = None,
+    hotel_media: Optional[HotelMedia] = None,
 ) -> str:
     """The plain-text twin of ``render_holiday_report_compact``.
 
@@ -2906,10 +2933,10 @@ def render_holiday_report_compact_text(
     the part that is never shortened: Gmail's size limit applies to the HTML part,
     so every dossier is here in full.
     """
-    cards = _cards(config, deals, generated_at=generated_at, trends=trends)
+    cards = _cards(config, deals, generated_at=generated_at, trends=trends, hotel_media=hotel_media)
     multi_rows = _multi_centre_rows(config, fares=multi_centre_fares)
     dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
-                                      hotel_ratings=hotel_ratings)
+                                      hotel_ratings=hotel_ratings, hotel_media=hotel_media)
     answers = _quick_answers(config, multi_rows, cards, dossiers)
     lines: list[str] = [
         str(config.report_title),
@@ -2975,8 +3002,8 @@ def render_holiday_report_compact_text(
         else:
             lines.append(f"  Package vs our build: none, {td.NO_CARD_PACKAGE_WORDS}.")
         if card["ratings"]:
-            for rating in card["ratings"][:2]:
-                lines.append(f"  Reviews: {rating['words']}" + (f" {rating['url']}" if rating["url"] else ""))
+            lines.append("  Reviews: " + " · ".join(r["words"] + (f" {r['url']}" if r["url"] else "") for r in card["ratings"])
+                         + (f" · {card['not_read']}" if card["not_read"] else ""))
         else:
             lines.append(f"  Reviews: {td.NO_RATING_WORDS}")
         for line in card["why"]:
