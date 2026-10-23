@@ -52,6 +52,9 @@ IMAGES_PATH = DATA / "hotel_images.json"
 REVIEWS_PATH = DATA / "hotel_reviews.json"
 
 MIN_WIDTH, MIN_HEIGHT, MIN_BYTES_WITHOUT_PIL = 400, 240, 20_000
+#: Width over height a photo may have: a panorama banner becomes a thin strip in a thumbnail and a portrait photo a
+#: very tall card, so neither is stored.
+MIN_ASPECT, MAX_ASPECT = 0.9, 2.5
 WALL_STOP_AFTER = 3
 
 #: Sites that are not a property's own page, or its operator's: they are searched for but never taken as "official".
@@ -276,6 +279,8 @@ def verify_image(url: str, fetch_head: Callable[[str], Mapping[str, Any]]) -> tu
             width, height = Image.open(BytesIO(body)).size
             if width < MIN_WIDTH or height < MIN_HEIGHT:
                 return False, f"too small ({width}x{height})"
+            if not MIN_ASPECT <= width / height <= MAX_ASPECT:
+                return False, f"shape unusable in a card ({width}x{height})"
             return True, f"{width}x{height}"
     except ImportError:
         pass

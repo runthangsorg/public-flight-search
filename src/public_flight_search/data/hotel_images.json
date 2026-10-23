@@ -56,22 +56,10 @@
       "page_url": "https://enkoroksafaricamp.com/",
       "source": "official"
     },
-    "garongasafaricamp": {
-      "name": "Garonga Safari Camp",
-      "image_url": "https://www.garonga.com/camps/garonga-safari-camp-poster.webp",
-      "page_url": "https://www.garonga.com/",
-      "source": "official"
-    },
     "grandfiestaamericanacoralbeachcancúnallinclusivesparesort": {
       "name": "Grand Fiesta Americana Coral Beach Cancún All Inclusive Spa & Resort",
       "image_url": "https://www.coralbeachcancunresort.com/wp-content/uploads/2015/09/fagcb_pool_ocean_exterior.jpg",
       "page_url": "https://www.coralbeachcancunresort.com/",
-      "source": "official"
-    },
-    "grandvelasrivieramaya": {
-      "name": "Grand Velas Riviera Maya",
-      "image_url": "https://www.grandvelas.com/resourcefiles/hero-image/experience-luxury-at-grand-velas-riviera-maya-a-beachfront-resort.jpg",
-      "page_url": "https://www.grandvelas.com/resorts/grand-velas-riviera-maya",
       "source": "official"
     },
     "granhotelatlantisbahíareal": {
@@ -202,20 +190,14 @@
     },
     "oceanparadiseresort": {
       "name": "Ocean Paradise Resort",
-      "image_url": "https://s3.eu-central-2.wasabisys.com/oceanparadisezanzibar/wp-media-folder-ocean-paradise-resort-zanzibar/wp-content/uploads/2017/11/zanzibar.jpg",
-      "page_url": "https://oceanparadisezanzibar.com/locate-us/",
-      "source": "official"
+      "image_url": "https://content.tui.co.uk/adamtui/2025_10/31_14/be060218-a313-4d46-990c-b38700f23e9c/ACC_949718_ZAN_06WebOriginalCompressed.jpg?i10c=img.resize%28width%3A658%29%3Bimg.crop%28width%3A658%2Cheight%3A370%29",
+      "page_url": "https://www.tui.co.uk/destinations/tanzania/zanzibar/pwani-mchangani/hotels/ocean-paradise-resort-and-spa.html",
+      "source": "other"
     },
     "peermontdorealegrandehotel": {
       "name": "Peermont D'Oreale Grande Hotel",
       "image_url": "https://www.peermont.com/wp-content/uploads/Peermont-Doreale-Grande-Hotel.webp",
       "page_url": "https://www.peermont.com/refurbishment-elevates-the-peermont-doreale-grande-hotel-at-emperors-palace-to-new-heights-of-luxury/",
-      "source": "official"
-    },
-    "princesayaizasuitehotelresort": {
-      "name": "Princesa Yaiza Suite Hotel Resort",
-      "image_url": "https://princesayaiza.com/wp-content/uploads/2025/04/HOTEL-FARIONES-_-LIFESTYLE-36-e1744015512505.jpeg",
-      "page_url": "https://princesayaiza.com/en/",
       "source": "official"
     },
     "pullmanlombokmerujanimandalikabeachresort": {
@@ -278,6 +260,12 @@
       "page_url": "https://www.thelomboklodge.com/",
       "source": "other"
     },
+    "titanicmardanpalace": {
+      "name": "Titanic Mardan Palace",
+      "image_url": "https://framerusercontent.com/images/Mw0xqYxOt0KrDeAmnV2UsZpYgM.png?width=1920&height=994",
+      "page_url": "https://www.mardanpalace.com/",
+      "source": "official"
+    },
     "verandatamarin": {
       "name": "Veranda Tamarin",
       "image_url": "https://veranda-resorts.com//_gatsby/image/19c11bdf3dd64331d8e321825ff14000/0afe4d122dbe760190732b36ab06970c/explorer-ouest-ile-maurice-veranda-hotel-tamarin.webp?u=https%3A%2F%2Fbo.veranda-resorts.com%2Fsites%2Fdefault%2Ffiles%2F2022-10%2Fexplorer-ouest-ile-maurice-veranda-hotel-tamarin_0.jpg&a=w%3D1920%26h%3D1080%26fm%3Dwebp%26q%3D75&cd=dc26eae284a736fd1454aad981c2ea5b",
@@ -286,7 +274,7 @@
     },
     "vidamarresortmadeira": {
       "name": "Vidamar Resort Madeira",
-      "image_url": "https://static-resources-elementor.mirai.com/wp-content/uploads/sites/1961/Outdoor-VidaMar-Madeira-18.webp",
+      "image_url": "https://static-resources-elementor.mirai.com/wp-content/uploads/sites/1961/VidaMar-Madeira-Thalasso-Sea-Spa-28.webp",
       "page_url": "https://www.vidamarresorts.com/",
       "source": "official"
     }

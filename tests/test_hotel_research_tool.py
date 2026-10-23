@@ -73,6 +73,23 @@ class APhotoMustBeAPhotoTests(unittest.TestCase):
         self.assertFalse(hr.verify_image("https://example.org/a.jpg", self._head(ctype="text/html"))[0])
         self.assertFalse(hr.verify_image("https://example.org/a.svg", self._head(ctype="image/svg+xml"))[0])
 
+    def test_a_panorama_banner_and_a_tall_portrait_fail_but_a_normal_photo_passes(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow is not installed here; the tool runs from the dealsearch venv, which has it")
+        from io import BytesIO
+
+        def picture(width, height):
+            buf = BytesIO()
+            Image.new("RGB", (width, height)).save(buf, "PNG")
+            return buf.getvalue()
+
+        for size, expected in (((1920, 400), False), ((1900, 2552), False), ((1600, 1000), True), ((1000, 1000), True)):
+            with self.subTest(size=size):
+                ok, _why = hr.verify_image("https://example.org/a.png", self._head(body=picture(*size)))
+                self.assertEqual(ok, expected)
+
     def test_an_icon_sized_picture_fails(self):
         self.assertFalse(hr.verify_image("https://example.org/a.jpg", self._head(length=3_000))[0])
 
