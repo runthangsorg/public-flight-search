@@ -1131,6 +1131,228 @@
           "basis": "read on Google Flights 20 Oct"
         }
       ]
+    },
+    {
+      "id": "EU-02",
+      "region": "europe",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Lucerne 5 nights + Lake Como (Bellagio) 6 nights + Venice 6 nights",
+      "stops": [
+        {
+          "place": "Lucerne",
+          "nights": 5,
+          "airport": "ZRH",
+          "hotel": "Hotel Schweizerhof Luzern, 5-star, 2 x Style Double 25 m2 (the 5th adult needs an extra bed, rate on request), breakfast buffet (rate text does not say included)",
+          "basis": "Style Double 'from CHF 335' per room per night (page, 23 Oct 2026, not date-specific) x2 rooms; CHF 0.91; 5 nights = GBP 3,048",
+          "lodges": [
+            {
+              "name": "Hotel Schweizerhof Luzern",
+              "nights": 5,
+              "board": "breakfast buffet (rate text does not say included)",
+              "area": "Lucerne, lakefront",
+              "url": "https://www.schweizerhof-luzern.ch/en/rooms/style-double-room"
+            }
+          ]
+        },
+        {
+          "place": "Bellagio, Lake Como",
+          "nights": 6,
+          "airport": "MXP",
+          "hotel": "Grand Hotel Villa Serbelloni, 5-star Relais & Chateaux, Deluxe Park/Town View 34 m2 (3) + Classic Park/Town View 29 m2 (2), board not stated on the page",
+          "basis": "Deluxe 'From $1,078' + Classic 'From $965' per night, taxes included (page, 23 Oct 2026, not date-specific); USD 0.75; 6 nights = GBP 9,194",
+          "lodges": [
+            {
+              "name": "Grand Hotel Villa Serbelloni",
+              "nights": 6,
+              "board": "board not stated on the page",
+              "area": "Bellagio, Lake Como, lakefront",
+              "url": "https://www.relaischateaux.com/us/hotel/grand-hotel-villa-serbelloni/"
+            }
+          ]
+        },
+        {
+          "place": "Venice",
+          "nights": 6,
+          "airport": "VCE",
+          "hotel": "Hotel dei Dragomanni, 4-star, Triple 25-35 m2 + Classic Double Grand Canal view, room only (board not stated)",
+          "basis": "Triple 'from EUR 261' + Classic Double 'from EUR 252' per night (page, 23 Oct 2026, not date-specific); EUR 0.86; 6 nights = GBP 2,647",
+          "lodges": [
+            {
+              "name": "Hotel dei Dragomanni",
+              "nights": 6,
+              "board": "room only (board not stated)",
+              "area": "Venice, near the Grand Canal",
+              "url": "https://www.hoteldragomanni.com/en/rooms/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "ZRH"
+        ],
+        [
+          "VCE",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "London-Zurich out 27 Jun 2027, VCE-London home 14 Jul 2027; trains/ferries between the stops",
+      "cost_low_gbp": 15475,
+      "cost_high_gbp": 15475,
+      "cost_basis": "Hotels: each hotel's own 'from' rate read on its page on 23 Oct 2026 (undated: July 2027 will likely cost more, so this is a floor), 2 rooms, CHF 0.91 / USD 0.75 / EUR 0.86 to GBP. Rail, ferries and transfers are ESTIMATES. Flights are NOT included: priced separately for the exact dates.",
+      "why": "the lowest-cost of the set: Swiss lake, Italian lake and Venice with open-jaw flights",
+      "catch": "Dragomanni is room only and Serbelloni states no board; rail lines are estimates; halal dining not verified",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://www.hoteldragomanni.com/en/rooms/",
+        "https://www.relaischateaux.com/us/hotel/grand-hotel-villa-serbelloni/",
+        "https://www.schweizerhof-luzern.ch/en/rooms/style-double-room"
+      ],
+      "cost_lines": [
+        {
+          "label": "Hotel Schweizerhof Luzern, 5 nights, 2 rooms (from-rate, undated)",
+          "gbp": 3048
+        },
+        {
+          "label": "Grand Hotel Villa Serbelloni, 6 nights, 2 rooms (from-rate, undated)",
+          "gbp": 9194
+        },
+        {
+          "label": "Hotel dei Dragomanni, 6 nights, 2 rooms (from-rate, undated)",
+          "gbp": 2647
+        },
+        {
+          "label": "Lucerne-Como rail via the Gotthard, 5 adults 2nd class (estimate: no fare page was readable)",
+          "gbp": 260
+        },
+        {
+          "label": "Como-Bellagio ferry, 5 adults (estimate: no fare page was readable)",
+          "gbp": 26
+        },
+        {
+          "label": "Bellagio-Venice (ferry, Milan, Frecciarossa), 5 adults (estimate: no fare page was readable)",
+          "gbp": 300
+        },
+        {
+          "label": "Flights LHR-ZRH-LHR (read nightly for the exact dates; not in this figure)",
+          "gbp": 0,
+          "basis": "replaced by the dated read in the report"
+        }
+      ]
+    },
+    {
+      "id": "EU-03",
+      "region": "europe",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Zermatt 5 nights + St. Moritz 6 nights + Venice 6 nights",
+      "stops": [
+        {
+          "place": "Zermatt",
+          "nights": 5,
+          "airport": "ZRH",
+          "hotel": "Riffelalp Resort 2222m, 5-star, 2 x Matterhorn Superior 40 m2 (the 5th adult needs an extra bed, on request), bed & breakfast (stated on the page)",
+          "basis": "Matterhorn Superior 'From: CHF 680 per night, including breakfast' (page, 23 Oct 2026, not date-specific) x2 rooms; CHF 0.91; 5 nights = GBP 6,188",
+          "lodges": [
+            {
+              "name": "Riffelalp Resort 2222m",
+              "nights": 5,
+              "board": "bed & breakfast (stated on the page)",
+              "area": "Zermatt, 2222 m, Matterhorn view",
+              "url": "https://www.riffelalp.com/en/rooms-and-suites/matterhorn-superior/"
+            }
+          ]
+        },
+        {
+          "place": "St. Moritz",
+          "nights": 6,
+          "airport": "ZRH",
+          "hotel": "Art Boutique Hotel Monopol, 4-star boutique, Junior Suite 33-38 m2 (up to 4) + Deluxe Double 27-30 m2, room only on the page (board not stated)",
+          "basis": "Junior Suite 'From CHF 470' + Deluxe Double 'From CHF 420' per night (page, 23 Oct 2026, not date-specific); CHF 0.91; 6 nights = GBP 4,859",
+          "lodges": [
+            {
+              "name": "Art Boutique Hotel Monopol",
+              "nights": 6,
+              "board": "room only on the page (board not stated)",
+              "area": "St. Moritz centre",
+              "url": "https://www.monopol.ch/en/"
+            }
+          ]
+        },
+        {
+          "place": "Venice",
+          "nights": 6,
+          "airport": "VCE",
+          "hotel": "Hotel dei Dragomanni, 4-star, Triple 25-35 m2 + Classic Double Grand Canal view, room only (board not stated)",
+          "basis": "Triple 'from EUR 261' + Classic Double 'from EUR 252' per night (page, 23 Oct 2026, not date-specific); EUR 0.86; 6 nights = GBP 2,647",
+          "lodges": [
+            {
+              "name": "Hotel dei Dragomanni",
+              "nights": 6,
+              "board": "room only (board not stated)",
+              "area": "Venice, near the Grand Canal",
+              "url": "https://www.hoteldragomanni.com/en/rooms/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "ZRH"
+        ],
+        [
+          "VCE",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "London-Zurich out 27 Jun 2027, VCE-London home 14 Jul 2027; trains/ferries between the stops",
+      "cost_low_gbp": 16412,
+      "cost_high_gbp": 16412,
+      "cost_basis": "Hotels: each hotel's own 'from' rate read on its page on 23 Oct 2026 (undated: July 2027 will likely cost more, so this is a floor), 2 rooms, CHF 0.91 / USD 0.75 / EUR 0.86 to GBP. Rail, ferries and transfers are ESTIMATES. Flights are NOT included: priced separately for the exact dates.",
+      "why": "the two great scenic trains (Glacier and Bernina Express) between Matterhorn, the Engadine and Venice",
+      "catch": "Riffelalp is the only hotel whose page states breakfast; 5th adult needs an extra bed there; rail lines are estimates; halal dining not verified",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://www.hoteldragomanni.com/en/rooms/",
+        "https://www.monopol.ch/en/",
+        "https://www.riffelalp.com/en/rooms-and-suites/matterhorn-superior/"
+      ],
+      "cost_lines": [
+        {
+          "label": "Riffelalp Resort 2222m, 5 nights, 2 rooms (from-rate, undated)",
+          "gbp": 6188
+        },
+        {
+          "label": "Art Boutique Hotel Monopol, 6 nights, 2 rooms (from-rate, undated)",
+          "gbp": 4859
+        },
+        {
+          "label": "Hotel dei Dragomanni, 6 nights, 2 rooms (from-rate, undated)",
+          "gbp": 2647
+        },
+        {
+          "label": "Swiss Travel Pass 8 days, 2nd class, 5 adults (estimate: no fare page was readable)",
+          "gbp": 1997
+        },
+        {
+          "label": "Glacier Express seat reservations Zermatt-St. Moritz, 5 adults (estimate: no fare page was readable)",
+          "gbp": 246
+        },
+        {
+          "label": "Bernina Express reservation + St. Moritz-Tirano-Venice rail, 5 adults (estimate: no fare page was readable)",
+          "gbp": 475
+        },
+        {
+          "label": "Flights LHR-ZRH-LHR (read nightly for the exact dates; not in this figure)",
+          "gbp": 0,
+          "basis": "replaced by the dated read in the report"
+        }
+      ]
     }
   ]
 }
