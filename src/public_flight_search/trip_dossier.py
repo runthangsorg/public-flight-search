@@ -755,12 +755,12 @@ def _palette() -> tuple[str, str, str, str]:
     return he._INK, he._MUTED, he._ACCENT, he._LINE
 
 
-_RAIL = "#cbd5e1"  # the timeline rule: the muted slate, one step darker than a hairline
+_RAIL = "#475569"  # the timeline rule: the muted slate, one step darker than a hairline
 
 
 def _k(text_html: str) -> str:
     """Key text: ink, one size up, bold. The card's own default is muted 11 px, so this is the exception."""
-    return f'<b style="color:{_palette()[0]};font-size:12px">{text_html}</b>'
+    return f'<b style="color:{_palette()[0]};font-size:13px">{text_html}</b>'
 
 
 def _a(url: str, label: str, *, bold: bool = False, arrow: bool = True) -> str:
@@ -850,7 +850,7 @@ def _itinerary_html(d: Mapping[str, Any], level: int) -> str:
     if unrated_everywhere:
         out.append(f'<div style="margin:3px 0 0 0">Reviews: {NO_RATING_WORDS} for any property on this trip.</div>')
     if d["plan_note"]:
-        out.append(f'<div style="margin:3px 0 0 0;color:#92400e">{escape(d["plan_note"])}</div>')
+        out.append(f'<div style="margin:3px 0 0 0;color:#fcd34d">{escape(d["plan_note"])}</div>')
     return "".join(out)
 
 
@@ -984,7 +984,7 @@ def _pair_html(d: Mapping[str, Any], level: int) -> str:
         text = escape(side["title"])
         if side["id"] == d["id"]:
             return _k(text)
-        return f'<a href="#{side["anchor"]}" style="color:{ink};font-size:12px"><b>{text}</b></a>'
+        return f'<a href="#{side["anchor"]}" style="color:{ink};font-size:13px"><b>{text}</b></a>'
 
     def row(name: str, left: str, right: str) -> str:
         return f'<tr><td {label}>{name}</td><td {cell}>{left}</td><td {cell}>{right}</td></tr>'
@@ -1046,11 +1046,11 @@ def _header_html(d: Mapping[str, Any]) -> str:
     he = _he()
     fits = d["fits"]
     if fits is True:
-        chip = ("#dcfce7", "#166534", "low end fits the budget")
+        chip = ("#14532d", "#bbf7d0", "low end fits the budget")
     elif fits is None:
-        chip = ("#f1f5f9", "#475569", "no budget set, no verdict")
+        chip = ("#273449", "#cbd5e1", "no budget set, no verdict")
     else:
-        chip = ("#fef3c7", "#92400e", f"low end {d['verdict'].replace('low end ', '')} the {he._gbp(d['budget'])} budget")
+        chip = ("#78350f", "#fde68a", f"low end {d['verdict'].replace('low end ', '')} the {he._gbp(d['budget'])} budget")
     out = [f'<div style="text-transform:uppercase;letter-spacing:.04em">'
            f'{escape(d["kind_label"])} · {d["nights"]} nights · {escape(d["price_label"])}</div>',
            f'<div style="font-size:16px;font-weight:700;line-height:1.3;color:{ink}">{escape(d["title"])}</div>']
@@ -1060,11 +1060,11 @@ def _header_html(d: Mapping[str, Any]) -> str:
         # The trip's own price itemises its flights, so its total can be said under each read (23 Oct 2026).
         for item in d["cabin_totals"]:
             if item["fits"] is None:
-                tchip = ("#f1f5f9", "#475569", "no budget set, no verdict")
+                tchip = ("#273449", "#cbd5e1", "no budget set, no verdict")
             elif item["fits"]:
-                tchip = ("#dcfce7", "#166534", f"fits the {he._gbp(d['budget'])} budget")
+                tchip = ("#14532d", "#bbf7d0", f"fits the {he._gbp(d['budget'])} budget")
             else:
-                tchip = ("#fef3c7", "#92400e", f"{he._gbp(item['gap'])} over the {he._gbp(d['budget'])} budget")
+                tchip = ("#78350f", "#fde68a", f"{he._gbp(item['gap'])} over the {he._gbp(d['budget'])} budget")
             out.append(f'<div style="margin:6px 0 0 0">{escape(item["label"])}<br>'
                        f'<b style="font-size:22px;line-height:1.1;color:{accent}">{escape(he._gbp(item["total"]))}</b> '
                        f'for 5, door to door <span style="background:{tchip[0]};color:{tchip[1]};padding:2px 8px;'
@@ -1077,7 +1077,7 @@ def _header_html(d: Mapping[str, Any]) -> str:
                 f'<div style="margin:4px 0 0 0"><span style="background:{chip[0]};color:{chip[1]};'
                 f'padding:2px 8px;border-radius:9999px">{escape(chip[2])}</span></div>']
     for warning in d["warnings"]:
-        out.append(f'<div style="margin:3px 0 0 0;color:#92400e">{escape(f"⚠ {warning}")}</div>')
+        out.append(f'<div style="margin:3px 0 0 0;color:#fcd34d">{escape(f"⚠ {warning}")}</div>')
     return "".join(out)
 
 
@@ -1094,15 +1094,15 @@ def dossier_html(d: Mapping[str, Any], level: int = FULL) -> str:
     """One trip's dossier card. ``level`` is FULL, TRIMMED or SHORT (see the module constants)."""
     muted, line = _palette()[1], _palette()[3]
     out = [f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" id="{d["anchor"]}" '
-           f'style="border-collapse:collapse;background:#ffffff;border:1px solid {line};border-radius:10px;margin:12px 0 0 0">'
-           f'<tr><td style="padding:12px 14px;font-size:11px;color:{muted};line-height:1.45">',
+           f'style="border-collapse:collapse;background:#1e293b;border:1px solid {line};border-radius:10px;margin:12px 0 0 0">'
+           f'<tr><td style="padding:12px 14px;font-size:13px;color:{muted};line-height:1.45">',
            _header_html(d)]
     if level == SHORT:
         f = d["flight"]
         out.append(_heading("Itinerary"))
         out.append("<div>" + "<br>".join(_short_stop_line(step) for step in d["stays"]) + "</div>")
         if d["plan_note"]:
-            out.append(f'<div style="color:#92400e">{escape(d["plan_note"])}</div>')
+            out.append(f'<div style="color:#fcd34d">{escape(d["plan_note"])}</div>')
         out.append(_short_flights_html(d))
         out.append(_heading("Package vs our build"))
         if d["pair"] is not None:

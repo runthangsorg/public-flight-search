@@ -84,7 +84,7 @@ STOPOVER_OUTLIER_TOTAL = 28000.0
 
 def _config(path=JULY, *, budget=SYNTHETIC_CEILING_GBP):
     config = load_holiday_config(path.read_text(encoding="utf-8"))
-    return dataclasses.replace(config, max_budget_gbp=budget)
+    return dataclasses.replace(config, max_budget_gbp=budget, complete_price_only=False)  # layout tests: with or without a flight read
 
 
 def _journeys(fares):

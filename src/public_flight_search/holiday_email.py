@@ -1468,17 +1468,17 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
 # HTML rendering
 # ---------------------------------------------------------------------------
 
-_INK = "#0f172a"
-_MUTED = "#64748b"
-_ACCENT = "#0f766e"
-_LINE = "#e2e8f0"
-_TAG_COLOURS = {"green": ("#dcfce7", "#166534"), "amber": ("#fef3c7", "#92400e"),
-                "grey": ("#f1f5f9", "#475569")}
+_INK = "#f1f5f9"
+_MUTED = "#b6c3d1"
+_ACCENT = "#5eead4"
+_LINE = "#334155"
+_TAG_COLOURS = {"green": ("#14532d", "#bbf7d0"), "amber": ("#78350f", "#fde68a"),
+                "grey": ("#273449", "#cbd5e1")}
 #: REPLY-H0 §4 collapses ten card tints and eight badge colours to four: one
 #: accent for the headline total, one muted grey for everything explanatory,
 #: amber only for "Estimate"/"Seen N days ago" and for a warning, green only
 #: for a price that came down.
-_MOVEMENT_COLOURS = {"▼": "#166534", "▲": "#b45309"}
+_MOVEMENT_COLOURS = {"▼": "#86efac", "▲": "#fbbf24"}
 
 #: At-a-glance columns that must never wrap mid-value: Dates and Total. The
 #: board column DOES wrap: five nowrap columns do not fit a 380 px phone, and
@@ -1503,7 +1503,7 @@ def _header_html(config: HolidayConfig, *, generated_at: Any) -> str:
         _esc(party_words(config)), ' · departing ',
         _esc(departure_range_words(config, generated_at=generated_at)),
         ' · ', _esc(nights_words(config)), '</div>',
-        '<div style="font-size:12px; color:', _MUTED, ';">',
+        '<div style="font-size:13px; color:', _MUTED, ';">',
         _esc(prices_checked_words(generated_at)), '</div>',
     ])
 
@@ -1522,7 +1522,7 @@ def _glance_html(cards: Sequence[Mapping[str, Any]], *, travellers: int) -> str:
     aligns = ("left", "left", "left", "left", "right")
     for label, align in zip(head_cells, aligns):
         out.append(
-            f'<td align="{align}" style="padding:4px 4px; font-size:11px; color:{_MUTED}; '
+            f'<td align="{align}" style="padding:4px 4px; font-size:13px; color:{_MUTED}; '
             f'border-bottom:2px solid {_LINE};">{_esc(label)}</td>'
         )
     out.append('</tr>')
@@ -1543,13 +1543,13 @@ def _glance_html(cards: Sequence[Mapping[str, Any]], *, travellers: int) -> str:
             # narrow column, and this table is read on a 380 px phone.
             nowrap = "white-space:nowrap;" if index in _GLANCE_NOWRAP else ""
             out.append(
-                f'<td align="{align}" valign="top" style="padding:6px 4px; font-size:12px; '
+                f'<td align="{align}" valign="top" style="padding:6px 4px; font-size:13px; '
                 f'color:{_INK}; border-bottom:1px solid {_LINE}; {nowrap}">{cell}</td>'
             )
         out.append("</tr>")
     out.append("</table>")
     out.append(
-        f'<div style="margin:6px 0 0 0; font-size:12px; color:{_MUTED};">'
+        f'<div style="margin:6px 0 0 0; font-size:13px; color:{_MUTED};">'
         f'<strong style="color:{_INK};">Every price is the total for {int(travellers)}, '
         f"door to door.</strong></div>"
     )
@@ -1581,18 +1581,18 @@ def _flight_table_html(rows: Sequence[tuple[str, str, FlightPrice]]) -> str:
             # more (owner steer 2026-10-15).
             if len(total) > 3 and total[3]:
                 amount += (
-                    f'<br><span style="color:{_MUTED}; font-size:11px;">'
+                    f'<br><span style="color:{_MUTED}; font-size:13px;">'
                     f'{_esc(total[3])}</span>'
                 )
         else:
             amount = f'<strong style="color:{_INK}; white-space:nowrap;">{_esc(total)}</strong>'
         out.append(
             '<tr>'
-            f'<td style="padding:3px 4px; font-size:12px; color:{_INK}; white-space:nowrap;">'
+            f'<td style="padding:3px 4px; font-size:13px; color:{_INK}; white-space:nowrap;">'
             f'{_esc(cabin)}</td>'
-            f'<td style="padding:3px 4px; font-size:12px; color:{_MUTED};">'
+            f'<td style="padding:3px 4px; font-size:13px; color:{_MUTED};">'
             f'{_esc(route)}</td>'
-            f'<td align="right" style="padding:3px 4px; font-size:12px;">{amount}</td>'
+            f'<td align="right" style="padding:3px 4px; font-size:13px;">{amount}</td>'
             '</tr>'
         )
     out.append("</table>")
@@ -1605,7 +1605,7 @@ CARD_PHOTO_WIDTH = 570
 
 def _card_heading(text: str) -> str:
     """A section label inside a resort card: the same small caps as a trip dossier's, at card size."""
-    return (f'<div style="font-size:11px; font-weight:700; color:{_ACCENT}; text-transform:uppercase; '
+    return (f'<div style="font-size:13px; font-weight:700; color:{_ACCENT}; text-transform:uppercase; '
             f'letter-spacing:0.05em; margin:12px 0 2px 0;">{_esc(text)}</div>')
 
 
@@ -1613,32 +1613,32 @@ def _card_html(card: Mapping[str, Any]) -> str:
     tag_bg, tag_fg = _TAG_COLOURS.get(str(card["tag_colour"]), _TAG_COLOURS["grey"])
     out = [
         f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" id="{card["anchor"]}" ',
-        f'style="border-collapse:collapse; background:#ffffff; border:1px solid {_LINE}; ',
+        f'style="border-collapse:collapse; background:#1e293b; border:1px solid {_LINE}; ',
         'border-radius:10px; margin:12px 0 0 0;"><tr><td style="padding:12px 14px;">',
         # The photo across the top of the card, in its link (the card's own booking link).
         (td._img_html(card["image"], CARD_PHOTO_WIDTH, style="border-radius:8px;margin:0 0 10px 0;")
          if card.get("image") else ""),
         '<div style="font-size:16px; font-weight:700; color:', _INK, ';">',
         _esc(card["name"]),
-        f' <span style="color:#f59e0b; font-size:12px;">{_esc(card["stars"])}</span></div>',
-        f'<div style="font-size:12px; color:{_MUTED}; margin:2px 0 8px 0;">',
+        f' <span style="color:#f59e0b; font-size:13px;">{_esc(card["stars"])}</span></div>',
+        f'<div style="font-size:13px; color:{_MUTED}; margin:2px 0 8px 0;">',
         _esc(card["place"]), ' · ', _esc(card["dates"]), ' · ', _esc(card["nights"]), '</div>',
         f'<div style="font-size:26px; font-weight:800; color:{_ACCENT}; line-height:1.1;">',
         _esc(card["headline"]), '</div>',
-        f'<div style="font-size:12px; color:{_MUTED};">{_esc(card["headline_words"])}</div>',
-        f'<div style="font-size:12px; color:{_MUTED}; margin:2px 0 0 0;">{_esc(card["breakdown"])}</div>',
+        f'<div style="font-size:13px; color:{_MUTED};">{_esc(card["headline_words"])}</div>',
+        f'<div style="font-size:13px; color:{_MUTED}; margin:2px 0 0 0;">{_esc(card["breakdown"])}</div>',
     ]
     if card["package"]:
         # The operator's own price for one booking on these dates. It sits under
         # the breakdown because that is where the engine's total is, so the
         # reader can see which of the two is dearer without hunting.
         out.append(
-            f'<div style="font-size:12px; color:{_INK}; margin:6px 0 0 0;">'
+            f'<div style="font-size:13px; color:{_INK}; margin:6px 0 0 0;">'
             f'{card["package_html"]}</div>'
         )
         if card["package_how"]:
             out.append(
-                f'<div style="font-size:11px; color:{_MUTED}; margin:2px 0 0 0;">'
+                f'<div style="font-size:13px; color:{_MUTED}; margin:2px 0 0 0;">'
                 f'{_esc(card["package_how"])}</div>'
             )
     out.extend([
@@ -1648,11 +1648,11 @@ def _card_html(card: Mapping[str, Any]) -> str:
         # long they last, and a price that its own evidence contradicts must
         # never be the line that gets cut.
         *(
-            [f'<div style="font-size:12px; color:#92400e; margin:4px 0 0 0;">'
+            [f'<div style="font-size:13px; color:#fcd34d; margin:4px 0 0 0;">'
              f'⚠ {_esc(card["caution"])}</div>']
             if card["caution"] else []
         ),
-        '<div style="font-size:11px; margin:6px 0 0 0;">',
+        '<div style="font-size:13px; margin:6px 0 0 0;">',
         f'<span style="background:{tag_bg}; color:{tag_fg}; padding:2px 8px; ',
         f'border-radius:9999px;">{_esc(card["tag"])}</span>',
         *(
@@ -1668,61 +1668,61 @@ def _card_html(card: Mapping[str, Any]) -> str:
     read = card["flight_read"]
     if read:
         out.append(
-            f'<div style="font-size:11px; color:{_MUTED}; margin:4px 0 0 0;">Outbound flight behind the price, read '
+            f'<div style="font-size:13px; color:{_MUTED}; margin:4px 0 0 0;">Outbound flight behind the price, read '
             f'{_esc(read["read_on"])}{_esc(" from " + read["origin"] if read["origin"] else "")}: {_esc(read["what"])}</div>'
         )
         if read["times"]:
-            out.append(f'<div style="font-size:11px; color:{_MUTED}; margin:2px 0 0 0;">{_esc(read["times"])}</div>')
+            out.append(f'<div style="font-size:13px; color:{_MUTED}; margin:2px 0 0 0;">{_esc(read["times"])}</div>')
     out.append(
-        f'<div style="font-size:11px; color:{_MUTED}; margin:2px 0 0 0;">'
+        f'<div style="font-size:13px; color:{_MUTED}; margin:2px 0 0 0;">'
         f'{_esc(read["note"] if read else td.NO_TIMES_WORDS)}</div>'
     )
     out.append(_card_heading("Package vs our build"))
     pair = card["pair"]
     if pair:
-        cell = (f'valign="top" width="50%" style="padding:6px 8px; border:1px solid {_LINE}; background:#f8fafc;"')
+        cell = (f'valign="top" width="50%" style="padding:6px 8px; border:1px solid {_LINE}; background:#172033;"')
         operator = (f'<a href="{_esc(pair["url"])}" style="color:{_ACCENT}; text-decoration:none; font-weight:700;">'
                     f'{_esc(pair["operator"])} ↗</a>' if pair["url"]
                     else f'<strong>{_esc(pair["operator"])}</strong>')
         left = (f'<div style="font-size:10px; font-weight:700; color:{_ACCENT}; text-transform:uppercase; '
                 f'letter-spacing:0.05em;">Vendor package</div>'
-                f'<div style="font-size:12px; margin:1px 0 0 0; color:{_INK};">{operator}</div>'
+                f'<div style="font-size:13px; margin:1px 0 0 0; color:{_INK};">{operator}</div>'
                 f'<div style="font-size:15px; font-weight:800; color:{_ACCENT}; margin:3px 0 0 0;">{_esc(pair["total"])}'
-                f' <span style="font-size:11px; font-weight:400; color:{_MUTED};">for 5</span></div>'
-                f'<div style="font-size:11px; color:{_MUTED};">{_esc(pair["what"])}</div>'
-                + (f'<div style="font-size:11px; color:{_MUTED};">{_esc(pair["checked"])}</div>' if pair["checked"] else "")
-                + (f'<div style="font-size:11px; color:#92400e;">{_esc(pair["other_dates"])}</div>' if pair["other_dates"] else ""))
+                f' <span style="font-size:13px; font-weight:400; color:{_MUTED};">for 5</span></div>'
+                f'<div style="font-size:13px; color:{_MUTED};">{_esc(pair["what"])}</div>'
+                + (f'<div style="font-size:13px; color:{_MUTED};">{_esc(pair["checked"])}</div>' if pair["checked"] else "")
+                + (f'<div style="font-size:13px; color:#fcd34d;">{_esc(pair["other_dates"])}</div>' if pair["other_dates"] else ""))
         right = (f'<div style="font-size:10px; font-weight:700; color:{_ACCENT}; text-transform:uppercase; '
                  f'letter-spacing:0.05em;">Our build</div>'
-                 f'<div style="font-size:12px; margin:1px 0 0 0; color:{_INK};">Flights + stay</div>'
+                 f'<div style="font-size:13px; margin:1px 0 0 0; color:{_INK};">Flights + stay</div>'
                  f'<div style="font-size:15px; font-weight:800; color:{_ACCENT}; margin:3px 0 0 0;">{_esc(pair["ours_total"])}'
-                 f' <span style="font-size:11px; font-weight:400; color:{_MUTED};">for 5</span></div>'
-                 f'<div style="font-size:11px; color:{_MUTED};">{_esc(pair["ours_what"])}</div>')
+                 f' <span style="font-size:13px; font-weight:400; color:{_MUTED};">for 5</span></div>'
+                 f'<div style="font-size:13px; color:{_MUTED};">{_esc(pair["ours_what"])}</div>')
         out.append(
             '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
             'style="border-collapse:separate; border-spacing:4px 0;"><tr>'
             f'<td {cell}>{left}</td><td {cell}>{right}</td></tr></table>'
-            f'<div style="font-size:12px; color:{_INK}; margin:6px 0 0 0;"><strong>{_esc(pair["difference"])}</strong></div>'
+            f'<div style="font-size:13px; color:{_INK}; margin:6px 0 0 0;"><strong>{_esc(pair["difference"])}</strong></div>'
         )
     else:
         out.append(
-            f'<div style="font-size:12px; color:{_MUTED}; margin:2px 0 0 0;">'
+            f'<div style="font-size:13px; color:{_MUTED}; margin:2px 0 0 0;">'
             f'None: {td.NO_CARD_PACKAGE_WORDS}.</div>'
         )
     if card["ratings"]:
         bits = [td._a(r["url"], r["words"], arrow=False) if r["url"] else _esc(r["words"]) for r in card["ratings"]]
-        out.append(f'<div style="font-size:12px; color:{_INK}; margin:8px 0 0 0;">Reviews: ' + " · ".join(bits)
+        out.append(f'<div style="font-size:13px; color:{_INK}; margin:8px 0 0 0;">Reviews: ' + " · ".join(bits)
                    + (f' · {_esc(card["not_read"])}' if card["not_read"] else "") + "</div>")
     else:
-        out.append(f'<div style="font-size:12px; color:{_MUTED}; margin:8px 0 0 0;">Reviews: {td.NO_RATING_WORDS}</div>')
+        out.append(f'<div style="font-size:13px; color:{_MUTED}; margin:8px 0 0 0;">Reviews: {td.NO_RATING_WORDS}</div>')
     if card["why"]:
         out.append(
-            f'<div style="font-size:12px; color:{_MUTED}; margin:8px 0 0 0;">'
+            f'<div style="font-size:13px; color:{_MUTED}; margin:8px 0 0 0;">'
             + "<br>".join("• " + _esc(line) for line in card["why"])
             + "</div>"
         )
     if card["links"]:
-        out.append(f'<div style="font-size:12px; margin:8px 0 0 0;">')
+        out.append(f'<div style="font-size:13px; margin:8px 0 0 0;">')
         for index, (label, url) in enumerate(card["links"]):
             if index:
                 out.append(f'<span style="color:{_MUTED};"> · </span>')
@@ -1733,7 +1733,7 @@ def _card_html(card: Mapping[str, Any]) -> str:
         out.append("</div>")
     for warning in card["warnings"]:
         out.append(
-            f'<div style="font-size:12px; color:#92400e; margin:4px 0 0 0;">⚠ {_esc(warning)}</div>'
+            f'<div style="font-size:13px; color:#fcd34d; margin:4px 0 0 0;">⚠ {_esc(warning)}</div>'
         )
     out.append("</td></tr></table>")
     return "".join(out)
@@ -1835,8 +1835,20 @@ def _cabin_total_words(item: Mapping[str, Any], budget: float) -> str:
     return f"{_gbp(item['total'])}: {_gbp(item['gap'])} over the {_gbp(budget)} budget"
 
 
+def _has_complete_price(trip: Any, options: Mapping[str, Any], read: Any) -> bool:
+    """Whether a trip can be shown with a complete price (owner, 23 Oct 2026).
+
+    "What use is flights not priced package prices, either give the complete price or don't bother." A trip is shown
+    only when flights were read for its exact dates (either cabin). An estimate or a dated-line package with no flights
+    read is a guide price, not a complete price, so it waits until the nightly pricer has read flights for it.
+    """
+    reads = options.get("reads") or {}
+    return bool((any(reads.values()) if isinstance(reads, Mapping) else bool(reads)) or read)
+
+
 def _multi_centre_rows(config: HolidayConfig, *,
-                       fares: Optional[Mapping[Any, Any]] = None) -> list[dict[str, Any]]:
+                       fares: Optional[Mapping[Any, Any]] = None,
+                       complete_only: bool = False) -> list[dict[str, Any]]:
     """This season's two-centre itineraries with the runtime verdict on each.
 
     Three things are decided here rather than read from the file: whether the LOW
@@ -1899,6 +1911,8 @@ def _multi_centre_rows(config: HolidayConfig, *,
             # rather than rendered as a dead end.
             continue
         options = cabin_options(trip, hol.multi_centre_fares_for(trip.id, legs, fares=fares), budget)
+        if complete_only and not _has_complete_price(trip, options, hol.multi_centre_fare_for(trip.id, legs, fares=fares)):
+            continue
         rows.append({
             "trip": trip,
             # The legs are the trip's identity for a fare as well as for the
@@ -2069,7 +2083,7 @@ def _group_heading_html(group_key: str, group_rows: Sequence[Mapping[str, Any]],
     heading, sentence = _group_intro(group_key, group_rows, budget)
     return (
         f'<div style="margin:18px 0 0 0;"><div style="font-size:15px; font-weight:700; color:{_INK};">'
-        f'{_esc(heading)}</div><div style="font-size:12px; color:{_MUTED};">{_esc(sentence)}</div></div>'
+        f'{_esc(heading)}</div><div style="font-size:13px; color:{_MUTED};">{_esc(sentence)}</div></div>'
     )
 
 
@@ -2151,7 +2165,7 @@ def _over_budget_html(config: HolidayConfig) -> str:
     except (TypeError, ValueError):
         budget = 0.0
     lines = [
-        f'<div style="font-size:12px; color:{_MUTED}; margin:14px 0 0 0;">',
+        f'<div style="font-size:13px; color:{_MUTED}; margin:14px 0 0 0;">',
         f'<strong style="color:{_INK};">Over the {_gbp(budget)} budget</strong>',
         " — priced, no option fits:</div>",
     ]
@@ -2163,7 +2177,7 @@ def _over_budget_html(config: HolidayConfig) -> str:
             # it is for, what priced it and why it is not a card — which is a
             # different set of facts and does not fit beside "£3,994 over".
             lines.append(
-                f'<div style="font-size:12px; color:{_MUTED}; padding:2px 0 0 0;">'
+                f'<div style="font-size:13px; color:{_MUTED}; padding:2px 0 0 0;">'
                 f'{_esc(held)}</div>'
             )
             continue
@@ -2175,7 +2189,7 @@ def _over_budget_html(config: HolidayConfig) -> str:
         note = over_package_html(row, travellers=int(config.travellers))
         note_html = f' <span style="color:{_INK};">{note}</span>' if note else ""
         lines.append(
-            f'<div style="font-size:12px; color:{_MUTED}; padding:2px 0 0 0;">'
+            f'<div style="font-size:13px; color:{_MUTED}; padding:2px 0 0 0;">'
             f'{_esc(row.get("resort_name", ""))} · {_esc(_place(row.get("destination_label", "")))} · '
             f'{_gbp(total)} for {int(config.travellers)} · {_gbp(over)} over'
             f'{note_html}</div>'
@@ -2209,7 +2223,7 @@ def _watch_html(config: HolidayConfig) -> str:
     if not rows:
         return ""
     out = [
-        f'<div style="font-size:12px; color:{_MUTED}; margin:12px 0 0 0;">',
+        f'<div style="font-size:13px; color:{_MUTED}; margin:12px 0 0 0;">',
         f'<strong style="color:{_INK};">On the watch list</strong> — no live price read, '
         'so no price is shown:</div>',
     ]
@@ -2221,7 +2235,7 @@ def _watch_html(config: HolidayConfig) -> str:
             f'{_esc(name)} ↗</a>' if url else _esc(name)
         )
         out.append(
-            f'<div style="font-size:12px; color:{_MUTED}; padding:2px 0 0 0;">'
+            f'<div style="font-size:13px; color:{_MUTED}; padding:2px 0 0 0;">'
             f'{name_html} · {_esc(_watch_reason(row))}</div>'
         )
     return "".join(out)
@@ -2314,7 +2328,7 @@ def _notes_html(config: HolidayConfig, deals: Sequence[PackageDeal]) -> str:
     if not lines:
         return ""
     out = [
-        f'<div style="font-size:11px; color:{_MUTED}; margin:14px 0 0 0;">',
+        f'<div style="font-size:13px; color:{_MUTED}; margin:14px 0 0 0;">',
         f'<strong style="color:{_INK};">Notes</strong><br>',
     ]
     for line in lines:
@@ -2394,17 +2408,17 @@ def _freshness_html(stamps: Optional[Mapping[str, Any]], *, generated_at: Any) -
     rows = _evidence_age_rows(stamps, generated_at=generated_at)
     lines = []
     for label, words, stale, read in rows:
-        colour = "#92400e" if (stale or not read) else _INK
+        colour = "#fcd34d" if (stale or not read) else _INK
         lines.append(
             f'{_esc(label)}: <strong style="color:{colour};">{_esc(words)}</strong>'
         )
     warn = "".join(
-        f'<div style="margin:4px 0 0 0; color:#92400e;">{_esc(text)}</div>'
+        f'<div style="margin:4px 0 0 0; color:#fcd34d;">{_esc(text)}</div>'
         for text in _strip_warnings(rows)
     )
     return (
-        f'<div style="margin:12px 0 0 0; padding:8px 10px; background:#ffffff; '
-        f'border:1px solid {_LINE}; border-radius:8px; font-size:12px; color:{_MUTED}; line-height:1.5;">'
+        f'<div style="margin:12px 0 0 0; padding:8px 10px; background:#1e293b; '
+        f'border:1px solid {_LINE}; border-radius:8px; font-size:13px; color:{_MUTED}; line-height:1.5;">'
         f'<strong style="color:{_INK};">{STRIP_HEADING}</strong><br>'
         + "<br>".join(lines) + warn + "</div>"
     )
@@ -2498,7 +2512,7 @@ def _overview_html(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
     cell = f'padding:6px 4px;border-bottom:1px solid {_LINE}'
     out.append(
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        f'style="border-collapse:collapse;margin:6px 0 0 0;font-size:11px;color:{_MUTED}"><tr>'
+        f'style="border-collapse:collapse;margin:6px 0 0 0;font-size:13px;color:{_MUTED}"><tr>'
     )
     for label, align in (("Trip", "left"), ("Cost for 5 · low end vs budget", "right")):
         out.append(f'<td align="{align}" style="padding:4px;border-bottom:2px solid {_LINE}">{_esc(label)}</td>')
@@ -2511,14 +2525,14 @@ def _overview_html(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
         for item in entries:
             out.append(
                 f'<tr><td valign="top" style="{cell}"><a href="#{item["anchor"]}" '
-                f'style="color:{_INK};text-decoration:none;font-size:12px"><b>{_esc(item["title"])}</b></a><br>'
+                f'style="color:{_INK};text-decoration:none;font-size:13px"><b>{_esc(item["title"])}</b></a><br>'
                 f'{_esc(item["nights"])} &middot; {_esc(item["basis"])}</td>'
                 f'<td align="right" valign="top" style="{cell};white-space:nowrap">'
-                + (("<br>".join(f'<b style="color:{_ACCENT};font-size:12px">{_esc(name)}</b><br>{_esc(fit)}'
+                + (("<br>".join(f'<b style="color:{_ACCENT};font-size:13px">{_esc(name)}</b><br>{_esc(fit)}'
                                 for name, fit in item["totals"])
                     + "".join(f"<br>{_esc(name)} not read yet" for name in item["totals_missing"]))
                    if item["totals"] else
-                   f'<b style="color:{_ACCENT};font-size:12px">{_esc(item["cost"])}</b><br>{_esc(item["fit"])}')
+                   f'<b style="color:{_ACCENT};font-size:13px">{_esc(item["cost"])}</b><br>{_esc(item["fit"])}')
                 + "</td></tr>"
             )
     out.append("</table>")
@@ -2638,11 +2652,11 @@ def _start_here_html(answers: Mapping[str, Any], *, attachment_line: str = "") -
                     + f'<span style="color:{_MUTED};"> · </span>'.join(link(p["anchor"], p["label"]) for p in pairs)
                     + "</div>")
     return (
-        f'<div id="start" style="margin:12px 0 0 0; padding:10px 12px; background:#ffffff; border:1px solid {_LINE}; '
-        f'border-left:4px solid {_ACCENT}; border-radius:8px; font-size:12px; line-height:1.5; color:{_INK};">'
+        f'<div id="start" style="margin:12px 0 0 0; padding:10px 12px; background:#1e293b; border:1px solid {_LINE}; '
+        f'border-left:4px solid {_ACCENT}; border-radius:8px; font-size:13px; line-height:1.5; color:{_INK};">'
         f'<strong style="font-size:13px;">{START_HERE_HEADING}</strong>'
         f'<div style="margin:2px 0 0 0;">{_esc(START_HERE_GUIDE)}</div>'
-        f'<div style="margin:6px 0 0 0; font-size:11px; font-weight:700; color:{_MUTED}; text-transform:uppercase; '
+        f'<div style="margin:6px 0 0 0; font-size:13px; font-weight:700; color:{_MUTED}; text-transform:uppercase; '
         f'letter-spacing:0.05em;">Quick answers</div>' + "".join(rows)
         + (f'<div style="margin:6px 0 0 0; padding:4px 0 0 0; border-top:1px solid {_LINE};">'
            f'<strong>{_esc(attachment_line)}</strong></div>' if attachment_line else "")
@@ -2688,7 +2702,7 @@ def _shortened_summary_html(dossiers: Sequence[Mapping[str, Any]], levels: Mappi
     text = _shortened_summary_parts(dossiers, levels)
     if not text:
         return ""
-    return f'<div style="font-size:12px; color:#92400e; margin:12px 0 0 0;">{_esc(text)}</div>'
+    return f'<div style="font-size:13px; color:#fcd34d; margin:12px 0 0 0;">{_esc(text)}</div>'
 
 
 def full_detail_filename(config: HolidayConfig, generated_at: Any) -> str:
@@ -2804,7 +2818,7 @@ def _render_compact(
 ) -> str:
     """The one renderer behind the body and the attachment; ``full_detail`` lifts the byte budget."""
     cards = _cards(config, deals, generated_at=generated_at, trends=trends, hotel_media=hotel_media)
-    multi_rows = _multi_centre_rows(config, fares=multi_centre_fares)
+    multi_rows = _multi_centre_rows(config, fares=multi_centre_fares, complete_only=bool(getattr(config, "complete_price_only", True)))
     dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
                                       hotel_ratings=hotel_ratings, hotel_media=hotel_media)
     answers = _quick_answers(config, multi_rows, cards, dossiers)
@@ -2820,9 +2834,9 @@ def _render_compact(
     out: list[str] = [
         f'<!DOCTYPE html><html><head><meta charset="utf-8">{viewport}<title>',
         _esc(config.report_title),
-        '</title></head><body style="margin:0; padding:0; background:#f1f5f9; ',
+        '</title></head><body style="margin:0; padding:0; background:#0f172a; ',
         'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; ',
-        'line-height:1.45;"><table role="presentation" width="100%" bgcolor="#f1f5f9" ',
+        'line-height:1.45;"><table role="presentation" width="100%" bgcolor="#0f172a" ',
         'cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:14px 10px;">',
         '<table role="presentation" width="600" cellpadding="0" cellspacing="0" ',
         'style="width:100%; max-width:600px;"><tr><td>',
@@ -2833,7 +2847,7 @@ def _render_compact(
     ]
     if cards:
         out.append(
-            f'<div style="font-size:12px; font-weight:700; color:{_ACCENT}; margin:10px 0 0 0; '
+            f'<div style="font-size:13px; font-weight:700; color:{_ACCENT}; margin:10px 0 0 0; '
             f'text-transform:uppercase; letter-spacing:0.04em;">Single resorts</div>'
         )
         out.append(_glance_html(cards, travellers=int(config.travellers)))
@@ -2895,7 +2909,7 @@ def _render_compact(
     out.extend(card_html[:shown_cards])
     if shown_cards < len(cards):
         out.append(
-            f'<div style="font-size:12px; color:{_MUTED}; margin:12px 0 0 0;">'
+            f'<div style="font-size:13px; color:{_MUTED}; margin:12px 0 0 0;">'
             f'{len(cards) - shown_cards} further deal(s) not shown: this e-mail is near '
             f"Gmail's {hol.EMAIL_HTML_BUDGET_BYTES // 1000} KB payload cap.</div>"
         )
@@ -2934,7 +2948,7 @@ def render_holiday_report_compact_text(
     so every dossier is here in full.
     """
     cards = _cards(config, deals, generated_at=generated_at, trends=trends, hotel_media=hotel_media)
-    multi_rows = _multi_centre_rows(config, fares=multi_centre_fares)
+    multi_rows = _multi_centre_rows(config, fares=multi_centre_fares, complete_only=bool(getattr(config, "complete_price_only", True)))
     dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
                                       hotel_ratings=hotel_ratings, hotel_media=hotel_media)
     answers = _quick_answers(config, multi_rows, cards, dossiers)

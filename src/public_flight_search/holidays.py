@@ -104,6 +104,9 @@ class HolidayConfig:
     cabin_class: str = "ECONOMY"
     cabin_classes: tuple[str, ...] = ()
     max_budget_gbp: float = 5000.0
+    #: A trip is shown only when flights were read for its dates (owner, 23 Oct 2026: "either give the complete price or
+    #: don't bother"). Layout tests switch it off; a real config never needs to name it.
+    complete_price_only: bool = True
     #: Stay lengths the report will price. A date pair outside the band is
     #: never a candidate: with a 7x7 December grid a 2-night trip is the
     #: cheapest total on every resort, so "cheapest of all pairs" would be a
@@ -692,7 +695,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         "report_title", "party", "departure_window", "origins",
         "outbound_dates", "return_dates", "destinations",
         "cabin_class", "cabin_classes", "max_budget_gbp",
-        "min_nights", "max_nights",
+        "min_nights", "max_nights", "complete_price_only",
     }
     if not isinstance(raw, dict) or set(raw) - allowed:
         raise ConfigError("holiday configuration contains unknown fields")
@@ -841,6 +844,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         cabin_class="ECONOMY" if "ECONOMY" in derived_cabins else derived_cabins[0],
         cabin_classes=derived_cabins,
         max_budget_gbp=max_budget,
+        complete_price_only=raw.get("complete_price_only", True) is not False,
         min_nights=min_nights,
         max_nights=max_nights,
     )
