@@ -500,9 +500,16 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
     rows, lines = [], []
     for d in deals:
         stops = "non-stop" if d.stops == 0 else f"{d.stops} stop{'s' if d.stops > 1 else ''}"
-        basis = (f"{d.pct_below_median:.0f}% below median {_gbp(d.median_gbp)} (n={d.history_n})"
-                 if d.pct_below_median is not None and not d.cold_start else
-                 f"under the {d.region.replace('_', ' ')} cap; not enough history yet for a median (n={d.history_n})")
+        cap = cfg.caps.get(d.region)
+        cap_text = f"under the {d.region.replace('_', ' ')} cap" + (f" {_gbp(cap)}" if cap is not None else "")
+        if d.trigger.startswith("median"):
+            basis = f"{d.pct_below_median:.0f}% below median {_gbp(d.median_gbp)} (n={d.history_n})"
+            if d.trigger == "median+cap":
+                basis += f"; also {cap_text}"
+        elif d.cold_start or d.median_gbp is None:
+            basis = f"{cap_text}; not enough history yet for a median (n={d.history_n})"
+        else:  # fired on the cap alone: the median is context, never presented as the reason
+            basis = f"{cap_text}; route median {_gbp(d.median_gbp)} (n={d.history_n})"
         home = (f"{d.saving_vs_home_pct:.0f}% under the best home-airport total {_gbp(d.home_total_gbp)}"
                 if d.home_total_gbp else ("no home-airport price to compare" if d.positioning_gbp else ""))
         parts = f"fare {_gbp(d.fare_gbp)} + positioning {_gbp(d.positioning_gbp)}" if d.positioning_gbp else "fare only"

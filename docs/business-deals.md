@@ -25,3 +25,9 @@ positioning airports, and sends an e-mail only when a fare is a special deal. No
   `BUSINESS_DEALS_CONFIG_JSON` secret; `examples/business_deals_config.json` is illustrative.
 * `--dry-run` prints the e-mail that would be sent and writes and sends nothing; `--offers FILE` serves fares from a
   local JSON list instead of the network. Exit code 2 means a deal was found but the mail failed.
+
+**Schedule.** `.github/workflows/business-deals.yml` runs it daily at 06:17 UTC on a standard runner. History and
+the sent-alerts log are seeded from and committed back to the private data repo over `HISTORY_DEPLOY_KEY` (as the
+July planner does), so de-duplication holds across days. Without the `BUSINESS_DEALS_CONFIG_JSON` secret it watches
+the committed example config. Set the repository variable `ENABLE_BUSINESS_DEALS` to `false` to stop it; a manual
+dispatch defaults to a dry run.

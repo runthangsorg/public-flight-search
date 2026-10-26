@@ -20,8 +20,9 @@ may hold only generic booleans and operating limits.
 
 ## What this repo is for
 
-Recurring GitHub-hosted compute for the December and July package-holiday planners, on free
-standard runners (holiday-planner.yml, july-holiday-planner.yml). Keep it that way: no self-hosted
+Recurring GitHub-hosted compute for the December and July package-holiday planners (July: weekly,
+Sunday 08:00 UTC) and the daily business-class deal watch (business-deals.yml, owner decision 26 Oct 2026; it
+e-mails only when a deal fires), on free standard runners (holiday-planner.yml, july-holiday-planner.yml). Keep it that way: no self-hosted
 runners, no credentials in the repo, no personalised output committed. The paired flight digest
 (flight-digest.yml) was deleted on 2026-09-28 at the owner's instruction — do not reintroduce it
 without an owner decision.

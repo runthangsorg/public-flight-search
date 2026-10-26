@@ -364,6 +364,15 @@ class EmailTests(JobCase):
         _, sink, _ = self.run_job({"LHR": 900})
         self.assertIn("not enough history", sink.sent[0][1].lower())
 
+    def test_a_cap_deal_above_a_warm_median_says_cap_not_a_negative_drop(self):
+        write_history(self.history, median_history("LHR", 900))
+        result, sink, _ = self.run_job({"LHR": 990})
+        self.assertEqual([d.trigger for d in result.deals], ["cap"])
+        html = sink.sent[0][1]
+        self.assertIn("under the asia cap £1,000", html)
+        self.assertNotIn("% below median", html)
+        self.assertNotIn("not enough history", html.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,152 @@
+name: public-business-deals
+
+# Daily business-class deal watch (owner, 26 Oct 2026: long-haul business class worldwide, flights over 8 hours,
+# cheaper positioning origins such as Oslo when the saving is big, e-mail ONLY when a special deal is found).
+# Silence is the normal outcome: no deal means no e-mail and one log line. Set the repository variable
+# ENABLE_BUSINESS_DEALS to "false" to stop the schedule.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print the would-be e-mail; send nothing and persist nothing"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-business-deals
+  cancel-in-progress: false
+
+jobs:
+  deals:
+    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_BUSINESS_DEALS != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    # Read-only on this public repo. History and the sent-alerts log (which de-duplicates mail across days) live in
+    # the PRIVATE data repo (dealsearch) and travel over the write-scoped HISTORY_DEPLOY_KEY, as for the July planner.
+    steps:
+      - name: Check out public engine
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Install engine
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Run safety tests before using secrets
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -v
+      - name: Seed history and sent alerts from private data repo
+        env:
+          HISTORY_DEPLOY_KEY: ${{ secrets.HISTORY_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          test -n "${HISTORY_DEPLOY_KEY}" || {
+            echo "::warning::HISTORY_DEPLOY_KEY not configured; starting with no history (only regional caps can fire)."
+            exit 0
+          }
+          mkdir -p ~/.ssh
+          echo "$HISTORY_DEPLOY_KEY" > ~/.ssh/history_deploy_key
+          chmod 600 ~/.ssh/history_deploy_key
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/history_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          GH_USER_PART="git@"
+          GH_HOST_PART="github.com"
+          git clone --depth 1 "${GH_USER_PART}${GH_HOST_PART}:runthangsorg/dealsearch.git" /tmp/history-seed
+          for f in business_deals_history.jsonl business_deals_history_alerts.jsonl; do
+            if [[ -f "/tmp/history-seed/data/${f}" ]]; then
+              cp "/tmp/history-seed/data/${f}" "data/${f}"
+              echo "Seeded ${f}: $(wc -l < "data/${f}") rows."
+            else
+              echo "No prior ${f}; starting fresh."
+            fi
+          done
+      - name: Watch fares and mail only on a deal
+        env:
+          BUSINESS_DEALS_CONFIG_JSON: ${{ secrets.BUSINESS_DEALS_CONFIG_JSON }}
+          BUSINESS_DEALS_HISTORY: data/business_deals_history.jsonl
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          REPORT_RECIPIENT: ${{ secrets.REPORT_RECIPIENT }}
+          DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${BUSINESS_DEALS_CONFIG_JSON:-}" ]]; then
+            echo "::notice::no BUSINESS_DEALS_CONFIG_JSON secret; watching the committed examples/business_deals_config.json"
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_DRY_RUN}" == "true" ]]; then
+            python -m public_flight_search business-deals --dry-run
+          else
+            python -m public_flight_search business-deals
+          fi
+      - name: Persist history and sent alerts to private data repo
+        # Also after a failed send (exit 2): the fares were still observed, and the alert was deliberately not
+        # recorded so tomorrow retries the mail.
+        if: (success() || failure()) && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false))
+        env:
+          HISTORY_DEPLOY_KEY: ${{ secrets.HISTORY_DEPLOY_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -s data/business_deals_history.jsonl && ! -s data/business_deals_history_alerts.jsonl ]]; then
+            echo "Nothing observed; nothing to persist."
+            exit 0
+          fi
+          test -n "${HISTORY_DEPLOY_KEY}" || {
+            echo "::warning::HISTORY_DEPLOY_KEY secret not configured; history not persisted this run."
+            exit 0
+          }
+          mkdir -p ~/.ssh
+          echo "$HISTORY_DEPLOY_KEY" > ~/.ssh/history_deploy_key
+          chmod 600 ~/.ssh/history_deploy_key
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/history_deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          GH_USER_PART="git@"
+          GH_HOST_PART="github.com"
+          git clone --depth 1 "${GH_USER_PART}${GH_HOST_PART}:runthangsorg/dealsearch.git" /tmp/history-repo
+          cd /tmp/history-repo
+          mkdir -p data
+          touch data/business_deals_history.jsonl data/business_deals_history_alerts.jsonl
+          touch "$GITHUB_WORKSPACE/data/business_deals_history.jsonl" "$GITHUB_WORKSPACE/data/business_deals_history_alerts.jsonl"
+          # History: at most one row per route and UTC day (the job's own rule), enforced again at the point of truth.
+          cat data/business_deals_history.jsonl "$GITHUB_WORKSPACE/data/business_deals_history.jsonl" \
+          | awk '
+            !/^\{/ { next }
+            {
+              fp = ""; dt = "";
+              if (match($0, /"fingerprint": "[^"]+"/)) fp = substr($0, RSTART + 16, RLENGTH - 16);
+              if (match($0, /"observed_at": "[^"]+"/)) dt = substr($0, RSTART + 16, RLENGTH - 16);
+              key = fp "|" substr(dt, 1, 10);
+              if (!(key in seen)) { seen[key] = 1; print }
+            }' > data/bd_history.tmp && mv data/bd_history.tmp data/business_deals_history.jsonl
+          # Sent alerts: keep every distinct line once, in order.
+          cat data/business_deals_history_alerts.jsonl "$GITHUB_WORKSPACE/data/business_deals_history_alerts.jsonl" \
+          | awk '/^\{/ && !seen[$0]++' > data/bd_alerts.tmp && mv data/bd_alerts.tmp data/business_deals_history_alerts.jsonl
+          git config user.name "holiday-history-bot"
+          git config user.email "history@localhost"
+          git add data/business_deals_history.jsonl data/business_deals_history_alerts.jsonl
+          if git diff --cached --quiet; then
+            echo "No new observations."
+            exit 0
+          fi
+          git commit -m "history: business-class deal observations from public watcher $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          RETRIES=3
+          until git push origin main; do
+            RETRIES=$((RETRIES-1))
+            if [[ $RETRIES -le 0 ]]; then
+              echo "::warning::History commit-back failed after retries."
+              exit 1
+            fi
+            git pull --rebase origin main || true
+            sleep 5
+          done
