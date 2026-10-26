@@ -595,7 +595,8 @@ def alerts_path_for(history_path: Path) -> Path:
 
 def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Optional[Path] = None,
             now: Optional[datetime] = None, fetch: Optional[Callable[[SearchSpec], FetchOutcome]] = None,
-            send: Optional[Callable[..., None]] = None, dry_run: bool = False) -> JobResult:
+            send: Optional[Callable[..., None]] = None, dry_run: bool = False,
+            print_details: bool = True) -> JobResult:
     now = now or datetime.now(timezone.utc)
     history_path = Path(history_path)
     alerts_path = Path(alerts_path) if alerts_path else alerts_path_for(history_path)
@@ -635,7 +636,11 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
 
     if result.deals:
         subject, html, text = render_email(result.deals, cfg, now)
-        if dry_run:
+        if dry_run and not print_details:
+            # A public Actions log must not carry the owner's routes, dates or fares (they come from a secret).
+            print(f"DRY RUN: would mail {len(result.deals)} deal(s); routes, dates and fares are withheld from this "
+                  "public log because the config is a private secret (run the dry run locally to see them)")
+        elif dry_run:
             print(f"DRY RUN: would mail: {subject}\n{text}\n{html}")
         else:
             try:
@@ -674,13 +679,16 @@ def main(arguments: Sequence[str]) -> int:
     parser.add_argument("--dry-run", action="store_true", help="print the would-be e-mail; send and write nothing")
     args = parser.parse_args(list(arguments))
 
+    secret = ""
     if args.config:
         source = Path(args.config).read_text(encoding="utf-8")
     else:
-        source = os.environ.get("BUSINESS_DEALS_CONFIG_JSON") or (
-            Path("examples/business_deals_config.json").read_text(encoding="utf-8"))
+        secret = os.environ.get("BUSINESS_DEALS_CONFIG_JSON") or ""
+        source = secret or Path("examples/business_deals_config.json").read_text(encoding="utf-8")
     cfg = load_config(source)
     history = Path(args.history or os.environ.get("BUSINESS_DEALS_HISTORY") or HISTORY_DEFAULT_PATH)
     fetch = offers_file_fetch(Path(args.offers)) if args.offers else None
-    result = run_job(cfg, history_path=history, fetch=fetch, dry_run=args.dry_run)
+    # In Actions any non-example config is private (the secret, or a file written from it); the log is public.
+    public_log = os.environ.get("GITHUB_ACTIONS") == "true" and bool(secret or args.config)
+    result = run_job(cfg, history_path=history, fetch=fetch, dry_run=args.dry_run, print_details=not public_log)
     return 2 if result.deals and not result.mailed and not args.dry_run else 0

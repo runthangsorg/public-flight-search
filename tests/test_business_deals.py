@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
@@ -221,6 +222,79 @@ class SilenceAndDedupeTests(JobCase):
         self.assertEqual(len(result.deals), 1)
         self.assertIn("<html", out)
         self.assertIn("dry run", out.lower())
+
+
+class PublicLogTests(JobCase):
+    """This repository's Actions logs are world-readable. With the owner's real config (a secret), a dispatched dry
+    run must not print routes, dates or fares: they are his travel plans (review 26 Oct 2026)."""
+
+    def test_a_withheld_dry_run_prints_only_the_count(self):
+        cfg = bd.load_config(raw_config(), today=NOW.date())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            result = bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW,
+                                fetch=fetch_with({"LHR": 900}), send=Sink(), dry_run=True, print_details=False)
+        self.assertEqual(len(result.deals), 1)
+        text = out.getvalue()
+        self.assertIn("would mail 1 deal", text)
+        for leak in ("BKK", "LHR", DEP, "900", "<html", "example.test"):
+            self.assertNotIn(leak, text, leak)
+
+    def _main(self, env):
+        offers = self.dir / "offers.json"
+        offers.write_text(json.dumps([{
+            "origin": "LHR", "destination": "BKK", "departure": f"{DEP}T10:00:00", "price": 900, "currency": "GBP",
+            "stops": 0, "duration_minutes": 700, "provider": "Google Flights",
+            "booking_url": "https://example.test/LHR-BKK", "airline": "Test Air"}]), encoding="utf-8")
+        keep = {k: os.environ.get(k) for k in ("GITHUB_ACTIONS", "BUSINESS_DEALS_CONFIG_JSON")}
+        try:
+            for k in keep:
+                os.environ.pop(k, None)
+            os.environ.update(env)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = bd.main(["--dry-run", "--offers", str(offers), "--history", str(self.history)])
+        finally:
+            for k, v in keep.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        return code, out.getvalue()
+
+    def test_actions_with_the_secret_config_withholds_the_details(self):
+        code, text = self._main({"GITHUB_ACTIONS": "true", "BUSINESS_DEALS_CONFIG_JSON": json.dumps(raw_config())})
+        self.assertEqual(code, 0)
+        self.assertIn("would mail 1 deal", text)
+        self.assertNotIn("BKK", text)
+
+    def test_actions_with_a_config_file_also_withholds_the_details(self):
+        cfg = self.dir / "cfg.json"
+        cfg.write_text(json.dumps(raw_config()), encoding="utf-8")
+        offers = self.dir / "offers.json"
+        offers.write_text(json.dumps([{
+            "origin": "LHR", "destination": "BKK", "departure": f"{DEP}T10:00:00", "price": 900, "currency": "GBP",
+            "stops": 0, "duration_minutes": 700, "provider": "Google Flights",
+            "booking_url": "https://example.test/LHR-BKK", "airline": "Test Air"}]), encoding="utf-8")
+        keep = os.environ.get("GITHUB_ACTIONS")
+        os.environ["GITHUB_ACTIONS"] = "true"
+        try:
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                bd.main(["--dry-run", "--config", str(cfg), "--offers", str(offers), "--history", str(self.history)])
+        finally:
+            if keep is None:
+                os.environ.pop("GITHUB_ACTIONS", None)
+            else:
+                os.environ["GITHUB_ACTIONS"] = keep
+        self.assertIn("would mail 1 deal", out.getvalue())
+        self.assertNotIn("BKK", out.getvalue())
+
+    def test_a_local_dry_run_still_shows_the_email(self):
+        code, text = self._main({"BUSINESS_DEALS_CONFIG_JSON": json.dumps(raw_config())})
+        self.assertEqual(code, 0)
+        self.assertIn("LHR-BKK", text)
+        self.assertIn("<html", text)
 
 
 class WallAndMalformedTests(JobCase):

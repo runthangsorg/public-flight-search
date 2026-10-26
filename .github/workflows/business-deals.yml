@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Print the would-be e-mail; send nothing and persist nothing"
+        description: "Send and persist nothing; with the config secret set, the public log shows only the deal count"
         required: true
         default: true
         type: boolean

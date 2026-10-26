@@ -23,7 +23,8 @@ positioning airports, and sends an e-mail only when a fare is a special deal. No
 * **Delivery** uses `mailer.send_html`: `SMTP_USER`, `SMTP_PASSWORD`, `REPORT_RECIPIENT` (and optionally `SMTP_HOST`,
   `SMTP_PORT`) come from the runtime environment. The real origins, positioning costs and caps belong in the
   `BUSINESS_DEALS_CONFIG_JSON` secret; `examples/business_deals_config.json` is illustrative.
-* `--dry-run` prints the e-mail that would be sent and writes and sends nothing; `--offers FILE` serves fares from a
+* `--dry-run` prints the e-mail that would be sent and writes and sends nothing (in GitHub Actions with a private
+  config, the `BUSINESS_DEALS_CONFIG_JSON` secret or a `--config` file, it prints only the deal count: the Actions log is public); `--offers FILE` serves fares from a
   local JSON list instead of the network. Exit code 2 means a deal was found but the mail failed.
 
 **Schedule.** `.github/workflows/business-deals.yml` runs it daily at 06:17 UTC on a standard runner. History and
