@@ -151,6 +151,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return _evidence_contract(arguments[1:])
     if arguments and arguments[0] == "holiday-compare":
         return _holiday_compare(arguments[1:])
+    if arguments and arguments[0] == "business-deals":
+        from .business_deals import main as _business_deals
+
+        return _business_deals(arguments[1:])
     if arguments and arguments[0] in {"holiday-planner", "july-holiday-planner"}:
         command = arguments.pop(0)
         dry_run = "--dry-run" in arguments

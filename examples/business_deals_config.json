@@ -1,0 +1,38 @@
+{
+  "report_title": "Business-class deals",
+  "notes": "Illustrative placeholders. Set real origins, positioning costs and regional caps in the BUSINESS_DEALS_CONFIG_JSON runtime secret; nothing personal belongs in this file.",
+  "origins": [
+    {"code": "LHR", "label": "London Heathrow", "positioning_gbp": 0, "home": true},
+    {"code": "LGW", "label": "London Gatwick", "positioning_gbp": 0, "home": true},
+    {"code": "MAN", "label": "Manchester", "positioning_gbp": 90, "home": false},
+    {"code": "OSL", "label": "Oslo", "positioning_gbp": 160, "home": false},
+    {"code": "CPH", "label": "Copenhagen", "positioning_gbp": 140, "home": false},
+    {"code": "AMS", "label": "Amsterdam", "positioning_gbp": 110, "home": false}
+  ],
+  "destinations": [
+    {"code": "BKK", "label": "Bangkok", "region": "asia", "hours_from_london": 11.5},
+    {"code": "SIN", "label": "Singapore", "region": "asia", "hours_from_london": 13.0},
+    {"code": "HND", "label": "Tokyo Haneda", "region": "asia", "hours_from_london": 14.25},
+    {"code": "HKG", "label": "Hong Kong", "region": "asia", "hours_from_london": 12.0},
+    {"code": "DEL", "label": "Delhi", "region": "asia", "hours_from_london": 8.75},
+    {"code": "LAX", "label": "Los Angeles", "region": "north_america", "hours_from_london": 11.25},
+    {"code": "MIA", "label": "Miami", "region": "north_america", "hours_from_london": 9.5},
+    {"code": "ORD", "label": "Chicago", "region": "north_america", "hours_from_london": 8.5},
+    {"code": "JNB", "label": "Johannesburg", "region": "africa", "hours_from_london": 11.5},
+    {"code": "MRU", "label": "Mauritius", "region": "africa", "hours_from_london": 12.0},
+    {"code": "GRU", "label": "Sao Paulo", "region": "south_america", "hours_from_london": 11.75},
+    {"code": "SYD", "label": "Sydney", "region": "oceania", "hours_from_london": 22.0}
+  ],
+  "date_windows": [{"start": "2027-02-01", "end": "2027-06-30", "every_days": 30}],
+  "min_days_ahead": 7,
+  "min_observations": 5,
+  "median_drop_pct": 30,
+  "median_window_days": 90,
+  "away_min_saving_pct": 20,
+  "dedupe_days": 7,
+  "redrop_pct": 2,
+  "max_searches_per_run": 72,
+  "max_stops": 1,
+  "stop_after_blocked": 3,
+  "absolute_caps_gbp": {"asia": 1500, "north_america": 1200, "africa": 1300, "south_america": 1500, "oceania": 2200}
+}
