@@ -29,7 +29,7 @@
   "median_drop_pct": 30,
   "median_window_days": 90,
   "away_min_saving_pct": 20,
-  "dedupe_days": 7,
+  "dedupe_days": 30,
   "redrop_pct": 2,
   "max_searches_per_run": 72,
   "max_stops": 1,
