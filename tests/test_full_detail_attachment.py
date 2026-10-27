@@ -81,6 +81,18 @@ class MailerTests(unittest.TestCase):
 
 
 class TheJobAttachesItOnASendAndNeverOnADryRunTests(unittest.TestCase):
+    # The planner's collect run stashes its transparency lists in module globals
+    # the renderers read on every call (holidays.LAST_FILTERED_OUT, LAST_OVER_BUDGET,
+    # LAST_CLIMATE_EXCLUDED). Left as the December run set them, the synthetic
+    # "no attachment" bodies below gain a Notes line that happens to contain the
+    # word "attached" ("no genuine walkable private beach attached"), so put them
+    # back as they were, as test_held_back_resort_is_named does.
+    def setUp(self):
+        self.saved = (hol.LAST_FILTERED_OUT, hol.LAST_OVER_BUDGET, hol.LAST_CLIMATE_EXCLUDED)
+
+    def tearDown(self):
+        hol.LAST_FILTERED_OUT, hol.LAST_OVER_BUDGET, hol.LAST_CLIMATE_EXCLUDED = self.saved
+
     def _run(self, tmp, *, dry_run, force_send=False):
         env = {
             "HOLIDAY_SEARCH_CONFIG_JSON": JULY.read_text(encoding="utf-8"),
