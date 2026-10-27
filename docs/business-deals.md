@@ -18,6 +18,9 @@ positioning airports, and sends an e-mail only when a fare is a special deal. No
   readings), or at/below the `absolute_caps_gbp` for its region. A positioning origin must also beat the best
   home-airport total for the same destination and date by `away_min_saving_pct`; with no home price to compare it can
   only fire on the cap. Until the history is warm, only caps can fire and the e-mail says so.
+* **Airlines.** A fare on a low-cost carrier or on Air India is never a business-class result (owner, 27 Oct 2026):
+  the list is `business_airlines.EXCLUDED_FOR_BUSINESS`, and the optional config list `exclude_airlines` adds names.
+  The planner's BUSINESS fares (`live_verify`) skip the same airlines.
 * **De-duplication.** The same route and date is not mailed again within `dedupe_days` unless the total drops by at
   least `redrop_pct`. A failed send records nothing, so the next run retries.
 * **Delivery** uses `mailer.send_html`: `SMTP_USER`, `SMTP_PASSWORD`, `REPORT_RECIPIENT` (and optionally `SMTP_HOST`,

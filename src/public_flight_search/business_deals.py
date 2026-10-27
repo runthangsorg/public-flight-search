@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 from . import google_flights as _gf
+from .business_airlines import excluded_airline
 from .cabin import BUSINESS_FLIGHT_HOURS
 from .config import FlightSearch
 from .engine import FlightOffer
@@ -50,7 +51,7 @@ _TOP_LEVEL = {
     "report_title", "notes", "origins", "destinations", "dates", "date_windows", "min_days_ahead",
     "min_observations", "median_drop_pct", "median_window_days", "away_min_saving_pct", "dedupe_days",
     "redrop_pct", "max_searches_per_run", "max_stops", "min_fare_gbp", "max_fare_gbp", "stop_after_blocked",
-    "absolute_caps_gbp",
+    "absolute_caps_gbp", "exclude_airlines",
 }
 
 
@@ -92,6 +93,8 @@ class BusinessDealsConfig:
     max_fare_gbp: float = 20000.0
     stop_after_blocked: int = 3
     caps: Mapping[str, float] = field(default_factory=dict)
+    #: Airlines added to ``business_airlines.EXCLUDED_FOR_BUSINESS`` (that list always applies).
+    exclude_airlines: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -152,6 +155,16 @@ class JobResult:
 
 
 # --------------------------------------------------------------------------- config
+
+
+def _airline_names(value: Any) -> tuple[str, ...]:
+    """``exclude_airlines``: a list of up to 50 airline names."""
+    if value is None:
+        return ()
+    if (not isinstance(value, list) or len(value) > 50
+            or not all(isinstance(v, str) and 0 < len(v.strip()) <= 60 for v in value)):
+        raise BusinessDealsConfigError("exclude_airlines must be a list of up to 50 airline names")
+    return tuple(v.strip() for v in value)
 
 
 def _num(raw: Mapping[str, Any], name: str, default: float, low: float, high: float) -> float:
@@ -261,6 +274,7 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
         max_fare_gbp=_num(raw, "max_fare_gbp", 20000.0, 500.0, 100000.0),
         stop_after_blocked=int(_num(raw, "stop_after_blocked", 3, 1, 10)),
         caps=caps,
+        exclude_airlines=_airline_names(raw.get("exclude_airlines")),
     )
 
 
@@ -307,6 +321,8 @@ def _accept(offer: Any, spec: SearchSpec, cfg: BusinessDealsConfig) -> Optional[
         return None
     if offer.duration_minutes <= BUSINESS_FLIGHT_HOURS * 60:
         return None
+    if excluded_airline(str(offer.airline or ""), cfg.exclude_airlines):
+        return None  # no business class on low-cost carriers or Air India (owner, 27 Oct 2026)
     return offer
 
 

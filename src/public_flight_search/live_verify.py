@@ -59,6 +59,7 @@ from typing import Any, Mapping, Optional, Sequence
 # ``config`` sits below ``holidays`` in the import graph, so importing the
 # shared cabin set from there stays acyclic (holidays imports this module).
 from .config import REPORT_CABINS
+from .business_airlines import excluded_airline
 
 #: Bases on which a displayed amount can be a whole-trip total. Only these
 #: may promote a deal to ``verified-exact-date``.
@@ -889,6 +890,11 @@ def load_live_flight_evidence(
             legacy_record = "cabin_class" not in item
             if legacy_record:
                 entry_cabin = "ECONOMY"
+        unwanted = excluded_airline(str(item.get("carrier", ""))) if entry_cabin == "BUSINESS" else ""
+        if unwanted:
+            # owner, 27 Oct 2026: no business class on low-cost carriers or Air India
+            _warn_skip(airport, f"business on {unwanted}, an airline not wanted in business")
+            continue
         entry = LiveFareEvidence(
             airport=airport,
             total_gbp=total,
