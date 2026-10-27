@@ -27,12 +27,12 @@ def _offer(price, airline):
 class TheListTests(unittest.TestCase):
     def test_low_cost_carriers_and_air_india_are_named(self):
         for names, hit in ((("IndiGo",), "IndiGo"), ("Air India Express", "Air India Express"),
-                           ("Lufthansa, Air India", "Air India"), (("flydubai",), "flydubai")):
+                           ("Lufthansa, Air India", "Air India"), (("flydubai",), "flydubai"), (("LOT",), "LOT")):
             with self.subTest(names=names):
                 self.assertEqual(excluded_airline(names), hit)
 
     def test_full_service_airlines_are_not(self):
-        for names in (("LOT",), ("Etihad Airways",), ("Qatar Airways",), ("Air Indiana",), ()):
+        for names in (("Etihad Airways",), ("Qatar Airways",), ("Air Indiana",), ()):
             with self.subTest(names=names):
                 self.assertEqual(excluded_airline(names), "")
 
@@ -42,14 +42,14 @@ class TheDealsJobTests(unittest.TestCase):
         cfg = bd.load_config(raw_config(), today=bd.date(2027, 1, 15))
         spec = bd.SearchSpec("LHR", "BKK", DEP)
         row, rejected = bd.cheapest_observation(
-            [_offer(646, "IndiGo"), _offer(900, "Air India"), _offer(1118, "LOT")], spec, cfg,
+            [_offer(646, "IndiGo"), _offer(900, "Air India"), _offer(1118, "LOT"), _offer(1300, "Qatar Airways")], spec, cfg,
             bd.datetime(2027, 1, 15, tzinfo=bd.timezone.utc))
-        self.assertEqual((row["airline"], row["fare_gbp"], rejected), ("LOT", 1118.0, 2))
+        self.assertEqual((row["airline"], row["fare_gbp"], rejected), ("Qatar Airways", 1300.0, 3))
 
     def test_the_config_can_add_an_airline_and_is_validated(self):
-        cfg = bd.load_config(raw_config(exclude_airlines=["LOT"]), today=bd.date(2027, 1, 15))
-        self.assertEqual(cfg.exclude_airlines, ("LOT",))
-        self.assertIsNone(bd._accept(_offer(1118, "LOT"), bd.SearchSpec("LHR", "BKK", DEP), cfg))
+        cfg = bd.load_config(raw_config(exclude_airlines=["Gulf Air"]), today=bd.date(2027, 1, 15))
+        self.assertEqual(cfg.exclude_airlines, ("Gulf Air",))
+        self.assertIsNone(bd._accept(_offer(1118, "Gulf Air"), bd.SearchSpec("LHR", "BKK", DEP), cfg))
         with self.assertRaises(bd.BusinessDealsConfigError):
             bd.load_config(raw_config(exclude_airlines="IndiGo"), today=bd.date(2027, 1, 15))
 
