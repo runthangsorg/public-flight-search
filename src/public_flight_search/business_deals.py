@@ -59,6 +59,9 @@ _TOP_LEVEL = {
 EXCLUDED_DESTINATIONS = frozenset({
     "DEL", "BOM", "BLR", "MAA", "HYD", "CCU", "COK", "AMD", "GOI", "GOX", "JAI", "PNQ", "TRV", "ATQ", "LKO",
     "CCJ", "IXC", "NAG", "VNS", "PAT", "GAU", "BBI", "IXB", "SXR", "IXM", "TRZ", "IXE", "IDR", "VTZ", "CJB",
+    "IXA", "IXZ", "BDQ", "RPR", "DED", "STV", "IXJ", "IXR", "IXU", "IXL", "BHO", "UDR", "JDH", "IXG", "HBX",
+    "MYQ", "IXD", "GAY", "DIB", "IMF", "AJL", "JRH", "IXS", "BHJ", "RAJ", "KNU", "AGR", "GWL", "JLR", "DHM",
+    "KUU", "SAG", "KLH", "TIR", "VGA", "RJA", "NMI", "DXN", "IXY", "DGH",
 })
 
 
