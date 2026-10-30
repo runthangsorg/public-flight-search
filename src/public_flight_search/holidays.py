@@ -3577,7 +3577,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "board": "unverified",
             "airport": "CPT",
             "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
-            "routing": "LHR-CPT connects for these dates: BA's nonstop is a southern-summer service; otherwise 1 stop via JNB or DXB",
+            "routing": "LHR-CPT nonstop (British Airways / Virgin Atlantic), then a transfer to the hotel",
             "flight_benchmark_5pax_gbp": 0.0,
             "peak_summer_flight_5pax_gbp": 0.0,
             "why": (
@@ -3602,7 +3602,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "board": "unverified",
             "airport": "CPT",
             "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
-            "routing": "LHR-CPT connects for these dates: BA's nonstop is a southern-summer service; otherwise 1 stop via JNB or DXB",
+            "routing": "LHR-CPT nonstop (British Airways / Virgin Atlantic), then a transfer to the hotel",
             "flight_benchmark_5pax_gbp": 0.0,
             "peak_summer_flight_5pax_gbp": 0.0,
             "why": (
@@ -3635,8 +3635,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "board": "unverified",
             "airport": "MRU",
             "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
-            "routing": 'no London nonstop listed for these dates: 1 stop via Paris '
-                       '(Air France + Air Mauritius, 14h25) or Dubai',
+            "routing": 'LHR-MRU nonstop (British Airways / Air Mauritius)',
             "flight_benchmark_5pax_gbp": 0.0,
             "peak_summer_flight_5pax_gbp": 0.0,
             "why": (
@@ -3661,8 +3660,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "board": "unverified",
             "airport": "MRU",
             "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
-            "routing": 'no London nonstop listed for these dates: 1 stop via Paris '
-                       '(Air France + Air Mauritius, 14h25) or Dubai',
+            "routing": 'LHR-MRU nonstop (British Airways / Air Mauritius)',
             "flight_benchmark_5pax_gbp": 0.0,
             "peak_summer_flight_5pax_gbp": 0.0,
             "why": (

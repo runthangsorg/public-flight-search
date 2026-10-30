@@ -114,7 +114,7 @@ DEFAULT_FLIGHT_HOURS_LHR: dict[str, float] = {
     "masai_mara": 11.5,      # NBO nonstop, then a light-aircraft hop to the Mara
     "diani": 12.5,           # LHR-NBO nonstop, a hop to MBA, then the road south
     "kruger": 13.0,          # JNB nonstop, then a light aircraft or road to the lodge
-    "cape_town": 14.5,       # CPT connects in July; BA's nonstop is a southern-summer service
+    "cape_town": 11.5,       # CPT nonstop (BA 7 weekly, 10 later in 2027; Virgin Atlantic)
     "seychelles": 13.5,      # SEZ via DXB, DOH or CDG; no year-round London nonstop
     "hokkaido": 17.0,        # CTS via HND, then a 1h35 domestic hop
 }

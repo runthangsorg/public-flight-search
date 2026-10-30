@@ -178,10 +178,10 @@
       "airports": [
         "CPT"
       ],
-      "flight_hours": 14.5,
-      "flight_hours_source": "LHR-CPT connects for these dates (BA's nonstop is a southern-summer service), about 14h30 from published schedules (not live-checked)",
-      "nonstop_from_london": false,
-      "nonstop_source": "No London nonstop to Cape Town for these July dates: British Airways' LHR-CPT nonstop is a southern-summer service, so these dates connect via Johannesburg or Dubai (published schedules, not live-checked). Not nonstop."
+      "flight_hours": 11.5,
+      "flight_hours_source": "LHR-CPT nonstop on British Airways (7 weekly, rising to 10 later in 2027) and Virgin Atlantic, about 11h30 (airline route reports, read 2026-10-30)",
+      "nonstop_from_london": true,
+      "nonstop_source": "London-Cape Town is a nonstop on British Airways and Virgin Atlantic: BA is raising its LHR-CPT service from 7 to 10 flights a week later in 2027, so the nonstop runs on these dates (airline route reports, read 2026-10-30; not a live fare check)."
     },
     {
       "key": "mauritius",
@@ -189,10 +189,10 @@
       "airports": [
         "MRU"
       ],
-      "flight_hours": 14.42,
-      "flight_hours_source": "No London nonstop listed for these dates: Air France + Air Mauritius via Paris (CDG), 14h25 (Google Flights LHR, read 2026-09-29); no nonstop listed for 20 Jul 2027 either",
-      "nonstop_from_london": false,
-      "nonstop_source": "No London nonstop was listed for these dates: the fastest published routing is 1 stop via Paris (Air France + Air Mauritius, 14h25) or Dubai (published schedules, not live-checked). Not nonstop."
+      "flight_hours": 12.0,
+      "flight_hours_source": "LHR-MRU nonstop on British Airways (about 12h35) and Air Mauritius (about 12h), read 2026-10-30; the 2026-09-29 Google Flights read that listed a Paris connection was a fare search, not the timetable",
+      "nonstop_from_london": true,
+      "nonstop_source": "London-Mauritius is a nonstop: British Airways (about 12h35), Air Mauritius and TUI all list LHR-MRU nonstop, so the nonstop runs on these dates (airline/route listings, read 2026-10-30; not a live fare check)."
     },
     {
       "key": "seychelles",

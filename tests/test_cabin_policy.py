@@ -94,7 +94,11 @@ FAR_EAST_JULY = ["bali", "da_nang"]
 #: inside that season, June/July 2027 does not, so the two configs state their
 #: own hours. Every other destination must match the table exactly, which is
 #: what stops the table drifting away from the configs.
-SEASON_DEPENDENT_HOURS = frozenset({"riviera_maya"})
+#: Destinations whose London service differs by season, so no single row in
+#: the built-in table can mirror them. Cancun is a December nonstop and a July
+#: connection; Mauritius is a ~12h nonstop in July but the table's 14h42 is
+#: the connected route the December config prices. Each config states its own.
+SEASON_DEPENDENT_HOURS = frozenset({"riviera_maya", "mauritius"})
 
 
 def _payload(destinations, **root):
@@ -484,7 +488,8 @@ class CommittedConfigTests(unittest.TestCase):
         # nonstop actually serves. They must be the only exceptions, and
         # each must state the nonstop it is priced on.
         business = [d for d in config.destinations if d.cabin_class == "BUSINESS"]
-        self.assertEqual({d.key for d in business}, {"masai_mara", "kruger"})
+        self.assertEqual({d.key for d in business},
+                         {"masai_mara", "kruger", "cape_town", "mauritius"})
         for dest in business:
             self.assertIs(dest.nonstop_from_london, True)
             self.assertGreater(dest.flight_hours, 8.0)
