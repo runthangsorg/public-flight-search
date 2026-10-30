@@ -370,7 +370,7 @@
               "name": "Serengeti Safari Lodge",
               "nights": 3,
               "board": "full board, park fees and small-aircraft transfers in",
-              "area": "Serengeti",
+              "area": "Serengeti National Park",
               "note": "4 star"
             }
           ]
@@ -505,7 +505,7 @@
               "name": "Nkambeni Safari Tented Camp",
               "nights": 4,
               "board": "half board, one full-day drive and park fees in",
-              "area": "Kruger"
+              "area": "Kruger National Park"
             }
           ]
         },
@@ -874,7 +874,7 @@
               "name": "Sayari Camp",
               "nights": 3,
               "board": "full board and activities",
-              "area": "Serengeti",
+              "area": "Serengeti National Park",
               "note": "Asilia camp",
               "url": "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/northern/sayari-camp/room-rates"
             }
@@ -960,7 +960,7 @@
               "name": "Satara Rest Camp",
               "nights": 4,
               "board": "self-catering",
-              "area": "Kruger",
+              "area": "Kruger National Park",
               "note": "guest cottage",
               "url": "https://www.krugerpark.co.za/Kruger_National_Park_Lodging_&_Camping_Guide-travel/pricing_satara-camp.html"
             }
@@ -1060,7 +1060,7 @@
               "name": "Melia Serengeti Lodge",
               "nights": 4,
               "board": "full board and shared game drives",
-              "area": "Serengeti",
+              "area": "Serengeti National Park",
               "url": "https://www.africanmeccasafaris.com/travel-guide/tanzania/accommodation/serengeti/central/melia-serengeti-lodge/room-rates"
             }
           ]

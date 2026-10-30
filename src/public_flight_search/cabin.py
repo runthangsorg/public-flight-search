@@ -108,7 +108,17 @@ DEFAULT_FLIGHT_HOURS_LHR: dict[str, float] = {
                               # connected hours rather than inheriting this one
     "okinawa": 16.5,         # OKA via Tokyo: no London nonstop, 2h40 domestic
                               # hop, about 16h30 door to door (read 2026-10-04)
+    # July 2027 owner list (brief 2026-10-17): safari, Kenya, South Africa,
+    # Mauritius, Seychelles and Hokkaido. Same door-to-door convention.
+    "serengeti": 11.0,       # JRO via DOH or ADD, then a light-aircraft hop to the lodge airstrip
+    "masai_mara": 11.5,      # NBO nonstop, then a light-aircraft hop to the Mara
+    "diani": 12.5,           # LHR-NBO nonstop, a hop to MBA, then the road south
+    "kruger": 13.0,          # JNB nonstop, then a light aircraft or road to the lodge
+    "cape_town": 14.5,       # CPT connects in July; BA's nonstop is a southern-summer service
+    "seychelles": 13.5,      # SEZ via DXB, DOH or CDG; no year-round London nonstop
+    "hokkaido": 17.0,        # CTS via HND, then a 1h35 domestic hop
 }
+
 
 #: Destination keys whose London service is a YEAR-ROUND nonstop, for configs
 #: that carry no ``nonstop_from_london`` of their own. Deliberately small.

@@ -127,6 +127,94 @@
       "flight_hours_source": "No London nonstop in July 2027: Virgin Atlantic's CUN service runs 18 Oct 2026 - 11 Apr 2027, verified on Virgin Atlantic's own Mexico page (read 2026-10-04). 1 stop via AUH, DOH or IST, about 17h with the connection",
       "nonstop_from_london": false,
       "nonstop_source": "No London nonstop to CUN in July 2027: Virgin Atlantic's Cancun service runs 18 Oct 2026 - 11 Apr 2027, verified on Virgin Atlantic's own Mexico page (read 2026-10-04), so it has ended by these dates. Every London-Cancun journey in June/July 2027 connects (about 17h via AUH, DOH or IST). Not nonstop."
+    },
+    {
+      "key": "serengeti",
+      "label": "Serengeti",
+      "airports": [
+        "JRO"
+      ],
+      "flight_hours": 11.0,
+      "flight_hours_source": "no London nonstop: 1 stop via Doha (Qatar) or Addis Ababa (Ethiopian) to JRO, about 11h from published schedules (not live-checked), then a light-aircraft hop to the lodge airstrip",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop to Kilimanjaro: every London-JRO journey listed connects, 1 stop via Doha (Qatar Airways) or Addis Ababa (Ethiopian), then a light-aircraft hop to the lodge airstrip (published schedules, not live-checked). Not nonstop."
+    },
+    {
+      "key": "masai_mara",
+      "label": "Masai Mara",
+      "airports": [
+        "NBO"
+      ],
+      "flight_hours": 11.5,
+      "flight_hours_source": "LHR-NBO nonstop about 8h30 plus a light-aircraft hop to the Mara, about 11h30 door to door from published schedules (not live-checked)",
+      "nonstop_from_london": true,
+      "nonstop_source": "LHR-NBO is a nonstop on British Airways and Kenya Airways, about 8h30; the Mara airstrips are a light-aircraft hop from Wilson (published schedules, not live-checked). Nonstop to Nairobi."
+    },
+    {
+      "key": "diani",
+      "label": "Diani Beach",
+      "airports": [
+        "MBA"
+      ],
+      "flight_hours": 12.5,
+      "flight_hours_source": "LHR-NBO nonstop then a short hop to Mombasa (MBA) and the road south, about 12h30 from published schedules (not live-checked)",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop to Mombasa for these dates: every London-MBA routing connects, normally LHR-NBO nonstop (British Airways / Kenya Airways) then a ~1h hop (published schedules, not live-checked). Not nonstop to MBA."
+    },
+    {
+      "key": "kruger",
+      "label": "Kruger",
+      "airports": [
+        "JNB"
+      ],
+      "flight_hours": 13.0,
+      "flight_hours_source": "LHR-JNB nonstop about 11h, then a light aircraft or road to the lodge, about 13h door to door from published schedules (not live-checked)",
+      "nonstop_from_london": true,
+      "nonstop_source": "LHR-JNB is a nonstop on British Airways and Virgin Atlantic, about 11h; the lodge is a light aircraft or road transfer from there, and MQP is the closer airstrip for the southern camps (published schedules, not live-checked). Nonstop to Johannesburg."
+    },
+    {
+      "key": "cape_town",
+      "label": "Cape Town",
+      "airports": [
+        "CPT"
+      ],
+      "flight_hours": 14.5,
+      "flight_hours_source": "LHR-CPT connects for these dates (BA's nonstop is a southern-summer service), about 14h30 from published schedules (not live-checked)",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop to Cape Town for these July dates: British Airways' LHR-CPT nonstop is a southern-summer service, so these dates connect via Johannesburg or Dubai (published schedules, not live-checked). Not nonstop."
+    },
+    {
+      "key": "mauritius",
+      "label": "Mauritius",
+      "airports": [
+        "MRU"
+      ],
+      "flight_hours": 14.42,
+      "flight_hours_source": "No London nonstop listed for these dates: Air France + Air Mauritius via Paris (CDG), 14h25 (Google Flights LHR, read 2026-09-29); no nonstop listed for 20 Jul 2027 either",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop was listed for these dates: the fastest published routing is 1 stop via Paris (Air France + Air Mauritius, 14h25) or Dubai (published schedules, not live-checked). Not nonstop."
+    },
+    {
+      "key": "seychelles",
+      "label": "Seychelles",
+      "airports": [
+        "SEZ"
+      ],
+      "flight_hours": 13.5,
+      "flight_hours_source": "no year-round London nonstop: 1 stop via Dubai, Doha or Paris, about 13h30 from published schedules (not live-checked)",
+      "nonstop_from_london": false,
+      "nonstop_source": "No year-round London nonstop to Mahe: every London-SEZ routing connects, 1 stop via Dubai (Emirates), Doha (Qatar Airways) or Paris (published schedules, not live-checked). Not nonstop."
+    },
+    {
+      "key": "hokkaido",
+      "label": "Hokkaido",
+      "airports": [
+        "CTS"
+      ],
+      "flight_hours": 17.0,
+      "flight_hours_source": "LHR-HND then a 1h35 domestic hop to CTS, about 17h door to door from published schedules (not live-checked)",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop to New Chitose: LHR-HND, then a 1h35 domestic hop to CTS on ANA, JAL or a Japanese low-cost carrier (published schedules, not live-checked). Not nonstop."
     }
   ]
 }

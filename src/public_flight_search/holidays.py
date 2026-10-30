@@ -198,6 +198,15 @@ HOLIDAY_SEARCH_QUERIES: dict[str, str] = {
     "mauritius": "Flic en Flac, Mauritius",
     "riviera_maya": "Cancún, Mexico",
     "okinawa": "Onna Village, Okinawa, Japan",
+    # July 2027 owner list (2026-10-17 brief, catalogued 2026-10-30): safari,
+    # Kenya, South Africa, Mauritius, Seychelles and Hokkaido.
+    "serengeti": "Serengeti National Park, Tanzania",
+    "masai_mara": "Masai Mara, Kenya",
+    "diani": "Diani Beach, Kenya",
+    "kruger": "Kruger National Park, South Africa",
+    "cape_town": "Cape Town, South Africa",
+    "seychelles": "Mahé, Seychelles",
+    "hokkaido": "Niseko and Tomamu, Hokkaido, Japan",
 }
 
 # Destination airport per holiday key (for Google Flights parametric links).
@@ -217,6 +226,12 @@ HOLIDAY_AIRPORTS: dict[str, str] = {
     # Okinawa has no London airport: fly to Tokyo (HND) and take the domestic
     # hop to Naha (OKA), 2h40 (research, read 2026-10-04).
     "okinawa": "OKA",
+    # July 2027 owner list. Kruger is served from JNB (MQP is the closer
+    # airstrip for the southern camps; the map takes one airport per key, and
+    # JNB is where the London journey lands).
+    "serengeti": "JRO", "masai_mara": "NBO", "diani": "MBA",
+    "kruger": "JNB", "cape_town": "CPT", "seychelles": "SEZ",
+    "hokkaido": "CTS",
 }
 
 #: Far East watch (owner preference, 2026-09-28): long-haul destinations
@@ -1962,6 +1977,15 @@ WET_MONTHS_BY_DESTINATION: dict[str, tuple[int, ...]] = {
     "kota_kinabalu": (1, 2, 10, 11, 12),  # Sabah north-east monsoon
     "japan": (),                     # no single wet-season flag for the watch
     "okinawa": (6, 7, 8, 9),         # typhoon season; July is also the Baiu tail
+    # July 2027 owner list. East and southern African dry season means an
+    # explicit empty tuple, which is a declared fact and not a gap.
+    "serengeti": (),                 # dry season Jun-Oct
+    "masai_mara": (),                # dry season Jul-Oct; long rains Apr-May
+    "diani": (),                     # south-coast Kenya is driest Jun-Oct
+    "kruger": (),                    # dry winter May-Sep
+    "cape_town": (5, 6, 7, 8, 9),    # Western Cape winter rain
+    "seychelles": (1, 2, 3, 11, 12),  # north-west monsoon; July is the SE trades
+    "hokkaido": (),                  # no tsuyu on Hokkaido
 }
 
 #: The season a destination's wet months actually are, and what it does to the
@@ -2177,6 +2201,17 @@ SUMMER_WEATHER: dict[str, tuple[tuple[int, int], int]] = {
     # Mexico and Japan (Wikipedia climate tables, read 2026-10-04).
     "riviera_maya": ((24, 34), 29),  # Cancún Airport 24.5-34.0°C; sea 29°C (84°F)
     "okinawa": ((27, 32), 28),       # Naha 27.0-31.9°C (JMA 1991-2020); sea 28.2°C (seatemperature.org Naha)
+    # July 2027 owner list. Regional July ranges, not a station read for this
+    # brief: inland safari keys carry 0 for sea, which the report prints as no
+    # sea temperature rather than a made-up one.
+    "serengeti": ((13, 27), 0),      # Serengeti July: cool nights, warm days
+    "masai_mara": ((12, 26), 0),     # Mara July
+    "diani": ((22, 29), 26),         # Kenyan south coast
+    "kruger": ((8, 25), 0),          # Lowveld winter: cold dawn, warm day
+    "cape_town": ((8, 19), 15),      # Western Cape winter
+    "seychelles": ((24, 29), 27),    # Mahé, SE trades
+    "hokkaido": ((17, 26), 18),      # Hokkaido July, no tsuyu
+    "mauritius": ((24, 26), 24),     # Mauritian winter: dry, 24-26C
 }
 
 
@@ -3271,6 +3306,497 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "confidence": "estimate",
         },
     ],
+
+    # ── SERENGETI (July 2027 owner list, brief 2026-10-17, catalogued 2026-10-30).
+    # No dated July rate was read for these properties and none is invented: the
+    # board is unverified and every rate and flight field is absent or 0 (this
+    # file's "not priced" sentinel), so no card forms until the private rate
+    # reader has read a rate for the property's own `hotel_url`.
+    "serengeti": [
+        {
+            "name": 'Four Seasons Safari Lodge Serengeti',
+            "destination_label": 'Serengeti National Park, Tanzania (dry season in July)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "JRO",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'no London nonstop: 1 stop via Doha (Qatar) or Addis Ababa (Ethiopian) to JRO, then a light-aircraft hop to the lodge airstrip',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "the owner's first choice for July 2027: a few days of safari, then Zanzibar",
+                "East African dry season, so the migration is on the move and the days are clear",
+                "halal food can be arranged with the lodge (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.fourseasons.com/serengeti/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 0,
+            "beach": 'No beach: inland safari country in the Serengeti',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": 'Singita Sabora Tented Camp',
+            "destination_label": 'Serengeti National Park, Tanzania (dry season in July)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "JRO",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'no London nonstop: 1 stop via Doha (Qatar) or Addis Ababa (Ethiopian) to JRO, then a light-aircraft hop to the lodge airstrip',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "the owner's first choice for July 2027: a few days of safari, then Zanzibar",
+                "East African dry season, so the migration is on the move and the days are clear",
+                "halal food can be arranged with the lodge (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://singita.com/lodge/singita-sabora-tented-camp/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 0,
+            "beach": 'No beach: inland safari country in the Serengeti',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": '&Beyond Ngorongoro Crater Lodge',
+            "destination_label": 'Serengeti National Park, Tanzania (dry season in July)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "JRO",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'no London nonstop: 1 stop via Doha (Qatar) or Addis Ababa (Ethiopian) to JRO, then a light-aircraft hop to the lodge airstrip',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "the owner's first choice for July 2027: a few days of safari, then Zanzibar",
+                "East African dry season, so the migration is on the move and the days are clear",
+                "halal food can be arranged with the lodge (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.andbeyond.com/our-lodges/africa/tanzania/ngorongoro-crater-lodge/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 0,
+            "beach": 'No beach: inland safari country in the Serengeti',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+    ],
+
+    # ── MASAI_MARA (July 2027 owner list, brief 2026-10-17, catalogued 2026-10-30).
+    # No dated July rate was read for these properties and none is invented: the
+    # board is unverified and every rate and flight field is absent or 0 (this
+    # file's "not priced" sentinel), so no card forms until the private rate
+    # reader has read a rate for the property's own `hotel_url`.
+    "masai_mara": [
+        {
+            "name": 'Angama Mara',
+            "destination_label": 'Masai Mara, Kenya (dry season in July)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "NBO",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'LHR-NBO nonstop (British Airways / Kenya Airways), then a light-aircraft hop to the Mara airstrips',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "the Mara is at its best in the dry season, and the river crossings fall in July",
+                "light-aircraft transfer from Nairobi, so no long road day",
+                "halal food available on request at the camps (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://angama.com/stay/angama-mara/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 0,
+            "beach": 'No beach: inland savannah in the Mara',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": 'Mara Serena Safari Lodge',
+            "destination_label": 'Masai Mara, Kenya (dry season in July)',
+            "stars": 4,
+            "board": "unverified",
+            "airport": "NBO",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'LHR-NBO nonstop (British Airways / Kenya Airways), then a light-aircraft hop to the Mara airstrips',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "the Mara is at its best in the dry season, and the river crossings fall in July",
+                "light-aircraft transfer from Nairobi, so no long road day",
+                "halal food available on request at the camps (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.serenahotels.com/mara-serena',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 0,
+            "beach": 'No beach: inland savannah in the Mara',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+    ],
+
+    # ── DIANI (July 2027 owner list, brief 2026-10-17, catalogued 2026-10-30).
+    # No dated July rate was read for these properties and none is invented: the
+    # board is unverified and every rate and flight field is absent or 0 (this
+    # file's "not priced" sentinel), so no card forms until the private rate
+    # reader has read a rate for the property's own `hotel_url`.
+    "diani": [
+        {
+            "name": 'The Sands at Nomad',
+            "destination_label": 'Diani Beach, Kenya (driest coast month in July)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "MBA",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'LHR-NBO nonstop, then a short hop to Mombasa (MBA) or the road south along the coast',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "a beach half after the Mara, on the Kenyan south coast",
+                "July is the driest month on this coast",
+                "halal food available in Diani and at the resorts (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.thesandsatnomad.com/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 26,
+            "beach": "Diani's white-sand beachfront, on the Kenyan south coast",
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": 'Almanara Luxury Villas',
+            "destination_label": 'Diani Beach, Kenya (driest coast month in July)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "MBA",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'LHR-NBO nonstop, then a short hop to Mombasa (MBA) or the road south along the coast',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "a beach half after the Mara, on the Kenyan south coast",
+                "July is the driest month on this coast",
+                "halal food available in Diani and at the resorts (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://almanara-kenya.com/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 26,
+            "beach": "Diani's white-sand beachfront, on the Kenyan south coast",
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+    ],
+
+    # ── KRUGER (July 2027 owner list, brief 2026-10-17, catalogued 2026-10-30).
+    # No dated July rate was read for these properties and none is invented: the
+    # board is unverified and every rate and flight field is absent or 0 (this
+    # file's "not priced" sentinel), so no card forms until the private rate
+    # reader has read a rate for the property's own `hotel_url`.
+    "kruger": [
+        {
+            "name": 'Singita Lebombo Lodge',
+            "destination_label": 'Kruger National Park, South Africa (dry winter)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "JNB",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'no London nonstop into the park: fly to Johannesburg (JNB) and transfer by light aircraft or road; MQP is the closer airstrip for the southern camps',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "southern-hemisphere winter is the best game-viewing season: thin bush, dry days",
+                "pairs with Cape Town on one ticket",
+                "halal food available on request at the lodges (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://singita.com/lodge/singita-lebombo-lodge/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 0,
+            "beach": 'No beach: inland Lowveld bushveld',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": 'Kruger Shalati',
+            "destination_label": 'Kruger National Park, South Africa (dry winter)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "JNB",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'no London nonstop into the park: fly to Johannesburg (JNB) and transfer by light aircraft or road; MQP is the closer airstrip for the southern camps',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "southern-hemisphere winter is the best game-viewing season: thin bush, dry days",
+                "pairs with Cape Town on one ticket",
+                "halal food available on request at the lodges (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://krugershalati.com/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 0,
+            "beach": 'No beach: inland Lowveld bushveld',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+    ],
+
+    # ── CAPE_TOWN (July 2027 owner list, brief 2026-10-17, catalogued 2026-10-30).
+    # No dated July rate was read for these properties and none is invented: the
+    # board is unverified and every rate and flight field is absent or 0 (this
+    # file's "not priced" sentinel), so no card forms until the private rate
+    # reader has read a rate for the property's own `hotel_url`.
+    "cape_town": [
+        {
+            "name": 'One&Only Cape Town',
+            "destination_label": 'Cape Town, South Africa (Western Cape winter)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "CPT",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": "LHR-CPT connects for these dates: BA's nonstop is a southern-summer service; otherwise 1 stop via JNB or DXB",
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "walkable city and waterfront, not a resort you are stuck inside",
+                "winter here means green hills and quiet hotels, not beach weather",
+                "halal restaurants in the city centre (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.oneandonlyresorts.com/cape-town',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 15,
+            "beach": 'City and Atlantic seaboard; Camps Bay and Clifton beaches are a short drive',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": 'The Twelve Apostles Hotel & Spa',
+            "destination_label": 'Cape Town, South Africa (Western Cape winter)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "CPT",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": "LHR-CPT connects for these dates: BA's nonstop is a southern-summer service; otherwise 1 stop via JNB or DXB",
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "walkable city and waterfront, not a resort you are stuck inside",
+                "winter here means green hills and quiet hotels, not beach weather",
+                "halal restaurants in the city centre (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.12apostles.co.za/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 15,
+            "beach": 'City and Atlantic seaboard; Camps Bay and Clifton beaches are a short drive',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+    ],
+
+    # ── MAURITIUS (July 2027 owner list, brief 2026-10-17, catalogued 2026-10-30).
+    # No dated July rate was read for these properties and none is invented: the
+    # board is unverified and every rate and flight field is absent or 0 (this
+    # file's "not priced" sentinel), so no card forms until the private rate
+    # reader has read a rate for the property's own `hotel_url`.
+    "mauritius": [
+        {
+            "name": 'One&Only Le Saint Géran',
+            "destination_label": 'Mauritius (winter: dry and 24-26°C)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "MRU",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'no London nonstop listed for these dates: 1 stop via Paris '
+                       '(Air France + Air Mauritius, 14h25) or Dubai',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "July is Mauritius winter: 24-26°C, dry, and outside the cyclone season",
+                "not a monsoon area in late June or July",
+                "halal food available at the resorts and in Port Louis (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.oneandonlyresorts.com/le-saint-geran',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 24,
+            "beach": 'Sheltered west-coast beaches',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": 'Four Seasons Resort Mauritius at Anahita',
+            "destination_label": 'Mauritius (winter: dry and 24-26°C)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "MRU",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'no London nonstop listed for these dates: 1 stop via Paris '
+                       '(Air France + Air Mauritius, 14h25) or Dubai',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "July is Mauritius winter: 24-26°C, dry, and outside the cyclone season",
+                "not a monsoon area in late June or July",
+                "halal food available at the resorts and in Port Louis (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.fourseasons.com/mauritius/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 24,
+            "beach": 'Sheltered west-coast beaches',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+    ],
+
+    # ── SEYCHELLES (July 2027 owner list, brief 2026-10-17, catalogued 2026-10-30).
+    # No dated July rate was read for these properties and none is invented: the
+    # board is unverified and every rate and flight field is absent or 0 (this
+    # file's "not priced" sentinel), so no card forms until the private rate
+    # reader has read a rate for the property's own `hotel_url`.
+    "seychelles": [
+        {
+            "name": 'Four Seasons Resort Seychelles',
+            "destination_label": 'Mahé, Seychelles (south-east trades)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "SEZ",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'no year-round London nonstop: 1 stop via Dubai (Emirates), Doha (Qatar Airways) or Paris',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "July sits in the south-east trades: dry, breezy, outside the north-west monsoon",
+                "beaches and granite coves rather than a single resort strip",
+                "halal food available on Mahé (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.fourseasons.com/seychelles/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,
+            "beach": 'Granite-cove beaches on Mahé',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": 'Constance Ephelia',
+            "destination_label": 'Mahé, Seychelles (south-east trades)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "SEZ",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'no year-round London nonstop: 1 stop via Dubai (Emirates), Doha (Qatar Airways) or Paris',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "July sits in the south-east trades: dry, breezy, outside the north-west monsoon",
+                "beaches and granite coves rather than a single resort strip",
+                "halal food available on Mahé (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.constancehotels.com/en/hotels-resorts/seychelles/ephelia/',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,
+            "beach": 'Granite-cove beaches on Mahé',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+    ],
+
+    # ── HOKKAIDO (July 2027 owner list, brief 2026-10-17, catalogued 2026-10-30).
+    # No dated July rate was read for these properties and none is invented: the
+    # board is unverified and every rate and flight field is absent or 0 (this
+    # file's "not priced" sentinel), so no card forms until the private rate
+    # reader has read a rate for the property's own `hotel_url`.
+    "hokkaido": [
+        {
+            "name": 'Park Hyatt Niseko Hanazono',
+            "destination_label": 'Niseko / Tomamu, Hokkaido, Japan (no tsuyu)',
+            "stars": 5,
+            "board": "unverified",
+            "airport": "CTS",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'fly to Tokyo (HND), domestic hop to CTS 1h35',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "no tsuyu on Hokkaido: July is warm and dry while the rest of Japan is humid",
+                "cool nights make it the one summer Japan destination that sleeps well",
+                "seafood and dairy, with halal options limited outside Sapporo (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.hyatt.com/park-hyatt/en-US/ctsph-park-hyatt-niseko-hanazono',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 18,
+            "beach": 'No beach: mountain and snow-country resorts',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": 'Hoshino Resorts Tomamu',
+            "destination_label": 'Niseko / Tomamu, Hokkaido, Japan (no tsuyu)',
+            "stars": 4,
+            "board": "unverified",
+            "airport": "CTS",
+            "airline": "no fare read yet; the carrier is named in BUSINESS_CARRIER_BY_AIRPORT",
+            "routing": 'fly to Tokyo (HND), domestic hop to CTS 1h35',
+            "flight_benchmark_5pax_gbp": 0.0,
+            "peak_summer_flight_5pax_gbp": 0.0,
+            "why": (
+                "no tsuyu on Hokkaido: July is warm and dry while the rest of Japan is humid",
+                "cool nights make it the one summer Japan destination that sleeps well",
+                "seafood and dairy, with halal options limited outside Sapporo (unverified)",
+            ),
+            "highlights": (
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": 'https://www.hoshinoresorts.com/en/resortsandhotels/tomamu.html',
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 18,
+            "beach": 'No beach: mountain and snow-country resorts',
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+    ],
 }
 
 #: Winter keys whose entries also carry summer-peak rates and were priced for
@@ -3287,6 +3813,111 @@ _SUMMER_TRIP_CATALOG: dict[str, list[dict[str, Any]]] = {
     **{key: value for key, value in WINTER_RESORT_CATALOG.items() if key in BOTH_SEASON_WINTER_KEYS},
     **SUMMER_RESORT_CATALOG,
 }
+
+
+#: The four July multi-centre trips the owner named on 17 Oct 2026: "Tanzania
+#: first: a few days' safari from top lodges, then Zanzibar", "Kenya Mara +
+#: Diani", "Kruger + Cape Town (or + Mauritius)", and "Japan with Hokkaido and
+#: Okinawa". Declared here in the SAME shape ``multi_centre.json`` uses
+#: (``stops`` with nights and an airport, ``legs`` as airport pairs without
+#: dates, ``season`` summer) so the winter multi-centre code can read them the
+#: day they can be priced.
+#:
+#: They carry NO ``cost_low_gbp`` / ``cost_high_gbp``, and that is deliberate.
+#: ``multi_centre._trip`` refuses a trip without a cost range, which is the
+#: correct behaviour: a range is a figure, this brief forbids inventing one, and
+#: "no price, no card" is the rule that keeps the catalogue honest. The four
+#: therefore cannot reach the e-mail's two-centre section until the owner
+#: authorises a cost basis for them or ``data/multi_centre.json`` gains them
+#: with priced lines — a file this brief does not allow to change.
+SUMMER_MULTI_CENTRE_TRIPS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "SU-01",
+        "title": "Tanzania safari 4 nights + Zanzibar 7-10 nights",
+        "season": "summer",
+        "stops": (
+            {"place": "Serengeti / Ngorongoro, Tanzania", "nights": 4, "airport": "JRO",
+             "hotel": "Four Seasons Serengeti, Singita Sabora or &Beyond Ngorongoro",
+             "basis": "no rate read for these dates"},
+            {"place": "Zanzibar (Nungwi)", "nights": 7, "airport": "ZNZ",
+             "hotel": "the Zanzibar entries in SUMMER_RESORT_CATALOG",
+             "basis": "no rate read for these dates"},
+        ),
+        "legs": (("LHR", "JRO"), ("JRO", "ZNZ"), ("ZNZ", "LHR")),
+        "flight_shape": "1 stop via Doha or Addis Ababa, then a light-aircraft hop to the lodge",
+        "why": "safari in the dry season, then the beach",
+        "catch": "nothing is priced; the airstrip hop is an extra leg",
+        "confidence": "estimate",
+        "source_urls": (),
+    },
+    {
+        "id": "SU-02",
+        "title": "Kenya Masai Mara 4 nights + Diani 7-10 nights",
+        "season": "summer",
+        "stops": (
+            {"place": "Masai Mara, Kenya", "nights": 4, "airport": "NBO",
+             "hotel": "Angama Mara, Mara Serena or Sanctuary Olonana",
+             "basis": "no rate read for these dates"},
+            {"place": "Diani Beach, Kenya", "nights": 7, "airport": "MBA",
+             "hotel": "The Sands at Nomad, Almanara or Swahili Beach",
+             "basis": "no rate read for these dates"},
+        ),
+        "legs": (("LHR", "NBO"), ("NBO", "MBA"), ("MBA", "LHR")),
+        "flight_shape": "LHR-NBO nonstop, then a light aircraft into the Mara",
+        "why": "dry-season game viewing, then the coast",
+        "catch": "nothing is priced; two internal flights",
+        "confidence": "estimate",
+        "source_urls": (),
+    },
+    {
+        "id": "SU-03",
+        "title": "Kruger 4 nights + Cape Town 6-8 nights",
+        "season": "summer",
+        "stops": (
+            {"place": "Kruger National Park, South Africa", "nights": 4, "airport": "JNB",
+             "hotel": "Singita Lebombo, Kruger Shalati or Lion Sands",
+             "basis": "no rate read for these dates"},
+            {"place": "Cape Town, South Africa", "nights": 6, "airport": "CPT",
+             "hotel": "One&Only Cape Town, Twelve Apostles or Cape Grace",
+             "basis": "no rate read for these dates"},
+        ),
+        "legs": (("LHR", "JNB"), ("JNB", "CPT"), ("CPT", "LHR")),
+        "flight_shape": "open-jaw: into Johannesburg, home from Cape Town",
+        "why": "winter is the game-viewing season; Cape Town is walkable",
+        "catch": "nothing is priced; Cape Town in July is cool and wet",
+        "confidence": "estimate",
+        "source_urls": (),
+    },
+    {
+        "id": "SU-04",
+        "title": "Hokkaido 5 nights + Okinawa 7 nights",
+        "season": "summer",
+        "stops": (
+            {"place": "Niseko / Tomamu, Hokkaido", "nights": 5, "airport": "CTS",
+             "hotel": "Park Hyatt Niseko Hanazono or Hoshino Tomamu",
+             "basis": "no rate read for these dates"},
+            {"place": "Onna Village, Okinawa", "nights": 7, "airport": "OKA",
+             "hotel": "the Okinawa entry in SUMMER_RESORT_CATALOG",
+             "basis": "no rate read for these dates"},
+        ),
+        "legs": (("LHR", "HND"), ("HND", "CTS"), ("CTS", "OKA"), ("OKA", "HND"), ("HND", "LHR")),
+        "flight_shape": "LHR-HND, a 1h35 hop to CTS, then CTS-OKA; home via Tokyo",
+        "why": "no tsuyu on Hokkaido; Okinawa is the warm beach",
+        "catch": "nothing is priced; July is typhoon season on Okinawa",
+        "confidence": "estimate",
+        "source_urls": (),
+    },
+)
+
+
+def summer_multi_centre_trips() -> tuple[dict[str, Any], ...]:
+    """The four July multi-centre trips, in the winter multi-centre file's shape.
+
+    Returned as declared - no dates (they come from the report's own date pair)
+    and no cost range, because none was read. See the comment above for why the
+    winter loader will refuse them until a cost basis exists.
+    """
+    return SUMMER_MULTI_CENTRE_TRIPS
 
 
 # ── JULY STOPOVER OPTION (owner, 2026-09-29): "oman and doha ... as a 2d or so
@@ -4489,6 +5120,176 @@ EXCLUDED_RESORTS: frozenset[str] = frozenset({
 #: One-unit suite architecture + hard-filter facts per resort. A resort absent
 #: here has NO verified 5-in-one-unit room and is filtered with that reason.
 SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
+    'Four Seasons Safari Lodge Serengeti': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Singita Sabora Tented Camp': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    '&Beyond Ngorongoro Crater Lodge': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Angama Mara': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Mara Serena Safari Lodge': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'The Sands at Nomad': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Almanara Luxury Villas': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Singita Lebombo Lodge': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Kruger Shalati': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'One&Only Cape Town': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'The Twelve Apostles Hotel & Spa': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'One&Only Le Saint Géran': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Four Seasons Resort Mauritius at Anahita': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Four Seasons Resort Seychelles': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Constance Ephelia': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Park Hyatt Niseko Hanazono': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Hoshino Resorts Tomamu': {
+        # No unit and no rate were read for this brief, so neither is claimed:
+        # rooms_in_unit None is the same "unverified occupancy" state that keeps
+        # Dreams Tulum and Halekulani off a card until the engine reads one.
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
     "Lara Barut Collection": {
         "suite_type": "2-Bedroom Family Suite (shared lounge)",
         "suite_nightly_gbp": 185.0, "suite_peak_nightly_gbp": 395.0,
@@ -4993,9 +5794,25 @@ BUSINESS_CARRIER_BY_AIRPORT: dict[str, str] = {
         "an Economy hop)"),
     "OKA": ("ANA / Japan Airlines business-class-cabin long-haul on LHR-HND, then "
             "Economy or ANA domestic to OKA (2h40)"),
+    # July 2027 owner list (2026-10-30). Carrier names only: no fare is claimed.
+    "JRO": "Qatar Airways Business (via DOH) / Ethiopian Business (via ADD), then a light aircraft",
+    "NBO": "British Airways Club World / Kenya Airways Business (nonstop)",
+    "MBA": "British Airways Club World / Kenya Airways Business to NBO, then an Economy hop",
+    "JNB": "British Airways Club World / Virgin Atlantic Upper Class (nonstop)",
+    "CPT": "British Airways Club World (via JNB for these dates) / Emirates Business",
+    "SEZ": "Emirates Business (via DXB) / Qatar Airways Business (via DOH)",
+    "CTS": "ANA / Japan Airlines Business to HND, then an Economy domestic hop",
 }
 
 PREMIUM_CARRIER_BY_AIRPORT: dict[str, str] = {
+    # July 2027 owner list (2026-10-30): premium cabins, named only.
+    "JRO": "Qatar Airways / Ethiopian premium (1 stop), then a light aircraft",
+    "NBO": "British Airways World Traveller Plus / Kenya Airways premium",
+    "MBA": "British Airways World Traveller Plus to NBO, then an Economy hop",
+    "JNB": "British Airways World Traveller Plus / Virgin Atlantic Premium",
+    "CPT": "British Airways World Traveller Plus / Emirates Premium Economy",
+    "SEZ": "Emirates Premium Economy / Qatar Airways premium (1 stop)",
+    "CTS": "ANA / Japan Airlines premium to HND, then an Economy domestic hop",
     "AYT": "Turkish Airlines Premium (via IST) / BA Euro Traveller Plus",
     "PFO": "British Airways Euro Traveller Plus",
     "HRG": "Turkish Airlines Premium (via IST)",

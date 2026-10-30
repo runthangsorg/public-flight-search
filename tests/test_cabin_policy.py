@@ -477,7 +477,17 @@ class CommittedConfigTests(unittest.TestCase):
         # Business price on every long-haul card, so the Business row is now
         # there, as a comparison and never as the card's price.
         config = load_holiday_config(JULY.read_text(encoding="utf-8"))
-        self.assertEqual({d.cabin_class for d in config.destinations}, {"ECONOMY"})
+        # Brief 2026-10-30: the owner's 17 Oct 2026 list adds Nairobi and
+        # Johannesburg, which DO have a London nonstop of over 8 hours, so
+        # the 2026-10-04 rule itself prices those two Business. The rule is
+        # unchanged; what changed is that July now contains two cities a
+        # nonstop actually serves. They must be the only exceptions, and
+        # each must state the nonstop it is priced on.
+        business = [d for d in config.destinations if d.cabin_class == "BUSINESS"]
+        self.assertEqual({d.key for d in business}, {"masai_mara", "kruger"})
+        for dest in business:
+            self.assertIs(dest.nonstop_from_london, True)
+            self.assertGreater(dest.flight_hours, 8.0)
         for deal in collect_holiday_deals(config, max_budget_gbp=config.max_budget_gbp):
             with self.subTest(card=deal.resort_name):
                 self.assertEqual(deal.cabin_class, "ECONOMY")
