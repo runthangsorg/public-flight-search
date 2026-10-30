@@ -14,7 +14,6 @@
     {"code": "SIN", "label": "Singapore", "region": "asia", "hours_from_london": 13.0},
     {"code": "HND", "label": "Tokyo Haneda", "region": "asia", "hours_from_london": 14.25},
     {"code": "HKG", "label": "Hong Kong", "region": "asia", "hours_from_london": 12.0},
-    {"code": "DEL", "label": "Delhi", "region": "asia", "hours_from_london": 8.75},
     {"code": "LAX", "label": "Los Angeles", "region": "north_america", "hours_from_london": 11.25},
     {"code": "MIA", "label": "Miami", "region": "north_america", "hours_from_london": 9.5},
     {"code": "ORD", "label": "Chicago", "region": "north_america", "hours_from_london": 8.5},

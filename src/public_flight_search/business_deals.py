@@ -51,8 +51,18 @@ _TOP_LEVEL = {
     "report_title", "notes", "origins", "destinations", "dates", "date_windows", "min_days_ahead",
     "min_observations", "median_drop_pct", "median_window_days", "away_min_saving_pct", "dedupe_days",
     "redrop_pct", "max_searches_per_run", "max_stops", "min_fare_gbp", "max_fare_gbp", "stop_after_blocked",
-    "absolute_caps_gbp", "exclude_airlines",
+    "absolute_caps_gbp", "exclude_airlines", "exclude_destinations",
 }
+#: Destinations the watch never prices, whatever the config lists (owner, 30 Oct 2026: "i dont want to go to
+#: INDIA"; a Delhi fare was mailed because only one of the two engines had the exclusion). Connecting through one is
+#: fine: this filters where the trip goes, not the route a fare takes. ``exclude_destinations`` adds more.
+EXCLUDED_DESTINATIONS = frozenset({
+    "DEL", "BOM", "BLR", "MAA", "HYD", "CCU", "COK", "AMD", "GOI", "GOX", "JAI", "PNQ", "TRV", "ATQ", "LKO",
+    "CCJ", "IXC", "NAG", "VNS", "PAT", "GAU", "BBI", "IXB", "SXR", "IXM", "TRZ", "IXE", "IDR", "VTZ", "CJB",
+    "IXA", "IXZ", "BDQ", "RPR", "DED", "STV", "IXJ", "IXR", "IXU", "IXL", "BHO", "UDR", "JDH", "IXG", "HBX",
+    "MYQ", "IXD", "GAY", "DIB", "IMF", "AJL", "JRH", "IXS", "BHJ", "RAJ", "KNU", "AGR", "GWL", "JLR", "DHM",
+    "KUU", "SAG", "KLH", "TIR", "VGA", "RJA", "NMI", "DXN", "IXY", "DGH",
+})
 
 
 class BusinessDealsConfigError(ValueError):
@@ -95,6 +105,8 @@ class BusinessDealsConfig:
     caps: Mapping[str, float] = field(default_factory=dict)
     #: Airlines added to ``business_airlines.EXCLUDED_FOR_BUSINESS`` (that list always applies).
     exclude_airlines: tuple[str, ...] = ()
+    #: Airports added to ``EXCLUDED_DESTINATIONS`` (that list always applies).
+    exclude_destinations: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -167,6 +179,16 @@ def _airline_names(value: Any) -> tuple[str, ...]:
     return tuple(v.strip() for v in value)
 
 
+def _destination_codes(value: Any) -> tuple[str, ...]:
+    """``exclude_destinations``: a list of up to 100 three-letter airport codes."""
+    if value is None:
+        return ()
+    if (not isinstance(value, list) or len(value) > 100
+            or not all(isinstance(v, str) and _AIRPORT.fullmatch(v.strip().upper()) for v in value)):
+        raise BusinessDealsConfigError("exclude_destinations must be a list of up to 100 three-letter airport codes")
+    return tuple(v.strip().upper() for v in value)
+
+
 def _num(raw: Mapping[str, Any], name: str, default: float, low: float, high: float) -> float:
     try:
         value = float(raw.get(name, default))
@@ -222,10 +244,13 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
     if not any(o.home for o in origins):
         raise BusinessDealsConfigError("at least one origin must be home (the price positioning origins must beat)")
 
+    excluded = _destination_codes(raw.get("exclude_destinations"))
     destinations = []
     for item in raw.get("destinations") or []:
         hours = _num(item, "hours_from_london", 0.0, 0.0, 40.0)
         code = _code(item.get("code"), "destination")
+        if code in EXCLUDED_DESTINATIONS or code in excluded:
+            continue
         if hours <= BUSINESS_FLIGHT_HOURS:  # strictly over 8 hours, the package's one cabin boundary
             raise BusinessDealsConfigError(
                 f"{code}: {hours}h is not over {BUSINESS_FLIGHT_HOURS:g} hours, so it is not a long-haul business route")
@@ -275,6 +300,7 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
         stop_after_blocked=int(_num(raw, "stop_after_blocked", 3, 1, 10)),
         caps=caps,
         exclude_airlines=_airline_names(raw.get("exclude_airlines")),
+        exclude_destinations=excluded,
     )
 
 
