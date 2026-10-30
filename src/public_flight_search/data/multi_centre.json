@@ -1475,10 +1475,6 @@
       "legs": [
         [
           "LHR",
-          "HND"
-        ],
-        [
-          "HND",
           "CTS"
         ],
         [
@@ -1487,14 +1483,10 @@
         ],
         [
           "OKA",
-          "HND"
-        ],
-        [
-          "HND",
           "LHR"
         ]
       ],
-      "flight_shape": "LHR-HND nonstop, a 1h35 hop to CTS, then CTS-OKA; home via Tokyo.",
+      "flight_shape": "London to Hokkaido (CTS), then CTS-OKA; home from Okinawa. Tokyo is a connection, not a stop.",
       "cost_low_gbp": 18000,
       "cost_high_gbp": 27000,
       "cost_basis": "all estimates: no dated rate or fare was read for these dates; range is a build, not a quote.",
