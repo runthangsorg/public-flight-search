@@ -3813,107 +3813,15 @@ _SUMMER_TRIP_CATALOG: dict[str, list[dict[str, Any]]] = {
 }
 
 
-#: The four July multi-centre trips the owner named on 17 Oct 2026: "Tanzania
-#: first: a few days' safari from top lodges, then Zanzibar", "Kenya Mara +
-#: Diani", "Kruger + Cape Town (or + Mauritius)", and "Japan with Hokkaido and
-#: Okinawa". Declared here in the SAME shape ``multi_centre.json`` uses
-#: (``stops`` with nights and an airport, ``legs`` as airport pairs without
-#: dates, ``season`` summer) so the winter multi-centre code can read them the
-#: day they can be priced.
-#:
-#: They carry NO ``cost_low_gbp`` / ``cost_high_gbp``, and that is deliberate.
-#: ``multi_centre._trip`` refuses a trip without a cost range, which is the
-#: correct behaviour: a range is a figure, this brief forbids inventing one, and
-#: "no price, no card" is the rule that keeps the catalogue honest. The four
-#: therefore cannot reach the e-mail's two-centre section until the owner
-#: authorises a cost basis for them or ``data/multi_centre.json`` gains them
-#: with priced lines — a file this brief does not allow to change.
-SUMMER_MULTI_CENTRE_TRIPS: tuple[dict[str, Any], ...] = (
-    {
-        "id": "SU-01",
-        "title": "Tanzania safari 4 nights + Zanzibar 7-10 nights",
-        "season": "summer",
-        "stops": (
-            {"place": "Serengeti / Ngorongoro, Tanzania", "nights": 4, "airport": "JRO",
-             "hotel": "Four Seasons Serengeti, Singita Sabora or &Beyond Ngorongoro",
-             "basis": "no rate read for these dates"},
-            {"place": "Zanzibar (Nungwi)", "nights": 7, "airport": "ZNZ",
-             "hotel": "the Zanzibar entries in SUMMER_RESORT_CATALOG",
-             "basis": "no rate read for these dates"},
-        ),
-        "legs": (("LHR", "JRO"), ("JRO", "ZNZ"), ("ZNZ", "LHR")),
-        "flight_shape": "1 stop via Doha or Addis Ababa, then a light-aircraft hop to the lodge",
-        "why": "safari in the dry season, then the beach",
-        "catch": "nothing is priced; the airstrip hop is an extra leg",
-        "confidence": "estimate",
-        "source_urls": (),
-    },
-    {
-        "id": "SU-02",
-        "title": "Kenya Masai Mara 4 nights + Diani 7-10 nights",
-        "season": "summer",
-        "stops": (
-            {"place": "Masai Mara, Kenya", "nights": 4, "airport": "NBO",
-             "hotel": "Angama Mara, Mara Serena or Sanctuary Olonana",
-             "basis": "no rate read for these dates"},
-            {"place": "Diani Beach, Kenya", "nights": 7, "airport": "MBA",
-             "hotel": "The Sands at Nomad, Almanara or Swahili Beach",
-             "basis": "no rate read for these dates"},
-        ),
-        "legs": (("LHR", "NBO"), ("NBO", "MBA"), ("MBA", "LHR")),
-        "flight_shape": "LHR-NBO nonstop, then a light aircraft into the Mara",
-        "why": "dry-season game viewing, then the coast",
-        "catch": "nothing is priced; two internal flights",
-        "confidence": "estimate",
-        "source_urls": (),
-    },
-    {
-        "id": "SU-03",
-        "title": "Kruger 4 nights + Cape Town 6-8 nights",
-        "season": "summer",
-        "stops": (
-            {"place": "Kruger National Park, South Africa", "nights": 4, "airport": "JNB",
-             "hotel": "Singita Lebombo, Kruger Shalati or Lion Sands",
-             "basis": "no rate read for these dates"},
-            {"place": "Cape Town, South Africa", "nights": 6, "airport": "CPT",
-             "hotel": "One&Only Cape Town, Twelve Apostles or Cape Grace",
-             "basis": "no rate read for these dates"},
-        ),
-        "legs": (("LHR", "JNB"), ("JNB", "CPT"), ("CPT", "LHR")),
-        "flight_shape": "open-jaw: into Johannesburg, home from Cape Town",
-        "why": "winter is the game-viewing season; Cape Town is walkable",
-        "catch": "nothing is priced; Cape Town in July is cool and wet",
-        "confidence": "estimate",
-        "source_urls": (),
-    },
-    {
-        "id": "SU-04",
-        "title": "Hokkaido 5 nights + Okinawa 7 nights",
-        "season": "summer",
-        "stops": (
-            {"place": "Niseko / Tomamu, Hokkaido", "nights": 5, "airport": "CTS",
-             "hotel": "Park Hyatt Niseko Hanazono or Hoshino Tomamu",
-             "basis": "no rate read for these dates"},
-            {"place": "Onna Village, Okinawa", "nights": 7, "airport": "OKA",
-             "hotel": "the Okinawa entry in SUMMER_RESORT_CATALOG",
-             "basis": "no rate read for these dates"},
-        ),
-        "legs": (("LHR", "HND"), ("HND", "CTS"), ("CTS", "OKA"), ("OKA", "HND"), ("HND", "LHR")),
-        "flight_shape": "LHR-HND, a 1h35 hop to CTS, then CTS-OKA; home via Tokyo",
-        "why": "no tsuyu on Hokkaido; Okinawa is the warm beach",
-        "catch": "nothing is priced; July is typhoon season on Okinawa",
-        "confidence": "estimate",
-        "source_urls": (),
-    },
-)
+SUMMER_MULTI_CENTRE_TRIPS: tuple[dict[str, Any], ...] = ()
 
 
 def summer_multi_centre_trips() -> tuple[dict[str, Any], ...]:
-    """The four July multi-centre trips, in the winter multi-centre file's shape.
+    """No unpriced July multi-centre trips are declared here any more.
 
-    Returned as declared - no dates (they come from the report's own date pair)
-    and no cost range, because none was read. See the comment above for why the
-    winter loader will refuse them until a cost basis exists.
+    They now live in ``data/multi_centre.json`` (KE-01, JP-02 and the rest) where
+    ``multi_centre.py`` can read them. This stub stays so old imports keep
+    working; it returns nothing.
     """
     return SUMMER_MULTI_CENTRE_TRIPS
 

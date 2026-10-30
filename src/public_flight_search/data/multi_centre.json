@@ -1353,6 +1353,159 @@
           "basis": "replaced by the dated read in the report"
         }
       ]
+    },
+    {
+      "id": "KE-01",
+      "region": "africa",
+      "kind": "self-build",
+      "season": "summer",
+      "title": "Masai Mara 4 nights + Diani 9 nights",
+      "stops": [
+        {
+          "place": "Masai Mara, Kenya",
+          "nights": 4,
+          "airport": "NBO",
+          "hotel": "Angama Mara, Mara Serena Safari Lodge — two rooms for 5 (no dated rate read)",
+          "basis": "estimate",
+          "lodges": [
+            {
+              "name": "Angama Mara",
+              "area": "Masai Mara",
+              "note": "light-aircraft hop from Nairobi Wilson",
+              "url": "https://angama.com/stay/angama-mara/"
+            },
+            {
+              "name": "Mara Serena Safari Lodge",
+              "area": "Masai Mara",
+              "url": "https://www.serenahotels.com/mara-serena"
+            }
+          ]
+        },
+        {
+          "place": "Diani Beach, Kenya",
+          "nights": 9,
+          "airport": "MBA",
+          "hotel": "The Sands at Nomad, Almanara Luxury Villas — two rooms for 5 (no dated rate read)",
+          "basis": "estimate",
+          "lodges": [
+            {
+              "name": "The Sands at Nomad",
+              "area": "Diani Beach",
+              "url": "https://www.thesandsatnomad.com/"
+            },
+            {
+              "name": "Almanara Luxury Villas",
+              "area": "Diani Beach",
+              "url": "https://almanara-kenya.com/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "NBO"
+        ],
+        [
+          "NBO",
+          "MBA"
+        ],
+        [
+          "MBA",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "LHR-NBO nonstop, then a light-aircraft hop from Nairobi Wilson into the Mara; Diani by road from Mombasa (MBA).",
+      "cost_low_gbp": 16000,
+      "cost_high_gbp": 24000,
+      "cost_basis": "all estimates: no dated rate or fare was read for these dates; range is a build, not a quote.",
+      "why": "dry-season game viewing in the Mara, then the Kenyan south coast",
+      "catch": "nothing is priced; two internal legs (light aircraft and road)",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://angama.com/stay/angama-mara/",
+        "https://www.serenahotels.com/mara-serena",
+        "https://www.thesandsatnomad.com/",
+        "https://almanara-kenya.com/"
+      ]
+    },
+    {
+      "id": "JP-02",
+      "region": "asia",
+      "kind": "self-build",
+      "season": "summer",
+      "title": "Hokkaido 5 nights + Okinawa 7 nights",
+      "stops": [
+        {
+          "place": "Niseko / Tomamu, Hokkaido",
+          "nights": 5,
+          "airport": "CTS",
+          "hotel": "Park Hyatt Niseko Hanazono, Hoshino Resorts Tomamu — two rooms for 5 (no dated rate read)",
+          "basis": "estimate",
+          "lodges": [
+            {
+              "name": "Park Hyatt Niseko Hanazono",
+              "area": "Hokkaido",
+              "url": "https://www.hyatt.com/park-hyatt/en-US/ctsph-park-hyatt-niseko-hanazono"
+            },
+            {
+              "name": "Hoshino Resorts Tomamu",
+              "area": "Hokkaido",
+              "url": "https://www.hoshinoresorts.com/en/resortsandhotels/tomamu.html"
+            }
+          ]
+        },
+        {
+          "place": "Onna Village, Okinawa",
+          "nights": 7,
+          "airport": "OKA",
+          "hotel": "Halekulani Okinawa — 50 m2 rooms with terrace (no dated rate read)",
+          "basis": "estimate",
+          "lodges": [
+            {
+              "name": "Halekulani Okinawa",
+              "nights": 7,
+              "area": "Okinawa",
+              "note": "50 m2 rooms with terrace, or one of five villas; a single unit for 5 adults is not confirmed",
+              "url": "https://www.okinawa.halekulani.com/en/stay/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "HND"
+        ],
+        [
+          "HND",
+          "CTS"
+        ],
+        [
+          "CTS",
+          "OKA"
+        ],
+        [
+          "OKA",
+          "HND"
+        ],
+        [
+          "HND",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "LHR-HND nonstop, a 1h35 hop to CTS, then CTS-OKA; home via Tokyo.",
+      "cost_low_gbp": 18000,
+      "cost_high_gbp": 27000,
+      "cost_basis": "all estimates: no dated rate or fare was read for these dates; range is a build, not a quote.",
+      "why": "no tsuyu on Hokkaido; Okinawa is the warm beach",
+      "catch": "nothing is priced; July is typhoon season on Okinawa",
+      "confidence": "estimate",
+      "source_urls": [
+        "https://www.hyatt.com/park-hyatt/en-US/ctsph-park-hyatt-niseko-hanazono",
+        "https://www.hoshinoresorts.com/en/resortsandhotels/tomamu.html",
+        "https://www.okinawa.halekulani.com/en/stay/"
+      ]
     }
   ]
 }
