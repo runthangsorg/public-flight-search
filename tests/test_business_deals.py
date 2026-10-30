@@ -561,10 +561,20 @@ class PerPersonObservationTests(unittest.TestCase):
 
 class OldHistoryMedianTests(JobCase):
     def test_old_row_without_per_person_drives_median(self):
+        """An older row of the same trip length, written without per_person_gbp, still counts."""
         cfg = raw_config(absolute_caps_gbp={}, trip_nights=[3], travellers=2)
-        write_history(self.history, median_history("LHR", 2000, n=5))
+        rows = [{**r, "return_date": "2027-03-04"} for r in median_history("LHR", 2000, n=5)]
+        write_history(self.history, rows)
         result, sink, _ = self.run_job({"LHR": 900}, config=cfg)
         self.assertEqual([d.trigger for d in result.deals], ["median"])
+
+    def test_one_way_history_never_sets_a_round_trip_median(self):
+        """30 Oct 2026: one-way rows and other trip lengths were pooled with the round trip being judged."""
+        cfg = raw_config(absolute_caps_gbp={}, trip_nights=[3], travellers=2)
+        write_history(self.history, median_history("LHR", 2000, n=5)
+                      + [{**r, "return_date": "2027-03-22"} for r in median_history("LHR", 2000, n=5)])
+        result, sink, _ = self.run_job({"LHR": 900}, config=cfg)
+        self.assertEqual(result.deals, [], "no 3-night history yet: one-way and 21-night rows do not count")
 
 
 class RoundTripEmailTests(JobCase):

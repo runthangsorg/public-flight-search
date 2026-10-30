@@ -488,6 +488,18 @@ def _total(row: Mapping[str, Any]) -> Optional[float]:
     return value if math.isfinite(value) and value > 0 else None
 
 
+def _row_trip_nights(row: Mapping[str, Any]) -> str:
+    """"" for a one-way read, else the nights between departure and return: medians compare like with like
+    (a 21-night return for the party against one-way history never looked like a deal, 30 Oct 2026)."""
+    ret = str(row.get("return_date") or "")
+    if not ret:
+        return ""
+    try:
+        return str((date.fromisoformat(ret[:10]) - date.fromisoformat(str(row.get("departure", ""))[:10])).days)
+    except ValueError:
+        return ret
+
+
 def _per_person(row: Mapping[str, Any]) -> Optional[float]:
     value = row.get("per_person_gbp", None)
     if value is None:
@@ -519,7 +531,7 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
             first_seen[key] = stamp
         if stamp >= window_start:
             pool[(row.get("origin"), row.get("destination"), row.get("cabin_class"),
-                  str(row.get("departure", ""))[:7])].append(per_person)
+                  str(row.get("departure", ""))[:7], _row_trip_nights(row))].append(per_person)
 
     def home_reference(obs: Mapping[str, Any]) -> Optional[float]:
         totals = [o["total_gbp"] for o in observations if o["origin_is_home"]
@@ -544,7 +556,8 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
     for obs in observations:
         total = obs["total_gbp"]
         per_person = obs["per_person_gbp"]
-        prior = pool.get((obs["origin"], obs["destination"], obs["cabin_class"], obs["departure"][:7]), [])
+        prior = pool.get((obs["origin"], obs["destination"], obs["cabin_class"], obs["departure"][:7],
+                          _row_trip_nights(obs)), [])
         n = len(prior)
         median = statistics.median(prior) if n else None
         pct = round((1 - per_person / median) * 100, 1) if median else None
