@@ -44,6 +44,7 @@ from public_flight_search.holiday_email import (
     multi_centre_wanted,
     render_holiday_report_compact,
     render_holiday_report_compact_text,
+    render_holiday_report_full,
 )
 from public_flight_search.holidays import (
     collect_holiday_deals,
@@ -405,6 +406,12 @@ class MultiCentreRenderTests(unittest.TestCase):
             config, generated_at=GENERATED_AT, deals=deals, multi_centre_fares=fares
         )
 
+    def _full(self, config, fares):
+        deals = collect_holiday_deals(config)
+        return render_holiday_report_full(
+            config, generated_at=GENERATED_AT, deals=deals, multi_centre_fares=fares
+        )
+
     def _fares(self, want):
         return {hol.multi_centre_fare_key(want["trip"], want["legs"]): _multi_centre_read(want)}
 
@@ -500,14 +507,20 @@ class MultiCentreRenderTests(unittest.TestCase):
                          _multi_centre_read(row)
                          for row in _declared(config)}
                 html = self._render(config, fares)
+                attachment = self._full(config, fares)
                 size = len(html.encode("utf-8"))
                 self.assertLessEqual(size, hol.EMAIL_HTML_BUDGET_BYTES)
                 # 22 Oct 2026: a trip page is far longer than the old one-line row, so with this many cards (the
                 # whole catalogue, unfiltered) the budget sheds the cards beyond the fifth and the last trips'
-                # detail, and SAYS so; what must hold is that it never drops a trip, and that every card it
-                # does drop is named in a "not shown" line rather than missing without a word.
+                # detail, and SAYS so. 30 Oct 2026: a page the body still cannot hold moves to the full-detail
+                # attachment. What must hold is that no trip leaves the TABLE or the e-mail, and that every card
+                # the body does drop is named in a "not shown" line rather than missing without a word.
+                table = html[html.index("Every option at a glance"):html.index('id="trips"')]
                 for row in _declared(config):
-                    self.assertIn(f'id="trip-{row["trip"]}"', html)
+                    anchor = f'id="trip-{row["trip"]}"'
+                    self.assertIn(f'href="#trip-{row["trip"]}"', table, "every trip stays in the table")
+                    self.assertTrue(anchor in html or anchor in attachment,
+                                    f'{row["trip"]} is neither in the body nor in the attachment')
                 cards = len(re.findall(r'id="deal-\d+"', html))
                 if cards < len(deals_for_config(config)):
                     self.assertIn("not shown", html)

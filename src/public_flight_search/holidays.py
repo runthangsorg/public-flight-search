@@ -104,6 +104,9 @@ class HolidayConfig:
     cabin_class: str = "ECONOMY"
     cabin_classes: tuple[str, ...] = ()
     max_budget_gbp: float = 5000.0
+    #: Optional ceiling on a holiday's priced total for the whole party (owner, 30 Oct 2026). A holiday priced above
+    #: it is left out of the e-mail entirely; ``None`` is no ceiling, so an existing config keeps its behaviour.
+    max_total_gbp: Optional[float] = None
     #: A trip is shown only when flights were read for its dates (owner, 23 Oct 2026: "either give the complete price or
     #: don't bother"). Layout tests switch it off; a real config never needs to name it.
     complete_price_only: bool = True
@@ -710,7 +713,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         "report_title", "party", "departure_window", "origins",
         "outbound_dates", "return_dates", "destinations",
         "cabin_class", "cabin_classes", "max_budget_gbp",
-        "min_nights", "max_nights", "complete_price_only",
+        "max_total_gbp", "min_nights", "max_nights", "complete_price_only",
     }
     if not isinstance(raw, dict) or set(raw) - allowed:
         raise ConfigError("holiday configuration contains unknown fields")
@@ -753,6 +756,18 @@ def load_holiday_config(payload: str) -> HolidayConfig:
             raise ValueError
     except (ValueError, TypeError):
         raise ConfigError("max_budget_gbp must be a positive number")
+
+    # An optional ceiling on one holiday's total, and nothing else: a value that is
+    # not a number or not positive is a typo, and a typo must fail loudly rather
+    # than silently remove every holiday over zero or leave the ceiling off.
+    max_total_raw = raw.get("max_total_gbp")
+    max_total: Optional[float] = None
+    if max_total_raw is not None:
+        if isinstance(max_total_raw, bool) or not isinstance(max_total_raw, (int, float)):
+            raise ConfigError("max_total_gbp must be a positive number")
+        max_total = float(max_total_raw)
+        if max_total <= 0:
+            raise ConfigError("max_total_gbp must be a positive number")
 
     def _nights_bound(value: Any, field: str) -> int:
         if isinstance(value, bool):
@@ -859,6 +874,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         cabin_class="ECONOMY" if "ECONOMY" in derived_cabins else derived_cabins[0],
         cabin_classes=derived_cabins,
         max_budget_gbp=max_budget,
+        max_total_gbp=max_total,
         complete_price_only=raw.get("complete_price_only", True) is not False,
         min_nights=min_nights,
         max_nights=max_nights,
