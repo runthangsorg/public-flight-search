@@ -586,6 +586,41 @@ class RoundTripEmailTests(JobCase):
         self.assertIn("£450 per person", text)
 
 
+class PartyReturnWordingTests(unittest.TestCase):
+    """30 Oct 2026, the box engine's first live party return read "£12,749 (fare £11,949 + positioning £160);
+    under the asia cap £3,000": one traveller's positioning beside a party total and a per-person cap."""
+
+    def _deal(self, **over):
+        base = dict(key="OSL|HND|2027-06-27|2027-07-14|BUSINESS", origin="OSL", origin_label="Oslo",
+                    destination="HND", destination_label="Tokyo Haneda", region="asia", departure="2027-06-27",
+                    fare_gbp=11949.0, positioning_gbp=160.0, total_gbp=12749.0, stops=1, duration_minutes=1400,
+                    airline="Test Air", booking_url="https://example.test/x", trigger="cap", history_n=0,
+                    cold_start=True, median_gbp=None, pct_below_median=None, home_total_gbp=None,
+                    saving_vs_home_pct=None, last_seen="2026-10-30", first_seen="2026-10-30",
+                    per_person_gbp=2549.8, return_date="2027-07-14", travellers=5)
+        base.update(over)
+        return bd.Deal(**base)
+
+    def test_a_party_return_reads_per_person_against_the_cap(self):
+        cfg = bd.load_config(raw_config(absolute_caps_gbp={"asia": 3000}), today=NOW.date())
+        subject, html, text = bd.render_email([self._deal()], cfg, NOW)
+        for body in (html, text):
+            self.assertIn("positioning £800 (5 x £160)", body)
+            self.assertIn("£2,550 per person, under the asia cap £3,000 per person", body)
+            self.assertNotIn("one way, per person", body)
+        self.assertIn("for 5 (£2,550 each)", subject)
+
+    def test_a_one_traveller_one_way_deal_reads_as_before(self):
+        cfg = bd.load_config(raw_config(absolute_caps_gbp={"asia": 3000}), today=NOW.date())
+        deal = self._deal(key="LHR|BKK|2027-03-01|BUSINESS", origin="LHR", destination="BKK", positioning_gbp=0.0,
+                          fare_gbp=1300.0, total_gbp=1300.0, per_person_gbp=1300.0, return_date="", travellers=1)
+        subject, html, text = bd.render_email([deal], cfg, NOW)
+        self.assertIn("fare only", text)
+        self.assertIn("under the asia cap £3,000", text)
+        self.assertNotIn("per person, under", text)
+        self.assertNotIn(" each)", subject)
+
+
 class OneWayKeyTests(unittest.TestCase):
     def test_one_way_key_keeps_old_form(self):
         self.assertEqual(bd._key("LHR", "DEL", "2027-06-01"), "LHR|DEL|2027-06-01|BUSINESS")
