@@ -51,7 +51,7 @@ _TOP_LEVEL = {
     "report_title", "notes", "origins", "destinations", "dates", "date_windows", "min_days_ahead",
     "min_observations", "median_drop_pct", "median_window_days", "away_min_saving_pct", "dedupe_days",
     "redrop_pct", "max_searches_per_run", "max_stops", "min_fare_gbp", "max_fare_gbp", "stop_after_blocked",
-    "absolute_caps_gbp", "exclude_airlines", "exclude_destinations",
+    "absolute_caps_gbp", "exclude_airlines", "exclude_destinations", "travellers", "trip_nights",
 }
 #: Destinations the watch never prices, whatever the config lists (owner, 30 Oct 2026: "i dont want to go to
 #: INDIA"; a Delhi fare was mailed because only one of the two engines had the exclusion). Connecting through one is
@@ -107,13 +107,17 @@ class BusinessDealsConfig:
     exclude_airlines: tuple[str, ...] = ()
     #: Airports added to ``EXCLUDED_DESTINATIONS`` (that list always applies).
     exclude_destinations: tuple[str, ...] = ()
-
+    #: Party size priced on round trips (1-9); one-way reads stay one traveller.
+    travellers: int = 1
+    #: Round-trip lengths in nights (each 3-30); empty keeps today's one-way behaviour.
+    trip_nights: tuple[int, ...] = ()
 
 @dataclass(frozen=True)
 class SearchSpec:
     origin: str
     destination: str
     date: str
+    return_date: str = ""
 
 
 @dataclass(frozen=True)
@@ -149,6 +153,9 @@ class Deal:
     saving_vs_home_pct: Optional[float]
     last_seen: str
     first_seen: str
+    per_person_gbp: float = 0.0
+    return_date: str = ""
+    travellers: int = 1
 
 
 @dataclass
@@ -211,6 +218,30 @@ def _iso(value: Any, what: str) -> date:
         return date.fromisoformat(str(value))
     except ValueError:
         raise BusinessDealsConfigError(f"{what}: not an ISO date") from None
+
+
+def _trip_nights(value: Any) -> tuple[int, ...]:
+    """``trip_nights``: a list of 1-6 ints, each 3-30 (empty keeps one-way)."""
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise BusinessDealsConfigError("trip_nights must be a list of 1-6 ints")
+    if len(value) > 6:
+        raise BusinessDealsConfigError("trip_nights must contain at most 6 nights")
+    result = []
+    for item in value:
+        if isinstance(item, bool):
+            raise BusinessDealsConfigError("trip_nights must be ints")
+        try:
+            n = int(item)
+        except (TypeError, ValueError):
+            raise BusinessDealsConfigError("trip_nights must be ints") from None
+        if isinstance(item, float) and not float(item).is_integer():
+            raise BusinessDealsConfigError("trip_nights must be ints")
+        if not 3 <= n <= 30:
+            raise BusinessDealsConfigError("trip_nights values must be between 3 and 30")
+        result.append(n)
+    return tuple(result)
 
 
 def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsConfig:
@@ -284,6 +315,10 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
             raise BusinessDealsConfigError(f"absolute cap for unknown region {region!r}")
         caps[region] = _num({"c": cap}, "c", 0.0, 1.0, 100000.0)
 
+    travellers_raw = _num(raw, "travellers", 1, 1, 9)
+    if (isinstance(travellers_raw, float) and not float(travellers_raw).is_integer()) or travellers_raw != int(travellers_raw):
+        raise BusinessDealsConfigError("travellers must be an integer")
+    travellers = int(travellers_raw)
     return BusinessDealsConfig(
         title=str(raw.get("report_title") or "Business-class deals")[:120],
         origins=tuple(origins), destinations=tuple(destinations), dates=future,
@@ -301,6 +336,8 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
         caps=caps,
         exclude_airlines=_airline_names(raw.get("exclude_airlines")),
         exclude_destinations=excluded,
+        travellers=travellers,
+        trip_nights=_trip_nights(raw.get("trip_nights")),
     )
 
 
@@ -309,8 +346,18 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
 
 def _grid(cfg: BusinessDealsConfig) -> list[SearchSpec]:
     # Same destination and date sit side by side, so a positioning origin is usually priced in the same run as the
-    # home airport it has to beat.
-    return [SearchSpec(o.code, d.code, day) for day in cfg.dates for d in cfg.destinations for o in cfg.origins]
+    # home airport it has to beat. With trip_nights set, each date expands into one round trip per nights value.
+    if not cfg.trip_nights:
+        return [SearchSpec(o.code, d.code, day) for day in cfg.dates for d in cfg.destinations for o in cfg.origins]
+    from datetime import date as _date, timedelta as _td
+    specs: list[SearchSpec] = []
+    for day in cfg.dates:
+        for nights in cfg.trip_nights:
+            return_date = (_date.fromisoformat(day) + _td(days=nights)).isoformat()
+            for d in cfg.destinations:
+                for o in cfg.origins:
+                    specs.append(SearchSpec(o.code, d.code, day, return_date))
+    return specs
 
 
 def cycle_days(cfg: BusinessDealsConfig) -> int:
@@ -328,8 +375,11 @@ def plan_searches(cfg: BusinessDealsConfig, today: date) -> list[SearchSpec]:
 # --------------------------------------------------------------------------- observations
 
 
-def _key(origin: str, destination: str, departure: str) -> str:
-    return f"{origin}|{destination}|{departure}|{CABIN}"
+def _key(origin: str, destination: str, departure: str, return_date: str = "") -> str:
+    base = f"{origin}|{destination}|{departure}"
+    if return_date:
+        base = f"{base}|{return_date}"
+    return f"{base}|{CABIN}"
 
 
 def _accept(offer: Any, spec: SearchSpec, cfg: BusinessDealsConfig) -> Optional[FlightOffer]:
@@ -353,7 +403,7 @@ def _accept(offer: Any, spec: SearchSpec, cfg: BusinessDealsConfig) -> Optional[
 
 
 def cheapest_observation(offers: Iterable[Any], spec: SearchSpec, cfg: BusinessDealsConfig,
-                         now: datetime) -> tuple[Optional[dict], int]:
+                          now: datetime) -> tuple[Optional[dict], int]:
     """The cheapest acceptable fare for one search as a history row, and how many offers were rejected."""
     origin = next(o for o in cfg.origins if o.code == spec.origin)
     destination = next(d for d in cfg.destinations if d.code == spec.destination)
@@ -368,13 +418,18 @@ def cheapest_observation(offers: Iterable[Any], spec: SearchSpec, cfg: BusinessD
         return None, rejected
     best = min(good, key=lambda o: (o.price, o.duration_minutes))
     fare = round(best.price, 2)
+    travellers = cfg.travellers if spec.return_date else 1
+    positioning = origin.positioning_gbp * travellers
+    total = round(fare + positioning, 2)
+    per_person = round(total / travellers, 2)
     return {
-        "fingerprint": hashlib.sha1(_key(spec.origin, spec.destination, spec.date).encode()).hexdigest()[:16],
-        "key": _key(spec.origin, spec.destination, spec.date),
+        "fingerprint": hashlib.sha1(_key(spec.origin, spec.destination, spec.date, spec.return_date).encode()).hexdigest()[:16],
+        "key": _key(spec.origin, spec.destination, spec.date, spec.return_date),
         "origin": spec.origin, "destination": spec.destination, "region": destination.region,
-        "departure": spec.date, "cabin_class": CABIN,
+        "departure": spec.date, "return_date": spec.return_date, "cabin_class": CABIN,
+        "travellers": travellers,
         "fare_gbp": fare, "positioning_gbp": origin.positioning_gbp,
-        "total_gbp": round(fare + origin.positioning_gbp, 2),
+        "total_gbp": total, "per_person_gbp": per_person,
         "stops": best.stops, "duration_minutes": best.duration_minutes, "airline": best.airline,
         "provider": best.provider, "booking_url": best.booking_url,
         "observed_at": now.isoformat(timespec="seconds"), "origin_is_home": origin.home,
@@ -433,6 +488,29 @@ def _total(row: Mapping[str, Any]) -> Optional[float]:
     return value if math.isfinite(value) and value > 0 else None
 
 
+def _row_trip_nights(row: Mapping[str, Any]) -> str:
+    """"" for a one-way read, else the nights between departure and return: medians compare like with like
+    (a 21-night return for the party against one-way history never looked like a deal, 30 Oct 2026)."""
+    ret = str(row.get("return_date") or "")
+    if not ret:
+        return ""
+    try:
+        return str((date.fromisoformat(ret[:10]) - date.fromisoformat(str(row.get("departure", ""))[:10])).days)
+    except ValueError:
+        return ret
+
+
+def _per_person(row: Mapping[str, Any]) -> Optional[float]:
+    value = row.get("per_person_gbp", None)
+    if value is None:
+        value = row.get("total_gbp")
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) and result > 0 else None
+
+
 # --------------------------------------------------------------------------- deal rules
 
 
@@ -445,14 +523,15 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
     first_seen: dict[str, datetime] = {}
     for row in history:
         stamp, total = _when(row), _total(row)
-        if stamp is None or total is None:
+        per_person = _per_person(row)
+        if stamp is None or total is None or per_person is None:
             continue
         key = str(row.get("key", ""))
         if key and (key not in first_seen or stamp < first_seen[key]):
             first_seen[key] = stamp
         if stamp >= window_start:
             pool[(row.get("origin"), row.get("destination"), row.get("cabin_class"),
-                  str(row.get("departure", ""))[:7])].append(total)
+                  str(row.get("departure", ""))[:7], _row_trip_nights(row))].append(per_person)
 
     def home_reference(obs: Mapping[str, Any]) -> Optional[float]:
         totals = [o["total_gbp"] for o in observations if o["origin_is_home"]
@@ -469,20 +548,22 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
     by_key: dict[str, dict] = {}
     for row in alerts:
         stamp = _when({"observed_at": row.get("alerted_at")})
-        if stamp and stamp >= now - timedelta(days=cfg.dedupe_days) and _total(row):
+        if stamp and stamp >= now - timedelta(days=cfg.dedupe_days) and _per_person(row):
             if row["key"] not in by_key or stamp > _when({"observed_at": by_key[row["key"]]["alerted_at"]}):
                 by_key[row["key"]] = row
 
     deals: list[Deal] = []
     for obs in observations:
         total = obs["total_gbp"]
-        prior = pool.get((obs["origin"], obs["destination"], obs["cabin_class"], obs["departure"][:7]), [])
+        per_person = obs["per_person_gbp"]
+        prior = pool.get((obs["origin"], obs["destination"], obs["cabin_class"], obs["departure"][:7],
+                          _row_trip_nights(obs)), [])
         n = len(prior)
         median = statistics.median(prior) if n else None
-        pct = round((1 - total / median) * 100, 1) if median else None
+        pct = round((1 - per_person / median) * 100, 1) if median else None
         median_hit = n >= cfg.min_observations and pct is not None and pct >= cfg.median_drop_pct
         cap = cfg.caps.get(obs["region"])
-        cap_hit = cap is not None and total <= cap
+        cap_hit = cap is not None and per_person <= cap
         if not (median_hit or cap_hit):
             continue
         home_total = saving = None
@@ -496,7 +577,8 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
                 if saving < cfg.away_min_saving_pct:
                     continue
         last = by_key.get(obs["key"])
-        if last and total > float(last["total_gbp"]) * (1 - cfg.redrop_pct / 100):
+        last_pp = _per_person(last) if last else None
+        if last and last_pp is not None and per_person > last_pp * (1 - cfg.redrop_pct / 100):
             continue
         first = first_seen.get(obs["key"])
         deals.append(Deal(
@@ -510,6 +592,8 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
             median_gbp=None if median is None else round(median, 2), pct_below_median=pct,
             home_total_gbp=home_total, saving_vs_home_pct=saving,
             last_seen=obs["observed_at"][:10], first_seen=(first or now).date().isoformat(),
+            per_person_gbp=per_person, return_date=obs.get("return_date", ""),
+            travellers=obs.get("travellers", 1),
         ))
     deals.sort(key=lambda d: (-(d.pct_below_median if d.pct_below_median is not None else -1), d.total_gbp))
     return deals
@@ -525,8 +609,13 @@ def _gbp(value: float) -> str:
 def _link(deal: Deal) -> str:
     url = deal.booking_url
     if not url.startswith("https://"):
-        url = _gf.build_google_flights_url(origin=deal.origin, destination=deal.destination,
-                                           date=deal.departure, travellers=1, cabin_class=CABIN)
+        if deal.return_date:
+            url = _gf.build_google_flights_roundtrip_url(origin=deal.origin, destination=deal.destination,
+                                                        outbound_date=deal.departure, return_date=deal.return_date,
+                                                        travellers=deal.travellers or 1, cabin_class=CABIN)
+        else:
+            url = _gf.build_google_flights_url(origin=deal.origin, destination=deal.destination,
+                                               date=deal.departure, travellers=1, cabin_class=CABIN)
     return url
 
 
@@ -556,18 +645,39 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
                 if d.home_total_gbp else ("no home-airport price to compare" if d.positioning_gbp else ""))
         parts = f"fare {_gbp(d.fare_gbp)} + positioning {_gbp(d.positioning_gbp)}" if d.positioning_gbp else "fare only"
         link = _link(d)
+        round_trip = bool(d.return_date)
+        if round_trip:
+            nights = (date.fromisoformat(d.return_date) - date.fromisoformat(d.departure)).days
+            dep_fmt = date.fromisoformat(d.departure).strftime("%d %b")
+            ret_fmt = date.fromisoformat(d.return_date).strftime("%d %b")
+            departs_cell = f"{esc(dep_fmt)} - {esc(ret_fmt)}<br>({nights} nights)"
+            total_phrase = f"{_gbp(d.total_gbp)} total for {d.travellers} travellers, return {dep_fmt} - {ret_fmt} ({nights} nights)"
+            per_person_phrase = f"{_gbp(d.per_person_gbp)} per person"
+            parts = parts + f"; {total_phrase} ({per_person_phrase})"
+        else:
+            departs_cell = f"{esc(d.departure)}<br>one way"
+            total_phrase = f"{_gbp(d.total_gbp)}"
         rows.append(
             "<tr>"
             f"<td><b>{esc(d.origin_label)} to {esc(d.destination_label)}</b><br>{esc(d.origin)}-{esc(d.destination)}"
             f" &middot; {esc(d.region.replace('_', ' '))}</td>"
-            f"<td>{esc(d.departure)}<br>one way</td>"
+            f"<td>{departs_cell}</td>"
             f"<td><b>{_gbp(d.total_gbp)}</b><br><span style=\"color:#555\">{esc(parts)}</span></td>"
             f"<td>{esc(basis)}" + (f"<br><span style=\"color:#555\">{esc(home)}</span>" if home else "") + "</td>"
             f"<td>{esc(d.airline)}<br>{stops}, {_duration(d.duration_minutes)}</td>"
             f"<td>last seen {esc(d.last_seen)}<br><span style=\"color:#555\">first seen {esc(d.first_seen)}</span></td>"
             f"<td><a href=\"{esc(link, quote=True)}\">Search this fare</a></td></tr>")
-        lines.append(f"{d.origin}-{d.destination} {d.departure} {_gbp(d.total_gbp)} ({parts}); {basis}; {home}; "
-                     f"{d.airline}, {stops}, {_duration(d.duration_minutes)}; last seen {d.last_seen}; {link}")
+        if round_trip:
+            nights = (date.fromisoformat(d.return_date) - date.fromisoformat(d.departure)).days
+            dep_fmt = date.fromisoformat(d.departure).strftime("%d %b")
+            ret_fmt = date.fromisoformat(d.return_date).strftime("%d %b")
+            lines.append(f"{d.origin}-{d.destination} {_gbp(d.total_gbp)} total for {d.travellers} travellers, "
+                         f"return {dep_fmt} - {ret_fmt} ({nights} nights) ({_gbp(d.per_person_gbp)} per person); "
+                         f"{parts}; {basis}; {home}; {d.airline}, {stops}, {_duration(d.duration_minutes)}; "
+                         f"last seen {d.last_seen}; {link}")
+        else:
+            lines.append(f"{d.origin}-{d.destination} {d.departure} {_gbp(d.total_gbp)} ({parts}); {basis}; {home}; "
+                         f"{d.airline}, {stops}, {_duration(d.duration_minutes)}; last seen {d.last_seen}; {link}")
     html = (
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Business-class deals</title>"
         "<style>body{font-family:Arial,Helvetica,sans-serif;color:#222;background:#fff;font-size:14px;margin:16px}"
@@ -597,18 +707,29 @@ def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchO
         wait = delay * random.uniform(0.9, 1.25) - (time.monotonic() - last[0])
         if last[0] and wait > 0:
             time.sleep(wait)
-        url = _gf.build_google_flights_url(origin=spec.origin, destination=spec.destination, date=spec.date,
-                                           travellers=1, cabin_class=CABIN)
+        if spec.return_date:
+            url = _gf.build_google_flights_roundtrip_url(origin=spec.origin, destination=spec.destination,
+                                                        outbound_date=spec.date, return_date=spec.return_date,
+                                                        travellers=cfg.travellers, cabin_class=CABIN)
+        else:
+            url = _gf.build_google_flights_url(origin=spec.origin, destination=spec.destination, date=spec.date,
+                                               travellers=1, cabin_class=CABIN)
         page = _gf._fetch_page_html(url)
         last[0] = time.monotonic()
         if page is None:
             return FetchOutcome("failed")
         if _gf._is_waf_response(page):
             return FetchOutcome("wall")
-        search = FlightSearch(
-            key="business-deals", label="business deals", origins=(spec.origin,), destinations=(spec.destination,),
-            dates=(spec.date,), travellers=1, cabin_class=CABIN, departure_window=("00:00", "23:59"),
-            max_stops=cfg.max_stops, max_duration_minutes=1440, max_price_per_traveller_gbp=None)
+        if spec.return_date:
+            search = FlightSearch(
+                key="business-deals", label="business deals", origins=(spec.origin,), destinations=(spec.destination,),
+                dates=(spec.date,), travellers=cfg.travellers, cabin_class=CABIN, departure_window=("00:00", "23:59"),
+                max_stops=cfg.max_stops, max_duration_minutes=1440, max_price_per_traveller_gbp=None)
+        else:
+            search = FlightSearch(
+                key="business-deals", label="business deals", origins=(spec.origin,), destinations=(spec.destination,),
+                dates=(spec.date,), travellers=1, cabin_class=CABIN, departure_window=("00:00", "23:59"),
+                max_stops=cfg.max_stops, max_duration_minutes=1440, max_price_per_traveller_gbp=None)
         offers = _gf._parse_flight_cards(page, search=search, origin=spec.origin, destination=spec.destination,
                                          day=spec.date, booking_url=url)
         return FetchOutcome("ok", offers)
@@ -692,7 +813,8 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
             else:
                 result.mailed = True
                 _append_jsonl(alerts_path, [{"key": d.key, "total_gbp": d.total_gbp,
-                                             "alerted_at": now.isoformat(timespec="seconds")} for d in result.deals])
+                                              "per_person_gbp": d.per_person_gbp,
+                                              "alerted_at": now.isoformat(timespec="seconds")} for d in result.deals])
 
     result.log_line = (
         f"business-deals {now.date().isoformat()}: searched {result.searched} of {len(_grid(cfg))} "
