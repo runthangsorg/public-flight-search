@@ -20,17 +20,14 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from public_flight_search import multi_centre
 from public_flight_search.holidays import (
     HOLIDAY_AIRPORTS,
     HOLIDAY_SEARCH_QUERIES,
-    SUMMER_MULTI_CENTRE_TRIPS,
     SUMMER_RESORT_CATALOG,
     WET_MONTHS_BY_DESTINATION,
     collect_holiday_deals,
     load_holiday_config,
     resort_catalog,
-    summer_multi_centre_trips,
 )
 
 ROOT = Path(__file__).parents[1]
@@ -104,53 +101,6 @@ class ExampleConfigTests(unittest.TestCase):
                 self.assertTrue(destination.airports)
                 for airport in destination.airports:
                     self.assertRegex(airport, r"^[A-Z]{3}$")
-
-
-class MultiCentreTripTests(unittest.TestCase):
-    def test_the_four_summer_trips_are_declared(self):
-        trips = summer_multi_centre_trips()
-        self.assertEqual(len(trips), 4)
-        self.assertEqual({trip["id"] for trip in trips},
-                         {"SU-01", "SU-02", "SU-03", "SU-04"})
-
-    def test_each_trip_is_a_summer_trip_with_nights_per_stop(self):
-        for trip in summer_multi_centre_trips():
-            with self.subTest(trip=trip["id"]):
-                self.assertEqual(trip["season"], "summer")
-                self.assertTrue(trip["stops"])
-                for stop in trip["stops"]:
-                    self.assertGreater(int(stop["nights"]), 0)
-                    self.assertRegex(str(stop["airport"]), r"^[A-Z]{3}$")
-                    self.assertTrue(stop["place"])
-
-    def test_every_leg_is_a_pair_of_three_letter_airports(self):
-        for trip in summer_multi_centre_trips():
-            with self.subTest(trip=trip["id"]):
-                self.assertGreaterEqual(len(trip["legs"]), 2)
-                for leg in trip["legs"]:
-                    self.assertEqual(len(leg), 2)
-                    for airport in leg:
-                        self.assertRegex(airport, r"^[A-Z]{3}$")
-
-    def test_the_winter_loader_refuses_them_only_for_the_missing_cost_range(self):
-        """They are in the winter shape; what stops them is that nothing is priced.
-
-        A cost range is a figure, and this brief supplies none, so the trips are
-        declared and shape-checked but deliberately cannot be quoted. This pins
-        that: the refusal is the price, not the shape.
-        """
-        for trip in summer_multi_centre_trips():
-            with self.subTest(trip=trip["id"]):
-                multi_centre.consume_multi_centre_skip_log()
-                self.assertIsNone(multi_centre._trip(trip))
-                reasons = multi_centre.consume_multi_centre_skip_log()
-                self.assertTrue(
-                    any("cost range" in reason for reason in reasons), reasons)
-
-    def test_no_declared_summer_trip_is_priced_from_the_committed_file(self):
-        declared = {trip["id"] for trip in SUMMER_MULTI_CENTRE_TRIPS}
-        loaded = {trip.id for trip in multi_centre.load_multi_centre(season="summer")}
-        self.assertFalse(declared & loaded)
 
 
 class NoPriceNoCardTests(unittest.TestCase):

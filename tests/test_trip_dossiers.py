@@ -36,6 +36,7 @@ from public_flight_search.holiday_email import (
     multi_centre_wanted,
     render_holiday_report_compact,
     render_holiday_report_compact_text,
+    render_holiday_report_full,
 )
 from public_flight_search.hotel_evidence import HotelRating, normalise_property_name
 from public_flight_search.multi_centre import trip_legs_for_dates, trip_stays_for_dates
@@ -89,6 +90,13 @@ def _html(*, fares=None, deals=None, ratings=None, budget=UNLIMITED, **kw):
 
 def _text(*, fares=None, deals=None, ratings=None, **kw):
     return render_holiday_report_compact_text(
+        _config(), generated_at=NOW, deals=_deals(4) if deals is None else deals,
+        evidence_stamps=STAMPS, multi_centre_fares=fares, hotel_ratings=ratings, **kw)
+
+
+def _attachment(*, fares=None, deals=None, ratings=None, **kw):
+    """The full-detail file the e-mail attaches: every page, whatever the body budget did."""
+    return render_holiday_report_full(
         _config(), generated_at=NOW, deals=_deals(4) if deals is None else deals,
         evidence_stamps=STAMPS, multi_centre_fares=fares, hotel_ratings=ratings, **kw)
 
@@ -596,17 +604,27 @@ class SizeAndShorteningTests(unittest.TestCase):
         self.assertLessEqual(self._bytes(html), hol.EMAIL_HTML_BUDGET_BYTES)
 
     def test_every_trip_is_in_the_table_and_has_a_page_whatever_the_budget(self):
+        attachment = _attachment(fares=self.fares, deals=_deals(2))
         for budget in (110_000, 96_000, 84_000, 78_000):
             with self.subTest(budget=budget):
                 html = _html(fares=self.fares, deals=_deals(2), budget=budget)
                 self.assertEqual(sorted(_table_ids(html)), sorted(self.trip_ids))
-                self.assertEqual(sorted(_ids(html)), sorted(self.trip_ids), "a short dossier is still a dossier page")
+                # A page the body cannot hold moves to the full-detail attachment (owner, 30 Oct 2026):
+                # the page can leave the body, but the trip never leaves the table or the e-mail.
+                for ident in self.trip_ids:
+                    source = html if f'id="trip-{ident}"' in html else attachment
+                    self.assertIn(f'id="trip-{ident}"', source, ident)
                 self.assertLessEqual(self._bytes(html), budget)
 
     def test_a_budget_below_the_floor_still_sends_every_trip_in_its_short_form(self):
         html = _html(fares=self.fares, deals=_deals(2), budget=20_000)
+        attachment = _attachment(fares=self.fares, deals=_deals(2))
         self.assertEqual(sorted(_table_ids(html)), sorted(self.trip_ids))
-        self.assertEqual(self._levels(html), [2] * len(self.trip_ids), "every page is in the short form and says so")
+        self.assertEqual(self._levels(html), [2] * len(_ids(html)),
+                         "every page the body still carries is in the short form and says so")
+        for ident in self.trip_ids:
+            self.assertTrue(f'id="trip-{ident}"' in html or f'id="trip-{ident}"' in attachment,
+                            f"{ident} is neither in the body nor in the attachment")
 
     def test_the_last_trips_are_shortened_first_and_the_first_trips_keep_their_detail(self):
         for budget in (110_000, 96_000, 84_000, 78_000):
@@ -637,9 +655,11 @@ class SizeAndShorteningTests(unittest.TestCase):
 
     def test_a_short_dossier_keeps_the_dates_the_properties_the_price_the_flights_status_and_the_links(self):
         html = _html(fares=self.fares, deals=_deals(2), budget=20_000)
+        attachment = _attachment(fares=self.fares, deals=_deals(2))
         for row in _rows(self.fares):
             trip = row["trip"]
-            part = _slice(html, f"trip-{trip.id}")
+            self.assertIn(trip.id, _table_ids(html), "the table lists every trip, page or no page")
+            part = _slice(html if f'id="trip-{trip.id}"' in html else attachment, f"trip-{trip.id}")
             text = visible_text(part)
             self.assertRegex(text, r"£[\d,]+", trip.id)
             self.assertIn("Flights", text)

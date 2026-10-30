@@ -1941,6 +1941,77 @@ def _multi_centre_rows(config: HolidayConfig, *,
     return rows
 
 
+def _max_total_ceiling(config: HolidayConfig) -> Optional[float]:
+    """The owner's optional ceiling on one holiday's total, or ``None`` for no ceiling."""
+    try:
+        ceiling = float(getattr(config, "max_total_gbp", None))
+    except (TypeError, ValueError):
+        return None
+    return ceiling if ceiling > 0 else None
+
+
+def _above_ceiling(total: Any, ceiling: Optional[float]) -> bool:
+    """Whether a priced total is over the ceiling. No total, no ceiling: never filtered."""
+    if ceiling is None:
+        return False
+    try:
+        amount = float(total)
+    except (TypeError, ValueError):
+        return False
+    return amount > 0 and amount > ceiling
+
+
+def _trip_priced_total(row: Mapping[str, Any]) -> Optional[float]:
+    """The cheapest total this trip can be had for, for the whole party, or None if unpriced.
+
+    The page's own totals under each flight read are the dated figures; the low
+    end of the catalogue range is the other figure the table prints. A trip is
+    only "over the ceiling" when every one of those is over it, because a trip
+    that can still be had under the ceiling is not a holiday costing more.
+    """
+    totals: list[float] = []
+    for item in row.get("cabin_totals") or ():
+        try:
+            amount = float(item.get("total"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if amount > 0:
+            totals.append(amount)
+    try:
+        low = float(row.get("low"))
+    except (TypeError, ValueError):
+        low = 0.0
+    if low > 0:
+        totals.append(low)
+    return min(totals) if totals else None
+
+
+def _ceiling_split(config: HolidayConfig,
+                   cards: Sequence[Mapping[str, Any]],
+                   rows: Sequence[Mapping[str, Any]],
+                   ) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]], int]:
+    """``(cards, trips, how many were left out)`` under the optional total ceiling.
+
+    A card's total is the door-to-door headline the card prints; a trip's is its
+    cheapest priced total (``_trip_priced_total``). An unpriced item has no total
+    and is never filtered, and with no ceiling configured nothing changes.
+    """
+    ceiling = _max_total_ceiling(config)
+    if ceiling is None:
+        return list(cards), list(rows), 0
+    kept_cards = [card for card in cards if not _above_ceiling(headline_total(card["deal"]), ceiling)]
+    kept_rows = [row for row in rows if not _above_ceiling(_trip_priced_total(row), ceiling)]
+    return kept_cards, kept_rows, (len(cards) - len(kept_cards)) + (len(rows) - len(kept_rows))
+
+
+def _ceiling_note(config: HolidayConfig, left_out: int) -> str:
+    """``N holiday(s) over £X left out`` for the Notes, or "" when nothing was left out."""
+    ceiling = _max_total_ceiling(config)
+    if ceiling is None or left_out <= 0:
+        return ""
+    return f"{left_out} holiday(s) over {_gbp(ceiling)} left out"
+
+
 def _read_day_words(observed_at: Any) -> str:
     """The day a fare was read, as ``15 Oct``.
 
@@ -2153,11 +2224,25 @@ def _multi_centre_lines(config: HolidayConfig, *,
     return lines
 
 
-def _over_budget_html(config: HolidayConfig) -> str:
-    """One compact line per resort priced but over the budget."""
+def _over_budget_rows(config: HolidayConfig, *, apply_ceiling: bool = True) -> list[Mapping[str, Any]]:
+    """The over-budget rows for this config's destinations.
+
+    A row the optional total ceiling leaves out is not shown here either: it is
+    the same holiday, and the Notes say how many were left out by the ceiling.
+    """
     keys = {d.key.lower() for d in config.destinations}
     rows = [row for row in hol.LAST_OVER_BUDGET
             if str(row.get("destination_key", "")).lower() in keys]
+    if apply_ceiling:
+        ceiling = _max_total_ceiling(config)
+        rows = [row for row in rows
+                if not _above_ceiling(_raw_field(row, "true_d2d", 0.0), ceiling)]
+    return rows
+
+
+def _over_budget_html(config: HolidayConfig) -> str:
+    """One compact line per resort priced but over the budget."""
+    rows = _over_budget_rows(config)
     if not rows:
         return ""
     try:
@@ -2308,9 +2393,12 @@ def _climate_excluded_line() -> str:
     return f"Left out for the monsoon: {', '.join(names)} (dates fall in their rainy season)."
 
 
-def _notes_html(config: HolidayConfig, deals: Sequence[PackageDeal]) -> str:
+def _notes_html(config: HolidayConfig, deals: Sequence[PackageDeal], *, left_out: int = 0) -> str:
     """Strict filters and rules that could not be applied — one line each."""
     lines: list[str] = []
+    ceiling_line = _ceiling_note(config, left_out)
+    if ceiling_line:
+        lines.append(_esc(ceiling_line))
     climate_line = _climate_excluded_line()
     if climate_line:
         lines.append(_esc(climate_line))
@@ -2713,6 +2801,23 @@ def _shortened_summary_html(dossiers: Sequence[Mapping[str, Any]], levels: Mappi
     return f'<div style="font-size:13px; color:#fcd34d; margin:12px 0 0 0;">{_esc(text)}</div>'
 
 
+def _moved_pages_html(moved: int, attachment_name: str) -> str:
+    """One line naming the trip pages that moved out of the body and where they went.
+
+    The body has no attachment of its own when the caller sends none (a direct
+    render), and then the plain-text part is what carries the full pages; the
+    line names whichever is true rather than claiming a file that is not there.
+    """
+    if moved <= 0:
+        return ""
+    where = (f"the attached file, {attachment_name}" if attachment_name
+             else "the plain-text version of this e-mail")
+    return (
+        f'<div style="font-size:13px; color:{_MUTED}; margin:8px 0 0 0;">'
+        f'{moved} more trip page(s) are in {where}: every trip is still in the table above.</div>'
+    )
+
+
 def full_detail_filename(config: HolidayConfig, generated_at: Any) -> str:
     """``july-trips-full-2026-10-22.html``: the season, then the day, so the files sort by date."""
     stamp = _instant(generated_at)
@@ -2732,7 +2837,8 @@ def render_holiday_report_full(
     hotel_media: Optional[HotelMedia] = None,
     **_ignored: Any,
 ) -> str:
-    """The full-detail file the e-mail attaches: every trip dossier and every resort card, nothing shortened.
+    """The full-detail file the e-mail attaches: every trip dossier and every resort card the total ceiling
+    keeps, nothing shortened.
 
     Built by the same code as the body, from the same structures (``trip_dossier``, ``_cards``), with the byte budget
     taken away: Gmail clips the BODY near 102 KB, but an attachment is not clipped. It is one self-contained
@@ -2797,7 +2903,8 @@ def render_holiday_report_compact(
     is measured against ``EMAIL_HTML_BUDGET_BYTES`` and the LEAST important detail
     goes first: resort cards beyond the minimum, then the longest prose and the
     second-choice links of the last dossiers, then the last dossiers down to a
-    short form. A trip never leaves the table, and a line says what was shortened.
+    short form, then the last dossiers' pages into the attachment. A trip never
+    leaves the table, and a line says what was shortened or moved.
     """
     return _render_compact(
         config, generated_at=generated_at, deals=deals, trends=trends,
@@ -2825,8 +2932,13 @@ def _render_compact(
     hotel_media: Optional[HotelMedia] = None,
 ) -> str:
     """The one renderer behind the body and the attachment; ``full_detail`` lifts the byte budget."""
-    cards = _cards(config, deals, generated_at=generated_at, trends=trends, hotel_media=hotel_media)
-    multi_rows = _multi_centre_rows(config, fares=multi_centre_fares, complete_only=bool(getattr(config, "complete_price_only", True)))
+    cards, multi_rows, left_out = _ceiling_split(
+        config,
+        _cards(config, deals, generated_at=generated_at, trends=trends, hotel_media=hotel_media),
+        _multi_centre_rows(config, fares=multi_centre_fares, complete_only=bool(getattr(config, "complete_price_only", True))),
+    )
+    left_out += (len(_over_budget_rows(config, apply_ceiling=False))
+                 - len(_over_budget_rows(config)))
     dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
                                       hotel_ratings=hotel_ratings, hotel_media=hotel_media)
     answers = _quick_answers(config, multi_rows, cards, dossiers)
@@ -2865,7 +2977,7 @@ def _render_compact(
     after_cards = [
         _over_budget_html(config),
         _watch_html(config),
-        _notes_html(config, deals),
+        _notes_html(config, deals, left_out=left_out),
     ]
     resorts_head = (
         f'<div id="resorts" style="font-size:15px; font-weight:700; color:{_INK}; margin:18px 0 0 0;">'
@@ -2879,24 +2991,29 @@ def _render_compact(
     card_sizes = [_utf8_len(chunk) for chunk in card_html]
     dropped_note_size = 260
     summary_allowance = 520
+    moved_note_size = 260
     fixed = (sum(_utf8_len(chunk) for chunk in out) + sum(_utf8_len(chunk) for chunk in after_cards)
              + hol._CLOSING_TAIL_ALLOWANCE_BYTES + _utf8_len(resorts_head)
              + sum(_utf8_len(chunk) for chunk in group_heads.values()) + _utf8_len('<div id="trips"></div>'))
     shown_cards = len(cards)
     limit = hol.EMAIL_HTML_BUDGET_BYTES
+    moved: set[str] = set()
 
     def total(chosen: Mapping[str, int], cards_shown: int, *, shortened: bool) -> int:
-        return (fixed + sum(sizes[d["id"]][chosen[d["id"]]] for d in dossiers)
+        return (fixed + sum(sizes[d["id"]][chosen[d["id"]]] for d in dossiers if d["id"] not in moved)
                 + sum(card_sizes[:cards_shown])
                 + (dropped_note_size if cards_shown < len(cards) else 0)
-                + (summary_allowance if shortened else 0))
+                + (summary_allowance if shortened else 0)
+                + (moved_note_size if moved else 0))
 
     # What gives way, and in what order: the LEAST important detail first. If everything fits in full, nothing is
     # shortened. If not, the trips lose their longest prose and their second-choice links (TRIMMED), starting with
     # the LAST trip in the table's order, so the owner's Tanzania safari + Zanzibar pages are the last to lose
     # anything; if that is still not enough, the last trips drop to the short form (dates, properties, price,
     # flights, links), again from the end; and only then do resort cards beyond the minimum go, as they always
-    # did. No trip leaves the table, and a line over the trips says what was shortened.
+    # did. If the body STILL does not fit, the last trips' pages move to the attachment, never the first in the
+    # owner's order: a page can leave the body, but no trip leaves the table, and a line says how many pages moved
+    # and where they went.
     levels = {d["id"]: td.FULL for d in dossiers}
     # (The attachment has no budget: Gmail clips a body, not an attached file.)
     if not full_detail and total(levels, shown_cards, shortened=False) > limit:
@@ -2908,11 +3025,20 @@ def _render_compact(
         while (total(levels, shown_cards, shortened=True) > limit
                and shown_cards > min(len(cards), hol.MIN_RENDERED_HOTEL_CARDS)):
             shown_cards -= 1
+        for d in reversed(dossiers):
+            if total(levels, shown_cards, shortened=True) <= limit:
+                break
+            moved.add(d["id"])
     out.append('<div id="trips"></div>')
-    out.append(_shortened_summary_html(dossiers, levels))
+    kept = [d for d in dossiers if d["id"] not in moved]
+    out.append(_shortened_summary_html(kept, levels))
+    out.append(_moved_pages_html(len(moved), attachment_name))
     for key, _label, _group in td.owner_order(multi_rows):
+        group = [d for d in kept if d["group"] == key]
+        if not group:
+            continue
         out.append(group_heads[key])
-        out.extend(td.dossier_html(d, levels[d["id"]]) for d in dossiers if d["group"] == key)
+        out.extend(td.dossier_html(d, levels[d["id"]]) for d in group)
     out.append(resorts_head)
     out.extend(card_html[:shown_cards])
     if shown_cards < len(cards):
@@ -2955,8 +3081,13 @@ def render_holiday_report_compact_text(
     the part that is never shortened: Gmail's size limit applies to the HTML part,
     so every dossier is here in full.
     """
-    cards = _cards(config, deals, generated_at=generated_at, trends=trends, hotel_media=hotel_media)
-    multi_rows = _multi_centre_rows(config, fares=multi_centre_fares, complete_only=bool(getattr(config, "complete_price_only", True)))
+    cards, multi_rows, left_out = _ceiling_split(
+        config,
+        _cards(config, deals, generated_at=generated_at, trends=trends, hotel_media=hotel_media),
+        _multi_centre_rows(config, fares=multi_centre_fares, complete_only=bool(getattr(config, "complete_price_only", True))),
+    )
+    left_out += (len(_over_budget_rows(config, apply_ceiling=False))
+                 - len(_over_budget_rows(config)))
     dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
                                       hotel_ratings=hotel_ratings, hotel_media=hotel_media)
     answers = _quick_answers(config, multi_rows, cards, dossiers)
@@ -3035,9 +3166,7 @@ def render_holiday_report_compact_text(
         for warning in card["warnings"]:
             lines.append(f"  ! {warning}")
         lines.append("")
-    keys = {d.key.lower() for d in config.destinations}
-    over = [row for row in hol.LAST_OVER_BUDGET
-            if str(row.get("destination_key", "")).lower() in keys]
+    over = _over_budget_rows(config)
     if over:
         budget = float(over[0].get("max_budget_gbp", 0.0))
         lines.append(f"Over the {_gbp(budget)} budget — priced, no option fits")
@@ -3062,15 +3191,18 @@ def render_holiday_report_compact_text(
             name = hol.HOLIDAY_SEARCH_QUERIES.get(str(row.get("key", "")), str(row.get("key", "")))
             lines.append(f"  {name} · {_watch_reason(row)}")
         lines.append("")
-    notes = _notes_lines(config, deals)
+    notes = _notes_lines(config, deals, left_out=left_out)
     if notes:
         lines.append("Notes")
         lines.extend("  " + note for note in notes)
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _notes_lines(config: HolidayConfig, deals: Sequence[PackageDeal]) -> list[str]:
+def _notes_lines(config: HolidayConfig, deals: Sequence[PackageDeal], *, left_out: int = 0) -> list[str]:
     lines: list[str] = []
+    ceiling_line = _ceiling_note(config, left_out)
+    if ceiling_line:
+        lines.append(ceiling_line)
     climate_line = _climate_excluded_line()
     if climate_line:
         lines.append(climate_line)

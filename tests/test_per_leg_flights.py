@@ -33,7 +33,7 @@ from public_flight_search.holiday_email import multi_centre_wanted
 
 from test_holiday_email_compact import _config, _deals, visible_text
 from test_multi_centre_reads import _multi_centre_read
-from test_trip_dossiers import NOW, STAMPS, UNLIMITED, _html, _rows, _slice, _text
+from test_trip_dossiers import NOW, STAMPS, UNLIMITED, _attachment, _html, _rows, _slice, _table_ids, _text
 
 LEGS_AF01 = [("LHR", "JRO", "2027-06-27"), ("JRO", "ZNZ", "2027-07-01"), ("ZNZ", "LHR", "2027-07-14")]
 
@@ -176,7 +176,10 @@ class EveryLevelAndThePlainTextCarryItTests(unittest.TestCase):
     def test_the_short_form_lists_each_leg_with_its_times_in_the_flights_section(self):
         fares = _fares(FLIGHTS)
         html = _html(fares=fares, deals=_deals(2), budget=20_000)
-        text = visible_text(_slice(html, "trip-AF-01"))
+        attachment = _attachment(fares=fares, deals=_deals(2))
+        # Tiny body: the page may have moved to the attachment (owner, 30 Oct 2026); the trip stays in the table.
+        self.assertIn("AF-01", _table_ids(html))
+        text = visible_text(_slice(html if 'id="trip-AF-01"' in html else attachment, "trip-AF-01"))
         for word in ("09:30", "28 Jun 02:00", "Etihad Airways", "11:15", "Precision Air", "18:05", "Qatar Airways"):
             self.assertIn(word, text, word)
         self.assertNotIn("not captured", text)

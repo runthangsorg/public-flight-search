@@ -36,7 +36,7 @@ from public_flight_search.hotel_evidence import HotelRating, normalise_property_
 from public_flight_search.hotel_media import HotelMedia, load_hotel_media, merge_ratings
 
 from test_holiday_email_compact import _config, _deal, _deals, visible_text
-from test_trip_dossiers import NOW, STAMPS, UNLIMITED, WellFormedTests, _html, _ids, _reads, _slice, _text
+from test_trip_dossiers import NOW, STAMPS, UNLIMITED, WellFormedTests, _html, _ids, _reads, _slice, _table_ids, _text
 
 IMG = "https://cdn.example.org/photos/{}.jpg"
 
@@ -196,7 +196,15 @@ class ATripPageShowsAThumbnailBesideEachNamedPropertyTests(unittest.TestCase):
     def test_the_short_form_has_no_thumbnails_and_the_overview_has_none(self):
         media = _media(images=self.NAMES)
         short = _html(fares=_reads(["AF-01"]), hotel_media=media, budget=20_000, deals=_deals(2))
-        self.assertEqual(_img_tags(_slice(short, "trip-AF-01")), [])
+        attachment = render_holiday_report_full(_config(), generated_at=NOW, deals=_deals(2), evidence_stamps=STAMPS,
+                                                multi_centre_fares=_reads(["AF-01"]), hotel_media=media)
+        self.assertIn("AF-01", _table_ids(short), "the table lists the trip whether its page fits or not")
+        if 'id="trip-AF-01"' in short:
+            self.assertEqual(_img_tags(_slice(short, "trip-AF-01")), [],
+                             "a page still in the tiny body is the short form, which carries no thumbnail")
+        else:
+            self.assertIn('id="trip-AF-01"', attachment,
+                          "a page the tiny body could not hold is in the attachment, not gone")
         table = short[short.index("Every option at a glance"):short.index('id="trips"')]
         self.assertEqual(_img_tags(table), [])
 
