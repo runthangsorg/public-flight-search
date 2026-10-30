@@ -9,6 +9,7 @@ import os
 import tempfile
 import unittest
 from datetime import date, datetime, timedelta, timezone
+from unittest.mock import patch
 from pathlib import Path
 
 from public_flight_search import business_deals as bd
@@ -472,6 +473,112 @@ class EmailTests(JobCase):
         self.assertIn("under the asia cap £1,000", html)
         self.assertNotIn("% below median", html)
         self.assertNotIn("not enough history", html.lower())
+
+
+class RoundTripConfigTests(unittest.TestCase):
+    def test_travellers_defaults_to_one_and_trip_nights_to_empty(self):
+        cfg = bd.load_config(raw_config(), today=NOW.date())
+        self.assertEqual(cfg.travellers, 1)
+        self.assertEqual(cfg.trip_nights, ())
+
+    def test_travellers_is_validated(self):
+        for bad in (0, 10, 1.5):
+            with self.assertRaises(bd.BusinessDealsConfigError):
+                bd.load_config(raw_config(travellers=bad), today=NOW.date())
+        cfg = bd.load_config(raw_config(travellers=3), today=NOW.date())
+        self.assertEqual(cfg.travellers, 3)
+
+    def test_trip_nights_is_validated(self):
+        for bad in ([2], [31], list(range(1, 8)), "x", [3.5]):
+            with self.assertRaises(bd.BusinessDealsConfigError):
+                bd.load_config(raw_config(trip_nights=bad), today=NOW.date())
+        cfg = bd.load_config(raw_config(trip_nights=[3, 7]), today=NOW.date())
+        self.assertEqual(cfg.trip_nights, (3, 7))
+
+
+class RoundTripPlanTests(unittest.TestCase):
+    def test_plan_expands_one_spec_per_origin_destination_date_nights(self):
+        cfg = bd.load_config(raw_config(trip_nights=[3, 7], max_searches_per_run=40), today=NOW.date())
+        plan = bd.plan_searches(cfg, NOW.date())
+        self.assertEqual(len(plan), 4)
+        self.assertTrue(all(s.return_date for s in plan))
+        self.assertEqual(sorted(s.return_date for s in plan), ["2027-03-04", "2027-03-04", "2027-03-08", "2027-03-08"])
+
+    def test_plan_is_deterministic(self):
+        cfg = bd.load_config(raw_config(trip_nights=[3], max_searches_per_run=40), today=NOW.date())
+        self.assertEqual(bd.plan_searches(cfg, NOW.date()), bd.plan_searches(cfg, NOW.date()))
+
+    def test_one_way_specs_keep_empty_return_date(self):
+        cfg = bd.load_config(raw_config(), today=NOW.date())
+        plan = bd.plan_searches(cfg, NOW.date())
+        self.assertTrue(plan)
+        self.assertTrue(all(s.return_date == "" for s in plan))
+
+
+class RoundTripFetchTests(unittest.TestCase):
+    def test_round_trip_fetch_uses_roundtrip_builder_with_party(self):
+        cfg = bd.load_config(raw_config(trip_nights=[3], travellers=2), today=NOW.date())
+        spec = bd.SearchSpec("LHR", "BKK", DEP, "2027-03-04")
+        with patch("public_flight_search.google_flights.build_google_flights_roundtrip_url") as mock_rt, \
+             patch("public_flight_search.google_flights._fetch_page_html", return_value="<html></html>"), \
+             patch("public_flight_search.google_flights._is_waf_response", return_value=False):
+            mock_rt.return_value = "https://example.test/rt"
+            outcome = bd.make_google_fetch(cfg)(spec)
+            self.assertEqual(outcome.status, "ok")
+            mock_rt.assert_called_once()
+            kwargs = mock_rt.call_args.kwargs
+            self.assertEqual(kwargs["origin"], "LHR")
+            self.assertEqual(kwargs["destination"], "BKK")
+            self.assertEqual(kwargs["outbound_date"], DEP)
+            self.assertEqual(kwargs["return_date"], "2027-03-04")
+            self.assertEqual(kwargs["travellers"], 2)
+            self.assertEqual(kwargs["cabin_class"], "BUSINESS")
+
+    def test_one_way_fetch_stays_one_traveller(self):
+        cfg = bd.load_config(raw_config(travellers=5), today=NOW.date())
+        spec = bd.SearchSpec("LHR", "BKK", DEP)
+        with patch("public_flight_search.google_flights.build_google_flights_url") as mock_ow, \
+             patch("public_flight_search.google_flights._fetch_page_html", return_value="<html></html>"), \
+             patch("public_flight_search.google_flights._is_waf_response", return_value=False):
+            mock_ow.return_value = "https://example.test/ow"
+            outcome = bd.make_google_fetch(cfg)(spec)
+            self.assertEqual(outcome.status, "ok")
+            mock_ow.assert_called_once()
+            kwargs = mock_ow.call_args.kwargs
+            self.assertEqual(kwargs["travellers"], 1)
+            self.assertEqual(kwargs["cabin_class"], "BUSINESS")
+
+
+class PerPersonObservationTests(unittest.TestCase):
+    def test_observation_records_party_total_and_per_person(self):
+        cfg = bd.load_config(raw_config(trip_nights=[3], travellers=2), today=NOW.date())
+        spec = bd.SearchSpec("LHR", "BKK", DEP, "2027-03-04")
+        obs, rejected = bd.cheapest_observation([offer("LHR", 900)], spec, cfg, NOW)
+        self.assertEqual(rejected, 0)
+        self.assertEqual(obs["total_gbp"], 900.0)
+        self.assertEqual(obs["per_person_gbp"], 450.0)
+
+
+class OldHistoryMedianTests(JobCase):
+    def test_old_row_without_per_person_drives_median(self):
+        cfg = raw_config(absolute_caps_gbp={}, trip_nights=[3], travellers=2)
+        write_history(self.history, median_history("LHR", 2000, n=5))
+        result, sink, _ = self.run_job({"LHR": 900}, config=cfg)
+        self.assertEqual([d.trigger for d in result.deals], ["median"])
+
+
+class RoundTripEmailTests(JobCase):
+    def test_email_row_text_for_round_trip(self):
+        cfg = raw_config(trip_nights=[3], travellers=2, absolute_caps_gbp={"asia": 1000})
+        result, sink, text = self.run_job({"LHR": 900}, config=cfg, dry_run=True)
+        self.assertEqual(len(result.deals), 1)
+        self.assertIn("£900 total for 2 travellers, return 01 Mar - 04 Mar (3 nights)", text)
+        self.assertIn("£450 per person", text)
+
+
+class OneWayKeyTests(unittest.TestCase):
+    def test_one_way_key_keeps_old_form(self):
+        self.assertEqual(bd._key("LHR", "DEL", "2027-06-01"), "LHR|DEL|2027-06-01|BUSINESS")
 
 
 if __name__ == "__main__":
