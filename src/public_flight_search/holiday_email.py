@@ -2318,6 +2318,14 @@ def _notes_html(config: HolidayConfig, deals: Sequence[PackageDeal]) -> str:
         text = _note_reason(reason)
         if not text:
             continue
+        # No price, no card (H6, and the July catalogue's 2026-10-30 entries):
+        # a property with no read rate was never a candidate for a card, so it
+        # is not one the filters "removed". The full-detail attachment names
+        # it; the e-mail does not spend its bytes on a destination with nothing
+        # to show yet. Unknown names are still listed - the reader is never
+        # told less than the filters did.
+        if hol.resort_is_unpriced(name):
+            continue
         lines.append(f"{_esc(name)} — {_esc(text)}")
     shown = {d.resort_name for d in deals}
     for name in sorted(shown):
@@ -3069,6 +3077,10 @@ def _notes_lines(config: HolidayConfig, deals: Sequence[PackageDeal]) -> list[st
     for name, reason in hol.LAST_FILTERED_OUT:
         text = _note_reason(reason)
         if not text:
+            continue
+        # Same rule as the HTML part: no read rate, no card, no filtered-out
+        # line — so the text part and the HTML part agree on what was removed.
+        if hol.resort_is_unpriced(name):
             continue
         lines.append(f"{name} — {text}")
     shown = {d.resort_name for d in deals}

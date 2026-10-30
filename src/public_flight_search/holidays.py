@@ -5710,6 +5710,40 @@ def filter_resorts(
     return kept, dropped
 
 
+def resort_is_unpriced(name: str) -> bool:
+    """True when no rate has been read for this property, so it can never card.
+
+    The no-price-no-card rule (H6, 2026-10-03) means an entry with no rate and
+    no basis produces no card at all. Such a property is therefore not one the
+    strict filters \"removed\" from the reader's view: nothing was ever priced
+    for it. Naming it in the compact e-mail's filtered-out list would read as a
+    priced resort being held back, and it spends e-mail bytes on a destination
+    with nothing to show yet. The full-detail attachment still names every
+    removed resort, which is where the whole catalogue belongs.
+
+    Unknown names return False: a name no catalogue knows stays listed, so the
+    reader is never told less than the filters actually did.
+    """
+    key = str(name or "").strip().lower()
+    if not key:
+        return False
+    seen = False
+    for catalog in (SUMMER_RESORT_CATALOG, WINTER_RESORT_CATALOG):
+        for entries in catalog.values():
+            for entry in entries:
+                if str(entry.get("name", "")).strip().lower() != key:
+                    continue
+                seen = True
+                if (
+                    entry.get("board_options")
+                    or entry.get("base_nightly_room_rate_gbp")
+                    or entry.get("peak_summer_nightly_room_rate_gbp")
+                    or str(entry.get("confidence", "") or "").strip()
+                ):
+                    return False
+    return seen
+
+
 def _suite_for(resort: Mapping[str, Any]) -> dict[str, Any]:
     """The unit's pricing facts for THIS catalogue entry.
 
