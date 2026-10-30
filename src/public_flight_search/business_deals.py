@@ -625,14 +625,22 @@ def _duration(minutes: int) -> str:
 
 def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime) -> tuple[str, str, str]:
     best = deals[0]
+    best_n = int(getattr(best, "travellers", 1) or 1)
+    best_pp = best.per_person_gbp if getattr(best, "per_person_gbp", None) is not None else best.total_gbp
     subject = (f"Business-class deal{'s' if len(deals) > 1 else ''}: {len(deals)} found, best "
-               f"{best.origin} to {best.destination} {_gbp(best.total_gbp)}")
+               f"{best.origin} to {best.destination} {_gbp(best.total_gbp)}"
+               + (f" for {best_n} ({_gbp(best_pp)} each)" if best_n > 1 else ""))
     esc = _html.escape
     rows, lines = [], []
     for d in deals:
         stops = "non-stop" if d.stops == 0 else f"{d.stops} stop{'s' if d.stops > 1 else ''}"
         cap = cfg.caps.get(d.region)
-        cap_text = f"under the {d.region.replace('_', ' ')} cap" + (f" {_gbp(cap)}" if cap is not None else "")
+        travellers = int(getattr(d, "travellers", 1) or 1)
+        per_person = d.per_person_gbp if getattr(d, "per_person_gbp", None) is not None else d.total_gbp
+        # Caps and medians are per person (30 Oct 2026): a party total beside a per-person cap read as nonsense.
+        cap_text = (f"{_gbp(per_person)} per person, under the {d.region.replace('_', ' ')} cap" if travellers > 1
+                    else f"under the {d.region.replace('_', ' ')} cap")
+        cap_text += (f" {_gbp(cap)}" + (" per person" if travellers > 1 else "")) if cap is not None else ""
         if d.trigger.startswith("median"):
             basis = f"{d.pct_below_median:.0f}% below median {_gbp(d.median_gbp)} (n={d.history_n})"
             if d.trigger == "median+cap":
@@ -643,7 +651,9 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
             basis = f"{cap_text}; route median {_gbp(d.median_gbp)} (n={d.history_n})"
         home = (f"{d.saving_vs_home_pct:.0f}% under the best home-airport total {_gbp(d.home_total_gbp)}"
                 if d.home_total_gbp else ("no home-airport price to compare" if d.positioning_gbp else ""))
-        parts = f"fare {_gbp(d.fare_gbp)} + positioning {_gbp(d.positioning_gbp)}" if d.positioning_gbp else "fare only"
+        parts = (f"fare {_gbp(d.fare_gbp)} + positioning {_gbp(d.positioning_gbp * travellers)}"
+                 + (f" ({travellers} x {_gbp(d.positioning_gbp)})" if travellers > 1 else "")
+                 if d.positioning_gbp else "fare only")
         link = _link(d)
         round_trip = bool(d.return_date)
         if round_trip:
@@ -685,12 +695,14 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
         "text-align:left}th{background:#f1f3f5}a{color:#0b57d0}</style></head><body>"
         f"<h2>{esc(cfg.title)}</h2>"
         f"<p>{len(deals)} special fare{'s' if len(deals) > 1 else ''} found on {now.date().isoformat()}. "
-        "Fares are the cheapest business-class result read on the Google Flights page for that date, one way, per "
-        "person, in GBP. A positioning origin's total includes the cost of getting there. Prices change quickly: "
-        "check the live page before relying on one.</p>"
+        "Fares are the cheapest business-class result read on the Google Flights page, in GBP: a return is the "
+        "whole party's fare for the dates shown, a one-way row is per person. A positioning origin's total includes "
+        "getting every traveller there. Deals are judged per person. Prices change quickly: check the live page "
+        "before relying on one.</p>"
         "<table><tr><th>Route</th><th>Departs</th><th>Total</th><th>Why it is a deal</th><th>Flight</th>"
         "<th>Seen</th><th>Link</th></tr>" + "".join(rows) + "</table></body></html>")
-    text = "\n".join([f"{len(deals)} special business-class fare(s) on {now.date().isoformat()} (one way, per person, GBP):",
+    text = "\n".join([f"{len(deals)} special business-class fare(s) on {now.date().isoformat()} "
+                      "(GBP; returns are the party's total, deals judged per person):",
                       *lines])
     return subject, html, text
 
