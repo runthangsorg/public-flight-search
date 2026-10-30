@@ -411,6 +411,32 @@ class ConfigAndPlanTests(unittest.TestCase):
         self.assertTrue(all(d.hours_from_london > 8.0 for d in cfg.destinations))
         self.assertTrue(bd.plan_searches(cfg, date(2026, 11, 2)))
 
+    def test_india_is_never_a_destination_even_when_the_config_lists_it(self):
+        dests = [{"code": c, "label": c, "region": "asia", "hours_from_london": 9.0} for c in ("BKK", "DEL", "bom")]
+        cfg = bd.load_config(raw_config(destinations=dests), today=NOW.date())
+        self.assertEqual([d.code for d in cfg.destinations], ["BKK"])
+        self.assertFalse({s.destination for s in bd.plan_searches(cfg, NOW.date())} & bd.EXCLUDED_DESTINATIONS)
+
+    def test_exclude_destinations_drops_more_airports(self):
+        dests = [{"code": c, "label": c, "region": "asia", "hours_from_london": 12.0} for c in ("BKK", "HND")]
+        cfg = bd.load_config(raw_config(destinations=dests, exclude_destinations=[" hnd "]), today=NOW.date())
+        self.assertEqual([d.code for d in cfg.destinations], ["BKK"])
+        self.assertEqual(cfg.exclude_destinations, ("HND",))
+
+    def test_exclude_destinations_must_be_airport_codes(self):
+        for bad in (["Delhi"], "DEL", [7]):
+            with self.assertRaises(bd.BusinessDealsConfigError):
+                bd.load_config(raw_config(exclude_destinations=bad), today=NOW.date())
+
+    def test_a_config_of_only_excluded_destinations_is_rejected(self):
+        dests = [{"code": "DEL", "label": "Delhi", "region": "asia", "hours_from_london": 9.0}]
+        with self.assertRaises(bd.BusinessDealsConfigError):
+            bd.load_config(raw_config(destinations=dests), today=NOW.date())
+
+    def test_shipped_example_config_lists_no_excluded_destination(self):
+        raw = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+        self.assertFalse({d["code"] for d in raw["destinations"]} & bd.EXCLUDED_DESTINATIONS)
+
 
 class EmailTests(JobCase):
     def test_email_has_clickable_links_dates_total_median_and_last_seen(self):
