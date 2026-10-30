@@ -147,6 +147,16 @@ class IslandBoardTests(unittest.TestCase):
             for key in ISLAND_RULE_KEYS:
                 for resort in catalog.get(key, []):
                     with self.subTest(resort=resort["name"]):
+                        # Brief 2026-10-30: the July catalogue gained
+                        # unpaid island entries (Mauritius, Seychelles)
+                        # whose board no rate has been read for. By the
+                        # same no-price-no-card rule as the H6 entries,
+                        # they carry "board": "unverified" and no bases
+                        # to price; the rule below still governs every
+                        # entry that does claim a board.
+                        if resort.get("board") == "unverified":
+                            self.assertNotIn("board_options", resort)
+                            continue
                         options = resort.get("board_options") or ()
                         self.assertTrue(options)
                         for option in options:
