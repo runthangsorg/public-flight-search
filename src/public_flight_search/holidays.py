@@ -3926,9 +3926,12 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # Its own booking engine, 29 Jun-6 Jul 2027 (7 nights), one unit
             # for the party: 2 Bedroom Loft (two bedrooms, two bathrooms, 110
             # m² of indoor and outdoor space and a private 18.81 m² pool by its
-            # own description; 5 guests, the fifth adult at IDR 600,000 a
-            # night) = IDR 69,741,400 (= GBP 2,937.63, GBP 419.66 a night),
-            # "includes taxes & fees", breakfast NOT included. Google's own
+            # own description; 5 guests) = IDR 69,741,400 (= GBP 2,937.63,
+            # GBP 419.66 a night), and that quoted total ALREADY carries the
+            # fifth adult at IDR 600,000 a night: base IDR 65,541,400 (GBP
+            # 394.39 a night) plus 7 x 600,000 = 4,200,000 (GBP 25.27 a night).
+            # The engine says it "includes taxes & fees", breakfast NOT
+            # included. Google's own
             # dated rows agree on the basis: every one of them is room only
             # (GBP 788 for 6 guests on Booking, GBP 435 for 5 on its official
             # link, read 2026-10-31). The rate is real, so it is stored; the
