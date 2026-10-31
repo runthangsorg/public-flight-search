@@ -13,8 +13,8 @@ import re
 from typing import Iterable, Union
 
 EXCLUDED_FOR_BUSINESS = (
-    # named by the owner (LOT added 27 Oct 2026)
-    "Air India", "Air India Express", "LOT",
+    # named by the owner (LOT added 27 Oct 2026; EgyptAir 31 Oct 2026)
+    "Air India", "Air India Express", "LOT", "EgyptAir", "Egypt Air",
     # low-cost and hybrid carriers that sell a "business" or "stretch" seat
     "IndiGo", "SpiceJet", "Akasa Air", "flydubai", "Air Arabia", "flynas", "Jazeera Airways", "Pegasus",
     "Eurowings", "Ryanair", "easyJet", "Wizz Air", "Jet2", "Vueling", "Transavia", "Volotea",
