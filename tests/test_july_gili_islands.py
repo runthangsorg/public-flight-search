@@ -354,7 +354,11 @@ class GiliReportTests(unittest.TestCase):
     def test_the_email_shows_the_board_next_to_the_priced_stay(self):
         config, deals = self._run()
         plain = self._email_text(config, deals)
-        # The at-a-glance table carries the basis beside the resort and the island.
+        # The at-a-glance table carries the basis beside the resort and the
+        # island. The header names the five columns, and [^|]* cannot cross a
+        # pipe, so this row match is column-anchored: resort | where | dates |
+        # board | total - not "Bed & Breakfast anywhere after the name".
+        self.assertIn("Resort|Where|Dates|Board|Total for 5", plain)
         self.assertRegex(
             plain,
             r"Pondok Santi Estate\|Gili Trawangan[^|]*\|[^|]*\|Bed & Breakfast\|£[\d,]+")
