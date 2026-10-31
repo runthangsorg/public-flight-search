@@ -3864,9 +3864,9 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # Its own STAAH/SwiftBook booking engine, 5 adults in ONE unit,
             # 25 Jun-9 Jul 2027 (14 nights - the example config's own outbound
             # and return dates), 2 Bedroom Oceanside Villa: NON-REFUNDABLE
-            # IDR 106,808,826 (= GBP 4,498.94, GBP 321.35 a night), "Bed &
+            # IDR 106,808,826 (= GBP 4,498.97, GBP 321.35 a night), "Bed &
             # breakfast" mapped, and the cheapest of the three plans it quotes
-            # for the villa (EARLY BIRD-FLEXIBLE GBP 327.25, FLEXIBLE GBP
+            # for the villa (EARLY BIRD-FLEXIBLE GBP 327.26, FLEXIBLE GBP
             # 360.69). The engine labels this property "Tax Exclusive" and
             # returns no TaxData, so Indonesian tax and service are NOT in the
             # figure - unlike the Lombok entries, whose Accor rates include
@@ -3927,7 +3927,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # for the party: 2 Bedroom Loft (two bedrooms, two bathrooms, 110
             # m² of indoor and outdoor space and a private 18.81 m² pool by its
             # own description; 5 guests, the fifth adult at IDR 600,000 a
-            # night) = IDR 69,741,400 (= GBP 2,937.61, GBP 419.66 a night),
+            # night) = IDR 69,741,400 (= GBP 2,937.63, GBP 419.66 a night),
             # "includes taxes & fees", breakfast NOT included. Google's own
             # dated rows agree on the basis: every one of them is room only
             # (GBP 788 for 6 guests on Booking, GBP 435 for 5 on its official
@@ -3981,8 +3981,8 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "stars": 4,
             "board": "Room only",  # its own booking engine sells one plan per villa and says in that plan's own words that breakfast costs extra: "Stay in our Villa Bayu, with a delightful à la carte breakfast menu available at an additional cost" - and the engine lists "À La Carte Breakfast" as a recurring add-on at IDR 175,000 per adult (swiftbook property 15086, read 2026-10-31). No half board, full board or all inclusive is sold anywhere on its pages.
             # Its own STAAH/SwiftBook booking engine, 25 Jun-2 Jul 2027 (7
-            # nights), Villa Bayu (400 m², 7 guests) at GBP 271.86 a night: IDR
-            # 45,180,000 (= GBP 1,903.04), the same total for two adults and
+            # nights), Villa Bayu (400 m², 7 guests) at GBP 271.87 a night: IDR
+            # 45,180,000 (= GBP 1,903.06), the same total for two adults and
             # for five - a whole-villa rate, mapping ExAdRate 0 - and this
             # property is "Tax Inclusive". It is the only July week the villa
             # answers for at all: 29 Jun-6 Jul, 5-12 Jul, 12-19 Jul and the
@@ -3993,8 +3993,8 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # but the trip is not bookable at it yet: the label is "estimate"
             # on the file's own convention (nearest open week), and no card
             # forms because the board is room only - breakfast is the minimum.
-            "base_nightly_room_rate_gbp": 271.86,
-            "peak_summer_nightly_room_rate_gbp": 271.86,
+            "base_nightly_room_rate_gbp": 271.87,
+            "peak_summer_nightly_room_rate_gbp": 271.87,
             **_LOP_FLIGHT,
             "routing": _LOP_FLIGHT["routing"] + ", then the boat to Gili Air: about 10 minutes from Lombok by private speedboat (gilibookings.com, read 2026-10-31), or the shared Bangsal fast boat at EUR 9.00 per person (gilitickets.com, read 2026-10-31)",
             "why": (
@@ -4006,7 +4006,7 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "highlights": (
                 "Villa Bayu sleeps the party of five whole: three bedrooms, 6+1 guests, 400 m², private pool (official site, read 2026-10-31)",
                 "Five-star certification is NOT claimed: Tripadvisor gives it no Giata 5-star line, so it is listed here on rating and villa quality alone",
-                "Read price: GBP 271.86 a night for the whole Villa Bayu on its own engine, 25 Jun-2 Jul 2027, tax inclusive, room only - and its engine says no July stay long enough for this trip (12-21 nights) is open in the villa (read 2026-10-31)",
+                "Read price: GBP 271.87 a night for the whole Villa Bayu on its own engine, 25 Jun-2 Jul 2027, tax inclusive, room only - and its engine says no July stay long enough for this trip (12-21 nights) is open in the villa (read 2026-10-31)",
             ),
             "hotel_url": "https://www.rimbagiliair.com/",
             "dec_ambient_c": (0, 0),
@@ -4022,13 +4022,13 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # Speedboat Gili Air to or from Teluk Nara Harbor - Price includes
             # the entire boat, accommodating up to 7 adults with luggage" at
             # IDR 800,000 a way. Five people, both legs, both ways: (700,000 +
-            # 800,000) x 2 = IDR 3,000,000 = GBP 126.36 at the ECB reference
+            # 800,000) x 2 = IDR 3,000,000 = GBP 126.37 at the ECB reference
             # rates this catalogue converts at; the boat alone is GBP 67.39.
             # The shared alternative stays cheaper but seats the party in
             # pieces: EUR 9.00 per person per way (gilitickets.com, read
             # 2026-10-31) = GBP 77.15 for five return, port taxes in cash at
             # the harbour on top.
-            "transfer_gbp": 126.36,
+            "transfer_gbp": 126.37,
             "confidence": "estimate",
         },
     ],
@@ -5476,7 +5476,7 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
         # "at an additional cost". No July window this trip can book
         # (12-21 nights) is open in it.
         "suite_type": "Villa Bayu (three bedrooms, 400 m², 7 guests, private pool, one villa)",
-        "suite_nightly_gbp": 271.86, "suite_peak_nightly_gbp": 271.86,
+        "suite_nightly_gbp": 271.87, "suite_peak_nightly_gbp": 271.87,
         "rooms_in_unit": 1,
         "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
         "nonstop_from": (),

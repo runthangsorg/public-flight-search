@@ -81,7 +81,7 @@ GILI_NAMES = (
 #: estimated - no page read prices a Lombok-airport road leg seating five.
 PUBLISHED_TRANSFER_GBP = {
     "Pondok Santi Estate": 210.61,
-    "Rimba Villas": 126.36,
+    "Rimba Villas": 126.37,
 }
 
 #: The rate each property's OWN booking engine quoted for a July stay of this
@@ -98,7 +98,7 @@ READ_RATES = {
         "rooms_in_unit": 1, "on_config_dates": False,
     },
     "Rimba Villas": {
-        "nightly_gbp": 271.86, "basis": "RO", "confidence": "estimate",
+        "nightly_gbp": 271.87, "basis": "RO", "confidence": "estimate",
         "rooms_in_unit": 1, "on_config_dates": False,
     },
 }
