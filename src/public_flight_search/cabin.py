@@ -117,6 +117,9 @@ DEFAULT_FLIGHT_HOURS_LHR: dict[str, float] = {
     "cape_town": 11.5,       # CPT nonstop (BA 7 weekly, 10 later in 2027; Virgin Atlantic)
     "seychelles": 13.5,      # SEZ via DXB, DOH or CDG; no year-round London nonstop
     "hokkaido": 17.0,        # CTS via HND, then a 1h35 domestic hop
+    # Gili Islands (brief 2026-10-31): LOP flight only, the boat stated in
+    # the config's flight_hours_source (koh_phangan precedent above).
+    "gili_islands": 24.0,    # LOP via SIN (Singapore Airlines + Scoot, 24h), then the boat (~15 min private to Gili Trawangan, ~40 min by public fast boat)
 }
 
 
