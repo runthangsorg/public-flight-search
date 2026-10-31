@@ -222,9 +222,11 @@ class JulyReportHonestyTests(unittest.TestCase):
         expected = set()
         no_rate = set()
         # Derived from the keys the July config actually carries with
-        # resort entries (H9 added the Riviera Maya and Okinawa), not from a
-        # pasted list that could drift from the config.
-        for key in (LOMBOK_KEYS | THAILAND_KEYS | {"zanzibar", "riviera_maya", "okinawa"}):
+        # resort entries (H9 added the Riviera Maya and Okinawa, PR #6 the
+        # Gili Islands), not from a pasted list that could drift from the
+        # config.
+        for key in (LOMBOK_KEYS | THAILAND_KEYS
+                    | {"zanzibar", "riviera_maya", "okinawa", "gili_islands"}):
             kept, _ = filter_resorts(
                 SUMMER_RESORT_CATALOG[key], is_summer=True,
                 island=key in hol.ISLAND_RULE_KEYS,

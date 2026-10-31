@@ -3832,38 +3832,65 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
     # island's best-rated luxury villa (5.0/5 from 200 reviews, #1 of 49) with a
     # private-pool three-bedroom villa that sleeps the party whole, which is the
     # other half of what the brief asks for. The ratings quoted in the entries
-    # were read today; the SUITE_ARCHITECTURE rows stay the unverified
-    # placeholders the July catalogue uses (no unit, no rate, no gate figure).
-    # No dated July rate was read for any of them and none is invented: board
-    # unverified, no rate fields (this file's "not priced" state). The flight
-    # side reuses _LOP_FLIGHT - the same Google Flights read Lombok cards carry
-    # (GBP 4,990 for 5, read 2026-09-29) - with the boat leg stated in routing,
-    # and the cabin hours stay flight-only (koh_phangan precedent).
+    # were read from Tripadvisor pages; the SUITE_ARCHITECTURE rows carry the
+    # one-booking UNIT and the dated rate the property's OWN booking engine
+    # quoted, and leave the card-level gate figure unverified (tripadvisor
+    # None), exactly as every other July entry does.
+    # The rates below are dated reads of the three properties' own booking
+    # engines, not invented figures (brief 2026-10-31, read 2026-10-31): Pondok
+    # Santi's STAAH/SwiftBook engine quotes its 2 Bedroom Oceanside Villa with
+    # breakfast for the config's own 25 Jun-9 Jul 2027 dates, and BASK's and
+    # Rimba's engines quote their five-guest units for July weeks but sell them
+    # ROOM ONLY - a real rate with no board, which the breakfast minimum
+    # refuses. Booking.com was bot-walled on both hosts all day, so the own
+    # engine is the primary source throughout and no OTA figure was substituted.
+    # The flight side reuses _LOP_FLIGHT - the same Google Flights read Lombok
+    # cards carry (GBP 4,990 for 5, read 2026-09-29) - with the boat leg stated
+    # in routing, and the cabin hours stay flight-only (koh_phangan precedent).
     # board_problem runs with island=True for this key (ISLAND_RULE_KEYS): the
     # owner's island rule is HB/FB/AI with every sold basis priced, so each
-    # entry says plainly what its own pages sell - breakfast - instead of
-    # implying a board nobody has priced. The transfer leg is priced only where
-    # a published tariff seats this party of five (Pondok Santi's own airport
-    # pick-up, capped at 5) and is marked unpriced, never estimated, elsewhere.
-    # The card forms only once the private rate reader has read a rate for the
-    # property's own hotel_url.
+    # entry says plainly what its own pages sell - and on these three islands
+    # what they sell is breakfast at best, room only at the other two. The
+    # transfer leg is priced only where a published tariff seats this party of
+    # five (Pondok Santi's own airport pick-up, capped at 5, and Rimba's own
+    # engine car-plus-whole-boat add-ons) and is marked unpriced, never
+    # estimated, where nothing does (BASK).
     "gili_islands": [
         {
             "name": "Pondok Santi Estate",
             "destination_label": "Gili Trawangan, Gili Islands, Indonesia (dry season in July)",
             "stars": 5,  # Tripadvisor's "THE BEST Gili Trawangan 5 Star Hotels" list, where it sits at #3, and Expedia's "5.0 star property" (read 2026-10-31); Booking's luxury pages carry it as a "Luxury Hotel in Gili Trawangan"
-            "board": "unverified",  # its own terms include "Daily breakfast based on normal room occupancy" and sell no half board, full board or all inclusive; the Kuoni Lombok page does not name this hotel (read 2026-10-31)
+            "board": "Bed & Breakfast",  # its own booking engine maps every plan of this villa to Meal "Bed & breakfast" (read 2026-10-31)
+            # Its own STAAH/SwiftBook booking engine, 5 adults in ONE unit,
+            # 25 Jun-9 Jul 2027 (14 nights - the example config's own outbound
+            # and return dates), 2 Bedroom Oceanside Villa: NON-REFUNDABLE
+            # IDR 106,808,826 (= GBP 4,498.94, GBP 321.35 a night), "Bed &
+            # breakfast" mapped, and the cheapest of the three plans it quotes
+            # for the villa (EARLY BIRD-FLEXIBLE GBP 327.25, FLEXIBLE GBP
+            # 360.69). The engine labels this property "Tax Exclusive" and
+            # returns no TaxData, so Indonesian tax and service are NOT in the
+            # figure - unlike the Lombok entries, whose Accor rates include
+            # taxes. Cross-check, a different week of the same July season: 29
+            # Jun-6 Jul 2027 in the same villa = IDR 52,470,132 (GBP 2,210.13,
+            # GBP 315.73 a night). Both are dated reads of the property's own
+            # engine on 2026-10-31, so the basis is a read, not an estimate.
+            "board_options": (
+                {"basis": "BB", "nightly_gbp": 321.35,
+                 "source": "Pondok Santi's own STAAH/SwiftBook engine, 25 Jun-9 Jul 2027, 14 nights, 2 Bedroom Oceanside Villa, 5 adults in one unit, NON-REFUNDABLE: IDR 106,808,826, tax exclusive (read 2026-10-31)"},
+            ),
+            "base_nightly_room_rate_gbp": 321.35,
+            "peak_summer_nightly_room_rate_gbp": 321.35,
             **_LOP_FLIGHT,
             "routing": _LOP_FLIGHT["routing"] + ", then the hotel's own arrival route: a 1.5-hour drive from LOP to Teluk Kodek harbour and a 15-minute fast boat (or its outrigger 'Princess Margaux') to Gili Trawangan (pondoksanti.com/contact, read 2026-10-31)",
             "why": (
                 "July is the dry season on the Gilis (wet months Jan-Mar and Nov-Dec): 19-30°C days and clear water",
                 "5-star estate on Gili Trawangan, on seven hectares of grounds with its own exclusive white-sand beach (pondoksanti.com, read 2026-10-31)",
-                "its own terms say \"Daily breakfast based on normal room occupancy\" and sell no half board, full board or all inclusive anywhere on the site - said plainly: breakfast is the floor here until a board is priced (pondoksanti.com terms, read 2026-10-31)",
+                "breakfast is the ceiling as well as the floor here: every plan its own booking engine sells for the villa is mapped \"Bed & breakfast\", and no half board, full board or all inclusive is sold anywhere on the site - said plainly, because the island rule wants those boards (own engine + pondoksanti.com terms, read 2026-10-31)",
             ),
             "highlights": (
                 "Tripadvisor 4.9/5 from 1,667 reviews, #1 of 74 hotels in Gili Trawangan (read 2026-10-31)",
                 "28 units - 20 private villas, 5 private bungalows and 3 rooms - around an infinity-edge pool, villas with their own pools (official site, read 2026-10-31)",
-                "No rate read yet for these dates; the card appears once one is read.",
+                "Read price: GBP 321.35 a night for the whole 2 Bedroom Oceanside Villa (173 m², sleeps 6) on its own engine, 25 Jun-9 Jul 2027, five adults in the one unit, breakfast included, tax exclusive (read 2026-10-31)",
             ),
             "hotel_url": "https://pondoksanti.com/",
             "dec_ambient_c": (0, 0),
@@ -3879,29 +3906,46 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # 2026-09-29 this catalogue already converts at (EUR/GBP 0.85718,
             # EUR/IDR 20350.09) = GBP 210.61. The page states no return price,
             # so the return is the published per-way figure doubled, exactly as
-            # the Lombok entries' taxi transfers are built.
-            # confidence stays "": that field labels the ROOM-RATE basis (any
-            # other value must carry a read rate, test_july_long_haul), and
-            # there is no rate for this property yet.
+            # the Lombok entries' taxi transfers are built. The same hotel's own
+            # booking engine prices the boat leg on its own tariff, per way and
+            # for the whole boat: "Speed Boat : Gili Trawangan <-> Bangsal
+            # Harbour" IDR 800,000 and "<-> Teluk Kodek harbour" IDR 750,000,
+            # plus "Airport Pick Up by Avanza" IDR 1,500,000 / "by Innova/APV"
+            # IDR 1,600,000 (swiftbook property 56578 ExtrasData, read
+            # 2026-10-31) - so the sea leg alone is GBP 63.18 return for the
+            # party from Kodek, and the airport product on the contact page,
+            # which is capped at five people, is the figure stored here.
             "transfer_gbp": 210.61,
-            "confidence": "",
+            "confidence": "market-supported",
         },
         {
             "name": "BASK Gili Meno",
             "destination_label": "Gili Meno, Gili Islands, Indonesia (dry season in July)",
             "stars": 5,  # Booking.com's own text: "BASK Gili Meno offers 5-star accommodations in Gili Meno", and its own page declares starRating 5 (read 2026-10-31)
-            "board": "unverified",  # its site links a breakfast menu and publishes no half board, full board or all inclusive; Booking's hotel page was bot-walled today (read 2026-10-31)
+            "board": "Room only",  # its own booking engine answers every July plan it sells as "Room Only": for 29 Jun-6 Jul 2027 all nine room types carry is_included_breakfast false and an empty inclusion list (reserve.baskgilimeno.com/booking's MarketConnect API, read 2026-10-31), and no half board, full board or all inclusive is published anywhere on its pages
+            # Its own booking engine, 29 Jun-6 Jul 2027 (7 nights), one unit
+            # for the party: 2 Bedroom Loft (two bedrooms, two bathrooms, 110
+            # m² of indoor and outdoor space and a private 18.81 m² pool by its
+            # own description; 5 guests, the fifth adult at IDR 600,000 a
+            # night) = IDR 69,741,400 (= GBP 2,937.61, GBP 419.66 a night),
+            # "includes taxes & fees", breakfast NOT included. Google's own
+            # dated rows agree on the basis: every one of them is room only
+            # (GBP 788 for 6 guests on Booking, GBP 435 for 5 on its official
+            # link, read 2026-10-31). The rate is real, so it is stored; the
+            # board is not, so no card forms - breakfast is the minimum.
+            "base_nightly_room_rate_gbp": 419.66,
+            "peak_summer_nightly_room_rate_gbp": 419.66,
             **_LOP_FLIGHT,
             "routing": _LOP_FLIGHT["routing"] + ", then the boat from Bangsal or Teluk Nare (about 12 min by private speedboat, about 30 min by public fast boat to Gili Meno)",
             "why": (
                 "July is the dry season on the Gilis (wet months Jan-Mar and Nov-Dec): 19-30°C days and clear water",
                 "5-star resort facing the beachfront on Gili Meno, with its own 35-metre infinity pool and beach club (Booking.com text + official site, read 2026-10-31)",
-                "a breakfast menu is the only meal basis its own pages name, and no half board, full board or all inclusive is published anywhere on them - said plainly: this island runs on breakfast until a board is priced (baskgilimeno.com, read 2026-10-31)",
+                "a breakfast menu is the only meal basis its own pages name, and no half board, full board or all inclusive is published anywhere on them - said plainly: this island sells room only and no board at all (baskgilimeno.com + its own booking engine, read 2026-10-31)",
             ),
             "highlights": (
                 "Tripadvisor 4.8/5 from 89 reviews, #1 on its Gili Meno five-star list and #3 of 16 hotels in the Gili Islands; Expedia 9.6/10 from 63 reviews (read 2026-10-31)",
                 "31 rooms; the family units are the Beachfront 1 Bed Suite (75 m², private infinity pool), 2 Bed (109 m², plunge pool) and 3 Bed (218 m², terrace and pool) (official site, read 2026-10-31)",
-                "No rate read yet for these dates; the card appears once one is read.",
+                "Read price: GBP 419.66 a night for the whole 2 Bedroom Loft on its own engine, 29 Jun-6 Jul 2027, five guests in the one unit, taxes and fees included, room only (read 2026-10-31)",
             ),
             "hotel_url": "https://baskgilimeno.com/",
             "dec_ambient_c": (0, 0),
@@ -3913,12 +3957,18 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # than 2 hours by car and private speedboat" (baskgilimeno.com/
             # contact, read 2026-10-31) - but prints no price for it. The only
             # fare on that page is the public Bangsal crossing at "IDR 85K per
-            # person", hourly 09:00-17:00, which is the sea leg alone; no page
-            # found today prices an LOP-to-Bangsal road leg seating five
-            # (Giliway's private LOP transfer caps at 4: "Accommodating groups
-            # of up to 4 people, a one-way trip is priced at IDR 950.000").
+            # person", hourly 09:00-17:00, which is the sea leg alone (five
+            # people both ways: IDR 850,000 = GBP 35.80); gilitickets.com
+            # prices the shared Bangsal boats of the same crossing at EUR 9.00
+            # per person per way, "the price is the same" returning (read
+            # 2026-10-31) = GBP 77.15 for five return, port taxes paid in cash
+            # at the harbour on top and not priced here. No page found prices
+            # an LOP-to-Bangsal road leg seating five (Giliway's private LOP
+            # transfer caps at 4: "Accommodating groups of up to 4 people, a
+            # one-way trip is priced at IDR 950.000"), so the field that costs
+            # the WHOLE airport-to-resort leg stays 0.0 rather than half a leg.
             "transfer_gbp": 0.0,
-            "confidence": "",
+            "confidence": "estimate",
         },
         {
             "name": "Rimba Villas",
@@ -3929,32 +3979,57 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             # the island's best-rated luxury villa escape, private pool included
             # (brief 2026-10-31: "5-star or the best-rated luxury villas").
             "stars": 4,
-            "board": "unverified",  # its site names "A La Carte Breakfast" and "Floating Breakfast In-Villa" and no half board, full board or all inclusive (rimbagiliair.com, read 2026-10-31)
+            "board": "Room only",  # its own booking engine sells one plan per villa and says in that plan's own words that breakfast costs extra: "Stay in our Villa Bayu, with a delightful à la carte breakfast menu available at an additional cost" - and the engine lists "À La Carte Breakfast" as a recurring add-on at IDR 175,000 per adult (swiftbook property 15086, read 2026-10-31). No half board, full board or all inclusive is sold anywhere on its pages.
+            # Its own STAAH/SwiftBook booking engine, 25 Jun-2 Jul 2027 (7
+            # nights), Villa Bayu (400 m², 7 guests) at GBP 271.86 a night: IDR
+            # 45,180,000 (= GBP 1,903.04), the same total for two adults and
+            # for five - a whole-villa rate, mapping ExAdRate 0 - and this
+            # property is "Tax Inclusive". It is the only July week the villa
+            # answers for at all: 29 Jun-6 Jul, 5-12 Jul, 12-19 Jul and the
+            # config-length stays 25 Jun-9 Jul and 29 Jun-11 Jul all came back
+            # "No Availability For Your Dates", and Booking (both hosts),
+            # Trip.com and Expedia gave no dated room list and Google Hotels no
+            # entity for this property (read 2026-10-31). So the rate is real
+            # but the trip is not bookable at it yet: the label is "estimate"
+            # on the file's own convention (nearest open week), and no card
+            # forms because the board is room only - breakfast is the minimum.
+            "base_nightly_room_rate_gbp": 271.86,
+            "peak_summer_nightly_room_rate_gbp": 271.86,
             **_LOP_FLIGHT,
             "routing": _LOP_FLIGHT["routing"] + ", then the boat to Gili Air: about 10 minutes from Lombok by private speedboat (gilibookings.com, read 2026-10-31), or the shared Bangsal fast boat at EUR 9.00 per person (gilitickets.com, read 2026-10-31)",
             "why": (
                 "July is the dry season on the Gilis (wet months Jan-Mar and Nov-Dec): 19-30°C days and clear water",
                 "the islands' best-rated luxury villas: Tripadvisor 5.0/5 from 200 reviews, #1 of 49 hotels in Gili Air and a 2026 Travelers' Choice (read 2026-10-31)",
                 "three private-pool villa retreats with tropical gardens, its own wording \"just steps from pristine white sand beaches\" - a whole-villa booking, not a hotel room (Tripadvisor property text + official site, read 2026-10-31)",
-                "an a la carte breakfast and in-villa floating breakfast are the only meal bases its own pages name, and no half board, full board or all inclusive is published - said plainly: this island runs on breakfast until a board is priced (rimbagiliair.com, read 2026-10-31)",
+                "an a la carte breakfast and in-villa floating breakfast are the only meal bases its own pages name, and its engine sells breakfast as an ADD-ON to a room-only villa rate - said plainly: no board is sold here, and the breakfast minimum is not met (rimbagiliair.com + its own booking engine, read 2026-10-31)",
             ),
             "highlights": (
                 "Villa Bayu sleeps the party of five whole: three bedrooms, 6+1 guests, 400 m², private pool (official site, read 2026-10-31)",
                 "Five-star certification is NOT claimed: Tripadvisor gives it no Giata 5-star line, so it is listed here on rating and villa quality alone",
-                "No rate read yet for these dates; the card appears once one is read.",
+                "Read price: GBP 271.86 a night for the whole Villa Bayu on its own engine, 25 Jun-2 Jul 2027, tax inclusive, room only - and its engine says no July stay long enough for this trip (12-21 nights) is open in the villa (read 2026-10-31)",
             ),
             "hotel_url": "https://www.rimbagiliair.com/",
             "dec_ambient_c": (0, 0),
             "sea_temp_c": 27,  # Lombok Strait: the Lombok entry's own 26.9°C sea read
             "beach": "\"Just steps from pristine white sand beaches\" in its own description; no metre or minute figure is published (Tripadvisor property text, read 2026-10-31)",
-            # 0.0 = the leg is unpriced, never estimated. Rimba publishes no
-            # transfer tariff, and no operator page read today prices a private
-            # LOP-to-Gili Air transfer seating five: gilitickets.com gives only
-            # the shared Bangsal-Gili Air boat at "EUR 9.00 per person" (the sea
-            # leg alone, no road leg from the airport), and Giliway's private LOP
-            # transfer caps at 4.
-            "transfer_gbp": 0.0,
-            "confidence": "",
+            # Priced from Rimba's OWN booking engine add-on tariffs (swiftbook
+            # property 15086 ExtrasData, read 2026-10-31), both one-time per
+            # booking and both for the whole vehicle: "Airport to or from Teluk
+            # Nara Harbor Transport - One time Private Driver with
+            # air-conditioned car for pick up or drop off services to and from
+            # the airport to Teluk Nara Harbor" at IDR 700,000 a way (the page
+            # says "the airport"; this trip's airport is LOP), and "Private
+            # Speedboat Gili Air to or from Teluk Nara Harbor - Price includes
+            # the entire boat, accommodating up to 7 adults with luggage" at
+            # IDR 800,000 a way. Five people, both legs, both ways: (700,000 +
+            # 800,000) x 2 = IDR 3,000,000 = GBP 126.36 at the ECB reference
+            # rates this catalogue converts at; the boat alone is GBP 67.39.
+            # The shared alternative stays cheaper but seats the party in
+            # pieces: EUR 9.00 per person per way (gilitickets.com, read
+            # 2026-10-31) = GBP 77.15 for five return, port taxes in cash at
+            # the harbour on top.
+            "transfer_gbp": 126.36,
+            "confidence": "estimate",
         },
     ],
 }
@@ -5358,29 +5433,51 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
         "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
         "nonstop_from": (),
     },
-    # Gili Islands (brief 2026-10-31): the same unverified state as the other
-    # July keys - no unit read, no rate read, and no card-level TripAdvisor gate
-    # figure recorded here (the ratings the entries quote were read from
-    # Tripadvisor pages on 2026-10-31, and the reader has not verified them for
-    # the >=4.5 gate), so nothing cards.
+    # Gili Islands (brief 2026-10-31, rates read 2026-10-31 from each
+    # property's OWN booking engine): the unit and the nightly are now reads,
+    # and the card-level TripAdvisor gate figure is still not - the ratings the
+    # entries quote were read from Tripadvisor pages, and this engine has read
+    # none of them for the >=4.5 gate, so ``tripadvisor`` stays None on all
+    # three rows and the gate is not applied. Only Pondok Santi cards: BASK and
+    # Rimba are priced but sell no board, so board_problem refuses them.
     'Pondok Santi Estate': {
-        "suite_type": "",
-        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
-        "rooms_in_unit": None,
+        # Its own STAAH/SwiftBook engine (property 56578) sells the party as
+        # ONE unit: "2 Bedroom Oceanside Villa", MaxAdult 6 / MaxGuest 6,
+        # 173 sqm, one unit of inventory, and it answered Roommatch
+        # "fullmatch" to five adults for 25 Jun-9 Jul 2027. The nightly is
+        # that stay's own NON-REFUNDABLE total, IDR 106,808,826 over 14
+        # nights, mapped to Meal "Bed & breakfast", and this property quotes
+        # "Tax Exclusive" with no TaxData, so tax is not inside it.
+        "suite_type": "2 Bedroom Oceanside Villa (173 m², 6 guests max, one villa)",
+        "suite_nightly_gbp": 321.35, "suite_peak_nightly_gbp": 321.35,
+        "rooms_in_unit": 1,
         "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
         "nonstop_from": (),
     },
     'BASK Gili Meno': {
-        "suite_type": "",
-        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
-        "rooms_in_unit": None,
+        # One booking for the party in its own engine's "Loft": two bedrooms,
+        # two bathrooms, 5 guests (the fifth adult charged IDR 600,000 a
+        # night), and by its own description "110m² of indoor and outdoor
+        # space" with a private 18.81 m² pool. The nightly is the read total
+        # IDR 69,741,400 over 7 nights (29 Jun-6 Jul 2027), taxes and fees
+        # included - ROOM ONLY, so no card forms at it.
+        "suite_type": "2 Bedroom Loft (110 m², 5 guests, private pool, one unit)",
+        "suite_nightly_gbp": 419.66, "suite_peak_nightly_gbp": 419.66,
+        "rooms_in_unit": 1,
         "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
         "nonstop_from": (),
     },
     'Rimba Villas': {
-        "suite_type": "",
-        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
-        "rooms_in_unit": None,
+        # A whole villa is one key, whatever bedrooms it has, so
+        # rooms_in_unit is 1: the engine sells "Villa Bayu" (400 sqm, MaxAdult
+        # 7; three bedrooms by the official site) as one unit and quoted the
+        # same IDR 45,180,000 for 25 Jun-2 Jul 2027 to a party of two and to
+        # five - tax inclusive, and ROOM ONLY: its plan text puts breakfast
+        # "at an additional cost". No July window this trip can book
+        # (12-21 nights) is open in it.
+        "suite_type": "Villa Bayu (three bedrooms, 400 m², 7 guests, private pool, one villa)",
+        "suite_nightly_gbp": 271.86, "suite_peak_nightly_gbp": 271.86,
+        "rooms_in_unit": 1,
         "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
         "nonstop_from": (),
     },
