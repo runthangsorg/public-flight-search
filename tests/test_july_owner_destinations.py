@@ -91,7 +91,7 @@ class ExampleConfigTests(unittest.TestCase):
     def test_the_example_config_still_loads_and_carries_the_new_keys(self):
         config = _july()
         keys = [destination.key for destination in config.destinations]
-        self.assertEqual(len(keys), 16)
+        self.assertEqual(len(keys), 17)
         for key in (*NEW_KEYS, "lombok", "koh_samui", "zanzibar", "okinawa",
                     "riviera_maya"):
             with self.subTest(key=key):

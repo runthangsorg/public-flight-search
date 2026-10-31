@@ -215,6 +215,17 @@
       "flight_hours_source": "LHR-HND then a 1h35 domestic hop to CTS, about 17h door to door from published schedules (not live-checked)",
       "nonstop_from_london": false,
       "nonstop_source": "No London nonstop to New Chitose: LHR-HND, then a 1h35 domestic hop to CTS on ANA, JAL or a Japanese low-cost carrier (published schedules, not live-checked). Not nonstop."
+    },
+    {
+      "key": "gili_islands",
+      "label": "Gili Islands, Indonesia (Trawangan / Meno / Air; boat from Lombok, dry season in July)",
+      "airports": [
+        "LOP"
+      ],
+      "flight_hours": 24.0,
+      "flight_hours_source": "LHR-LOP about 24h, 1 stop via Singapore (Singapore Airlines + Scoot; the same Google Flights read the Lombok key carries, read 2026-09-29), then the boat from Bangsal or Teluk Nare: about 15 min by private speedboat to Gili Trawangan, about 40 min by public fast boat (thegilis.com, read 2026-10-31)",
+      "nonstop_from_london": false,
+      "nonstop_source": "No London nonstop: the Gili Islands have no airport at all — fly to Lombok (LOP), about 24h with 1 stop via Singapore (Singapore Airlines + Scoot, Google Flights read 2026-09-29), then take the boat from Bangsal or Teluk Nare (about 15 min private, about 40 min by public fast boat to Gili Trawangan). Not nonstop."
     }
   ]
 }

@@ -444,6 +444,10 @@ KUONI_DESTINATIONS_INDEX = "https://www.kuoni.co.uk/destinations/"
 KUONI_DESTINATION_PATHS: dict[str, str] = {
     "lombok": "https://www.kuoni.co.uk/destinations/south-east-asia/"
               "indonesia/lombok-and-gili-islands/",
+    # Kuoni's sitemap publishes one page for Lombok & the Gili Islands
+    # (brief 2026-10-31); the new key points at that same page.
+    "gili_islands": "https://www.kuoni.co.uk/destinations/south-east-asia/"
+                    "indonesia/lombok-and-gili-islands/",
     "koh_samui": "https://www.kuoni.co.uk/destinations/south-east-asia/"
                  "thailand/koh-samui/",
     "koh_phangan": "https://www.kuoni.co.uk/destinations/south-east-asia/"

@@ -210,6 +210,8 @@ HOLIDAY_SEARCH_QUERIES: dict[str, str] = {
     "cape_town": "Cape Town, South Africa",
     "seychelles": "Mahé, Seychelles",
     "hokkaido": "Niseko and Tomamu, Hokkaido, Japan",
+    # Gili Islands luxury (brief 2026-10-31): one key for Trawangan, Meno and Air.
+    "gili_islands": "Gili Islands, Indonesia",
 }
 
 # Destination airport per holiday key (for Google Flights parametric links).
@@ -235,6 +237,10 @@ HOLIDAY_AIRPORTS: dict[str, str] = {
     "serengeti": "JRO", "masai_mara": "NBO", "diani": "MBA",
     "kruger": "JNB", "cape_town": "CPT", "seychelles": "SEZ",
     "hokkaido": "CTS",
+    # The Gilis have no airport: Lombok (LOP), then the boat from Bangsal
+    # or Teluk Nare (about 15 min by private speedboat to Gili Trawangan,
+    # about 40 min by public fast boat; thegilis.com, read 2026-10-31).
+    "gili_islands": "LOP",
 }
 
 #: Far East watch (owner preference, 2026-09-28): long-haul destinations
@@ -1978,6 +1984,8 @@ WET_MONTHS_BY_DESTINATION: dict[str, tuple[int, ...]] = {
     "riviera_maya": (6, 7, 8, 9, 10, 11),  # Atlantic hurricane season
     # Summer catalogue
     "lombok": (1, 2, 3, 11, 12),
+    # Same Lombok Strait weather as Lombok: July sits in the dry season.
+    "gili_islands": (1, 2, 3, 11, 12),
     "koh_samui": (10, 11, 12),       # Gulf side: wetter late in the year
     "koh_phangan": (10, 11, 12),
     "khao_lak": (5, 6, 7, 8, 9, 10),  # Andaman side SW monsoon
@@ -2228,6 +2236,10 @@ SUMMER_WEATHER: dict[str, tuple[tuple[int, int], int]] = {
     "seychelles": ((24, 29), 27),    # Mahé, SE trades
     "hokkaido": ((17, 26), 18),      # Hokkaido July, no tsuyu
     "mauritius": ((24, 26), 24),     # Mauritian winter: dry, 24-26C
+    # Gili Islands (brief 2026-10-31): reuse the Mataram (Lombok) station the
+    # Lombok entry reads — the Gilis sit off Lombok's north coast in the same
+    # weather; July is their dry season.
+    "gili_islands": ((19, 30), 27),  # Mataram 19.4-29.7°C; Lombok Strait sea 26.9°C
 }
 
 
@@ -3811,6 +3823,140 @@ SUMMER_RESORT_CATALOG: dict[str, list[dict[str, Any]]] = {
             "confidence": "",
         },
     ],
+    # ── GILI ISLANDS: Gili Trawangan / Meno / Air (brief 2026-10-31). ──
+    # Luxury only, one top-end stay per island, chosen from the islands' own
+    # top lists read 2026-10-31: Tripadvisor's Gili Trawangan five-star list
+    # and its per-island rankings, Booking's own property text, and each
+    # property's official site. Gili Air's pick is deliberately NOT a five-star
+    # claim - Tripadvisor gives Rimba Villas no Giata five-star line - it is the
+    # island's best-rated luxury villa (5.0/5 from 200 reviews, #1 of 49) with a
+    # private-pool three-bedroom villa that sleeps the party whole, which is the
+    # other half of what the brief asks for. The ratings quoted in the entries
+    # were read today; the SUITE_ARCHITECTURE rows stay the unverified
+    # placeholders the July catalogue uses (no unit, no rate, no gate figure).
+    # No dated July rate was read for any of them and none is invented: board
+    # unverified, no rate fields (this file's "not priced" state). The flight
+    # side reuses _LOP_FLIGHT - the same Google Flights read Lombok cards carry
+    # (GBP 4,990 for 5, read 2026-09-29) - with the boat leg stated in routing,
+    # and the cabin hours stay flight-only (koh_phangan precedent).
+    # board_problem runs with island=True for this key (ISLAND_RULE_KEYS): the
+    # owner's island rule is HB/FB/AI with every sold basis priced, so each
+    # entry says plainly what its own pages sell - breakfast - instead of
+    # implying a board nobody has priced. The transfer leg is priced only where
+    # a published tariff seats this party of five (Pondok Santi's own airport
+    # pick-up, capped at 5) and is marked unpriced, never estimated, elsewhere.
+    # The card forms only once the private rate reader has read a rate for the
+    # property's own hotel_url.
+    "gili_islands": [
+        {
+            "name": "Pondok Santi Estate",
+            "destination_label": "Gili Trawangan, Gili Islands, Indonesia (dry season in July)",
+            "stars": 5,  # Tripadvisor's "THE BEST Gili Trawangan 5 Star Hotels" list, where it sits at #3, and Expedia's "5.0 star property" (read 2026-10-31); Booking's luxury pages carry it as a "Luxury Hotel in Gili Trawangan"
+            "board": "unverified",  # its own terms include "Daily breakfast based on normal room occupancy" and sell no half board, full board or all inclusive; the Kuoni Lombok page does not name this hotel (read 2026-10-31)
+            **_LOP_FLIGHT,
+            "routing": _LOP_FLIGHT["routing"] + ", then the hotel's own arrival route: a 1.5-hour drive from LOP to Teluk Kodek harbour and a 15-minute fast boat (or its outrigger 'Princess Margaux') to Gili Trawangan (pondoksanti.com/contact, read 2026-10-31)",
+            "why": (
+                "July is the dry season on the Gilis (wet months Jan-Mar and Nov-Dec): 19-30°C days and clear water",
+                "5-star estate on Gili Trawangan, on seven hectares of grounds with its own exclusive white-sand beach (pondoksanti.com, read 2026-10-31)",
+                "its own terms say \"Daily breakfast based on normal room occupancy\" and sell no half board, full board or all inclusive anywhere on the site - said plainly: breakfast is the floor here until a board is priced (pondoksanti.com terms, read 2026-10-31)",
+            ),
+            "highlights": (
+                "Tripadvisor 4.9/5 from 1,667 reviews, #1 of 74 hotels in Gili Trawangan (read 2026-10-31)",
+                "28 units - 20 private villas, 5 private bungalows and 3 rooms - around an infinity-edge pool, villas with their own pools (official site, read 2026-10-31)",
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": "https://pondoksanti.com/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,  # Lombok Strait: the Lombok entry's own 26.9°C sea read
+            "beach": "Its own exclusive private white-sand beach on Gili Trawangan (official site, read 2026-10-31)",
+            # The whole LOP-to-island leg, priced from the hotel's own tariff
+            # (pondoksanti.com/contact.html, read 2026-10-31): "Airport pick-up
+            # (private car, speed boat, & horse cart/cidomo) for up to 3 people
+            # at 1,500,000 IDR per way. For each additional person, there is a
+            # charge of 500,000 IDR per way, with a maximum of 5 people."
+            # This party of five: 1,500,000 + 2 x 500,000 = 2,500,000 IDR per
+            # way, x2 ways = 5,000,000 IDR, at the ECB reference rates of
+            # 2026-09-29 this catalogue already converts at (EUR/GBP 0.85718,
+            # EUR/IDR 20350.09) = GBP 210.61. The page states no return price,
+            # so the return is the published per-way figure doubled, exactly as
+            # the Lombok entries' taxi transfers are built.
+            # confidence stays "": that field labels the ROOM-RATE basis (any
+            # other value must carry a read rate, test_july_long_haul), and
+            # there is no rate for this property yet.
+            "transfer_gbp": 210.61,
+            "confidence": "",
+        },
+        {
+            "name": "BASK Gili Meno",
+            "destination_label": "Gili Meno, Gili Islands, Indonesia (dry season in July)",
+            "stars": 5,  # Booking.com's own text: "BASK Gili Meno offers 5-star accommodations in Gili Meno", and its own page declares starRating 5 (read 2026-10-31)
+            "board": "unverified",  # its site links a breakfast menu and publishes no half board, full board or all inclusive; Booking's hotel page was bot-walled today (read 2026-10-31)
+            **_LOP_FLIGHT,
+            "routing": _LOP_FLIGHT["routing"] + ", then the boat from Bangsal or Teluk Nare (about 12 min by private speedboat, about 30 min by public fast boat to Gili Meno)",
+            "why": (
+                "July is the dry season on the Gilis (wet months Jan-Mar and Nov-Dec): 19-30°C days and clear water",
+                "5-star resort facing the beachfront on Gili Meno, with its own 35-metre infinity pool and beach club (Booking.com text + official site, read 2026-10-31)",
+                "a breakfast menu is the only meal basis its own pages name, and no half board, full board or all inclusive is published anywhere on them - said plainly: this island runs on breakfast until a board is priced (baskgilimeno.com, read 2026-10-31)",
+            ),
+            "highlights": (
+                "Tripadvisor 4.8/5 from 89 reviews, #1 on its Gili Meno five-star list and #3 of 16 hotels in the Gili Islands; Expedia 9.6/10 from 63 reviews (read 2026-10-31)",
+                "31 rooms; the family units are the Beachfront 1 Bed Suite (75 m², private infinity pool), 2 Bed (109 m², plunge pool) and 3 Bed (218 m², terrace and pool) (official site, read 2026-10-31)",
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": "https://baskgilimeno.com/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,  # Lombok Strait: the Lombok entry's own 26.9°C sea read
+            "beach": "Direct beachfront on Gili Meno (Booking.com's own wording, read 2026-10-31)",
+            # 0.0 = the leg is unpriced, never estimated. BASK arranges it -
+            # "we can arrange to have you picked up in our air-conditioned car
+            # and transferred via speedboat to Gili Meno. The journey is less
+            # than 2 hours by car and private speedboat" (baskgilimeno.com/
+            # contact, read 2026-10-31) - but prints no price for it. The only
+            # fare on that page is the public Bangsal crossing at "IDR 85K per
+            # person", hourly 09:00-17:00, which is the sea leg alone; no page
+            # found today prices an LOP-to-Bangsal road leg seating five
+            # (Giliway's private LOP transfer caps at 4: "Accommodating groups
+            # of up to 4 people, a one-way trip is priced at IDR 950.000").
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+        {
+            "name": "Rimba Villas",
+            "destination_label": "Gili Air, Gili Islands, Indonesia (dry season in July)",
+            # Not a five-star claim: Tripadvisor's Gili Air page carries no
+            # Giata 5-star line for Rimba and only 3-/4-star class links, so the
+            # card rests on what its own pages and Tripadvisor do establish -
+            # the island's best-rated luxury villa escape, private pool included
+            # (brief 2026-10-31: "5-star or the best-rated luxury villas").
+            "stars": 4,
+            "board": "unverified",  # its site names "A La Carte Breakfast" and "Floating Breakfast In-Villa" and no half board, full board or all inclusive (rimbagiliair.com, read 2026-10-31)
+            **_LOP_FLIGHT,
+            "routing": _LOP_FLIGHT["routing"] + ", then the boat to Gili Air: about 10 minutes from Lombok by private speedboat (gilibookings.com, read 2026-10-31), or the shared Bangsal fast boat at EUR 9.00 per person (gilitickets.com, read 2026-10-31)",
+            "why": (
+                "July is the dry season on the Gilis (wet months Jan-Mar and Nov-Dec): 19-30°C days and clear water",
+                "the islands' best-rated luxury villas: Tripadvisor 5.0/5 from 200 reviews, #1 of 49 hotels in Gili Air and a 2026 Travelers' Choice (read 2026-10-31)",
+                "three private-pool villa retreats with tropical gardens, its own wording \"just steps from pristine white sand beaches\" - a whole-villa booking, not a hotel room (Tripadvisor property text + official site, read 2026-10-31)",
+                "an a la carte breakfast and in-villa floating breakfast are the only meal bases its own pages name, and no half board, full board or all inclusive is published - said plainly: this island runs on breakfast until a board is priced (rimbagiliair.com, read 2026-10-31)",
+            ),
+            "highlights": (
+                "Villa Bayu sleeps the party of five whole: three bedrooms, 6+1 guests, 400 m², private pool (official site, read 2026-10-31)",
+                "Five-star certification is NOT claimed: Tripadvisor gives it no Giata 5-star line, so it is listed here on rating and villa quality alone",
+                "No rate read yet for these dates; the card appears once one is read.",
+            ),
+            "hotel_url": "https://www.rimbagiliair.com/",
+            "dec_ambient_c": (0, 0),
+            "sea_temp_c": 27,  # Lombok Strait: the Lombok entry's own 26.9°C sea read
+            "beach": "\"Just steps from pristine white sand beaches\" in its own description; no metre or minute figure is published (Tripadvisor property text, read 2026-10-31)",
+            # 0.0 = the leg is unpriced, never estimated. Rimba publishes no
+            # transfer tariff, and no operator page read today prices a private
+            # LOP-to-Gili Air transfer seating five: gilitickets.com gives only
+            # the shared Bangsal-Gili Air boat at "EUR 9.00 per person" (the sea
+            # leg alone, no road leg from the airport), and Giliway's private LOP
+            # transfer caps at 4.
+            "transfer_gbp": 0.0,
+            "confidence": "",
+        },
+    ],
 }
 
 #: Winter keys whose entries also carry summer-peak rates and were priced for
@@ -5212,6 +5358,32 @@ SUITE_ARCHITECTURE: dict[str, dict[str, Any]] = {
         "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
         "nonstop_from": (),
     },
+    # Gili Islands (brief 2026-10-31): the same unverified state as the other
+    # July keys - no unit read, no rate read, and no card-level TripAdvisor gate
+    # figure recorded here (the ratings the entries quote were read from
+    # Tripadvisor pages on 2026-10-31, and the reader has not verified them for
+    # the >=4.5 gate), so nothing cards.
+    'Pondok Santi Estate': {
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'BASK Gili Meno': {
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
+    'Rimba Villas': {
+        "suite_type": "",
+        "suite_nightly_gbp": 0.0, "suite_peak_nightly_gbp": 0.0,
+        "rooms_in_unit": None,
+        "beach_walkable": True, "pool_heated_c": 0, "tripadvisor": None,
+        "nonstop_from": (),
+    },
     "Lara Barut Collection": {
         "suite_type": "2-Bedroom Family Suite (shared lounge)",
         "suite_nightly_gbp": 185.0, "suite_peak_nightly_gbp": 395.0,
@@ -5507,7 +5679,9 @@ BOARD_LABELS: dict[str, str] = {
 }
 #: Islands where eating out is not realistic: every basis the hotel sells is
 #: shown, each priced separately (half board, full board, all inclusive).
-ISLAND_RULE_KEYS: frozenset[str] = frozenset({"maldives", "mauritius", "zanzibar", "seychelles"})
+#: Brief 2026-10-31 adds the Gili Islands: no motor traffic and few
+#: all-inclusive resorts, so a B&B-only luxury resort must say so plainly.
+ISLAND_RULE_KEYS: frozenset[str] = frozenset({"maldives", "mauritius", "zanzibar", "seychelles", "gili_islands"})
 
 
 def board_code(board: Any) -> str:
