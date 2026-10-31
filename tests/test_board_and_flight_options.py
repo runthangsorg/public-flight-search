@@ -29,6 +29,7 @@ import unittest
 
 from public_flight_search import holidays as hol
 from public_flight_search.holidays import (
+    BOARD_ROOM_ONLY,
     BREAKFAST_BASES,
     ISLAND_RULE_KEYS,
     STOPOVER_HUBS,
@@ -156,6 +157,19 @@ class IslandBoardTests(unittest.TestCase):
                         # entry that does claim a board.
                         if resort.get("board") == "unverified":
                             self.assertNotIn("board_options", resort)
+                            continue
+                        # A resort whose OWN booking engine sells no board at
+                        # all has no basis to price: BASK Gili Meno and Rimba
+                        # Villas were read on 2026-10-31 with every July plan
+                        # flagged "Room Only" (BASK's engine returns
+                        # is_included_breakfast false on all nine room types,
+                        # Rimba's villa plan puts breakfast "at an additional
+                        # cost"). Their rates are real and stored, and the
+                        # breakfast minimum refuses the card - which is the
+                        # rule above, not this one demanding a board the hotel
+                        # does not sell.
+                        if board_code(resort.get("board")) == BOARD_ROOM_ONLY:
+                            self.assertFalse(resort.get("board_options"))
                             continue
                         options = resort.get("board_options") or ()
                         self.assertTrue(options)
