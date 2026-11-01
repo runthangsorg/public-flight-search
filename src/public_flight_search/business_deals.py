@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 from . import google_flights as _gf
-from .business_airlines import excluded_airline
+from .business_airlines import airline_tier, excluded_airline
 from .cabin import BUSINESS_FLIGHT_HOURS
 from .config import FlightSearch
 from .engine import FlightOffer
@@ -52,6 +52,7 @@ _TOP_LEVEL = {
     "min_observations", "median_drop_pct", "median_window_days", "away_min_saving_pct", "dedupe_days",
     "redrop_pct", "max_searches_per_run", "max_stops", "min_fare_gbp", "max_fare_gbp", "stop_after_blocked",
     "absolute_caps_gbp", "exclude_airlines", "exclude_destinations", "travellers", "trip_nights",
+    "airline_quality", "quality_premium_pct",
 }
 #: Destinations the watch never prices, whatever the config lists (owner, 30 Oct 2026: "i dont want to go to
 #: INDIA"; a Delhi fare was mailed because only one of the two engines had the exclusion). Connecting through one is
@@ -111,6 +112,10 @@ class BusinessDealsConfig:
     travellers: int = 1
     #: Round-trip lengths in nights (each 3-30); empty keeps today's one-way behaviour.
     trip_nights: tuple[int, ...] = ()
+    #: ``airline_quality.tier_1``: carriers whose business class leads the mail when it costs at most
+    #: ``quality_premium_pct`` more per person than the cheapest (owner, 1 Nov 2026). Empty: cheapest leads.
+    tier_1_airlines: tuple[str, ...] = ()
+    quality_premium_pct: float = 10.0
 
 @dataclass(frozen=True)
 class SearchSpec:
@@ -156,6 +161,13 @@ class Deal:
     per_person_gbp: float = 0.0
     return_date: str = ""
     travellers: int = 1
+    airline_tier: int = 2
+    #: "cheapest: <airline> £X pp" under a promoted tier-1 headline, or "best tier-1: ..." under the cheapest.
+    quality_note: str = ""
+    #: The cheapest fare's figures when a tier-1 fare leads: the alert records these, so a re-drop is judged
+    #: on the same fare each day.
+    cheapest_total_gbp: Optional[float] = None
+    cheapest_per_person_gbp: Optional[float] = None
 
 
 @dataclass
@@ -184,6 +196,18 @@ def _airline_names(value: Any) -> tuple[str, ...]:
             or not all(isinstance(v, str) and 0 < len(v.strip()) <= 60 for v in value)):
         raise BusinessDealsConfigError("exclude_airlines must be a list of up to 50 airline names")
     return tuple(v.strip() for v in value)
+
+
+def _airline_quality(value: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """``airline_quality``: ``{"tier_1": [...], "banned": [...]}``; returns (tier_1, banned)."""
+    if value is None:
+        return (), ()
+    if not isinstance(value, dict) or set(value) - {"tier_1", "banned"}:
+        raise BusinessDealsConfigError('airline_quality must be {"tier_1": [...], "banned": [...]}')
+    try:
+        return _airline_names(value.get("tier_1")), _airline_names(value.get("banned"))
+    except BusinessDealsConfigError:
+        raise BusinessDealsConfigError("airline_quality lists must be up to 50 airline names each") from None
 
 
 def _destination_codes(value: Any) -> tuple[str, ...]:
@@ -319,6 +343,7 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
     if (isinstance(travellers_raw, float) and not float(travellers_raw).is_integer()) or travellers_raw != int(travellers_raw):
         raise BusinessDealsConfigError("travellers must be an integer")
     travellers = int(travellers_raw)
+    tier_1, banned = _airline_quality(raw.get("airline_quality"))
     return BusinessDealsConfig(
         title=str(raw.get("report_title") or "Business-class deals")[:120],
         origins=tuple(origins), destinations=tuple(destinations), dates=future,
@@ -334,10 +359,12 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
         max_fare_gbp=_num(raw, "max_fare_gbp", 20000.0, 500.0, 100000.0),
         stop_after_blocked=int(_num(raw, "stop_after_blocked", 3, 1, 10)),
         caps=caps,
-        exclude_airlines=_airline_names(raw.get("exclude_airlines")),
+        exclude_airlines=tuple(dict.fromkeys((*_airline_names(raw.get("exclude_airlines")), *banned))),
         exclude_destinations=excluded,
         travellers=travellers,
         trip_nights=_trip_nights(raw.get("trip_nights")),
+        tier_1_airlines=tier_1,
+        quality_premium_pct=_num(raw, "quality_premium_pct", 10.0, 0.0, 100.0),
     )
 
 
@@ -417,6 +444,21 @@ def cheapest_observation(offers: Iterable[Any], spec: SearchSpec, cfg: BusinessD
     if not good:
         return None, rejected
     best = min(good, key=lambda o: (o.price, o.duration_minutes))
+    row = _observation_row(best, spec, origin, destination, cfg, now)
+    if cfg.tier_1_airlines:
+        row["airline_tier"] = airline_tier(str(best.airline or ""), cfg.tier_1_airlines)
+        if row["airline_tier"] != 1:
+            tier_1 = [o for o in good if airline_tier(str(o.airline or ""), cfg.tier_1_airlines) == 1]
+            if tier_1:
+                option = _observation_row(min(tier_1, key=lambda o: (o.price, o.duration_minutes)),
+                                          spec, origin, destination, cfg, now)
+                option["airline_tier"] = 1
+                row["tier_1_option"] = option
+    return row, rejected
+
+
+def _observation_row(best: FlightOffer, spec: SearchSpec, origin: Origin, destination: Destination,
+                     cfg: BusinessDealsConfig, now: datetime) -> dict:
     fare = round(best.price, 2)
     travellers = cfg.travellers if spec.return_date else 1
     positioning = origin.positioning_gbp * travellers
@@ -433,7 +475,7 @@ def cheapest_observation(offers: Iterable[Any], spec: SearchSpec, cfg: BusinessD
         "stops": best.stops, "duration_minutes": best.duration_minutes, "airline": best.airline,
         "provider": best.provider, "booking_url": best.booking_url,
         "observed_at": now.isoformat(timespec="seconds"), "origin_is_home": origin.home,
-    }, rejected
+    }
 
 
 # --------------------------------------------------------------------------- storage
@@ -552,8 +594,7 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
             if row["key"] not in by_key or stamp > _when({"observed_at": by_key[row["key"]]["alerted_at"]}):
                 by_key[row["key"]] = row
 
-    deals: list[Deal] = []
-    for obs in observations:
+    def judge(obs: Mapping[str, Any], *, redrop: bool = True) -> Optional[Deal]:
         total = obs["total_gbp"]
         per_person = obs["per_person_gbp"]
         prior = pool.get((obs["origin"], obs["destination"], obs["cabin_class"], obs["departure"][:7],
@@ -565,23 +606,23 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
         cap = cfg.caps.get(obs["region"])
         cap_hit = cap is not None and per_person <= cap
         if not (median_hit or cap_hit):
-            continue
+            return None
         home_total = saving = None
         if not obs["origin_is_home"]:
             home_total = home_reference(obs)
             if home_total is None:
                 if not cap_hit:
-                    continue  # nothing to prove a positioning trip beats flying from home
+                    return None  # nothing to prove a positioning trip beats flying from home
             else:
                 saving = round((1 - total / home_total) * 100, 1)
                 if saving < cfg.away_min_saving_pct:
-                    continue
+                    return None
         last = by_key.get(obs["key"])
         last_pp = _per_person(last) if last else None
-        if last and last_pp is not None and per_person > last_pp * (1 - cfg.redrop_pct / 100):
-            continue
+        if redrop and last and last_pp is not None and per_person > last_pp * (1 - cfg.redrop_pct / 100):
+            return None
         first = first_seen.get(obs["key"])
-        deals.append(Deal(
+        return Deal(
             key=obs["key"], origin=obs["origin"], origin_label=origin_label[obs["origin"]],
             destination=obs["destination"], destination_label=dest_label[obs["destination"]],
             region=obs["region"], departure=obs["departure"], fare_gbp=obs["fare_gbp"],
@@ -593,8 +634,27 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
             home_total_gbp=home_total, saving_vs_home_pct=saving,
             last_seen=obs["observed_at"][:10], first_seen=(first or now).date().isoformat(),
             per_person_gbp=per_person, return_date=obs.get("return_date", ""),
-            travellers=obs.get("travellers", 1),
-        ))
+            travellers=obs.get("travellers", 1), airline_tier=obs.get("airline_tier", 2),
+        )
+
+    deals: list[Deal] = []
+    for obs in observations:
+        deal = judge(obs)
+        if deal is None:
+            continue
+        option = obs.get("tier_1_option")
+        if option:
+            # The re-drop gate was decided on the cheapest fare above; the tier-1 fare must still be a deal
+            # on its own figures (median, cap, home saving) before it may lead (owner, 1 Nov 2026).
+            better = judge(option, redrop=False)
+            within = option["per_person_gbp"] <= deal.per_person_gbp * (1 + cfg.quality_premium_pct / 100)
+            if better is not None and within:
+                better.quality_note = f"cheapest: {deal.airline} {_gbp(deal.per_person_gbp)} pp"
+                better.cheapest_total_gbp, better.cheapest_per_person_gbp = deal.total_gbp, deal.per_person_gbp
+                deal = better
+            else:
+                deal.quality_note = f"best tier-1: {option['airline']} {_gbp(option['per_person_gbp'])} pp"
+        deals.append(deal)
     deals.sort(key=lambda d: (-(d.pct_below_median if d.pct_below_median is not None else -1), d.total_gbp))
     return deals
 
@@ -655,6 +715,7 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
                  + (f" ({travellers} x {_gbp(d.positioning_gbp)})" if travellers > 1 else "")
                  if d.positioning_gbp else "fare only")
         link = _link(d)
+        quality = f" ({d.quality_note})" if d.quality_note else ""
         round_trip = bool(d.return_date)
         if round_trip:
             nights = (date.fromisoformat(d.return_date) - date.fromisoformat(d.departure)).days
@@ -674,7 +735,8 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
             f"<td>{departs_cell}</td>"
             f"<td><b>{_gbp(d.total_gbp)}</b><br><span style=\"color:#555\">{esc(parts)}</span></td>"
             f"<td>{esc(basis)}" + (f"<br><span style=\"color:#555\">{esc(home)}</span>" if home else "") + "</td>"
-            f"<td>{esc(d.airline)}<br>{stops}, {_duration(d.duration_minutes)}</td>"
+            f"<td>{esc(d.airline)}<br>{stops}, {_duration(d.duration_minutes)}"
+            + (f"<br><span style=\"color:#555\">{esc(d.quality_note)}</span>" if d.quality_note else "") + "</td>"
             f"<td>last seen {esc(d.last_seen)}<br><span style=\"color:#555\">first seen {esc(d.first_seen)}</span></td>"
             f"<td><a href=\"{esc(link, quote=True)}\">Search this fare</a></td></tr>")
         if round_trip:
@@ -683,11 +745,11 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
             ret_fmt = date.fromisoformat(d.return_date).strftime("%d %b")
             lines.append(f"{d.origin}-{d.destination} {_gbp(d.total_gbp)} total for {d.travellers} travellers, "
                          f"return {dep_fmt} - {ret_fmt} ({nights} nights) ({_gbp(d.per_person_gbp)} per person); "
-                         f"{parts}; {basis}; {home}; {d.airline}, {stops}, {_duration(d.duration_minutes)}; "
+                         f"{parts}; {basis}; {home}; {d.airline}{quality}, {stops}, {_duration(d.duration_minutes)}; "
                          f"last seen {d.last_seen}; {link}")
         else:
             lines.append(f"{d.origin}-{d.destination} {d.departure} {_gbp(d.total_gbp)} ({parts}); {basis}; {home}; "
-                         f"{d.airline}, {stops}, {_duration(d.duration_minutes)}; last seen {d.last_seen}; {link}")
+                         f"{d.airline}{quality}, {stops}, {_duration(d.duration_minutes)}; last seen {d.last_seen}; {link}")
     html = (
         "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Business-class deals</title>"
         "<style>body{font-family:Arial,Helvetica,sans-serif;color:#222;background:#fff;font-size:14px;margin:16px}"
@@ -807,7 +869,8 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
     alerts = read_jsonl(alerts_path)
     result.deals = find_deals(observations, history, alerts, cfg, now)
     if not dry_run:
-        result.history_rows_added = append_observations(history_path, observations, history)
+        result.history_rows_added = append_observations(
+            history_path, [{k: v for k, v in o.items() if k != "tier_1_option"} for o in observations], history)
 
     if result.deals:
         subject, html, text = render_email(result.deals, cfg, now)
@@ -824,8 +887,8 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
                 logger.error("business-deals mail failed: %s", type(exc).__name__)
             else:
                 result.mailed = True
-                _append_jsonl(alerts_path, [{"key": d.key, "total_gbp": d.total_gbp,
-                                              "per_person_gbp": d.per_person_gbp,
+                _append_jsonl(alerts_path, [{"key": d.key, "total_gbp": d.cheapest_total_gbp or d.total_gbp,
+                                              "per_person_gbp": d.cheapest_per_person_gbp or d.per_person_gbp,
                                               "alerted_at": now.isoformat(timespec="seconds")} for d in result.deals])
 
     result.log_line = (

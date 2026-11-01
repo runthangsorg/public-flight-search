@@ -33,5 +33,11 @@
   "max_searches_per_run": 72,
   "max_stops": 1,
   "stop_after_blocked": 3,
-  "absolute_caps_gbp": {"asia": 1500, "north_america": 1200, "africa": 1300, "south_america": 1500, "oceania": 2200}
+  "absolute_caps_gbp": {"asia": 1500, "north_america": 1200, "africa": 1300, "south_america": 1500, "oceania": 2200},
+  "airline_quality": {
+    "tier_1": ["Qatar Airways", "Emirates", "Etihad", "Singapore Airlines", "Cathay Pacific", "ANA", "JAL",
+               "EVA Air", "Turkish Airlines", "Virgin Atlantic", "British Airways", "Kenya Airways", "Ethiopian"],
+    "banned": ["Air India", "Air India Express", "LOT", "EgyptAir"]
+  },
+  "quality_premium_pct": 10
 }
