@@ -182,6 +182,8 @@ class JobResult:
     #: ``ok`` searches whose page gave no fare at all (before any policy rejection).
     no_cards: int = 0
     no_cards_note: Optional[Mapping[str, Any]] = None
+    #: Summed over every no-card page: each structured row's and aria label's fate, and the page shapes.
+    no_cards_tally: dict = field(default_factory=dict)
     walled: int = 0
     failed: int = 0
     offers_seen: int = 0
@@ -780,6 +782,35 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
 
 _TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 _RESULTS_TITLE = re.compile(r"^.+ to .+ \| Google Flights$")
+_ARIA_LABEL = re.compile(r'aria-label="(From [^"]{0,600})"')
+#: The aria-label reader's pattern cut into stages, so a label it misses says where the wording parted company.
+_ARIA_STAGES = (
+    ("price", r'From ([\d,]+) British pounds(?: round trip total)?\.\s*'),
+    ("stops_airline", r'(Non-stop|(\d+) stops?) flight with ([^."]+)\.\s*'),
+    ("leaves", r'Leaves [^"]+?at (\d{1,2}:\d{2})[^"]+?'),
+    ("arrives", r'arrives at [^"]+?at (\d{1,2}:\d{2})[^"]+?'),
+    ("duration", r'Total duration (\d+) hrs?(?:\s+(\d+) mins?)?'),
+)
+#: Template words a masked label keeps; every other capitalised word (a place or an airline) becomes X.
+_LABEL_WORDS = frozenset({
+    "From", "British", "pounds", "round", "trip", "total", "Non-stop", "Nonstop", "stop", "stops", "flight", "with",
+    "Leaves", "at", "on", "and", "arrives", "Total", "duration", "hr", "hrs", "min", "mins", "Stopover", "of", "is",
+    "a", "stopover", "in", "Select", "AM", "PM", "This", "price", "includes", "does", "not", "include",
+})
+
+
+def _aria_stage_failed(label: str) -> str:
+    pattern = ""
+    for name, part in _ARIA_STAGES:
+        pattern += part
+        if not re.match(pattern, label):
+            return name
+    return ""
+
+
+def _mask_label(label: str) -> str:
+    words = re.sub(r"\d", "#", label[:260]).split(" ")
+    return " ".join(w if w.strip(".,;:()").strip() in _LABEL_WORDS or not w[:1].isupper() else "X" for w in words)
 
 
 def describe_page(page: str) -> dict:
@@ -819,6 +850,8 @@ def describe_page(page: str) -> dict:
             counts.append(len(block) if isinstance(block, list) else 0)
         if payload is not None:
             best_rows, other_rows = counts
+    first_label = _ARIA_LABEL.search(page)
+    label = _html.unescape(first_label.group(1)) if first_label else ""
     return {
         "bytes": len(page.encode("utf-8", errors="replace")),
         "title_class": title_class,
@@ -829,6 +862,10 @@ def describe_page(page: str) -> dict:
         "aria_from": page.count('aria-label="From '),
         "aria_round_trip": page.count("British pounds round trip total"),
         "consent": "before you continue" in lowered or "consent.google" in lowered,
+        "locale_us": page.count("Nonstop") + page.count("Vacation rentals"),
+        "locale_gb": page.count("Non-stop") + page.count("Holiday rentals"),
+        "aria_stage_failed": _aria_stage_failed(label) if label else "no label",
+        "aria_label_masked": _mask_label(label),
         "title": title,
         "snippet": text[:200],
     }
@@ -841,7 +878,7 @@ def _mask(text: str) -> str:
 
 def public_page_note(note: Mapping[str, Any]) -> dict:
     """``describe_page`` for a world-readable log: the title and snippet masked, everything else as is."""
-    out = {k: v for k, v in note.items() if k not in {"title", "snippet"}}
+    out = {k: v for k, v in note.items() if k not in {"title", "snippet", "tally"}}
     out["title_masked"] = _mask(str(note.get("title", "")))
     out["snippet_masked"] = _mask(str(note.get("snippet", "")))
     return out
@@ -879,9 +916,14 @@ def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchO
                 key="business-deals", label="business deals", origins=(spec.origin,), destinations=(spec.destination,),
                 dates=(spec.date,), travellers=1, cabin_class=CABIN, departure_window=("00:00", "23:59"),
                 max_stops=cfg.max_stops, max_duration_minutes=1440, max_price_per_traveller_gbp=None)
+        tally: dict = {}
         offers = _gf._parse_flight_cards(page, search=search, origin=spec.origin, destination=spec.destination,
-                                         day=spec.date, booking_url=url)
-        return FetchOutcome("ok", offers, page_note=None if offers else describe_page(page))
+                                         day=spec.date, booking_url=url, tally=tally)
+        if offers:
+            return FetchOutcome("ok", offers)
+        note = describe_page(page)
+        note.update(max_stops=search.max_stops, max_duration=search.max_duration_minutes, tally=tally)
+        return FetchOutcome("ok", offers, page_note=note)
 
     return fetch
 
@@ -928,8 +970,10 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
             result.offers_seen += len(offers)
             if not offers:
                 result.no_cards += 1
-                if result.no_cards_note is None and outcome.page_note:
-                    result.no_cards_note = dict(outcome.page_note)
+                if outcome.page_note:
+                    if result.no_cards_note is None:
+                        result.no_cards_note = dict(outcome.page_note)
+                    _add_page_tally(result.no_cards_tally, outcome.page_note)
             observation, rejected = cheapest_observation(offers, spec, cfg, now)
             result.rejected += rejected
             if observation:
@@ -981,7 +1025,23 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
     if result.no_cards_note:
         note = result.no_cards_note if print_details else public_page_note(result.no_cards_note)
         print("first page with no cards: " + ", ".join(f"{k}={v!r}" for k, v in note.items()))
+        print("all pages with no cards: " + ", ".join(f"{k}={v}" for k, v in sorted(result.no_cards_tally.items())))
     return result
+
+
+def _add_page_tally(total: dict, note: Mapping[str, Any]) -> None:
+    """Fold one no-card page into the run's totals: row and label fates, and the page's shape."""
+    for key, value in (note.get("tally") or {}).items():
+        total[key] = total.get(key, 0) + int(value)
+    best, other = int(note.get("best_rows", -1)), int(note.get("other_rows", -1))
+    shape = "pages_no_payload" if best < 0 else ("pages_with_best" if best > 0 else "pages_without_best")
+    total[shape] = total.get(shape, 0) + 1
+    if 0 <= best + other <= 2:
+        total["pages_rows_le_2"] = total.get("pages_rows_le_2", 0) + 1
+    stage = str(note.get("aria_stage_failed") or "")
+    if stage:
+        key = "aria_first_label_failed_at_" + stage.replace(" ", "_")
+        total[key] = total.get(key, 0) + 1
 
 
 def _default_send(subject: str, html: str, *, text: str = "") -> None:

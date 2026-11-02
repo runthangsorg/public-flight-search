@@ -385,7 +385,14 @@ def _structured_rows(payload: Any) -> list:
     return rows
 
 
-def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: str) -> list[FlightOffer]:
+def _bump(tally: dict | None, key: str) -> None:
+    if tally is not None:
+        tally[key] = tally.get(key, 0) + 1
+
+
+def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: str,
+                              tally: dict | None = None) -> list[FlightOffer]:
+    """``tally``, when given, counts each row's fate (kept or why it was dropped) for a no-fares diagnostic."""
     parser = _StructuredScriptParser()
     parser.feed(html[:8_000_000])
     script = "".join(parser.parts)
@@ -399,14 +406,17 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
     offers = []
     seen: set[tuple] = set()
     for row in rows[:80]:
+        _bump(tally, "rows")
         try:
             flight = row[0]
-            price = float(row[1][0][1])
             segments = flight[2]
+            _bump(tally, f"segments_{len(segments) if isinstance(segments, list) else 'none'}")
+            price = float(row[1][0][1])
             departure = datetime(int(flight[4][0]), int(flight[4][1]), int(flight[4][2]), int(flight[5][0]), int(flight[5][1])).isoformat()
             arrival = datetime(int(flight[7][0]), int(flight[7][1]), int(flight[7][2]), int(flight[8][0]), int(flight[8][1])).isoformat()
             duration = int(flight[9])
             if not 20 <= price <= 1_000_000 or duration <= 0 or not segments:
+                _bump(tally, "drop_value")
                 continue
             airline = ", ".join(str(value) for value in (flight[1] if isinstance(flight[1], list) else []) if value)[:80] or "Unknown airline"
             offer = FlightOffer(
@@ -419,27 +429,38 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
             )
             clock = offer.departure[11:16]
             if not search.departure_window[0] <= clock <= search.departure_window[1]:
+                _bump(tally, "drop_window")
                 continue
-            if offer.stops > search.max_stops or offer.duration_minutes > search.max_duration_minutes:
+            if offer.stops > search.max_stops:
+                _bump(tally, "drop_stops")
+                continue
+            if offer.duration_minutes > search.max_duration_minutes:
+                _bump(tally, "drop_duration")
                 continue
             if search.max_price_per_traveller_gbp is not None and offer.price_per_traveller > search.max_price_per_traveller_gbp:
+                _bump(tally, "drop_price_cap")
                 continue
             identity = (offer.departure, offer.arrival, offer.airline, offer.price, offer.duration_minutes, offer.stops)
             if identity in seen:
                 continue  # the same itinerary listed under Best and again below it
             seen.add(identity)
             offers.append(offer)
-        except (IndexError, TypeError, ValueError, ZeroDivisionError):
+            _bump(tally, "kept")
+        except (IndexError, TypeError, ValueError, ZeroDivisionError) as exc:
+            _bump(tally, f"error_{type(exc).__name__}")
             continue
     return offers
 
 
 def _parse_flight_cards(
     html: str, *, search: FlightSearch, origin: str, destination: str,
-    day: str, booking_url: str,
+    day: str, booking_url: str, tally: dict | None = None,
 ) -> list[FlightOffer]:
-    """Parse current structured data, retaining aria-label compatibility."""
-    structured = _parse_structured_results(html, search=search, booking_url=booking_url)
+    """Parse current structured data, retaining aria-label compatibility.
+
+    ``tally``, when given, counts what each structured row and aria label came to (see ``_parse_structured_results``).
+    """
+    structured = _parse_structured_results(html, search=search, booking_url=booking_url, tally=tally)
     if structured:
         return structured
     offers = []
@@ -454,6 +475,7 @@ def _parse_flight_cards(
     )
 
     for m in aria_pattern.finditer(html):
+        _bump(tally, "aria_matched")
         price = float(m.group(1).replace(",", ""))
         stops_str = m.group(2)
         stops = 0 if "Non-stop" in stops_str else int(m.group(3) or 0)
@@ -465,6 +487,7 @@ def _parse_flight_cards(
         duration = dur_hrs * 60 + dur_mins
 
         if not 20 <= price <= 100_000:
+            _bump(tally, "aria_drop_value")
             continue
 
         departure_dt = datetime.fromisoformat(f"{day}T{dep_time}:00")
@@ -495,8 +518,13 @@ def _parse_flight_cards(
 
         clock = departure[11:16]
         if not search.departure_window[0] <= clock <= search.departure_window[1]:
+            _bump(tally, "aria_drop_window")
             continue
-        if offer.stops > search.max_stops or offer.duration_minutes > search.max_duration_minutes:
+        if offer.stops > search.max_stops:
+            _bump(tally, "aria_drop_stops")
+            continue
+        if offer.duration_minutes > search.max_duration_minutes:
+            _bump(tally, "aria_drop_duration")
             continue
         if (
             search.travellers == 1

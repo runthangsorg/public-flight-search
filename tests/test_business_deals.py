@@ -695,3 +695,29 @@ class NoCardsDiagnosticTests(JobCase):
         self.assertEqual(note["title_class"], "results")
         self.assertEqual((note["best_rows"], note["other_rows"]), (2, 0))
         self.assertEqual(note["snippet"], "Hello flights")
+
+    def test_a_public_log_tallies_why_rows_were_dropped_without_naming_the_route(self):
+        cfg = bd.load_config(raw_config(trip_nights=[14], max_stops=0), today=NOW.date())
+        page = "<html><title>London to Mauritius Island | Google Flights</title>" + ROUND_TRIP_CARD * 2 + "</html>"
+        spec = bd.SearchSpec("LHR", "BKK", DEP, "2027-03-15")
+        with patch("public_flight_search.google_flights._fetch_page_html", return_value=page):
+            outcome = bd.make_google_fetch(cfg)(spec)
+        self.assertEqual((outcome.status, list(outcome.offers)), ("ok", []))
+        self.assertEqual(outcome.page_note["tally"].get("aria_drop_stops"), 2)
+        self.assertEqual(outcome.page_note["max_stops"], 0)
+        self.assertEqual(outcome.page_note["aria_stage_failed"], "")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW,
+                       fetch=lambda s: outcome, send=Sink(), dry_run=True, print_details=False)
+        text = out.getvalue()
+        self.assertIn("aria_drop_stops=", text)
+        self.assertIn("max_stops=0", text)
+        self.assertIn("From #### British pounds round trip total. # stop flight with X", text)
+        for leak in ("Lufthansa", "Heathrow", "Frankfurt", "Mauritius", "3320", "09:30", "June"):
+            self.assertNotIn(leak, text, leak)
+
+    def test_aria_stage_names_where_an_unfamiliar_label_stops_matching(self):
+        self.assertEqual(bd._aria_stage_failed("From 3320 British pounds round trip total. Nonstop flight with X."),
+                         "stops_airline")
+        self.assertEqual(bd._aria_stage_failed("From 3,320 US dollars."), "price")
