@@ -628,3 +628,60 @@ class OneWayKeyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+ROUND_TRIP_CARD = (
+    '<li><div aria-label="From 3320 British pounds round trip total. 1 stop flight with Lufthansa and Condor. '
+    'Leaves Heathrow Airport at 09:30 on Friday, June 25 and arrives at Sir Seewoosagur Ramgoolam International '
+    'Airport at 06:05 on Saturday, June 26. Total duration 17 hrs 35 mins.  Stopover (1 of 1) is a 4 hrs 35 mins '
+    'stopover at Frankfurt Airport in Frankfurt am Main. Select flight"></div></li>'
+)
+
+
+class NoCardsDiagnosticTests(JobCase):
+    """A run that reads every page "ok" but finds no fare must say so, and show what one such page looked like."""
+
+    PAGE = ("<html><head><title>London to Mauritius Island | Google Flights</title></head>"
+            "<body><script>var x = 1;</script><h1>Search Mauritius flights</h1><p>From 2027 deals</p></body></html>")
+
+    def _fetch_pages(self, page):
+        def fetch(spec):
+            return bd.FetchOutcome("ok", [], page_note=bd.describe_page(page))
+        return fetch
+
+    def test_summary_counts_ok_pages_with_no_cards(self):
+        result, _, out = self.run_job({}, fetch=self._fetch_pages(self.PAGE))
+        self.assertEqual(result.no_cards, 2)
+        self.assertIn("ok 2, no cards 2, walled 0", result.log_line)
+
+    def test_one_empty_page_is_described_without_headers_or_cookies(self):
+        _, _, out = self.run_job({}, fetch=self._fetch_pages(self.PAGE))
+        notes = [ln for ln in out.splitlines() if ln.startswith("first page with no cards")]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("title_class='results'", notes[0])
+        self.assertIn("London to Mauritius Island", notes[0])
+        self.assertIn("Search Mauritius flights", notes[0])
+        self.assertNotIn("var x", notes[0])
+        self.assertNotIn("Cookie", notes[0])
+
+    def test_a_public_log_masks_the_title_and_snippet(self):
+        cfg = bd.load_config(raw_config(), today=NOW.date())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW,
+                       fetch=self._fetch_pages(self.PAGE), send=Sink(), dry_run=True, print_details=False)
+        text = out.getvalue()
+        self.assertIn("first page with no cards", text)
+        self.assertIn("title_class='results'", text)
+        for leak in ("London", "Mauritius", "2027"):
+            self.assertNotIn(leak, text, leak)
+
+    def test_describe_page_counts_round_trip_labels(self):
+        note = bd.describe_page("<html><title>x</title>" + ROUND_TRIP_CARD * 3 + "</html>")
+        self.assertEqual(note["aria_from"], 3)
+        self.assertEqual(note["aria_round_trip"], 3)
+        self.assertFalse(note["ds1"])
+
+    def test_pages_with_fares_are_not_counted(self):
+        result, _, _ = self.run_job({"LHR": 2500, "OSL": 2400})
+        self.assertEqual(result.no_cards, 0)

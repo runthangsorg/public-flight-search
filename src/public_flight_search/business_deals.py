@@ -131,6 +131,9 @@ class FetchOutcome:
 
     status: str
     offers: Sequence[Any] = ()
+    #: For an ``ok`` page that yielded no fares: what the page looked like (``describe_page``), so a run that reads
+    #: pages but finds nothing says why instead of passing for a quiet day.
+    page_note: Optional[Mapping[str, Any]] = None
 
 
 @dataclass
@@ -176,6 +179,9 @@ class JobResult:
     mailed: bool = False
     searched: int = 0
     ok: int = 0
+    #: ``ok`` searches whose page gave no fare at all (before any policy rejection).
+    no_cards: int = 0
+    no_cards_note: Optional[Mapping[str, Any]] = None
     walled: int = 0
     failed: int = 0
     offers_seen: int = 0
@@ -772,6 +778,55 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
 # --------------------------------------------------------------------------- fetching
 
 
+_TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
+_RESULTS_TITLE = re.compile(r"^.+ to .+ \| Google Flights$")
+
+
+def describe_page(page: str) -> dict:
+    """A small fingerprint of a results page that gave no fares: size, title, markers and a short text snippet.
+
+    Never headers or cookies. ``title`` and ``snippet`` can name the searched cities, so a public log prints only the
+    other fields (``public_page_note``).
+    """
+    match = _TITLE.search(page[:400_000])
+    title = re.sub(r"\s+", " ", _html.unescape(match.group(1))).strip()[:120] if match else ""
+    if not title:
+        title_class = "none"
+    elif _RESULTS_TITLE.match(title):
+        title_class = "results"
+    elif "google flights" in title.lower():
+        title_class = "google-flights-other"
+    else:
+        title_class = "other"
+    body = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", page[:400_000])
+    text = re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", body))).strip()
+    lowered = page.lower()
+    return {
+        "bytes": len(page.encode("utf-8", errors="replace")),
+        "title_class": title_class,
+        "ds1": 'class="ds:1"' in page or "class='ds:1'" in page,
+        "ds1_error": "errorHasStatus: true" in page,
+        "aria_from": page.count('aria-label="From '),
+        "aria_round_trip": page.count("British pounds round trip total"),
+        "consent": "before you continue" in lowered or "consent.google" in lowered,
+        "title": title,
+        "snippet": text[:200],
+    }
+
+
+def _mask(text: str) -> str:
+    """Keep the page's shape, drop what could name a route: digits become #, capitalised words become X."""
+    return re.sub(r"\b[A-Z][\w'-]*", "X", re.sub(r"\d", "#", text))
+
+
+def public_page_note(note: Mapping[str, Any]) -> dict:
+    """``describe_page`` for a world-readable log: the title and snippet masked, everything else as is."""
+    out = {k: v for k, v in note.items() if k not in {"title", "snippet"}}
+    out["title_masked"] = _mask(str(note.get("title", "")))
+    out["snippet_masked"] = _mask(str(note.get("snippet", "")))
+    return out
+
+
 def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchOutcome]:
     """Read a search through the package's existing Google Flights reader, at least ten seconds apart."""
     delay = max(10.0, float(os.environ.get("GOOGLE_FLIGHTS_DELAY_SECONDS", "12")))
@@ -806,7 +861,7 @@ def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchO
                 max_stops=cfg.max_stops, max_duration_minutes=1440, max_price_per_traveller_gbp=None)
         offers = _gf._parse_flight_cards(page, search=search, origin=spec.origin, destination=spec.destination,
                                          day=spec.date, booking_url=url)
-        return FetchOutcome("ok", offers)
+        return FetchOutcome("ok", offers, page_note=None if offers else describe_page(page))
 
     return fetch
 
@@ -851,6 +906,10 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
             result.ok += 1
             offers = list(outcome.offers)
             result.offers_seen += len(offers)
+            if not offers:
+                result.no_cards += 1
+                if result.no_cards_note is None and outcome.page_note:
+                    result.no_cards_note = dict(outcome.page_note)
             observation, rejected = cheapest_observation(offers, spec, cfg, now)
             result.rejected += rejected
             if observation:
@@ -893,12 +952,15 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
 
     result.log_line = (
         f"business-deals {now.date().isoformat()}: searched {result.searched} of {len(_grid(cfg))} "
-        f"(ok {result.ok}, walled {result.walled}, failed {result.failed}"
+        f"(ok {result.ok}, no cards {result.no_cards}, walled {result.walled}, failed {result.failed}"
         f"{', stopped early' if result.stopped_early else ''}), offers {result.offers_seen}, "
         f"rejected {result.rejected}, history +{result.history_rows_added}, deals {len(result.deals)}, "
         f"mail {'sent' if result.mailed else 'not sent'}{' (dry run)' if dry_run else ''}, "
         f"full cycle {cycle_days(cfg)}d")
     print(result.log_line)
+    if result.no_cards_note:
+        note = result.no_cards_note if print_details else public_page_note(result.no_cards_note)
+        print("first page with no cards: " + ", ".join(f"{k}={v!r}" for k, v in note.items()))
     return result
 
 
