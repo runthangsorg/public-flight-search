@@ -368,6 +368,23 @@ class _StructuredScriptParser(HTMLParser):
             self.parts.append(data)
 
 
+def _structured_rows(payload: Any) -> list:
+    """The result rows of a ds:1 payload: the "Best" cards (``payload[2][0]``) then the rest (``payload[3][0]``).
+
+    A page can carry only the Best block: round-trip business pages served to GitHub runners did from 31 Oct 2026,
+    and reading ``payload[3]`` alone then found no fare on a page showing four.
+    """
+    rows: list = []
+    for index in (2, 3):
+        try:
+            block = payload[index][0]
+        except (IndexError, KeyError, TypeError):
+            continue
+        if isinstance(block, list):
+            rows.extend(block)
+    return rows
+
+
 def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: str) -> list[FlightOffer]:
     parser = _StructuredScriptParser()
     parser.feed(html[:8_000_000])
@@ -376,11 +393,12 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
         return []
     try:
         payload, _ = json.JSONDecoder().raw_decode(script.split("data:", 1)[1].lstrip())
-        rows = payload[3][0]
     except (json.JSONDecodeError, IndexError, TypeError):
         return []
+    rows = _structured_rows(payload)
     offers = []
-    for row in rows[:50] if isinstance(rows, list) else []:
+    seen: set[tuple] = set()
+    for row in rows[:80]:
         try:
             flight = row[0]
             price = float(row[1][0][1])
@@ -406,6 +424,10 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
                 continue
             if search.max_price_per_traveller_gbp is not None and offer.price_per_traveller > search.max_price_per_traveller_gbp:
                 continue
+            identity = (offer.departure, offer.arrival, offer.airline, offer.price, offer.duration_minutes, offer.stops)
+            if identity in seen:
+                continue  # the same itinerary listed under Best and again below it
+            seen.add(identity)
             offers.append(offer)
         except (IndexError, TypeError, ValueError, ZeroDivisionError):
             continue
@@ -423,7 +445,7 @@ def _parse_flight_cards(
     offers = []
 
     aria_pattern = re.compile(
-        r'aria-label="From ([\d,]+) British pounds\.\s*'
+        r'aria-label="From ([\d,]+) British pounds(?: round trip total)?\.\s*'
         r'(Non-stop|(\d+) stops?) flight with ([^."]+)\.\s*'
         r'Leaves [^"]+?at (\d{1,2}:\d{2})[^"]+?'
         r'arrives at [^"]+?at (\d{1,2}:\d{2})[^"]+?'

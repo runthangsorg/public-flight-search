@@ -788,7 +788,7 @@ def describe_page(page: str) -> dict:
     Never headers or cookies. ``title`` and ``snippet`` can name the searched cities, so a public log prints only the
     other fields (``public_page_note``).
     """
-    match = _TITLE.search(page[:400_000])
+    match = _TITLE.search(page)  # Google puts <title> well past the first megabyte
     title = re.sub(r"\s+", " ", _html.unescape(match.group(1))).strip()[:120] if match else ""
     if not title:
         title_class = "none"
@@ -798,14 +798,34 @@ def describe_page(page: str) -> dict:
         title_class = "google-flights-other"
     else:
         title_class = "other"
-    body = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", page[:400_000])
+    body = re.sub(r"(?is)<(script|style|title)\b.*?</\1>", " ", page)
     text = re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", body))).strip()
     lowered = page.lower()
+    best_rows = other_rows = -1  # -1: no readable ds:1 payload
+    parser = _gf._StructuredScriptParser()
+    parser.feed(page[:8_000_000])
+    script = "".join(parser.parts)
+    if "data:" in script:
+        try:
+            payload, _ = json.JSONDecoder().raw_decode(script.split("data:", 1)[1].lstrip())
+        except json.JSONDecodeError:
+            payload = None
+        counts = []
+        for index in (2, 3):
+            try:
+                block = payload[index][0]
+            except (IndexError, KeyError, TypeError):
+                block = None
+            counts.append(len(block) if isinstance(block, list) else 0)
+        if payload is not None:
+            best_rows, other_rows = counts
     return {
         "bytes": len(page.encode("utf-8", errors="replace")),
         "title_class": title_class,
         "ds1": 'class="ds:1"' in page or "class='ds:1'" in page,
         "ds1_error": "errorHasStatus: true" in page,
+        "best_rows": best_rows,
+        "other_rows": other_rows,
         "aria_from": page.count('aria-label="From '),
         "aria_round_trip": page.count("British pounds round trip total"),
         "consent": "before you continue" in lowered or "consent.google" in lowered,

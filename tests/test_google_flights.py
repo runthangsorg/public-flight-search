@@ -426,6 +426,55 @@ class ParseFlightCardsTests(unittest.TestCase):
         )
         self.assertEqual(len(offers), 0)
 
+    def _structured_page(self, *, best=None, other=None):
+        """A ds:1 block: Google puts the "Best" cards in payload[2][0] and the rest in payload[3][0]."""
+        def row(airline, price, hour):
+            segment = [None] * 22
+            segment[3], segment[6] = "LHR", "MRU"
+            flight = [None] * 10
+            flight[1], flight[2], flight[3], flight[4], flight[5] = [airline], [segment, segment], "LHR", [2030, 9, 1], [hour, 0]
+            flight[6], flight[7], flight[8], flight[9] = "MRU", [2030, 9, 2], [6, 5], 1000
+            return [flight, [[None, price]]]
+        payload = [None] * 4
+        if best is not None:
+            payload[2] = [[row(*item) for item in best]]
+        if other is not None:
+            payload[3] = [[row(*item) for item in other]]
+        return '<script class="ds:1">AF_initDataCallback({data:' + json.dumps(payload) + ',sideChannel:{}});</script>'
+
+    def test_structured_best_flights_are_read_when_no_other_flights_follow(self):
+        # A round-trip business page from a GitHub runner carried only the Best cards (31 Oct-2 Nov 2026): the
+        # parser read payload[3] alone, found nothing and the run counted the page as ok with no fares.
+        html = self._structured_page(best=[("Emirates", 3867, 14), ("Turkish Airlines", 3396, 18)])
+        offers = _parse_flight_cards(html, search=self._make_search(travellers=1), origin="LHR", destination="MRU",
+                                     day="2030-09-01", booking_url="https://example.com")
+        self.assertEqual(sorted(o.price for o in offers), [3396, 3867])
+        self.assertTrue(all(o.review_status == "results_page_structured" for o in offers))
+
+    def test_structured_best_and_other_flights_are_both_read_once(self):
+        html = self._structured_page(best=[("Lufthansa", 3320, 9)],
+                                     other=[("British Airways", 3140, 6), ("Lufthansa", 3320, 9)])
+        offers = _parse_flight_cards(html, search=self._make_search(travellers=1), origin="LHR", destination="MRU",
+                                     day="2030-09-01", booking_url="https://example.com")
+        self.assertEqual(sorted(o.price for o in offers), [3140, 3320])
+
+    def test_parses_round_trip_total_aria_label(self):
+        html = (
+            'aria-label="From 3320 British pounds round trip total. 1 stop flight with Lufthansa and Condor. '
+            'Leaves Heathrow Airport at 09:30 on Friday, June 25 and arrives at Sir Seewoosagur Ramgoolam '
+            'International Airport at 06:05 on Saturday, June 26. Total duration 17 hrs 35 mins.  Stopover (1 of 1) '
+            'is a 4 hrs 35 mins stopover at Frankfurt Airport in Frankfurt am Main. Select flight"'
+        )
+        offers = _parse_flight_cards(html, search=self._make_search(travellers=1), origin="LHR", destination="MRU",
+                                     day="2030-09-01", booking_url="https://example.com")
+        self.assertEqual(len(offers), 1)
+        self.assertEqual(offers[0].price, 3320)
+        self.assertEqual(offers[0].stops, 1)
+        self.assertEqual(offers[0].airline, "Lufthansa and Condor")
+        self.assertEqual(offers[0].departure, "2030-09-01T09:30:00")
+        self.assertEqual(offers[0].arrival, "2030-09-02T06:05:00")
+        self.assertEqual(offers[0].duration_minutes, 17 * 60 + 35)
+
     def test_no_aria_labels_returns_empty(self):
         search = self._make_search()
         offers = _parse_flight_cards(

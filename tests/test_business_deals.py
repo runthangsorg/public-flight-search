@@ -685,3 +685,13 @@ class NoCardsDiagnosticTests(JobCase):
     def test_pages_with_fares_are_not_counted(self):
         result, _, _ = self.run_job({"LHR": 2500, "OSL": 2400})
         self.assertEqual(result.no_cards, 0)
+
+    def test_describe_page_finds_a_late_title_and_counts_structured_rows(self):
+        payload = [None, None, [[["row"], ["row"]]], None]
+        page = ("<html><head><style>body{margin:0}</style>" + " " * 1_500_000
+                + "<title>A to B | Google Flights</title></head><body><p>Hello flights</p>"
+                + '<script class="ds:1">AF_initDataCallback({data:' + json.dumps(payload) + "});</script></body></html>")
+        note = bd.describe_page(page)
+        self.assertEqual(note["title_class"], "results")
+        self.assertEqual((note["best_rows"], note["other_rows"]), (2, 0))
+        self.assertEqual(note["snippet"], "Hello flights")
