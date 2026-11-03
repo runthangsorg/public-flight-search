@@ -721,3 +721,42 @@ class NoCardsDiagnosticTests(JobCase):
         self.assertEqual(bd._aria_stage_failed("From 3320 British pounds round trip total. Nonstop flight with X."),
                          "stops_airline")
         self.assertEqual(bd._aria_stage_failed("From 3,320 US dollars."), "price")
+
+
+class LargePartyTests(JobCase):
+    """Google Flights serves a near-empty business page to a party over four (2 Nov 2026: no Best block, one to three
+    rows, against nine to twelve for one to four travellers). The watcher then read 72 pages a day and found nothing,
+    silently. It must say so, and prove it by reading one page for a single traveller."""
+
+    def _empty(self, spec):
+        return bd.FetchOutcome("ok", [], page_note={"best_rows": 0, "other_rows": 2, "tally": {"rows": 2}})
+
+    def _run(self, travellers, probe):
+        cfg = bd.load_config(raw_config(trip_nights=[14], travellers=travellers), today=NOW.date())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW, fetch=self._empty,
+                       send=Sink(), dry_run=True, print_details=False, probe=probe)
+        return out.getvalue()
+
+    def test_a_party_over_four_is_warned_and_probed_at_one_traveller(self):
+        calls = []
+
+        def probe(spec):
+            calls.append(spec)
+            return {"bytes": 2400000, "best_rows": 3, "other_rows": 7, "aria_from": 20}
+
+        text = self._run(5, probe)
+        self.assertIn("::warning::", text)
+        self.assertIn("party over 4", text)
+        self.assertIn("travellers", text)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("one-traveller probe of the first search: bytes=2400000, best_rows=3, other_rows=7", text)
+        for leak in ("LHR", "BKK", DEP, "travellers=5", " 5 travellers"):
+            self.assertNotIn(leak, text, leak)
+
+    def test_a_party_of_four_is_not_warned_or_probed(self):
+        calls = []
+        text = self._run(4, lambda spec: calls.append(spec) or {})
+        self.assertNotIn("party over 4", text)
+        self.assertEqual(calls, [])

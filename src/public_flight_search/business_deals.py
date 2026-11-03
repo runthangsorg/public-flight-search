@@ -928,6 +928,30 @@ def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchO
     return fetch
 
 
+#: Above this party size Google Flights serves a near-empty business results page (seen 2 Nov 2026 on every route
+#: tried: no Best block and one to three rows, often mixed-cabin, against nine to twelve rows for one to four).
+LARGE_PARTY = 4
+_PROBE_FIELDS = ("bytes", "title_class", "best_rows", "other_rows", "aria_from")
+
+
+def make_party_probe(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], Mapping[str, Any]]:
+    """Read one round trip for a single traveller and describe the page: proof of what the party size costs."""
+
+    def probe(spec: SearchSpec) -> Mapping[str, Any]:
+        time.sleep(max(10.0, float(os.environ.get("GOOGLE_FLIGHTS_DELAY_SECONDS", "12"))))
+        url = _gf.build_google_flights_roundtrip_url(origin=spec.origin, destination=spec.destination,
+                                                    outbound_date=spec.date, return_date=spec.return_date,
+                                                    travellers=1, cabin_class=CABIN)
+        page = _gf._fetch_page_html(url)
+        if page is None:
+            return {"bytes": 0}
+        if _gf._is_waf_response(page):
+            return {"bytes": len(page), "title_class": "wall"}
+        return describe_page(page)
+
+    return probe
+
+
 def offers_file_fetch(path: Path) -> Callable[[SearchSpec], FetchOutcome]:
     """Serve searches from a local JSON list of offers (a dry-run aid; no network)."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -950,11 +974,14 @@ def alerts_path_for(history_path: Path) -> Path:
 def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Optional[Path] = None,
             now: Optional[datetime] = None, fetch: Optional[Callable[[SearchSpec], FetchOutcome]] = None,
             send: Optional[Callable[..., None]] = None, dry_run: bool = False,
-            print_details: bool = True) -> JobResult:
+            print_details: bool = True,
+            probe: Optional[Callable[[SearchSpec], Mapping[str, Any]]] = None) -> JobResult:
     now = now or datetime.now(timezone.utc)
     history_path = Path(history_path)
     alerts_path = Path(alerts_path) if alerts_path else alerts_path_for(history_path)
-    fetch = fetch or make_google_fetch(cfg)
+    if fetch is None:
+        fetch = make_google_fetch(cfg)
+        probe = probe or make_party_probe(cfg)
     result = JobResult()
 
     observations: list[dict] = []
@@ -1026,6 +1053,18 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
         note = result.no_cards_note if print_details else public_page_note(result.no_cards_note)
         print("first page with no cards: " + ", ".join(f"{k}={v!r}" for k, v in note.items()))
         print("all pages with no cards: " + ", ".join(f"{k}={v}" for k, v in sorted(result.no_cards_tally.items())))
+    large_party = bool(cfg.trip_nights) and cfg.travellers > LARGE_PARTY
+    if large_party:
+        print(f"::warning::business round trips are priced for a party over {LARGE_PARTY}; Google Flights serves a "
+              "near-empty business page to a party that size (no Best block, one to three rows, often mixed-cabin), "
+              f"so offers stay near zero. Set travellers to {LARGE_PARTY} or fewer in BUSINESS_DEALS_CONFIG_JSON.")
+    if large_party and probe and plan and result.ok and result.no_cards == result.ok:
+        try:
+            note = probe(plan[0])
+        except Exception as exc:  # a diagnostic never fails the run
+            note = {"error": type(exc).__name__}
+        print("one-traveller probe of the first search: "
+              + ", ".join(f"{k}={note[k]!r}" for k in (*_PROBE_FIELDS, "error") if k in note))
     return result
 
 

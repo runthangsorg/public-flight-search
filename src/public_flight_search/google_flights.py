@@ -396,11 +396,16 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
     parser = _StructuredScriptParser()
     parser.feed(html[:8_000_000])
     script = "".join(parser.parts)
-    if "data:" not in script or "errorHasStatus: true" in script:
+    if "data:" not in script:
+        _bump(tally, "payload_absent")
+        return []
+    if "errorHasStatus: true" in script:
+        _bump(tally, "payload_refused_error")
         return []
     try:
         payload, _ = json.JSONDecoder().raw_decode(script.split("data:", 1)[1].lstrip())
     except (json.JSONDecodeError, IndexError, TypeError):
+        _bump(tally, "payload_unreadable")
         return []
     rows = _structured_rows(payload)
     offers = []
