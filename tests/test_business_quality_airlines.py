@@ -20,6 +20,10 @@ from public_flight_search.engine import FlightOffer
 from test_business_deals import EXAMPLE, NOW, JobCase, raw_config
 
 DEP, RET = "2027-03-01", "2027-03-15"
+#: The owner config's party. Google Flights is read for ONE traveller since 3 Nov 2026, so an offer's price is a
+#: per-person fare: the party totals quoted below (Kayak, 1 Nov) are divided by the party, exactly as the watcher
+#: multiplies them back.
+PARTY = 5
 TIER_1 = ["Qatar Airways", "Emirates", "Etihad", "Singapore Airlines", "Cathay Pacific", "ANA", "JAL",
           "EVA Air", "Turkish Airlines", "Virgin Atlantic", "British Airways", "Kenya Airways", "Ethiopian"]
 
@@ -27,7 +31,7 @@ TIER_1 = ["Qatar Airways", "Emirates", "Etihad", "Singapore Airlines", "Cathay P
 def nbo_config(**over):
     base = raw_config(
         destinations=[{"code": "NBO", "label": "Nairobi", "region": "africa", "hours_from_london": 8.5}],
-        absolute_caps_gbp={"africa": 2500}, trip_nights=[14], travellers=5,
+        absolute_caps_gbp={"africa": 2500}, trip_nights=[14], travellers=PARTY,
         airline_quality={"tier_1": TIER_1, "banned": ["Air India", "Air India Express", "LOT", "EgyptAir"]},
         quality_premium_pct=10,
     )
@@ -35,9 +39,10 @@ def nbo_config(**over):
     return base
 
 
-def nbo_offer(price, airline, *, origin="LHR", duration=1000, stops=1):
+def nbo_offer(party_total, airline, *, origin="LHR", duration=1000, stops=1):
+    """The party total from the box read spread over ``PARTY``: what one traveller's page quotes."""
     return FlightOffer.from_mapping({
-        "origin": origin, "destination": "NBO", "departure": f"{DEP}T10:00:00", "price": price,
+        "origin": origin, "destination": "NBO", "departure": f"{DEP}T10:00:00", "price": party_total / PARTY,
         "currency": "GBP", "stops": stops, "duration_minutes": duration, "provider": "Google Flights",
         "booking_url": f"https://example.test/{origin}-NBO/{airline.replace(' ', '-')}", "airline": airline,
     })

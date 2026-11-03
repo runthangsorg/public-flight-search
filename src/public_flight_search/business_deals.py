@@ -5,6 +5,11 @@ Fares are read exactly the way the rest of the package reads them (the Google Fl
 of the origin x destination x date grid, appends what it saw to an append-only JSONL history, and e-mails ONLY when
 at least one fare is a special deal. Silence is the normal outcome and costs one log line.
 
+Every Google Flights read is for ONE traveller: a business page for a party over four comes back near-empty (no
+Best block, one to three rows, often mixed-cabin; verified on the runner and the laptop, 2-3 Nov 2026), so the
+watcher searches one traveller and multiplies the per-person fare by the configured party size (owner decision,
+3 Nov 2026). The e-mail says so, and that seat availability for the whole party is not checked.
+
 A fare is a deal when its total (fare + the origin's positioning cost) is
 
 * at least ``median_drop_pct`` below the median of the same origin, destination and departure month over the last
@@ -44,6 +49,13 @@ from .engine import FlightOffer
 logger = logging.getLogger(__name__)
 
 CABIN = "BUSINESS"
+#: Google Flights is read for one traveller whatever the party size; the party is priced by multiplication.
+SEARCHED_TRAVELLERS = 1
+#: Stamped on every observation and history row, so a fare's basis is readable without the code.
+PRICED_AS = "1 traveller, scaled"
+#: The e-mail footer's one line about that.
+SCALED_NOTE = ("Fares are searched for one traveller and multiplied by the party size; seat availability for the "
+               "whole party is not checked.")
 HISTORY_DEFAULT_PATH = Path("data/business_deals_history.jsonl")
 MAX_CONFIG_BYTES = 200_000
 _AIRPORT = re.compile(r"^[A-Z]{3}$")
@@ -467,8 +479,9 @@ def cheapest_observation(offers: Iterable[Any], spec: SearchSpec, cfg: BusinessD
 
 def _observation_row(best: FlightOffer, spec: SearchSpec, origin: Origin, destination: Destination,
                      cfg: BusinessDealsConfig, now: datetime) -> dict:
-    fare = round(best.price, 2)
     travellers = cfg.travellers if spec.return_date else 1
+    # The page was read for one traveller, so its fare is a per-person fare: the party pays it times travellers.
+    fare = round(best.price * travellers, 2)
     positioning = origin.positioning_gbp * travellers
     total = round(fare + positioning, 2)
     per_person = round(total / travellers, 2)
@@ -477,7 +490,7 @@ def _observation_row(best: FlightOffer, spec: SearchSpec, origin: Origin, destin
         "key": _key(spec.origin, spec.destination, spec.date, spec.return_date),
         "origin": spec.origin, "destination": spec.destination, "region": destination.region,
         "departure": spec.date, "return_date": spec.return_date, "cabin_class": CABIN,
-        "travellers": travellers,
+        "travellers": travellers, "priced_as": PRICED_AS,
         "fare_gbp": fare, "positioning_gbp": origin.positioning_gbp,
         "total_gbp": total, "per_person_gbp": per_person,
         "stops": best.stops, "duration_minutes": best.duration_minutes, "airline": best.airline,
@@ -680,7 +693,7 @@ def _link(deal: Deal) -> str:
         if deal.return_date:
             url = _gf.build_google_flights_roundtrip_url(origin=deal.origin, destination=deal.destination,
                                                         outbound_date=deal.departure, return_date=deal.return_date,
-                                                        travellers=deal.travellers or 1, cabin_class=CABIN)
+                                                        travellers=SEARCHED_TRAVELLERS, cabin_class=CABIN)
         else:
             url = _gf.build_google_flights_url(origin=deal.origin, destination=deal.destination,
                                                date=deal.departure, travellers=1, cabin_class=CABIN)
@@ -770,10 +783,11 @@ def render_email(deals: Sequence[Deal], cfg: BusinessDealsConfig, now: datetime)
         "getting every traveller there. Deals are judged per person. Prices change quickly: check the live page "
         "before relying on one.</p>"
         "<table><tr><th>Route</th><th>Departs</th><th>Total</th><th>Why it is a deal</th><th>Flight</th>"
-        "<th>Seen</th><th>Link</th></tr>" + "".join(rows) + "</table></body></html>")
+        "<th>Seen</th><th>Link</th></tr>" + "".join(rows) + "</table>"
+        f"<p style=\"color:#555\">{esc(SCALED_NOTE)}</p></body></html>")
     text = "\n".join([f"{len(deals)} special business-class fare(s) on {now.date().isoformat()} "
                       "(GBP; returns are the party's total, deals judged per person):",
-                      *lines])
+                      *lines, "", SCALED_NOTE])
     return subject, html, text
 
 
@@ -894,28 +908,26 @@ def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchO
         if last[0] and wait > 0:
             time.sleep(wait)
         if spec.return_date:
+            # One traveller: a party over four gets a near-empty business page, so the fare is read per person
+            # and scaled to the party in the observation (owner decision, 3 Nov 2026).
             url = _gf.build_google_flights_roundtrip_url(origin=spec.origin, destination=spec.destination,
                                                         outbound_date=spec.date, return_date=spec.return_date,
-                                                        travellers=cfg.travellers, cabin_class=CABIN)
+                                                        travellers=SEARCHED_TRAVELLERS, cabin_class=CABIN)
         else:
             url = _gf.build_google_flights_url(origin=spec.origin, destination=spec.destination, date=spec.date,
-                                               travellers=1, cabin_class=CABIN)
+                                               travellers=SEARCHED_TRAVELLERS, cabin_class=CABIN)
         page = _gf._fetch_page_html(url)
         last[0] = time.monotonic()
         if page is None:
             return FetchOutcome("failed")
         if _gf._is_waf_response(page):
             return FetchOutcome("wall")
-        if spec.return_date:
-            search = FlightSearch(
-                key="business-deals", label="business deals", origins=(spec.origin,), destinations=(spec.destination,),
-                dates=(spec.date,), travellers=cfg.travellers, cabin_class=CABIN, departure_window=("00:00", "23:59"),
-                max_stops=cfg.max_stops, max_duration_minutes=1440, max_price_per_traveller_gbp=None)
-        else:
-            search = FlightSearch(
-                key="business-deals", label="business deals", origins=(spec.origin,), destinations=(spec.destination,),
-                dates=(spec.date,), travellers=1, cabin_class=CABIN, departure_window=("00:00", "23:59"),
-                max_stops=cfg.max_stops, max_duration_minutes=1440, max_price_per_traveller_gbp=None)
+        # One traveller whatever the party: the cards are read per person, and the observation scales them.
+        search = FlightSearch(
+            key="business-deals", label="business deals", origins=(spec.origin,), destinations=(spec.destination,),
+            dates=(spec.date,), travellers=SEARCHED_TRAVELLERS, cabin_class=CABIN,
+            departure_window=("00:00", "23:59"),
+            max_stops=cfg.max_stops, max_duration_minutes=1440, max_price_per_traveller_gbp=None)
         tally: dict = {}
         offers = _gf._parse_flight_cards(page, search=search, origin=spec.origin, destination=spec.destination,
                                          day=spec.date, booking_url=url, tally=tally)
@@ -926,30 +938,6 @@ def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchO
         return FetchOutcome("ok", offers, page_note=note)
 
     return fetch
-
-
-#: Above this party size Google Flights serves a near-empty business results page (seen 2 Nov 2026 on every route
-#: tried: no Best block and one to three rows, often mixed-cabin, against nine to twelve rows for one to four).
-LARGE_PARTY = 4
-_PROBE_FIELDS = ("bytes", "title_class", "best_rows", "other_rows", "aria_from")
-
-
-def make_party_probe(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], Mapping[str, Any]]:
-    """Read one round trip for a single traveller and describe the page: proof of what the party size costs."""
-
-    def probe(spec: SearchSpec) -> Mapping[str, Any]:
-        time.sleep(max(10.0, float(os.environ.get("GOOGLE_FLIGHTS_DELAY_SECONDS", "12"))))
-        url = _gf.build_google_flights_roundtrip_url(origin=spec.origin, destination=spec.destination,
-                                                    outbound_date=spec.date, return_date=spec.return_date,
-                                                    travellers=1, cabin_class=CABIN)
-        page = _gf._fetch_page_html(url)
-        if page is None:
-            return {"bytes": 0}
-        if _gf._is_waf_response(page):
-            return {"bytes": len(page), "title_class": "wall"}
-        return describe_page(page)
-
-    return probe
 
 
 def offers_file_fetch(path: Path) -> Callable[[SearchSpec], FetchOutcome]:
@@ -974,14 +962,12 @@ def alerts_path_for(history_path: Path) -> Path:
 def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Optional[Path] = None,
             now: Optional[datetime] = None, fetch: Optional[Callable[[SearchSpec], FetchOutcome]] = None,
             send: Optional[Callable[..., None]] = None, dry_run: bool = False,
-            print_details: bool = True,
-            probe: Optional[Callable[[SearchSpec], Mapping[str, Any]]] = None) -> JobResult:
+            print_details: bool = True) -> JobResult:
     now = now or datetime.now(timezone.utc)
     history_path = Path(history_path)
     alerts_path = Path(alerts_path) if alerts_path else alerts_path_for(history_path)
     if fetch is None:
         fetch = make_google_fetch(cfg)
-        probe = probe or make_party_probe(cfg)
     result = JobResult()
 
     observations: list[dict] = []
@@ -1053,19 +1039,6 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
         note = result.no_cards_note if print_details else public_page_note(result.no_cards_note)
         print("first page with no cards: " + ", ".join(f"{k}={v!r}" for k, v in note.items()))
         print("all pages with no cards: " + ", ".join(f"{k}={v}" for k, v in sorted(result.no_cards_tally.items())))
-    large_party = bool(cfg.trip_nights) and cfg.travellers > LARGE_PARTY
-    if large_party:
-        # An Actions annotation only from the live job (a public log), not from every unit test that prints.
-        print(f"{'warning: ' if print_details else '::warning::'}business round trips are priced for a party over {LARGE_PARTY}; Google Flights serves a "
-              "near-empty business page to a party that size (no Best block, one to three rows, often mixed-cabin), "
-              f"so offers stay near zero. Set travellers to {LARGE_PARTY} or fewer in BUSINESS_DEALS_CONFIG_JSON.")
-    if large_party and probe and plan and result.ok and result.no_cards * 10 >= result.ok * 9:
-        try:
-            note = probe(plan[0])
-        except Exception as exc:  # a diagnostic never fails the run
-            note = {"error": type(exc).__name__}
-        print("one-traveller probe of the first search: "
-              + ", ".join(f"{k}={note[k]!r}" for k in (*_PROBE_FIELDS, "error") if k in note))
     return result
 
 

@@ -516,12 +516,15 @@ class RoundTripPlanTests(unittest.TestCase):
 
 
 class RoundTripFetchTests(unittest.TestCase):
-    def test_round_trip_fetch_uses_roundtrip_builder_with_party(self):
-        cfg = bd.load_config(raw_config(trip_nights=[3], travellers=2), today=NOW.date())
+    def test_round_trip_fetch_searches_one_traveller_whatever_the_party(self):
+        """A business party over four gets a near-empty page (2 Nov 2026), so every read is for one traveller and
+        the party is priced by multiplication (owner decision, 3 Nov 2026)."""
+        cfg = bd.load_config(raw_config(trip_nights=[3], travellers=5), today=NOW.date())
         spec = bd.SearchSpec("LHR", "BKK", DEP, "2027-03-04")
         with patch("public_flight_search.google_flights.build_google_flights_roundtrip_url") as mock_rt, \
              patch("public_flight_search.google_flights._fetch_page_html", return_value="<html></html>"), \
-             patch("public_flight_search.google_flights._is_waf_response", return_value=False):
+             patch("public_flight_search.google_flights._is_waf_response", return_value=False), \
+             patch("public_flight_search.google_flights._parse_flight_cards", return_value=[]) as mock_parse:
             mock_rt.return_value = "https://example.test/rt"
             outcome = bd.make_google_fetch(cfg)(spec)
             self.assertEqual(outcome.status, "ok")
@@ -531,8 +534,10 @@ class RoundTripFetchTests(unittest.TestCase):
             self.assertEqual(kwargs["destination"], "BKK")
             self.assertEqual(kwargs["outbound_date"], DEP)
             self.assertEqual(kwargs["return_date"], "2027-03-04")
-            self.assertEqual(kwargs["travellers"], 2)
+            self.assertEqual(kwargs["travellers"], 1)
             self.assertEqual(kwargs["cabin_class"], "BUSINESS")
+            self.assertEqual(mock_parse.call_args.kwargs["search"].travellers, 1,
+                             "the card reader must price one traveller too")
 
     def test_one_way_fetch_stays_one_traveller(self):
         cfg = bd.load_config(raw_config(travellers=5), today=NOW.date())
@@ -549,14 +554,40 @@ class RoundTripFetchTests(unittest.TestCase):
             self.assertEqual(kwargs["cabin_class"], "BUSINESS")
 
 
-class PerPersonObservationTests(unittest.TestCase):
+class ScaledPartyObservationTests(unittest.TestCase):
+    """One traveller is searched, so the page's fare is per person; the observation multiplies it by the party."""
+
     def test_observation_records_party_total_and_per_person(self):
         cfg = bd.load_config(raw_config(trip_nights=[3], travellers=2), today=NOW.date())
         spec = bd.SearchSpec("LHR", "BKK", DEP, "2027-03-04")
         obs, rejected = bd.cheapest_observation([offer("LHR", 900)], spec, cfg, NOW)
         self.assertEqual(rejected, 0)
-        self.assertEqual(obs["total_gbp"], 900.0)
-        self.assertEqual(obs["per_person_gbp"], 450.0)
+        self.assertEqual(obs["travellers"], 2)
+        self.assertEqual(obs["fare_gbp"], 1800.0)
+        self.assertEqual(obs["total_gbp"], 1800.0)
+        self.assertEqual(obs["per_person_gbp"], 900.0)
+
+    def test_a_party_of_five_pays_five_fares_and_five_positioning_fares(self):
+        cfg = bd.load_config(raw_config(trip_nights=[3], travellers=5), today=NOW.date())
+        spec = bd.SearchSpec("OSL", "BKK", DEP, "2027-03-04")  # OSL positioning is £150 per traveller
+        obs, _ = bd.cheapest_observation([offer("OSL", 900)], spec, cfg, NOW)
+        self.assertEqual(obs["fare_gbp"], 4500.0)
+        self.assertEqual(obs["positioning_gbp"], 150.0)
+        self.assertEqual(obs["total_gbp"], 5250.0)
+        self.assertEqual(obs["per_person_gbp"], 1050.0)
+
+    def test_every_row_says_it_was_priced_from_one_traveller(self):
+        cfg = bd.load_config(raw_config(trip_nights=[3], travellers=5), today=NOW.date())
+        obs, _ = bd.cheapest_observation([offer("LHR", 900)], bd.SearchSpec("LHR", "BKK", DEP, "2027-03-04"),
+                                         cfg, NOW)
+        self.assertEqual(obs["priced_as"], "1 traveller, scaled")
+
+    def test_one_way_rows_are_unchanged(self):
+        cfg = bd.load_config(raw_config(travellers=5), today=NOW.date())
+        spec = bd.SearchSpec("OSL", "BKK", DEP)
+        obs, _ = bd.cheapest_observation([offer("OSL", 900)], spec, cfg, NOW)
+        self.assertEqual((obs["travellers"], obs["fare_gbp"], obs["positioning_gbp"], obs["total_gbp"],
+                          obs["per_person_gbp"]), (1, 900.0, 150.0, 1050.0, 1050.0))
 
 
 class OldHistoryMedianTests(JobCase):
@@ -582,8 +613,17 @@ class RoundTripEmailTests(JobCase):
         cfg = raw_config(trip_nights=[3], travellers=2, absolute_caps_gbp={"asia": 1000})
         result, sink, text = self.run_job({"LHR": 900}, config=cfg, dry_run=True)
         self.assertEqual(len(result.deals), 1)
-        self.assertIn("£900 total for 2 travellers, return 01 Mar - 04 Mar (3 nights)", text)
-        self.assertIn("£450 per person", text)
+        self.assertIn("£1,800 total for 2 travellers, return 01 Mar - 04 Mar (3 nights)", text)
+        self.assertIn("£900 per person", text)
+
+    def test_the_email_says_the_fare_is_one_traveller_scaled_to_the_party(self):
+        cfg = raw_config(trip_nights=[3], travellers=5, absolute_caps_gbp={"asia": 1000})
+        result, sink, _ = self.run_job({"LHR": 900}, config=cfg)
+        self.assertEqual(len(result.deals), 1)
+        _, html, text = sink.sent[0]
+        for body in (html, text):
+            self.assertIn("Fares are searched for one traveller and multiplied by the party size; "
+                          "seat availability for the whole party is not checked.", body)
 
 
 class PartyReturnWordingTests(unittest.TestCase):
@@ -723,70 +763,25 @@ class NoCardsDiagnosticTests(JobCase):
         self.assertEqual(bd._aria_stage_failed("From 3,320 US dollars."), "price")
 
 
-class LargePartyTests(JobCase):
-    """Google Flights serves a near-empty business page to a party over four (2 Nov 2026: no Best block, one to three
-    rows, against nine to twelve for one to four travellers). The watcher then read 72 pages a day and found nothing,
-    silently. It must say so, and prove it by reading one page for a single traveller."""
+class NoPartyWarningTests(JobCase):
+    """The party-size warning and its one-traveller probe (181ecc2, 9a1fc26) existed because a party over four
+    emptied the page. The watcher now always searches one traveller, so neither is needed; the e-mail footer says
+    how the party is priced instead."""
 
-    def _empty(self, spec):
-        return bd.FetchOutcome("ok", [], page_note={"best_rows": 0, "other_rows": 2, "tally": {"rows": 2}})
-
-    def _run(self, travellers, probe):
-        cfg = bd.load_config(raw_config(trip_nights=[14], travellers=travellers), today=NOW.date())
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW, fetch=self._empty,
-                       send=Sink(), dry_run=True, print_details=False, probe=probe)
-        return out.getvalue()
-
-    def test_a_party_over_four_is_warned_and_probed_at_one_traveller(self):
-        calls = []
-
-        def probe(spec):
-            calls.append(spec)
-            return {"bytes": 2400000, "best_rows": 3, "other_rows": 7, "aria_from": 20}
-
-        text = self._run(5, probe)
-        self.assertIn("::warning::", text)
-        self.assertIn("party over 4", text)
-        self.assertIn("travellers", text)
-        self.assertEqual(len(calls), 1)
-        self.assertIn("one-traveller probe of the first search: bytes=2400000, best_rows=3, other_rows=7", text)
-        for leak in ("LHR", "BKK", DEP, "travellers=5", " 5 travellers"):
-            self.assertNotIn(leak, text, leak)
-
-    def test_the_probe_runs_when_nearly_every_page_was_empty(self):
+    def test_a_party_over_four_is_neither_warned_nor_probed(self):
         cfg = bd.load_config(raw_config(trip_nights=[14], travellers=6), today=NOW.date())
-        seen = []
-
-        def fetch(spec):
-            seen.append(spec)
-            if len(seen) == 1:
-                return bd.FetchOutcome("ok", [offer(spec.origin, 9000, dest=spec.destination, dep=spec.date)])
-            return self._empty(spec)
-
-        calls = []
-        specs = [bd.SearchSpec("LHR", "BKK", DEP, "2027-03-15")] * 10
-        with patch.object(bd, "plan_searches", return_value=specs):
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW, fetch=fetch,
-                           send=Sink(), dry_run=True, print_details=False,
-                           probe=lambda spec: calls.append(spec) or {"best_rows": 3})
-        self.assertEqual(len(calls), 1)
-        self.assertIn("one-traveller probe of the first search: best_rows=3", out.getvalue())
-
-    def test_a_local_run_warns_in_plain_text_not_as_an_annotation(self):
-        cfg = bd.load_config(raw_config(trip_nights=[14], travellers=5), today=NOW.date())
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW, fetch=self._empty,
-                       send=Sink(), dry_run=True, probe=lambda spec: {})
-        self.assertIn("warning: business round trips are priced for a party over 4", out.getvalue())
-        self.assertNotIn("::warning::", out.getvalue())
+            result = bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW,
+                                fetch=fetch_with({"LHR": 900}), send=Sink(), dry_run=True, print_details=False)
+        text = out.getvalue()
+        self.assertNotIn("party over", text)
+        self.assertNotIn("probe", text)
+        self.assertEqual(result.deals[0].total_gbp, 5400.0)
 
-    def test_a_party_of_four_is_not_warned_or_probed(self):
-        calls = []
-        text = self._run(4, lambda spec: calls.append(spec) or {})
-        self.assertNotIn("party over 4", text)
-        self.assertEqual(calls, [])
+    def test_history_rows_say_the_fare_was_scaled_from_one_traveller(self):
+        result, _, _ = self.run_job({"LHR": 900}, config=raw_config(trip_nights=[14], travellers=5))
+        self.assertTrue(result.history_rows_added >= 1)
+        row = json.loads(self.history.read_text(encoding="utf-8").splitlines()[0])
+        self.assertEqual((row["travellers"], row["priced_as"], row["total_gbp"], row["per_person_gbp"]),
+                         (5, "1 traveller, scaled", 4500.0, 900.0))
