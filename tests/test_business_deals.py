@@ -856,6 +856,82 @@ class NoItineraryVersusNoCardsTests(JobCase):
         self.assertEqual(bd.no_fare_reason(outcome.page_note), "no_cards")
 
 
+def offer_with_legs(origin, price, *, leg_hours, layover_hours, dep=DEP):
+    """A provider offer as the structured reader builds it: leg times and ground time, no total beyond their sum."""
+    return FlightOffer(origin=origin, destination="BKK", departure=f"{dep}T10:00:00", price=price, currency="GBP",
+                       stops=len(leg_hours) - 1, duration_minutes=int(round((sum(leg_hours) + sum(layover_hours)) * 60)),
+                       provider="Google Flights", airline="Test Air",
+                       leg_hours=tuple(leg_hours), layover_hours=tuple(layover_hours))
+
+
+def _two_leg_card(price, leg_minutes, ground_minutes):
+    """One ds:1 row with two legs; segment index 11 is that leg's own block time, as Google shapes it."""
+    segments = [[None] * 11 + [minutes] for minutes in leg_minutes]
+    flight = [None, ["Test Air"], segments, "LHR", [2027, 3, 1], [10, 0], "BKK",
+              [2027, 3, 1], [22, 0], sum(leg_minutes) + ground_minutes]
+    return [flight, [[None, price]]]
+
+
+class CabinRuleThreeTests(JobCase):
+    """Rule 3 (owner, 2026-11-03): business when a leg is over 8 h or the stopover is not overnight."""
+
+    def _spec(self):
+        return bd.SearchSpec("LHR", "BKK", DEP, "2027-03-15")
+
+    def _accept(self, fare, tally):
+        return bd._accept(fare, self._spec(), bd.load_config(raw_config(trip_nights=[14]), today=NOW.date()), tally)
+
+    def test_two_short_legs_with_a_short_connection_are_kept(self):
+        tally = {}
+        self.assertIsNotNone(self._accept(offer_with_legs("LHR", 900, leg_hours=(7.0, 7.5), layover_hours=(2.0,)), tally))
+        self.assertEqual(tally, {})
+
+    def test_a_hub_stopover_of_a_night_is_dropped_as_economy_is_fine(self):
+        tally = {}
+        self.assertIsNone(self._accept(offer_with_legs("LHR", 900, leg_hours=(6.5, 8.0), layover_hours=(9.0,)), tally))
+        self.assertEqual(tally, {"economy_is_fine": 1})
+
+    def test_a_leg_over_eight_hours_is_kept_despite_the_night_at_the_hub(self):
+        tally = {}
+        self.assertIsNotNone(self._accept(offer_with_legs("LHR", 900, leg_hours=(7.0, 9.5), layover_hours=(20.0,)), tally))
+        self.assertEqual(tally, {})
+
+    def test_an_offer_without_segment_data_uses_the_total_test_and_says_so(self):
+        tally = {}
+        self.assertIsNotNone(self._accept(offer("LHR", 900, duration=700), tally))  # 11h40 total, no legs
+        self.assertEqual(tally, {"cabin_rule_total_only": 1})
+
+    def test_an_offer_without_segment_data_under_eight_hours_still_drops(self):
+        tally = {}
+        self.assertIsNone(self._accept(offer("LHR", 900, duration=430), tally))
+        self.assertEqual(tally, {"cabin_rule_total_only": 1, "economy_is_fine": 1})
+
+    def test_the_legs_and_layovers_are_read_off_the_card_and_dropped(self):
+        # 6.5 h + 8 h with nine hours on the ground: a 23.5 h journey that is a night at the hub.
+        cfg = bd.load_config(raw_config(trip_nights=[14]), today=NOW.date())
+        spec = bd.SearchSpec("LHR", "BKK", DEP, "2027-03-15")
+        page = _structured_page([_two_leg_card(900, (390, 480), 540)])
+        with patch("public_flight_search.google_flights._fetch_page_html", return_value=page):
+            outcome = bd.make_google_fetch(cfg)(spec)
+        self.assertEqual(len(outcome.offers), 1)
+        self.assertEqual((outcome.offers[0].leg_hours, outcome.offers[0].layover_hours), ((6.5, 8.0), (9.0,)))
+        tally = {}
+        row, rejected = bd.cheapest_observation(outcome.offers, spec, cfg, NOW, tally)
+        self.assertIsNone(row)
+        self.assertEqual((rejected, tally), (1, {"economy_is_fine": 1}))
+
+    def test_the_run_line_shows_the_cabin_rule_tally(self):
+        cfg = bd.load_config(raw_config(trip_nights=[14]), today=NOW.date())
+        page = _structured_page([_two_leg_card(900, (390, 480), 540)])
+        with patch("public_flight_search.google_flights._fetch_page_html", return_value=page):
+            outcome = bd.make_google_fetch(cfg)(bd.SearchSpec("LHR", "BKK", DEP, "2027-03-15"))
+        result = bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW,
+                            fetch=lambda s: outcome, send=Sink(), dry_run=True, print_details=False)
+        # One search reads it (the second origin is rejected before the cabin rule, on its own origin).
+        self.assertEqual(result.cabin_rule_tally, {"economy_is_fine": 1})
+        self.assertIn("cabin rule economy_is_fine=1, ", result.log_line)
+
+
 class MixedCabinRowTests(JobCase):
     """A "business" card that also names economy has one leg outside business: its fare is not a business fare."""
 

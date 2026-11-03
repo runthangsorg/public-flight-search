@@ -452,6 +452,16 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
                 _bump(tally, "drop_value")
                 continue
             airline = ", ".join(str(value) for value in (flight[1] if isinstance(flight[1], list) else []) if value)[:80] or "Unknown airline"
+            # Rule 3 (2026-11-03) needs each leg's own block time: segment index 11 is one leg's minutes, and the
+            # legs plus their ground time add up to the row's total, which is the sanity check on the read.
+            leg_minutes = [int(segment[11]) for segment in segments
+                           if isinstance(segment, list) and len(segment) > 11 and isinstance(segment[11], int)]
+            leg_hours: tuple = ()
+            if len(leg_minutes) == len(segments) and 0 < sum(leg_minutes) <= duration:
+                leg_hours = tuple(round(minutes / 60, 2) for minutes in leg_minutes)
+            layover_hours: tuple = ()
+            if len(leg_minutes) == 2 and leg_hours:
+                layover_hours = (round((duration - sum(leg_minutes)) / 60, 2),)  # one connection: the rest is ground
             offer = FlightOffer(
                 origin=str(flight[3]).upper(), destination=str(flight[6]).upper(),
                 departure=departure, arrival=arrival, price=round(price, 2),
@@ -459,6 +469,7 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
                 stops=len(segments) - 1, duration_minutes=duration,
                 provider="Google Flights", booking_url=booking_url, airline=airline,
                 observed_at=datetime.now(timezone.utc).isoformat(), review_status="results_page_structured",
+                leg_hours=leg_hours, layover_hours=layover_hours,
             )
             clock = offer.departure[11:16]
             if not search.departure_window[0] <= clock <= search.departure_window[1]:

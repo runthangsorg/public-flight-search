@@ -42,7 +42,7 @@ from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 from . import google_flights as _gf
 from .business_airlines import airline_tier, excluded_airline
-from .cabin import BUSINESS_FLIGHT_HOURS
+from .cabin import BUSINESS_FLIGHT_HOURS, business_justified, has_leg_data
 from .config import FlightSearch
 from .engine import FlightOffer
 
@@ -210,6 +210,9 @@ class JobResult:
     #: Rows the page offered as "business" but labelled with an economy leg too: never observed as a fare.
     mixed_cabin_dropped: int = 0
     history_rows_added: int = 0
+    #: Cabin rule 3's own tally over the offers: ``economy_is_fine`` drops, and ``cabin_rule_total_only`` for an
+    #: offer read without segment data (the total-duration fallback).
+    cabin_rule_tally: dict = field(default_factory=dict)
     stopped_early: bool = False
     log_line: str = ""
 
@@ -438,7 +441,8 @@ def _key(origin: str, destination: str, departure: str, return_date: str = "") -
     return f"{base}|{CABIN}"
 
 
-def _accept(offer: Any, spec: SearchSpec, cfg: BusinessDealsConfig) -> Optional[FlightOffer]:
+def _accept(offer: Any, spec: SearchSpec, cfg: BusinessDealsConfig, tally: Optional[dict] = None) -> Optional[FlightOffer]:
+    """The offer as a business fare, or None. ``tally`` counts cabin rule 3's own drop and fallback reasons."""
     try:
         if not isinstance(offer, FlightOffer):
             offer = FlightOffer.from_mapping(offer)
@@ -451,21 +455,30 @@ def _accept(offer: Any, spec: SearchSpec, cfg: BusinessDealsConfig) -> Optional[
         return None
     if offer.departure[:10] != spec.date or offer.stops > cfg.max_stops:
         return None
-    if offer.duration_minutes <= BUSINESS_FLIGHT_HOURS * 60:
-        return None
+    if has_leg_data(offer.leg_hours, offer.layover_hours):
+        # Rule 3 (owner, 2026-11-03): a leg over 8 h or a stopover that is not overnight.
+        if not business_justified(offer.leg_hours, offer.layover_hours):
+            _gf._bump(tally, "economy_is_fine")
+            return None
+    else:
+        # No leg data on the card: the total-duration test it always had, counted so the fallback is visible.
+        _gf._bump(tally, "cabin_rule_total_only")
+        if offer.duration_minutes <= BUSINESS_FLIGHT_HOURS * 60:
+            _gf._bump(tally, "economy_is_fine")
+            return None
     if excluded_airline(str(offer.airline or ""), cfg.exclude_airlines):
         return None  # no business class on low-cost carriers or Air India (owner, 27 Oct 2026)
     return offer
 
 
 def cheapest_observation(offers: Iterable[Any], spec: SearchSpec, cfg: BusinessDealsConfig,
-                          now: datetime) -> tuple[Optional[dict], int]:
+                          now: datetime, tally: Optional[dict] = None) -> tuple[Optional[dict], int]:
     """The cheapest acceptable fare for one search as a history row, and how many offers were rejected."""
     origin = next(o for o in cfg.origins if o.code == spec.origin)
     destination = next(d for d in cfg.destinations if d.code == spec.destination)
     good, rejected = [], 0
     for item in offers:
-        accepted = _accept(item, spec, cfg)
+        accepted = _accept(item, spec, cfg, tally)
         if accepted is None:
             rejected += 1
         else:
@@ -1000,6 +1013,7 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
 
     observations: list[dict] = []
     blocked_run = 0
+    cabin_tally: dict = {}
     plan = plan_searches(cfg, now.date())
     for spec in plan:
         outcome = fetch(spec)
@@ -1019,7 +1033,7 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
                     if result.no_cards_note is None:
                         result.no_cards_note = dict(outcome.page_note)
                     _add_page_tally(result.no_cards_tally, outcome.page_note)
-            observation, rejected = cheapest_observation(offers, spec, cfg, now)
+            observation, rejected = cheapest_observation(offers, spec, cfg, now, cabin_tally)
             result.rejected += rejected
             if observation:
                 observations.append(observation)
@@ -1033,6 +1047,7 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
             result.stopped_early = True  # walls are recorded and left alone, never pushed through
             break
 
+    result.cabin_rule_tally = cabin_tally
     history = read_jsonl(history_path)
     alerts = read_jsonl(alerts_path)
     result.deals = find_deals(observations, history, alerts, cfg, now)
@@ -1065,6 +1080,7 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
         f"walled {result.walled}, failed {result.failed}"
         f"{', stopped early' if result.stopped_early else ''}), offers {result.offers_seen}, "
         f"rejected {result.rejected}, mixed cabin {result.mixed_cabin_dropped}, "
+        f"{_cabin_rule_text(result.cabin_rule_tally)}"
         f"history +{result.history_rows_added}, deals {len(result.deals)}, "
         f"mail {'sent' if result.mailed else 'not sent'}{' (dry run)' if dry_run else ''}, "
         f"full cycle {cycle_days(cfg)}d")
@@ -1074,6 +1090,13 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
         print("first page with no cards: " + ", ".join(f"{k}={v!r}" for k, v in note.items()))
         print("all pages with no cards: " + ", ".join(f"{k}={v}" for k, v in sorted(result.no_cards_tally.items())))
     return result
+
+
+def _cabin_rule_text(tally: Mapping[str, int]) -> str:
+    """``cabin rule economy_is_fine=N, ...`` for the run line, or nothing when no offer reached the rule."""
+    if not tally:
+        return ""
+    return "cabin rule " + ", ".join(f"{key}={value}" for key, value in sorted(tally.items())) + ", "
 
 
 def _add_page_tally(total: dict, note: Mapping[str, Any]) -> None:

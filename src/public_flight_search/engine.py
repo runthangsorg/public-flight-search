@@ -59,6 +59,11 @@ class FlightOffer:
     price_per_traveller: Optional[float] = None
     observed_at: str = ""
     review_status: str = "unverified_provider_result"
+    #: Each leg's block time in hours, when the reader had the segment data (cabin rule 3, 2026-11-03); empty
+    #: when it did not, and then ``cabin.has_leg_data`` refuses the rule and the caller falls back to duration.
+    leg_hours: Tuple[float, ...] = ()
+    #: Ground time at each connection in hours, from the same source.
+    layover_hours: Tuple[float, ...] = ()
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "FlightOffer":

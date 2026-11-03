@@ -1,6 +1,6 @@
-"""Cabin policy: BUSINESS only on a NONSTOP London flight over 8 hours.
+"""Cabin policy: BUSINESS only when a leg is over 8 hours or the stopover is not overnight.
 
-Two owner rules, the second narrowing the first.
+Three owner rules, each narrowing the one before it.
 
 **Rule 1, 2026-09-28:** no premium economy anywhere, and BUSINESS only for a
 flight OVER 8 hours from London; everything else is ECONOMY. The boundary
@@ -15,14 +15,37 @@ and put two more in premium economy).
 > stop at oman on way out 2d, go thailand, then return 2d oman or maybe doha
 > 2d).
 
-**Rule 2 adds a necessary condition to rule 1: the flight must be NONSTOP.**
-A one-stop journey is ECONOMY however long it takes, a two-centre trip is
-ECONOMY, a hub-stopover itinerary (two nights at the hub each way) is
-ECONOMY, and so is any nonstop of 8 hours or less. The owner confirmed the
+**Rule 2 added a necessary condition to rule 1: the flight must be NONSTOP.**
+A one-stop journey was ECONOMY however long it took, a two-centre trip was
+ECONOMY, a hub-stopover itinerary (two nights at the hub each way) was
+ECONOMY, and so was any nonstop of 8 hours or less. The owner confirmed the
 short end of the band in the same breath: "all under 8 hours is economy" and
 "doha and muscat economy is fine" — which is what rule 1 already said, and
-which rule 2 leaves standing. The 8.0 hour boundary stays a single constant,
+which rule 2 left standing. The 8.0 hour boundary stays a single constant,
 ``BUSINESS_FLIGHT_HOURS``.
+
+**Rule 3, 2026-11-03, verbatim:**
+
+> business class is only really needed if leg of flight is more than 8hr or
+> the stopover is not overnight, else economy is fine (e.g. qatar airways
+> stopover to CPE, indonesia, etc.)
+
+**Rule 3 supersedes rule 2's "nonstop only" condition.** What matters is the
+LONGEST SINGLE LEG and the STOPOVER, not the number of stops: a one-stop
+journey whose legs are short and whose connection is a couple of hours is
+BUSINESS (the traveller is in a seat for a long day with no night's rest),
+while a hub-stopover itinerary whose legs are each 8 hours or less stays
+ECONOMY even though the whole journey runs to 30 hours, because the night is
+spent on the ground. ``business_justified`` holds the rule and
+``OVERNIGHT_STOPOVER_HOURS`` the ground-time boundary; a leg must be over
+``BUSINESS_FLIGHT_HOURS`` (strictly), so 8.0 exactly stays ECONOMY.
+
+The destination-level derivation below still follows rule 2, not rule 3: a
+destination carries one ``flight_hours`` figure and no leg or connection
+data, so it cannot tell a two-hour change from a night at the hub. Rule 3 is
+applied where the legs are actually known (the business-deals watcher, which
+reads them off the card), and this file deliberately does not guess them from
+a single total.
 
 The cabin is derived from two facts per destination:
 
@@ -47,9 +70,13 @@ tests are 7.9 -> ECONOMY and 8.1 -> BUSINESS, both with a nonstop stated.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 BUSINESS_FLIGHT_HOURS = 8.0  # strictly greater-than
+#: Rule 3's stopover boundary: ground time this long counts as an overnight stopover, so the journey has had a
+#: night's rest and needs no business seat. The owner said "overnight"; ground time is the test the code can make,
+#: and eight hours is the same boundary the hour rule already uses.
+OVERNIGHT_STOPOVER_HOURS = 8.0
 LONG_HAUL_CABIN = "BUSINESS"
 SHORT_HAUL_CABIN = "ECONOMY"
 #: Banned outright by the same rule AS A DESTINATION'S HEADLINE/DERIVED CABIN.
@@ -144,6 +171,42 @@ YEAR_ROUND_NONSTOP_LHR: frozenset[str] = frozenset({
 })
 
 
+def business_justified(leg_hours: Sequence[float], connection_hours: Sequence[float]) -> bool:
+    """Rule 3: BUSINESS when any leg is over 8 h, or a long journey has no overnight stopover.
+
+    ``leg_hours`` is each flight leg's block time and ``connection_hours`` the ground time at each connection
+    (``len(connection_hours) == len(leg_hours) - 1`` for a complete journey). Callers with incomplete data must
+    not call this: ``has_leg_data`` says whether they have it, and the fallback is the total-duration test.
+
+    A nonstop over 8 h qualifies on its first leg. A journey over 8 h with a connection qualifies unless EVERY
+    connection is an overnight stopover, which is the Qatar-to-Cape-Town shape the owner named — economy is fine
+    when the stop is a night. A journey of 8 h or less is never business, and 8.0 h exactly is not over 8 h.
+    """
+    legs = [float(hours) for hours in leg_hours]
+    connections = [float(hours) for hours in connection_hours]
+    if any(hours > BUSINESS_FLIGHT_HOURS for hours in legs):
+        return True
+    if sum(legs) + sum(connections) <= BUSINESS_FLIGHT_HOURS:
+        return False
+    return any(hours < OVERNIGHT_STOPOVER_HOURS for hours in connections)
+
+
+def has_leg_data(leg_hours: Any, connection_hours: Any) -> bool:
+    """True when a journey's legs AND connections are known well enough to apply rule 3.
+
+    Both are needed. Two legs with no connection time could be an overnight stop or a ninety-minute change, and
+    guessing either way prices the wrong cabin, so incomplete data falls back to the total-duration test.
+    """
+    try:
+        legs = tuple(float(hours) for hours in leg_hours)
+        connections = tuple(float(hours) for hours in connection_hours)
+    except (TypeError, ValueError):
+        return False
+    if not legs or any(hours <= 0 for hours in legs) or any(hours < 0 for hours in connections):
+        return False
+    return len(connections) == len(legs) - 1
+
+
 def cabin_for_flight_hours(
     flight_hours: Any, nonstop_from_london: Any = None
 ) -> str:
@@ -153,6 +216,11 @@ def cabin_for_flight_hours(
     defaults to ``None``, which is UNKNOWN, and unknown means NOT nonstop: a
     one-stop journey is ECONOMY however long it takes. That default is the
     safe direction on purpose — it is the failure this rule exists to stop.
+
+    Rule 3 (2026-11-03) does not reach this function: a destination-level
+    ``flight_hours`` is one number with no legs and no connection, so the
+    nonstop condition stays the only safe reading here. Where legs are known,
+    ``business_justified`` decides instead; see the module docstring.
     """
     if flight_hours is None:
         raise ValueError("flight_hours is required to derive a cabin")
@@ -232,6 +300,10 @@ def is_long_haul_destination(destination: Any) -> bool:
 
 def destination_cabin(destination: Any) -> str:
     """The one cabin the report prices for this destination.
+
+    Follows rules 1 and 2, not rule 3: a destination says how long the journey
+    is, never how long each leg is or where it changes, so it cannot be read
+    under rule 3 without guessing (see ``business_justified``).
 
     Raises ``ValueError`` for a destination with no hours of its own and no
     built-in entry: guessing a cabin is how a short hop got priced in

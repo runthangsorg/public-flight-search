@@ -24,6 +24,14 @@ comparison row in the per-card "Flight options" breakdown (business/economy/
 premium-economy/stopover, side by side) — that is a different thing from the
 headline cabin this rule governs, and does not reopen it.
 
+Rule 3 (2026-11-03, verbatim in ``cabin.py``): business is justified when ANY
+SINGLE LEG is over 8 hours, or when a journey over 8 hours has a connection
+that is NOT an overnight stopover; a hub stopover of a night or more keeps a
+short-legged journey in economy. It supersedes rule 2's "nonstop only"
+condition where the legs are known (``business_justified``), and the
+destination-level derivation stays on rule 2 because one ``flight_hours``
+figure cannot say where the journey changes.
+
 Owner direction 2026-10-15 ("i want to know direct business class prices for
 each hotel option too") narrows rule 2 again, and this file records both halves:
 ``destination_cabin`` still governs the CARD's headline cabin (unknown nonstop
@@ -39,9 +47,12 @@ from pathlib import Path
 
 from public_flight_search.cabin import (
     DEFAULT_FLIGHT_HOURS_LHR,
+    OVERNIGHT_STOPOVER_HOURS,
     YEAR_ROUND_NONSTOP_LHR,
+    business_justified,
     cabin_for_flight_hours,
     destination_cabin,
+    has_leg_data,
     is_long_haul_route,
     resolve_nonstop_from_london,
 )
@@ -121,6 +132,54 @@ class BoundaryTests(unittest.TestCase):
 
     def test_exactly_8_hours_is_economy(self):
         self.assertEqual(cabin_for_flight_hours(8.0, True), "ECONOMY")
+
+
+class RuleThreeTests(unittest.TestCase):
+    """Rule 3 (owner, 2026-11-03): any leg over 8 h, or a stopover that is not overnight."""
+
+    def test_a_single_leg_over_eight_hours_is_business(self):
+        self.assertTrue(business_justified([9.0], []))
+
+    def test_two_short_legs_with_a_short_connection_are_business(self):
+        # A long day in a seat with no night's rest on the ground.
+        self.assertTrue(business_justified([7.0, 7.5], [2.0]))
+
+    def test_two_short_legs_with_a_night_at_the_hub_are_economy(self):
+        # The Qatar-to-Cape-Town shape the owner named: legs 6.5 h and 8.0 h,
+        # twenty hours on the ground.
+        self.assertFalse(business_justified([6.5, 8.0], [20.0]))
+
+    def test_exactly_eight_hours_is_economy(self):
+        self.assertFalse(business_justified([8.0], []))
+
+    def test_a_short_hop_is_economy(self):
+        self.assertFalse(business_justified([3.0], []))
+
+    def test_a_leg_over_eight_hours_is_business_even_with_a_night_at_the_hub(self):
+        self.assertTrue(business_justified([7.0, 9.5], [20.0]))
+
+    def test_the_stopover_boundary_is_the_hour_boundary(self):
+        self.assertEqual(OVERNIGHT_STOPOVER_HOURS, 8.0)
+        self.assertFalse(business_justified([7.0, 7.5], [8.0]))  # a night on the ground
+        self.assertTrue(business_justified([7.0, 7.5], [7.9]))
+
+    def test_a_short_journey_is_economy_whatever_its_connection(self):
+        self.assertFalse(business_justified([3.0, 3.0], [1.0]))
+
+    def test_leg_data_needs_both_legs_and_connections(self):
+        self.assertTrue(has_leg_data([9.0], []))
+        self.assertTrue(has_leg_data([7.0, 7.5], [2.0]))
+        self.assertFalse(has_leg_data((), ()))
+        self.assertFalse(has_leg_data([7.0, 7.5], []))       # no connection time: overnight or not, unknown
+        self.assertFalse(has_leg_data([7.0, 7.5], [2.0, 3.0]))
+        self.assertFalse(has_leg_data([0.0], []))
+        self.assertFalse(has_leg_data(None, None))
+
+    def test_the_destination_derivation_does_not_claim_rule_three(self):
+        # A destination carries one total and no legs, so these answers are the
+        # same before and after rule 3; the docstrings say so rather than guess.
+        self.assertEqual(cabin_for_flight_hours(14.5, False), "ECONOMY")
+        self.assertEqual(cabin_for_flight_hours(11.0, True), "BUSINESS")
 
 
 class NonstopConditionTests(unittest.TestCase):
