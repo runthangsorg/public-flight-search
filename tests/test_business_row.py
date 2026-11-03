@@ -121,7 +121,10 @@ class TheBusinessRowIsOnEveryLongHaulCardTests(unittest.TestCase):
                 destination=deal.destination_airport,
                 outbound_date=deal.outbound_date,
                 return_date=deal.return_date,
-                travellers=5,
+                # One traveller: a Business search for the whole party comes
+                # back near-empty, so the link opens one seat and the row says
+                # the fare is scaled (see test_planner_business_links).
+                travellers=1,
                 cabin_class="BUSINESS",
             ),
             "the unpriced Business row must link the Business search for ITS OWN "

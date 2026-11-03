@@ -592,6 +592,30 @@ def build_expedia_property_url(
     )
 
 
+#: Google Flights answers a BUSINESS search for a party over four with a
+#: near-empty page — no Best block, one to three rows, often mixed-cabin — so
+#: every Business LINK opens at one traveller. Economy links keep the party
+#: size, where the page prices the whole party.
+SEARCHED_TRAVELLERS = 1
+
+#: Said beside a Business link, so a one-seat search is never mistaken for the
+#: party's quote.
+SEARCHED_TRAVELLERS_NOTE = "link searches 1 traveller: per person, scaled to the party"
+
+
+def _link_travellers(cabin_class: str, travellers: int) -> int:
+    """The seats a Google Flights LINK asks for: one in Business, else the party.
+
+    A link is an invitation to price the itinerary, not a quote, so asking for
+    the party in a cabin Google will not sell at that size returns an empty
+    page and prices nothing at all. Asked for one traveller, the same link
+    opens a priced page, and the label beside it says the figure is per person.
+    """
+    if str(cabin_class).upper() == "BUSINESS":
+        return SEARCHED_TRAVELLERS
+    return max(1, int(travellers))
+
+
 def build_google_flights_holiday_url(
     *,
     destination: str,
@@ -615,7 +639,7 @@ def build_google_flights_holiday_url(
     return build_google_flights_roundtrip_url(
         origin=origin, destination=airport,
         outbound_date=departure_date, return_date=return_date,
-        travellers=max(1, min(9, adults)),
+        travellers=_link_travellers(cabin_class, max(1, min(9, adults))),
         cabin_class=cabin_class,
     )
 
@@ -4744,7 +4768,7 @@ def _stopover_fares(
             # Economy stopover row, nor the other way round.
             "cabin": cabin,
             "source_url": str(row.get("source_url") or "") or build_google_flights_legs_url(
-                legs, travellers=5, cabin_class=cabin
+                legs, travellers=_link_travellers(cabin, 5), cabin_class=cabin
             ),
         }]
     return {key: tuple(value) for key, value in fares.items()}
@@ -5060,7 +5084,9 @@ def stopover_search_url(hub: str, airport: str, outbound: str, returning: str,
     same journey.
     """
     legs = stopover_legs(hub, airport, outbound, returning, origin=origin)
-    return build_google_flights_legs_url(legs, travellers=travellers, cabin_class=cabin_class)
+    return build_google_flights_legs_url(
+        legs, travellers=_link_travellers(cabin_class, travellers), cabin_class=cabin_class
+    )
 
 
 def stopover_wanted(
@@ -7360,7 +7386,8 @@ the cards' own prices.
             search_url = build_google_flights_roundtrip_url(
                 origin=origin, destination=airport,
                 outbound_date=pair[0], return_date=pair[1],
-                travellers=travellers, cabin_class="BUSINESS",
+                travellers=_link_travellers("BUSINESS", travellers),
+                cabin_class="BUSINESS",
             )
         except Exception:
             search_url = ""
@@ -7460,7 +7487,9 @@ the cards' own prices.
             "transfer": 0.0,
             "total_pkg": 0.0,
             "true_d2d": 0.0,
-            "flight_basis": "no Business fare read for these dates",
+            "flight_basis": (
+                "no Business fare read for these dates · " + SEARCHED_TRAVELLERS_NOTE
+            ),
             "source_url": search_url,
             "within_budget": False,
         },)
@@ -7886,7 +7915,7 @@ the cards' own prices.
                         destination=airport,
                         outbound_date=target_outbound,
                         return_date=target_return,
-                        travellers=travellers,
+                        travellers=_link_travellers(cabin, travellers),
                         cabin_class=cabin,
                     )
                     deals.append(
@@ -9639,7 +9668,9 @@ def _flight_option_line(option: Mapping[str, Any], *, has_business: bool = True,
                          + escape(str(option.get("origin", ""))))
         if option.get("source_url"):
             unpriced += (' <a href="' + escape(str(option["source_url"]), quote=True)
-                         + '" style="color:#2563eb;text-decoration:none;">price it in Business ↗</a>')
+                         + '" style="color:#2563eb;text-decoration:none;">price it in Business ↗</a>'
+                         + ' <span style="color:#64748b; font-size:11px;">'
+                         + escape(SEARCHED_TRAVELLERS_NOTE) + '</span>')
         return unpriced
     chip = ""
     if budget_chip:
