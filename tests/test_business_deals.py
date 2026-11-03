@@ -785,3 +785,72 @@ class NoPartyWarningTests(JobCase):
         row = json.loads(self.history.read_text(encoding="utf-8").splitlines()[0])
         self.assertEqual((row["travellers"], row["priced_as"], row["total_gbp"], row["per_person_gbp"]),
                          (5, "1 traveller, scaled", 4500.0, 900.0))
+
+
+def _card_row(price, *, cabin_text=""):
+    """One ds:1 row: the card's flight, price block and (optionally) its own cabin wording."""
+    flight = [None, ["Test Air"], [[None, price]], "LHR", [2027, 3, 1], [10, 0], "BKK",
+              [2027, 3, 1], [22, 0], 700]
+    row = [flight, [[None, price]]]
+    if cabin_text:
+        row.append([[None, cabin_text]])
+    return row
+
+
+def _structured_page(rows):
+    """The Best block of a ds:1 page; no Other block, as a near-empty business page serves only Best."""
+    return ('<html><script class="ds:1">AF_initDataCallback({data:'
+            + json.dumps([None, None, [rows]]) + "});</script></body></html>")
+
+
+class MixedCabinRowTests(JobCase):
+    """A "business" card that also names economy has one leg outside business: its fare is not a business fare."""
+
+    def _parse(self, rows):
+        from public_flight_search import google_flights as gf
+        tally = {}
+        offers = gf._parse_flight_cards(
+            _structured_page(rows), search=gf.FlightSearch(
+                key="k", label="business deals", origins=("LHR",), destinations=("BKK",),
+                dates=(DEP,), travellers=1, cabin_class="BUSINESS", departure_window=("00:00", "23:59"),
+                max_stops=1, max_duration_minutes=1440, max_price_per_traveller_gbp=None),
+            origin="LHR", destination="BKK", day=DEP, booking_url="", tally=tally)
+        return offers, tally
+
+    def test_an_economy_plus_business_card_is_dropped_and_counted(self):
+        from public_flight_search import google_flights as gf
+        offers, tally = self._parse([_card_row(900), _card_row(700, cabin_text="Economy + Business Class")])
+        self.assertEqual([o.price for o in offers], [900.0])
+        self.assertEqual(tally[gf.MIXED_CABIN_DROP], 1)
+        self.assertEqual(gf.MIXED_CABIN_DROP, "drop_mixed_cabin")
+
+    def test_a_premium_economy_leg_beside_business_is_dropped_too(self):
+        offers, tally = self._parse([_card_row(700, cabin_text="Premium economy + Business Class"),
+                                     _card_row(720, cabin_text="Premium Economy + Business")])
+        self.assertEqual(offers, [])
+        self.assertEqual(tally.get("drop_mixed_cabin"), 2)
+
+    def test_a_pure_business_card_is_kept(self):
+        offers, tally = self._parse([_card_row(900, cabin_text="Business Class"), _card_row(950)])
+        self.assertEqual([o.price for o in offers], [900.0, 950.0])
+        self.assertNotIn("drop_mixed_cabin", tally)
+
+    def test_the_run_counts_the_dropped_cards_and_says_so(self):
+        config = raw_config()
+        config["origins"] = config["origins"][:1]  # one search, so the count is the page's own
+        cfg = bd.load_config(config, today=NOW.date())
+        spec = bd.SearchSpec("LHR", "BKK", DEP)
+        page = _structured_page([_card_row(900), _card_row(700, cabin_text="Economy + Business Class")])
+        with patch("public_flight_search.google_flights._fetch_page_html", return_value=page), \
+             patch("public_flight_search.google_flights._is_waf_response", return_value=False):
+            outcome = bd.make_google_fetch(cfg)(spec)
+        self.assertEqual(outcome.status, "ok")
+        self.assertEqual([o.price for o in outcome.offers], [900.0])
+        self.assertEqual((outcome.tally or {}).get("drop_mixed_cabin"), 1)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            result = bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW,
+                                fetch=lambda s: outcome, send=Sink(), dry_run=True)
+        self.assertEqual(result.mixed_cabin_dropped, 1)
+        self.assertIn("mixed cabin 1", result.log_line)
+        self.assertIn("(ok 1,", out.getvalue())

@@ -390,6 +390,31 @@ def _bump(tally: dict | None, key: str) -> None:
         tally[key] = tally.get(key, 0) + 1
 
 
+#: The drop reason for a "business" card whose flights are not all in business (one leg economy).
+MIXED_CABIN_DROP = "drop_mixed_cabin"
+
+#: A card that names more than one cabin class empties the business watch: the cheap leg's fare is not a
+#: business fare (Google Flights labels the card "Economy + Business Class").
+_CABINS = ("economy", "business")
+
+
+def mixed_cabin_text(text: str) -> bool:
+    """True when a card's own wording names an economy cabin beside the business one."""
+    lowered = (text or "").lower()
+    return all(cabin in lowered for cabin in _CABINS)
+
+
+def _row_text(row: object, *, depth: int = 0) -> str:
+    """The strings a structured row carries, joined: the card's own wording, never the page's."""
+    if depth > 4:
+        return ""
+    if isinstance(row, str):
+        return row if 0 < len(row) <= 80 else ""
+    if isinstance(row, (list, tuple)):
+        return " | ".join(part for item in row for part in [_row_text(item, depth=depth + 1)] if part)
+    return ""
+
+
 def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: str,
                               tally: dict | None = None) -> list[FlightOffer]:
     """``tally``, when given, counts each row's fate (kept or why it was dropped) for a no-fares diagnostic."""
@@ -413,6 +438,9 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
     for row in rows[:80]:
         _bump(tally, "rows")
         try:
+            if mixed_cabin_text(_row_text(row)):
+                _bump(tally, MIXED_CABIN_DROP)  # "Economy + Business": one leg is not a business fare
+                continue
             flight = row[0]
             segments = flight[2]
             _bump(tally, f"segments_{len(segments) if isinstance(segments, list) else 'none'}")

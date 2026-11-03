@@ -146,6 +146,9 @@ class FetchOutcome:
     #: For an ``ok`` page that yielded no fares: what the page looked like (``describe_page``), so a run that reads
     #: pages but finds nothing says why instead of passing for a quiet day.
     page_note: Optional[Mapping[str, Any]] = None
+    #: For an ``ok`` page that did yield fares: the reader's per-row tally, so a row dropped for a reason
+    #: (a mixed-cabin card) is counted in the run even when the page still had fares on it.
+    tally: Optional[Mapping[str, int]] = None
 
 
 @dataclass
@@ -200,6 +203,8 @@ class JobResult:
     failed: int = 0
     offers_seen: int = 0
     rejected: int = 0
+    #: Rows the page offered as "business" but labelled with an economy leg too: never observed as a fare.
+    mixed_cabin_dropped: int = 0
     history_rows_added: int = 0
     stopped_early: bool = False
     log_line: str = ""
@@ -932,7 +937,7 @@ def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchO
         offers = _gf._parse_flight_cards(page, search=search, origin=spec.origin, destination=spec.destination,
                                          day=spec.date, booking_url=url, tally=tally)
         if offers:
-            return FetchOutcome("ok", offers)
+            return FetchOutcome("ok", offers, tally=tally)
         note = describe_page(page)
         note.update(max_stops=search.max_stops, max_duration=search.max_duration_minutes, tally=tally)
         return FetchOutcome("ok", offers, page_note=note)
@@ -981,6 +986,7 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
             result.ok += 1
             offers = list(outcome.offers)
             result.offers_seen += len(offers)
+            result.mixed_cabin_dropped += int((outcome.tally or {}).get(_gf.MIXED_CABIN_DROP, 0))
             if not offers:
                 result.no_cards += 1
                 if outcome.page_note:
@@ -1031,7 +1037,8 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
         f"business-deals {now.date().isoformat()}: searched {result.searched} of {len(_grid(cfg))} "
         f"(ok {result.ok}, no cards {result.no_cards}, walled {result.walled}, failed {result.failed}"
         f"{', stopped early' if result.stopped_early else ''}), offers {result.offers_seen}, "
-        f"rejected {result.rejected}, history +{result.history_rows_added}, deals {len(result.deals)}, "
+        f"rejected {result.rejected}, mixed cabin {result.mixed_cabin_dropped}, "
+        f"history +{result.history_rows_added}, deals {len(result.deals)}, "
         f"mail {'sent' if result.mailed else 'not sent'}{' (dry run)' if dry_run else ''}, "
         f"full cycle {cycle_days(cfg)}d")
     print(result.log_line)
