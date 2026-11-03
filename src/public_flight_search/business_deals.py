@@ -194,8 +194,12 @@ class JobResult:
     mailed: bool = False
     searched: int = 0
     ok: int = 0
-    #: ``ok`` searches whose page gave no fare at all (before any policy rejection).
+    #: ``ok`` searches whose page gave no fare although it may have carried one (before any policy rejection):
+    #: rows or labels seen then dropped, or a payload the reader could not read. This is the count to investigate.
     no_cards: int = 0
+    #: ``ok`` searches whose page itself showed no itinerary (an empty result block, or Google's error notice for a
+    #: date it will not sell), so it is not mistaken for a page the reader could not read.
+    no_itinerary: int = 0
     no_cards_note: Optional[Mapping[str, Any]] = None
     #: Summed over every no-card page: each structured row's and aria label's fate, and the page shapes.
     no_cards_tally: dict = field(default_factory=dict)
@@ -852,6 +856,7 @@ def describe_page(page: str) -> dict:
     text = re.sub(r"\s+", " ", _html.unescape(re.sub(r"<[^>]+>", " ", body))).strip()
     lowered = page.lower()
     best_rows = other_rows = -1  # -1: no readable ds:1 payload
+    payload: Any = None
     parser = _gf._StructuredScriptParser()
     parser.feed(page[:8_000_000])
     script = "".join(parser.parts)
@@ -875,6 +880,7 @@ def describe_page(page: str) -> dict:
         "bytes": len(page.encode("utf-8", errors="replace")),
         "title_class": title_class,
         "ds1": 'class="ds:1"' in page or "class='ds:1'" in page,
+        "ds1_payload": payload is not None,  # a decoded payload can be counted; an absent one cannot
         "ds1_error": "errorHasStatus: true" in script,  # what the parser refuses on, so the two agree
         "best_rows": best_rows,
         "other_rows": other_rows,
@@ -901,6 +907,23 @@ def public_page_note(note: Mapping[str, Any]) -> dict:
     out["title_masked"] = _mask(str(note.get("title", "")))
     out["snippet_masked"] = _mask(str(note.get("snippet", "")))
     return out
+
+
+def no_fare_reason(note: Mapping[str, Any]) -> str:
+    """Why an ``ok`` page gave no fare: ``no_itinerary`` when the page itself shows none, else ``no_cards``.
+
+    Evidence only, because the two are different failures and only one is worth a look. A decoded ``ds:1`` payload
+    with no Best and no Other rows is Google serving an empty result list. A payload Google marks
+    ``errorHasStatus: true`` is its error notice, not a results list: live on 3 Nov 2026 a date outside the
+    bookable window returned two notice rows (one a plain string, one with no price slot) and never a card, so
+    refusing the payload is right and the page genuinely has no business itinerary to read. Rows or labels seen
+    and dropped, or a page with no readable payload at all, stay ``no_cards``: the reader may have been blind.
+    """
+    if (note.get("tally") or {}).get("payload_refused_error"):
+        return "no_itinerary"
+    if note.get("ds1_payload") and int(note.get("best_rows", -1)) <= 0 and int(note.get("other_rows", -1)) <= 0:
+        return "no_itinerary"
+    return "no_cards"
 
 
 def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchOutcome]:
@@ -988,7 +1011,10 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
             result.offers_seen += len(offers)
             result.mixed_cabin_dropped += int((outcome.tally or {}).get(_gf.MIXED_CABIN_DROP, 0))
             if not offers:
-                result.no_cards += 1
+                if no_fare_reason(outcome.page_note or {}) == "no_itinerary":
+                    result.no_itinerary += 1
+                else:
+                    result.no_cards += 1
                 if outcome.page_note:
                     if result.no_cards_note is None:
                         result.no_cards_note = dict(outcome.page_note)
@@ -1035,7 +1061,8 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
 
     result.log_line = (
         f"business-deals {now.date().isoformat()}: searched {result.searched} of {len(_grid(cfg))} "
-        f"(ok {result.ok}, no cards {result.no_cards}, walled {result.walled}, failed {result.failed}"
+        f"(ok {result.ok}, no cards {result.no_cards}, no itinerary {result.no_itinerary}, "
+        f"walled {result.walled}, failed {result.failed}"
         f"{', stopped early' if result.stopped_early else ''}), offers {result.offers_seen}, "
         f"rejected {result.rejected}, mixed cabin {result.mixed_cabin_dropped}, "
         f"history +{result.history_rows_added}, deals {len(result.deals)}, "

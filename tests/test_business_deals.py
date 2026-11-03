@@ -692,7 +692,8 @@ class NoCardsDiagnosticTests(JobCase):
     def test_summary_counts_ok_pages_with_no_cards(self):
         result, _, out = self.run_job({}, fetch=self._fetch_pages(self.PAGE))
         self.assertEqual(result.no_cards, 2)
-        self.assertIn("ok 2, no cards 2, walled 0", result.log_line)
+        self.assertEqual(result.no_itinerary, 0)
+        self.assertIn("ok 2, no cards 2, no itinerary 0, walled 0", result.log_line)
 
     def test_one_empty_page_is_described_without_headers_or_cookies(self):
         _, _, out = self.run_job({}, fetch=self._fetch_pages(self.PAGE))
@@ -721,6 +722,7 @@ class NoCardsDiagnosticTests(JobCase):
         self.assertEqual(note["aria_from"], 3)
         self.assertEqual(note["aria_round_trip"], 3)
         self.assertFalse(note["ds1"])
+        self.assertFalse(note["ds1_payload"])
 
     def test_pages_with_fares_are_not_counted(self):
         result, _, _ = self.run_job({"LHR": 2500, "OSL": 2400})
@@ -734,6 +736,7 @@ class NoCardsDiagnosticTests(JobCase):
         note = bd.describe_page(page)
         self.assertEqual(note["title_class"], "results")
         self.assertEqual((note["best_rows"], note["other_rows"]), (2, 0))
+        self.assertTrue(note["ds1_payload"])
         self.assertEqual(note["snippet"], "Hello flights")
 
     def test_a_public_log_tallies_why_rows_were_dropped_without_naming_the_route(self):
@@ -801,6 +804,56 @@ def _structured_page(rows):
     """The Best block of a ds:1 page; no Other block, as a near-empty business page serves only Best."""
     return ('<html><script class="ds:1">AF_initDataCallback({data:'
             + json.dumps([None, None, [rows]]) + "});</script></body></html>")
+
+
+class NoItineraryVersusNoCardsTests(JobCase):
+    """An empty results page and a page the reader could not read must not read the same in the summary line."""
+
+    def _fetch(self, page):
+        def fetch(spec):
+            return bd.FetchOutcome("ok", [], page_note=bd.describe_page(page))
+        return fetch
+
+    EMPTY_RESULTS = ('<html><head><title>A to B | Google Flights</title></head><body>'
+                     '<script class="ds:1">AF_initDataCallback({data:[null,null,[[]],[]]});</script></body></html>')
+
+    #: Google's error notice for a date it will not sell (live 3 Nov 2026): notice rows, never a card.
+    ERROR_NOTICE = ('<html><head><title>A to B | Google Flights</title></head><body>'
+                    '<script class="ds:1">AF_initDataCallback({data:'
+                    + json.dumps([None, None, [["no flights found", [[None, None], 2, "notice", "another date"]]]])
+                    + ',errorHasStatus: true});</script></body></html>')
+
+    def test_an_empty_results_page_is_counted_as_no_itinerary(self):
+        result, _, _ = self.run_job({}, fetch=self._fetch(self.EMPTY_RESULTS))
+        self.assertEqual((result.no_cards, result.no_itinerary), (0, 2))
+        self.assertIn("ok 2, no cards 0, no itinerary 2, walled 0", result.log_line)
+
+    def test_googles_error_notice_is_no_itinerary_and_is_still_refused(self):
+        cfg = bd.load_config(raw_config(trip_nights=[14]), today=NOW.date())
+        spec = bd.SearchSpec("LHR", "BKK", DEP, "2027-03-15")
+        with patch("public_flight_search.google_flights._fetch_page_html", return_value=self.ERROR_NOTICE):
+            outcome = bd.make_google_fetch(cfg)(spec)
+        self.assertEqual((outcome.status, list(outcome.offers)), ("ok", []))
+        self.assertEqual(outcome.page_note["tally"].get("payload_refused_error"), 1)
+        self.assertEqual(bd.no_fare_reason(outcome.page_note), "no_itinerary")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            result = bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW,
+                                fetch=lambda s: outcome, send=Sink(), dry_run=True, print_details=False)
+        self.assertEqual((result.no_cards, result.no_itinerary), (0, 2))
+        self.assertIn("no cards 0, no itinerary 2", result.log_line)
+
+    def test_rows_seen_then_dropped_are_still_no_cards(self):
+        cfg = bd.load_config(raw_config(trip_nights=[14], max_stops=0), today=NOW.date())
+        spec = bd.SearchSpec("LHR", "BKK", DEP, "2027-03-15")
+        flight = [None, ["Test Air"], [[None, 900], [None, 900]], "LHR", [2027, 3, 1], [10, 0], "BKK",
+                  [2027, 3, 1], [22, 0], 700]
+        page = _structured_page([[flight, [[None, 900]]]])
+        with patch("public_flight_search.google_flights._fetch_page_html", return_value=page):
+            outcome = bd.make_google_fetch(cfg)(spec)
+        self.assertEqual((outcome.status, list(outcome.offers)), ("ok", []))
+        self.assertEqual(outcome.page_note["tally"].get("drop_stops"), 1)
+        self.assertEqual(bd.no_fare_reason(outcome.page_note), "no_cards")
 
 
 class MixedCabinRowTests(JobCase):
