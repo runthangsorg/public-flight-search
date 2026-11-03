@@ -8,6 +8,8 @@ leads with it when it costs at most ``quality_premium_pct`` more per person. Sam
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import unittest
 
@@ -91,9 +93,10 @@ class QualityHeadlineTests(JobCase):
     def run_nbo(self, offers, **over):
         cfg = bd.load_config(nbo_config(**over), today=NOW.date())
         out = []
-        result = bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW,
-                            fetch=fetch_offers({"LHR": offers}), send=lambda s, h, text="": out.append((s, h, text)),
-                            print_details=False)
+        with contextlib.redirect_stdout(io.StringIO()):  # keep the job's log line and warnings out of the test step
+            result = bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW,
+                                fetch=fetch_offers({"LHR": offers}),
+                                send=lambda s, h, text="": out.append((s, h, text)), print_details=False)
         return result, out
 
     def test_owner_fixture_egyptair_banned_qatar_leads(self):

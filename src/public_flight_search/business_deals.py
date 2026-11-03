@@ -856,7 +856,7 @@ def describe_page(page: str) -> dict:
         "bytes": len(page.encode("utf-8", errors="replace")),
         "title_class": title_class,
         "ds1": 'class="ds:1"' in page or "class='ds:1'" in page,
-        "ds1_error": "errorHasStatus: true" in page,
+        "ds1_error": "errorHasStatus: true" in script,  # what the parser refuses on, so the two agree
         "best_rows": best_rows,
         "other_rows": other_rows,
         "aria_from": page.count('aria-label="From '),
@@ -1055,10 +1055,11 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
         print("all pages with no cards: " + ", ".join(f"{k}={v}" for k, v in sorted(result.no_cards_tally.items())))
     large_party = bool(cfg.trip_nights) and cfg.travellers > LARGE_PARTY
     if large_party:
-        print(f"::warning::business round trips are priced for a party over {LARGE_PARTY}; Google Flights serves a "
+        # An Actions annotation only from the live job (a public log), not from every unit test that prints.
+        print(f"{'warning: ' if print_details else '::warning::'}business round trips are priced for a party over {LARGE_PARTY}; Google Flights serves a "
               "near-empty business page to a party that size (no Best block, one to three rows, often mixed-cabin), "
               f"so offers stay near zero. Set travellers to {LARGE_PARTY} or fewer in BUSINESS_DEALS_CONFIG_JSON.")
-    if large_party and probe and plan and result.ok and result.no_cards == result.ok:
+    if large_party and probe and plan and result.ok and result.no_cards * 10 >= result.ok * 9:
         try:
             note = probe(plan[0])
         except Exception as exc:  # a diagnostic never fails the run

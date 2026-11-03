@@ -755,6 +755,36 @@ class LargePartyTests(JobCase):
         for leak in ("LHR", "BKK", DEP, "travellers=5", " 5 travellers"):
             self.assertNotIn(leak, text, leak)
 
+    def test_the_probe_runs_when_nearly_every_page_was_empty(self):
+        cfg = bd.load_config(raw_config(trip_nights=[14], travellers=6), today=NOW.date())
+        seen = []
+
+        def fetch(spec):
+            seen.append(spec)
+            if len(seen) == 1:
+                return bd.FetchOutcome("ok", [offer(spec.origin, 9000, dest=spec.destination, dep=spec.date)])
+            return self._empty(spec)
+
+        calls = []
+        specs = [bd.SearchSpec("LHR", "BKK", DEP, "2027-03-15")] * 10
+        with patch.object(bd, "plan_searches", return_value=specs):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW, fetch=fetch,
+                           send=Sink(), dry_run=True, print_details=False,
+                           probe=lambda spec: calls.append(spec) or {"best_rows": 3})
+        self.assertEqual(len(calls), 1)
+        self.assertIn("one-traveller probe of the first search: best_rows=3", out.getvalue())
+
+    def test_a_local_run_warns_in_plain_text_not_as_an_annotation(self):
+        cfg = bd.load_config(raw_config(trip_nights=[14], travellers=5), today=NOW.date())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            bd.run_job(cfg, history_path=self.history, alerts_path=self.alerts, now=NOW, fetch=self._empty,
+                       send=Sink(), dry_run=True, probe=lambda spec: {})
+        self.assertIn("warning: business round trips are priced for a party over 4", out.getvalue())
+        self.assertNotIn("::warning::", out.getvalue())
+
     def test_a_party_of_four_is_not_warned_or_probed(self):
         calls = []
         text = self._run(4, lambda spec: calls.append(spec) or {})
