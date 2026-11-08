@@ -255,7 +255,7 @@ class TheOverviewAndQuickAnswersCarryItTests(unittest.TestCase):
     def test_a_row_shows_both_totals_each_with_its_verdict(self):
         text = visible_text(self._table(_both()))
         row = text[text.index("Self-build: Kruger self-drive"):]
-        row = row[:row.index("Kruger + Cape Town")]
+        row = row[:row.index("Masai Mara 4 nights")]
         self.assertIn("Business £24,164", row)
         self.assertIn("Economy £9,164", row)
         self.assertIn("£12,164 over", row)
@@ -264,18 +264,18 @@ class TheOverviewAndQuickAnswersCarryItTests(unittest.TestCase):
     def test_a_row_with_only_one_read_names_it_and_says_nothing_of_the_other(self):
         row = visible_text(self._table(_load([_row("AF-10", "ECONOMY", 5_000)])))
         row = row[row.index("Self-build: Kruger self-drive"):]
-        row = row[:row.index("Kruger + Cape Town")]
+        row = row[:row.index("Masai Mara 4 nights")]
         self.assertIn("Economy £9,164", row)
         self.assertNotIn("Business £", row)
 
     def test_a_row_names_the_cabin_not_read_yet_without_a_figure_for_it(self):
         row = visible_text(self._table(_load([_row("AF-10", "ECONOMY", 5_000)])))
         row = row[row.index("Self-build: Kruger self-drive"):]
-        row = row[:row.index("Kruger + Cape Town")]
+        row = row[:row.index("Masai Mara 4 nights")]
         self.assertIn("Business not read yet", row)
         both = visible_text(self._table(_both()))
         both = both[both.index("Self-build: Kruger self-drive"):]
-        self.assertNotIn("not read yet", both[:both.index("Kruger + Cape Town")])
+        self.assertNotIn("not read yet", both[:both.index("Masai Mara 4 nights")])
         self.assertIn("£12,164 over", visible_text(self._table(_both())))
 
     def test_the_order_of_the_rows_is_what_it_was_without_reads(self):

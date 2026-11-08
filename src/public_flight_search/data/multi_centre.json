@@ -723,54 +723,6 @@
       ]
     },
     {
-      "id": "AF-07",
-      "region": "africa",
-      "kind": "operator",
-      "season": "summer",
-      "title": "Kruger + Cape Town + Winelands, 12 nights (TourCompass)",
-      "operator_ref": "TourCompass Kruger, Cape Town and Winelands, 13 days with flights (headline price only)",
-      "stops": [
-        {
-          "place": "Kruger area",
-          "nights": 4,
-          "airport": "JNB",
-          "hotel": "base camp not named: the tour page itself was not read",
-          "basis": "operator headline price"
-        },
-        {
-          "place": "Cape Town + Winelands",
-          "nights": 8,
-          "airport": "CPT",
-          "hotel": "not named: the tour page itself was not read",
-          "basis": "operator headline price"
-        }
-      ],
-      "legs": [
-        [
-          "LHR",
-          "JNB"
-        ],
-        [
-          "JNB",
-          "CPT"
-        ],
-        [
-          "CPT",
-          "LHR"
-        ]
-      ],
-      "flight_shape": "Flights included.",
-      "cost_low_gbp": 16245,
-      "cost_high_gbp": 16245,
-      "cost_basis": "the operator's 'from' price GBP 3,249 per person including flights (tours index headline), two sharing, x5; dates and room supplement unknown.",
-      "why": "South Africa's cheapest flight-inclusive shape we found",
-      "catch": "index headline only, so lodges and board are unconfirmed; Cape Town is wet and cool in July",
-      "confidence": "estimate",
-      "source_urls": [
-        "https://www.tourcompass.com/south-africa/tours.htm"
-      ]
-    },
-    {
       "id": "AF-08",
       "region": "africa",
       "kind": "self-build",
@@ -1031,8 +983,7 @@
           "gbp": 5123,
           "basis": "read on Google Flights 20 Oct"
         }
-      ],
-      "compare_with": "AF-07"
+      ]
     },
     {
       "id": "AF-11",

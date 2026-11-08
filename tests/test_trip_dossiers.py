@@ -470,12 +470,12 @@ class PairsAreVisibleInTheTableTests(unittest.TestCase):
         table = visible_text(html[html.index("Every option at a glance"):html.index('id="trips"')])
         rows = {r["trip"].id: r["trip"] for r in _rows()}
         for ident, expected in (("AF-01", "compared with our build"), ("AF-02", "compared with our build"),
-                                ("AF-07", "compared with our build"), ("AF-08", "compared with an operator package"),
-                                ("AF-09", "compared with an operator package"), ("AF-10", "compared with an operator package")):
+                                ("AF-08", "compared with an operator package"),
+                                ("AF-09", "compared with an operator package")):
             line = table[table.index(rows[ident].title):]
             line = line[:line.index("over") if "over" in line[:300] else 300]
             self.assertIn(expected, line, ident)
-        self.assertEqual(table.count("compared with"), 6, "exactly the three pairs, both sides")
+        self.assertEqual(table.count("compared with"), 4, "exactly the two pairs, both sides")
 
 
 class PackageVersusOurBuildTests(unittest.TestCase):
@@ -484,6 +484,7 @@ class PackageVersusOurBuildTests(unittest.TestCase):
         cls.fares = _reads()
         cls.html = _html(fares=cls.fares)
         cls.rows = {r["trip"].id: r["trip"] for r in _rows(cls.fares)}
+        cls.rows_full = {r["trip"].id: r for r in _rows(cls.fares)}
 
     def _block(self, ident):
         part = visible_text(_slice(self.html, f"trip-{ident}"))
@@ -492,7 +493,7 @@ class PackageVersusOurBuildTests(unittest.TestCase):
         return part[start:end]
 
     def test_a_package_and_our_build_of_the_same_shape_sit_side_by_side_in_both_dossiers(self):
-        for ident, other in (("AF-01", "AF-08"), ("AF-08", "AF-01"), ("AF-02", "AF-09"), ("AF-07", "AF-10")):
+        for ident, other in (("AF-01", "AF-08"), ("AF-08", "AF-01"), ("AF-02", "AF-09")):
             block = self._block(ident)
             for trip in (self.rows[ident], self.rows[other]):
                 self.assertIn(trip.title, block, (ident, trip.id))
@@ -506,11 +507,17 @@ class PackageVersusOurBuildTests(unittest.TestCase):
             self.assertIn(f"£{gap:,} more", self._block(ident))
 
     def test_a_cheaper_build_says_less_not_more(self):
-        package, ours = self.rows["AF-07"], self.rows["AF-10"]
-        gap = round(package.cost_low_gbp - ours.cost_low_gbp)
-        self.assertGreater(gap, 0)
-        self.assertIn(f"£{gap:,} less", self._block("AF-10"))
-        self.assertIn(f"£{gap:,} less", self._block("AF-07"), "the sentence is about the pair, not about whose page it is on")
+        # The shipped pairs all have the build dearer, so flip one synthetically: the package costs more than our build.
+        import dataclasses
+
+        from public_flight_search import trip_dossier as td
+
+        package_row, build_row = dict(self.rows_full["AF-01"]), dict(self.rows_full["AF-08"])
+        package_row["low"] = package_row["high"] = float(build_row["low"]) + 1_000
+        package_row["trip"] = dataclasses.replace(package_row["trip"], cost_low_gbp=package_row["low"],
+                                                  cost_high_gbp=package_row["low"])
+        block = td._pair_block(package_row, build_row, first=True)
+        self.assertIn("£1,000 less", " ".join(str(v) for v in block.values()))
 
     def test_both_sides_show_price_nights_and_cost_a_night_so_unequal_lengths_are_visible(self):
         block = self._block("AF-01")

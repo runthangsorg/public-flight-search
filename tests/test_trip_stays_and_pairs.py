@@ -216,11 +216,11 @@ class ShippedDataTests(unittest.TestCase):
         self.assertEqual([line for line in self.skips if "compare_with" in line or "cost lines" in line
                           or "properties" in line], [])
 
-    def test_the_three_obvious_pairs_are_declared(self):
+    def test_the_two_obvious_pairs_are_declared(self):
         pairs = counterparts(list(self.trips.values()))
         self.assertEqual([t.id for t in pairs["AF-01"]], ["AF-08"], "Kuoni Tanzania safari + Zanzibar <-> our Ngorongoro + Zanzibar")
         self.assertEqual([t.id for t in pairs["AF-02"]], ["AF-09"], "TourCompass Serengeti fly-in <-> our Sayari Camp + Zanzibar")
-        self.assertEqual([t.id for t in pairs["AF-07"]], ["AF-10"], "TourCompass Kruger + Cape Town <-> our Kruger self-drive + Cape Town")
+        self.assertEqual(pairs.get("AF-10", []), [], "the Kruger + Cape Town package was a Winelands tour and is gone (8 Nov 2026)")
 
     def test_every_pair_is_one_package_and_one_build(self):
         for ident, others in counterparts(list(self.trips.values())).items():
