@@ -163,8 +163,10 @@ def _stopover(hub: str = "DOH", label: str = "Doha", flight: float = 2900.0) -> 
 
 def _config(**overrides):
     config = load_holiday_config(JULY.read_text(encoding="utf-8"))
-    # These tests are about layout, with or without a flight read; the complete-price rule has its own tests.
+    # These tests are about layout, with or without a flight read; the complete-price rule has its own tests, and so
+    # does the over-budget list (8 Nov 2026), which would otherwise turn most trip pages into one line each.
     object.__setattr__(config, "complete_price_only", False)
+    object.__setattr__(config, "over_budget_lines", False)
     for key, value in overrides.items():
         object.__setattr__(config, key, value)
     return config

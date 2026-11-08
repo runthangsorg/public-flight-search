@@ -114,6 +114,7 @@ class TheTripPagesTests(unittest.TestCase):
         config = load_holiday_config(json.dumps(raw))
         self.assertEqual(config.business_max_premium_pp_gbp, 500)
         object.__setattr__(config, "complete_price_only", False)
+        object.__setattr__(config, "over_budget_lines", False)
         html, text, full = self._render([deal_read(PACKAGE, "ECONOMY", 5_000), deal_read(PACKAGE, "MIXED", 9_000)],
                                         config=config)
         self._assert_hidden(html, text, full, "£4,000")

@@ -108,7 +108,9 @@ def _link_cabin(url: str) -> str:
 
 def _config(path: Path, budget: float | None = None):
     config = load_holiday_config(path.read_text(encoding="utf-8"))
-    config = dataclasses.replace(config, complete_price_only=False)  # these tests are about layout, with or without a flight read
+    # these tests are about layout, with or without a flight read, and look at every trip's page (8 Nov 2026: a trip
+    # more than 20% over the budget is otherwise one line in the body; test_over_budget_trips_are_lines)
+    config = dataclasses.replace(config, complete_price_only=False, over_budget_lines=False)
     return config if budget is None else dataclasses.replace(config, max_budget_gbp=budget)
 
 

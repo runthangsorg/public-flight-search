@@ -2242,6 +2242,41 @@ def _trip_priced_total(row: Mapping[str, Any]) -> Optional[float]:
     return min(totals) if totals else None
 
 
+#: A trip whose low end is more than this times the budget is a line in the body's "Over budget" list, not a full page
+#: (owner, 8 Nov 2026); its full page is in the attachment and the plain-text part.
+OVER_BUDGET_LINE_FACTOR = 1.2
+
+
+def over_budget_line(total: Any, budget: Any) -> bool:
+    """Whether a trip's low end is more than 20% over the budget. No budget or no total: never."""
+    try:
+        amount, ceiling = float(total), float(budget)
+    except (TypeError, ValueError):
+        return False
+    return ceiling > 0 and amount > ceiling * OVER_BUDGET_LINE_FACTOR
+
+
+def _over_budget_trips_html(rows: Sequence[Mapping[str, Any]], budget: float, attachment_name: str) -> str:
+    """One line per trip more than 20% over the budget: title, nights, low end, how much over, and its page."""
+    if not rows:
+        return ""
+    where = f" (full pages in {attachment_name})" if attachment_name else " (full pages in the plain-text version)"
+    out = [f'<div id="over-budget" style="font-size:13px; color:{_MUTED}; margin:16px 0 0 0;">'
+           f'<div style="font-size:15px; font-weight:700; color:{_INK};">Over budget</div>'
+           f'<div>More than {round((OVER_BUDGET_LINE_FACTOR - 1) * 100)}% over the {_gbp(budget)} budget at the low '
+           f'end{_esc(where)}:</div>']
+    for row in rows:
+        trip = row["trip"]
+        low = _trip_priced_total(row) or 0.0
+        page = (f' · <a href="{_esc(attachment_name)}#trip-{_esc(trip.id)}" style="color:{_ACCENT}; '
+                f'text-decoration:none;">full page ↗</a>' if attachment_name else "")
+        out.append(f'<div style="padding:2px 0 0 0;"><b style="color:{_INK};">{_esc(trip.title)}</b> · '
+                   f'{int(trip.total_nights)} nights · {_gbp(low)} low end · {_gbp(low - budget)} over '
+                   f'({round((low - budget) / budget * 100)}%){page}</div>')
+    out.append("</div>")
+    return "".join(out)
+
+
 def _ceiling_split(config: HolidayConfig,
                    cards: Sequence[Mapping[str, Any]],
                    rows: Sequence[Mapping[str, Any]],
@@ -3231,6 +3266,20 @@ def _render_compact(
     dossiers = td.build_trip_dossiers(config, multi_rows, generated_at=generated_at,
                                       hotel_ratings=hotel_ratings, hotel_media=hotel_media)
     answers = _quick_answers(config, multi_rows, cards, dossiers)
+    # OVER BUDGET (owner, 8 Nov 2026): a trip whose low end is more than 20% over the budget is one line in the body, not
+    # a page; its page stays in the attachment and the plain text. A quick answer that names one points at its line.
+    trip_budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
+    over_rows = ([] if full_detail or not getattr(config, "over_budget_lines", True) else
+                 # in the table's order, so the list reads like the table it shortens
+                 [row for _k, _l, group in td.owner_order(multi_rows) for row in group
+                  if over_budget_line(_trip_priced_total(row), trip_budget)])
+    as_lines = {row["trip"].id for row in over_rows}
+    for key in ("cheapest", "tanzania"):
+        if answers.get(key) and str(answers[key].get("anchor", "")).removeprefix("trip-") in as_lines:
+            answers[key] = {**answers[key], "anchor": "over-budget"}
+    answers["pairs"] = [{**p, "anchor": "over-budget"} if p["anchor"].removeprefix("trip-") in as_lines else p
+                        for p in answers.get("pairs") or []]
+    over_trips_html = _over_budget_trips_html(over_rows, trip_budget, attachment_name)
     if full_detail:
         attachment_line = FULL_COPY_LINE
     elif attachment_name:
@@ -3267,7 +3316,8 @@ def _render_compact(
         _over_budget_html(config),
         _watch_html(config),
         _notes_html(config, deals, left_out=left_out),
-        _how_to_read_html(dossiers, body=not full_detail, attachment_name=attachment_name),
+        _how_to_read_html([d for d in dossiers if d["id"] not in as_lines], body=not full_detail,
+                          attachment_name=attachment_name),
     ]
     resorts_head = (
         f'<div id="resorts" style="font-size:15px; font-weight:700; color:{_INK}; margin:18px 0 0 0;">'
@@ -3275,8 +3325,9 @@ def _render_compact(
     ) if cards else ""
     budget_words = _gbp(getattr(config, "max_budget_gbp", 0.0))
     group_heads = {key: _group_heading_html(key, grp, budget_words) for key, _l, grp in td.owner_order(multi_rows)}
+    paged = [d for d in dossiers if d["id"] not in as_lines]
     sizes = {d["id"]: [_utf8_len(td.dossier_html(d, level)) for level in (td.FULL, td.TRIMMED, td.SHORT)]
-             for d in dossiers}
+             for d in paged}
     card_html = [_card_html(card) for card in cards]
     card_sizes = [_utf8_len(chunk) for chunk in card_html]
     dropped_note_size = 260
@@ -3284,13 +3335,14 @@ def _render_compact(
     moved_note_size = 260
     fixed = (sum(_utf8_len(chunk) for chunk in out) + sum(_utf8_len(chunk) for chunk in after_cards)
              + hol._CLOSING_TAIL_ALLOWANCE_BYTES + _utf8_len(resorts_head)
-             + sum(_utf8_len(chunk) for chunk in group_heads.values()) + _utf8_len('<div id="trips"></div>'))
+             + sum(_utf8_len(chunk) for chunk in group_heads.values()) + _utf8_len('<div id="trips"></div>')
+             + _utf8_len(over_trips_html))
     shown_cards = len(cards)
     limit = hol.EMAIL_HTML_BUDGET_BYTES
     moved: set[str] = set()
 
     def total(chosen: Mapping[str, int], cards_shown: int, *, shortened: bool) -> int:
-        return (fixed + sum(sizes[d["id"]][chosen[d["id"]]] for d in dossiers if d["id"] not in moved)
+        return (fixed + sum(sizes[d["id"]][chosen[d["id"]]] for d in paged if d["id"] not in moved)
                 + sum(card_sizes[:cards_shown])
                 + (dropped_note_size if cards_shown < len(cards) else 0)
                 + (summary_allowance if shortened else 0)
@@ -3304,23 +3356,23 @@ def _render_compact(
     # did. If the body STILL does not fit, the last trips' pages move to the attachment, never the first in the
     # owner's order: a page can leave the body, but no trip leaves the table, and a line says how many pages moved
     # and where they went.
-    levels = {d["id"]: td.FULL for d in dossiers}
+    levels = {d["id"]: td.FULL for d in paged}
     # (The attachment has no budget: Gmail clips a body, not an attached file.)
     if not full_detail and total(levels, shown_cards, shortened=False) > limit:
         for target in (td.TRIMMED, td.SHORT):
-            for d in reversed(dossiers):
+            for d in reversed(paged):
                 if total(levels, shown_cards, shortened=True) <= limit:
                     break
                 levels[d["id"]] = max(levels[d["id"]], target)
         while (total(levels, shown_cards, shortened=True) > limit
                and shown_cards > min(len(cards), hol.MIN_RENDERED_HOTEL_CARDS)):
             shown_cards -= 1
-        for d in reversed(dossiers):
+        for d in reversed(paged):
             if total(levels, shown_cards, shortened=True) <= limit:
                 break
             moved.add(d["id"])
     out.append('<div id="trips"></div>')
-    kept = [d for d in dossiers if d["id"] not in moved]
+    kept = [d for d in paged if d["id"] not in moved]
     out.append(_shortened_summary_html(kept, levels))
     out.append(_moved_pages_html(len(moved), attachment_name))
     for key, _label, _group in td.owner_order(multi_rows):
@@ -3329,6 +3381,7 @@ def _render_compact(
             continue
         out.append(group_heads[key])
         out.extend(td.dossier_html(d, levels[d["id"]]) for d in group)
+    out.append(over_trips_html)
     out.append(resorts_head)
     out.extend(card_html[:shown_cards])
     if shown_cards < len(cards):

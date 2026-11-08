@@ -113,6 +113,9 @@ class HolidayConfig:
     #: The most a Business figure may cost over Economy per person and still be shown when the Business trip does not
     #: fit the budget (owner, 8 Nov 2026). ``None`` uses ``holiday_email.BUSINESS_DEAL_MAX_PREMIUM_PP_GBP`` (£1,200).
     business_max_premium_pp_gbp: Optional[float] = None
+    #: A trip more than 20% over the budget is one line in the body, not a page (owner, 8 Nov 2026). Layout tests switch
+    #: it off so they can look at every page; a real config never needs to name it.
+    over_budget_lines: bool = True
     #: Stay lengths the report will price. A date pair outside the band is
     #: never a candidate: with a 7x7 December grid a 2-night trip is the
     #: cheapest total on every resort, so "cheapest of all pairs" would be a
