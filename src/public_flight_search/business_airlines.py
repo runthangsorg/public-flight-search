@@ -114,3 +114,36 @@ def airline_tier(airlines: Union[str, Iterable[str]], tier_1: Iterable[str]) -> 
     if not good or not flown:
         return 2
     return 1 if all(carrier_named(carrier, good) for carrier in flown) else 2
+
+
+#: The major full-service carriers whose long-haul Business the owner counts as a "good airline" (owner, 8 Nov 2026:
+#: "prefer economy flights ... rather than wasting money on business class unless the business class is a really good
+#: deal and good airline and long"). The holiday planner shows a Business figure only when every carrier flying the
+#: Business long-haul flights is on this list. IATA code first, then the name the pages print; either spelling matches.
+#: This is the planner's own list; the business-deals job keeps its configurable ``airline_quality.tier_1``.
+BUSINESS_QUALITY_CARRIERS = (
+    ("QR", "Qatar Airways"), ("EK", "Emirates"), ("EY", "Etihad"), ("SQ", "Singapore Airlines"),
+    ("CX", "Cathay Pacific"), ("JL", "Japan Airlines"), ("NH", "All Nippon Airways"), ("TK", "Turkish Airlines"),
+    ("BA", "British Airways"), ("VS", "Virgin Atlantic"), ("LX", "Swiss"), ("LH", "Lufthansa"), ("KL", "KLM"),
+    ("AF", "Air France"), ("WY", "Oman Air"), ("QF", "Qantas"),
+)
+
+#: Two airlines' names run together by a page's parser ("British AirwaysIberia"): a lower-case letter directly followed
+#: by a Capital and a lower-case letter. Split before matching, so a run-together pair is two carriers, never one.
+_RUN_TOGETHER = re.compile(r"(?<=[a-z])(?=[A-Z][a-z])")
+
+
+def quality_business_carrier(airlines: Union[str, Iterable[str]]) -> bool:
+    """True when every carrier named is on ``BUSINESS_QUALITY_CARRIERS`` and none is banned for business.
+
+    Empty, "Multiple airlines" or any one carrier off the list is False: an unnamed carrier is never assumed to be a good
+    one, and a mixed itinerary is only as good as its worst carrier (the ``airline_tier`` rule).
+    """
+    names = [n for _code, n in BUSINESS_QUALITY_CARRIERS]
+    codes = {code.lower() for code, _n in BUSINESS_QUALITY_CARRIERS}
+    flown: list[str] = []
+    for carrier in split_airlines(airlines):
+        flown.extend(part.strip() for part in _RUN_TOGETHER.split(carrier) if part.strip())
+    if not flown or excluded_airline(flown):
+        return False
+    return all(_norm(c) in codes or carrier_named(c, names) for c in flown)

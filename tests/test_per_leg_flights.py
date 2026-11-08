@@ -35,6 +35,20 @@ from test_holiday_email_compact import _config, _deals, visible_text
 from test_multi_centre_reads import _multi_centre_read
 from test_trip_dossiers import NOW, STAMPS, UNLIMITED, _attachment, _html, _rows, _slice, _table_ids, _text
 
+
+#: These tests pin how a read's flights are LAID OUT. Whether a Business read is shown at all is the owner's
+#: business-deal rule (8 Nov 2026), pinned in test_business_only_when_a_deal; it is lifted here so the layout under
+#: test is on the page.
+_EVERY_BUSINESS_READ_IS_A_DEAL = patch("public_flight_search.holiday_email.business_is_deal", lambda **_kw: True)
+
+
+def setUpModule():
+    _EVERY_BUSINESS_READ_IS_A_DEAL.start()
+
+
+def tearDownModule():
+    _EVERY_BUSINESS_READ_IS_A_DEAL.stop()
+
 LEGS_AF01 = [("LHR", "JRO", "2027-06-27"), ("JRO", "ZNZ", "2027-07-01"), ("ZNZ", "LHR", "2027-07-14")]
 
 FLIGHTS = [

@@ -43,6 +43,21 @@ from public_flight_search.holidays import (
     render_flight_options,
 )
 from public_flight_search.live_verify import LiveFareEvidence, load_live_flight_evidence
+from unittest.mock import patch
+
+
+#: These tests pin how a card's Business row is priced and laid out. Whether a Business read is shown at all is the owner's
+#: business-deal rule (8 Nov 2026), pinned in test_business_only_when_a_deal; it is lifted here so the layout under
+#: test is on the page.
+_EVERY_BUSINESS_READ_IS_A_DEAL = patch("public_flight_search.holiday_email.business_is_deal", lambda **_kw: True)
+
+
+def setUpModule():
+    _EVERY_BUSINESS_READ_IS_A_DEAL.start()
+
+
+def tearDownModule():
+    _EVERY_BUSINESS_READ_IS_A_DEAL.stop()
 
 ROOT = Path(__file__).parents[1]
 JULY = ROOT / "examples" / "july_holiday_config.json"

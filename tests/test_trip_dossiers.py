@@ -269,6 +269,7 @@ class NotCollectedIsSaidNotInventedTests(unittest.TestCase):
             with self.subTest(trip=ident):
                 self.assertEqual(visible_text(_slice(html, f"trip-{ident}")).count("not captured"), 1)
 
+    @patch("public_flight_search.holiday_email.business_is_deal", lambda **_kw: True)  # layout, not the deal rule
     def test_a_mixed_cabin_read_says_which_legs_are_in_which_cabin_and_is_not_called_economy(self):
         mix = "Business LHR-JRO, ZNZ-LHR + Economy JRO-ZNZ"
         fares = _reads(["AF-01"], cabin="MIXED", cabin_mix=mix, total_gbp=21000.0)

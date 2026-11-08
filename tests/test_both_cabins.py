@@ -14,6 +14,12 @@ These tests pin that:
 * the page says in one line what each product is made of, and never calls a mixed read Economy.
 
 Synthetic reads throughout; the trips are the shipped ``multi_centre.json``.
+
+8 Nov 2026 (owner): a Business figure is shown only when it is a real deal (good airline, a flight over 8 hours, and the
+trip fits the budget in Business or costs at most £1,200 a head more than Economy; ``test_business_only_when_a_deal``).
+These tests are about HOW both products are laid out, so their Business reads are flown by a quality carrier on a long
+flight and the per-head cap is lifted for this module; the one test with no Economy read to compare against now pins
+that its over-budget Business total is not shown.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from public_flight_search import holiday_email as he
 from public_flight_search import holidays as hol
 from public_flight_search import trip_dossier as td
 from public_flight_search.holiday_email import (
@@ -43,6 +50,16 @@ BUDGET = 12_000.0
 MIX = "Business LHR-JRO, ZNZ-LHR + Economy JRO-ZNZ"
 WANTED = {w["trip"]: w for w in multi_centre_wanted(_config())}
 
+_LIFT_CAP = patch.object(he, "BUSINESS_DEAL_MAX_PREMIUM_PP_GBP", 10 ** 9)
+
+
+def setUpModule():
+    _LIFT_CAP.start()
+
+
+def tearDownModule():
+    _LIFT_CAP.stop()
+
 
 def _row(trip, cabin, total, *, observed="2026-10-22T09:00:00+00:00", **extra):
     row = _multi_centre_read(WANTED[trip], observed_at=observed, total=float(total))
@@ -50,6 +67,9 @@ def _row(trip, cabin, total, *, observed="2026-10-22T09:00:00+00:00", **extra):
     row["source_url"] = f"https://example.org/SYNTHETIC-{trip}-{cabin}-{int(total)}"
     if cabin == "MIXED":
         row["cabin_mix"] = MIX
+    if cabin != "ECONOMY":
+        # A quality carrier on a long flight, so the business-deal rule does not hide what these tests lay out.
+        row.update({"carrier": "Qatar Airways", "duration": "12h 50m"})
     row["vendor"] = "kayak" if cabin != "ECONOMY" else "google"
     row.update(extra)
     return row
@@ -160,11 +180,12 @@ class TheTripTotalIsShownUnderBothReadsTests(unittest.TestCase):
         self.assertIn(f"£{self.NON_FLIGHT + 5_000:,.0f}", text)
         self.assertEqual([t["key"] for t in self._dossier(fares)["cabin_totals"]], ["economy"])
 
-    def test_only_a_business_read_says_the_economy_one_has_not_been_read(self):
+    def test_only_a_business_read_that_is_not_a_deal_prints_no_total_for_it(self):
+        # 8 Nov 2026: with no Economy read to compare and a Business total over the budget, Business is not a deal.
         fares = _load([_row("AF-10", "MIXED", 20_000)])
         text = visible_text(_page(fares))
-        self.assertIn("all economy has not been read for these dates yet", text)
-        self.assertIn(f"£{self.NON_FLIGHT + 20_000:,.0f}", text)
+        self.assertIn("Business not shown: not a deal for these dates", text)
+        self.assertNotIn(f"£{self.NON_FLIGHT + 20_000:,.0f}", text)
 
     def test_with_neither_read_the_trip_keeps_its_stated_figure_and_claims_no_cabin_totals(self):
         text = visible_text(_page(None))
@@ -219,10 +240,10 @@ class TheFlightsSectionPrintsBothReadsTests(unittest.TestCase):
                     for o, d, day in legs]
 
         fares = _load([_row("AF-10", "ECONOMY", 5_000, flights=flights("Economy Air", "ECONOMY")),
-                       _row("AF-10", "MIXED", 20_000, flights=flights("Business Air", "BUSINESS"))])
+                       _row("AF-10", "MIXED", 20_000, flights=flights("Qatar Airways", "BUSINESS"))])
         text = visible_text(_page(fares))
         self.assertEqual(text.count("departs 08:15"), 6, "three legs for each of the two options")
-        self.assertIn("Business Air", text)
+        self.assertIn("Qatar Airways", text)
         self.assertIn("Economy Air", text)
         self.assertNotIn("not captured", text)
 

@@ -110,6 +110,9 @@ class HolidayConfig:
     #: A trip is shown only when flights were read for its dates (owner, 23 Oct 2026: "either give the complete price or
     #: don't bother"). Layout tests switch it off; a real config never needs to name it.
     complete_price_only: bool = True
+    #: The most a Business figure may cost over Economy per person and still be shown when the Business trip does not
+    #: fit the budget (owner, 8 Nov 2026). ``None`` uses ``holiday_email.BUSINESS_DEAL_MAX_PREMIUM_PP_GBP`` (£1,200).
+    business_max_premium_pp_gbp: Optional[float] = None
     #: Stay lengths the report will price. A date pair outside the band is
     #: never a candidate: with a 7x7 December grid a 2-night trip is the
     #: cheapest total on every resort, so "cheapest of all pairs" would be a
@@ -744,6 +747,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         "outbound_dates", "return_dates", "destinations",
         "cabin_class", "cabin_classes", "max_budget_gbp",
         "max_total_gbp", "min_nights", "max_nights", "complete_price_only",
+        "business_max_premium_pp_gbp",
     }
     if not isinstance(raw, dict) or set(raw) - allowed:
         raise ConfigError("holiday configuration contains unknown fields")
@@ -790,6 +794,13 @@ def load_holiday_config(payload: str) -> HolidayConfig:
     # An optional ceiling on one holiday's total, and nothing else: a value that is
     # not a number or not positive is a typo, and a typo must fail loudly rather
     # than silently remove every holiday over zero or leave the ceiling off.
+    premium_raw = raw.get("business_max_premium_pp_gbp")
+    premium_pp: Optional[float] = None
+    if premium_raw is not None:
+        if isinstance(premium_raw, bool) or not isinstance(premium_raw, (int, float)) or premium_raw <= 0:
+            raise ConfigError("business_max_premium_pp_gbp must be a positive number")
+        premium_pp = float(premium_raw)
+
     max_total_raw = raw.get("max_total_gbp")
     max_total: Optional[float] = None
     if max_total_raw is not None:
@@ -905,6 +916,7 @@ def load_holiday_config(payload: str) -> HolidayConfig:
         cabin_classes=derived_cabins,
         max_budget_gbp=max_budget,
         max_total_gbp=max_total,
+        business_max_premium_pp_gbp=premium_pp,
         complete_price_only=raw.get("complete_price_only", True) is not False,
         min_nights=min_nights,
         max_nights=max_nights,
@@ -7314,6 +7326,8 @@ the cards' own prices.
                     + str(fare["observed_at"])[:10]
                 ),
                 "source_url": fare["source_url"],
+                "carrier": str(fare.get("carrier") or ""),
+                "duration": str(fare.get("duration") or ""),
                 "hub_hotel_confidence": info["hotel"].get("confidence", ""),
                 "within_budget": _within(total_pkg, true_d2d),
             }
@@ -7467,6 +7481,10 @@ the cards' own prices.
             row = _option_row("business", "BUSINESS", picked,
                               _evidence_words(picked, "Business fare"))
             row["route"] = fare_route_words(chosen, route)
+            # Who flies it and for how long: the e-mail shows a Business figure only for a good airline on a long
+            # flight (owner, 8 Nov 2026).
+            row["carrier"] = str(getattr(chosen, "carrier", "") or "")
+            row["duration_minutes"] = getattr(chosen, "duration_minutes", None)
             row["cheaper_alternative"] = _cheaper_with_more_stops(chosen, [c for c, _ in candidates])
             return (row,)
         return ({

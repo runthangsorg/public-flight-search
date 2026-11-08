@@ -35,7 +35,8 @@ from typing import Any, Mapping, Optional, Sequence, Union
 
 from . import climate
 from . import holidays as hol
-from .cabin import SHORT_HAUL_CABIN
+from .business_airlines import quality_business_carrier
+from .cabin import BUSINESS_FLIGHT_HOURS, SHORT_HAUL_CABIN
 from .holidays import (
     HolidayConfig,
     PackageDeal,
@@ -945,6 +946,44 @@ def _option_total(option: Mapping[str, Any]) -> float:
     return 0.0
 
 
+def _card_economy_total(options: Sequence[Mapping[str, Any]], kind: str) -> Optional[float]:
+    """The Economy figure a card's Business row is compared with: its own Economy row, or the cheapest Economy stopover."""
+    want = "economy" if kind == "business" else "stopover"
+    totals = [_option_total(o) for o in options if str(o.get("kind", "")) == want and _option_total(o) > 0]
+    return min(totals) if totals else None
+
+
+def _card_business_is_deal(option: Mapping[str, Any], options: Sequence[Mapping[str, Any]], travellers: int) -> bool:
+    """The trip pages' rule (``business_is_deal``) for a card's priced Business row.
+
+    Long: the fare's own duration when the read states one; a direct Business row with none is long by the cabin policy
+    (a card only carries one when its flight is over 8 hours). A Business stopover is long only when its read says so.
+    """
+    kind = str(option.get("kind", ""))
+    if kind == "business":
+        minutes = option.get("duration_minutes")
+        long_haul = minutes is None or float(minutes) > BUSINESS_FLIGHT_HOURS * 60
+    else:
+        long_haul = (duration_hours(option.get("duration")) or 0.0) > BUSINESS_FLIGHT_HOURS
+    return business_is_deal(
+        business_total=_option_total(option), economy_total=_card_economy_total(options, kind),
+        carriers=[str(option.get("carrier") or "")], long_haul=long_haul, trip_total=None, budget=0.0,
+        travellers=travellers, fits=bool(option.get("within_budget")))
+
+
+def business_note_words(deal: PackageDeal, *, travellers: int = 5) -> str:
+    """The one line a card prints when a Business fare was read and set aside as not a deal; "" otherwise."""
+    options = list(getattr(deal, "flight_options", ()) or ())
+    for option in options:
+        if str(option.get("kind", "")) not in ("business", "stopover_business") or option.get("not_priced"):
+            continue
+        if _option_total(option) <= 0 or _card_business_is_deal(option, options, travellers):
+            continue
+        economy = _card_economy_total(options, str(option.get("kind", "")))
+        return business_hidden_words(_option_total(option) - economy if economy is not None else None, travellers)
+    return ""
+
+
 def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, str, FlightPrice]]:
     """A long-haul card's rows: Business, Economy, one Gulf stopover.
 
@@ -969,6 +1008,11 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
 
     Empty for a short-haul card: a destination with no London-stall Business
     option prices one cabin and gets no comparison table at all.
+
+    8 Nov 2026 (owner): a PRICED Business row is kept only when it is a real
+    deal (``_card_business_is_deal``: good airline, long flight, fits the budget
+    or costs at most the per-head cap more than Economy); otherwise it is left
+    out and the card prints ``business_note_words`` instead.
     """
     rows: list[tuple[str, str, Union[str, tuple[str, str]]]] = []
     options = list(getattr(deal, "flight_options", ()) or ())
@@ -991,6 +1035,9 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
             total = _option_total(option)
             if total <= 0:
                 continue
+            if kind == "business" and not _card_business_is_deal(option, options, travellers):
+                # Not a deal (owner, 8 Nov 2026): no Business figure; the card says so in one line instead.
+                break
             # The most direct Business fare, with one muted line naming the
             # cheaper read that stops more (owner steer 2026-10-15). Same wording
             # as the detailed page, built once in holidays.
@@ -1015,7 +1062,7 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
             f"1-Stop via {hub}, 2 nights each way",
             _gbp(_option_total(cheapest)),
         ))
-        rows.extend(_business_stopover_rows(options))
+        rows.extend(_business_stopover_rows(options, travellers=travellers))
         return rows
     # Not priced for these dates: name one hub, offer the itinerary, and name the
     # airlines that sell a stopover there.
@@ -1046,12 +1093,12 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
         else price_text
     )
     rows.append(("Economy", f"1-Stop via {hub}, 2 nights each way", total))
-    rows.extend(_business_stopover_rows(options))
+    rows.extend(_business_stopover_rows(options, travellers=travellers))
     return rows
 
 
 def _business_stopover_rows(
-    options: Sequence[Mapping[str, Any]]
+    options: Sequence[Mapping[str, Any]], *, travellers: int = 5,
 ) -> list[tuple[str, str, FlightPrice]]:
     """The ``Business + stopover`` row, when a BUSINESS multi-city fare was read.
 
@@ -1064,6 +1111,8 @@ def _business_stopover_rows(
         option for option in options
         if str(option.get("kind", "")) == "stopover_business"
         and _option_total(option) > 0
+        # Business only when it is a real deal (owner, 8 Nov 2026).
+        and _card_business_is_deal(option, options, travellers)
     ]
     if not priced:
         return []
@@ -1444,6 +1493,7 @@ def _cards(config: HolidayConfig, deals: Sequence[PackageDeal], *,
             "tag_colour": tag_colour,
             "movement": movement_chip(trend_by_resort.get(str(deal.resort_name))),
             "flights": flight_rows(deal, travellers=travellers),
+            "business_note": business_note_words(deal, travellers=travellers),
             "why": why_lines(deal, config),
             "links": link_row(deal, config),
             "warnings": warning_lines(deal, config),
@@ -1678,6 +1728,8 @@ def _card_html(card: Mapping[str, Any]) -> str:
         out.append(_flight_table_html(card["flights"]))
         if _has_priced_flight_row(card["flights"]):
             out.append(f'<div style="font-size:13px; color:{_MUTED}; margin:2px 0 0 0;">{FLIGHT_ROWS_ARE_TRIP_TOTALS}</div>')
+    if card.get("business_note"):
+        out.append(f'<div style="font-size:13px; color:{_MUTED}; margin:2px 0 0 0;">{_esc(card["business_note"])}</div>')
     read = card["flight_read"]
     if read:
         out.append(
@@ -1801,7 +1853,75 @@ def cabin_label(key: str, read: Optional[Mapping[str, Any]] = None) -> str:
     return CABIN_LABELS["business"]
 
 
-def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: float) -> dict[str, Any]:
+#: The most a Business figure may cost over Economy, per person, and still be shown when the Business trip does not fit
+#: the budget (owner, 8 Nov 2026: business only when it "is a really good deal and good airline and long"). A config may
+#: set its own with ``business_max_premium_pp_gbp``; this is the default.
+BUSINESS_DEAL_MAX_PREMIUM_PP_GBP = 1_200
+
+_DURATION_RE = re.compile(r"^\s*(?:(\d+)\s*h(?:rs?|ours?)?)?\s*(?:(\d+)\s*m(?:in(?:ute)?s?)?)?\s*$", re.I)
+
+
+def duration_hours(text: Any) -> Optional[float]:
+    """``12h 50m`` / ``12 hrs 55 min`` / ``8h`` / ``45m`` as hours; ``None`` when it does not say."""
+    match = _DURATION_RE.match(str(text or ""))
+    if not match or not (match.group(1) or match.group(2)):
+        return None
+    return int(match.group(1) or 0) + int(match.group(2) or 0) / 60
+
+
+def _business_long_carriers(read: Mapping[str, Any]) -> list[str]:
+    """The carriers of the read's Business flights over 8 hours; empty when it flies none.
+
+    A read that lists every flight is judged flight by flight; an older read states one journey, so its own cabin and
+    duration stand for the long-haul flight (the private reader builds a MIXED read with Business only over 8 hours).
+    """
+    flights = read.get("flights")
+    if isinstance(flights, (list, tuple)) and flights:
+        return [str(f.get("carrier") or "") for f in flights
+                if isinstance(f, Mapping) and str(f.get("cabin") or "").strip().upper() == "BUSINESS"
+                and (duration_hours(f.get("duration")) or 0.0) > BUSINESS_FLIGHT_HOURS]
+    if str(read.get("cabin") or "").strip().upper() in ("MIXED", "BUSINESS") \
+            and (duration_hours(read.get("duration")) or 0.0) > BUSINESS_FLIGHT_HOURS:
+        return [str(read.get("carrier") or "")]
+    return []
+
+
+def business_is_deal(*, business_total: float, economy_total: Optional[float], carriers: Sequence[str],
+                     long_haul: bool, trip_total: Optional[float], budget: float, travellers: int,
+                     max_premium_pp: float = BUSINESS_DEAL_MAX_PREMIUM_PP_GBP,
+                     fits: Optional[bool] = None) -> bool:
+    """The owner's rule for showing a Business figure (8 Nov 2026), ALL of:
+
+    * a long-haul flight over 8 hours in Business (``long_haul``);
+    * every carrier on those flights is on ``BUSINESS_QUALITY_CARRIERS``;
+    * the Business whole-trip total fits the budget, OR Business costs at most ``max_premium_pp`` a head more than
+      Economy. A trip whose total cannot be re-priced in Business (a package) has only the premium test.
+    """
+    if not long_haul or not carriers or not all(quality_business_carrier(c) for c in carriers):
+        return False
+    if fits is None:
+        fits = trip_total is not None and budget > 0 and trip_total <= budget
+    cheap = (economy_total is not None
+             and business_total - economy_total <= float(max_premium_pp) * max(int(travellers), 1))
+    return fits or cheap
+
+
+def business_hidden_words(saving: Optional[float], travellers: int = 5) -> str:
+    """``Business not shown: not a deal for these dates (economy is £4,000 less for 5)``."""
+    tail = f" (economy is {_gbp(saving)} less for {int(travellers)})" if saving is not None and saving > 0 else ""
+    return f"Business not shown: not a deal for these dates{tail}"
+
+
+def _max_premium_pp(config: Any) -> float:
+    try:
+        value = float(getattr(config, "business_max_premium_pp_gbp", None))
+    except (TypeError, ValueError):
+        return float(BUSINESS_DEAL_MAX_PREMIUM_PP_GBP)
+    return value if value > 0 else float(BUSINESS_DEAL_MAX_PREMIUM_PP_GBP)
+
+
+def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: float, *, travellers: int = 5,
+                  max_premium_pp: float = BUSINESS_DEAL_MAX_PREMIUM_PP_GBP) -> dict[str, Any]:
     """A trip's two flight products from what was read, and its total under each where that can be said.
 
     ``reads`` is ``holidays.multi_centre_fares_for``: one read per cabin. The ``business`` option is the cheaper of the
@@ -1819,16 +1939,34 @@ def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: flo
     rule = [reads[c] for c in ("MIXED", "BUSINESS") if c in reads]
     business = min(rule, key=total_of) if rule else None
     economy = reads.get("ECONOMY")
-    chosen = {"business": business, "economy": economy}
-    out: dict[str, Any] = {"reads": chosen, "totals": [], "missing": []}
     line = trip_flights_line(trip)
+    rest = (float(trip.cost_low_gbp) - float(line.gbp)) if line is not None else None
+    # Business only when it is a real deal (owner, 8 Nov 2026); otherwise the read is set aside and the page says one
+    # line, with how much less Economy is. A Business read that is set aside is NOT "not read".
+    hidden: Optional[dict[str, Any]] = None
+    if business is not None:
+        economy_total = total_of(economy) if economy is not None else None
+        if not business_is_deal(
+                business_total=total_of(business), economy_total=economy_total,
+                carriers=_business_long_carriers(business), long_haul=bool(_business_long_carriers(business)),
+                trip_total=(rest + total_of(business)) if rest is not None else None,
+                budget=budget, travellers=travellers, max_premium_pp=max_premium_pp):
+            hidden = {"saving": (total_of(business) - economy_total) if economy_total is not None else None,
+                      "travellers": int(travellers)}
+            business = None
+    chosen = {"business": business, "economy": economy}
+    out: dict[str, Any] = {"reads": chosen, "totals": [], "missing": [], "business_hidden": hidden}
     if line is None or not (business or economy):
+        if line is not None and hidden is not None:
+            # A Business read was set aside and no Economy one exists: say Economy is the one still to read.
+            out["missing"].append(cabin_label("economy"))
         return out
-    rest = float(trip.cost_low_gbp) - float(line.gbp)
-    for key in ("business", "economy"):
+    # Economy is the headline everywhere (owner, 8 Nov 2026), so it is listed first.
+    for key in ("economy", "business"):
         read = chosen[key]
         if read is None:
-            out["missing"].append(cabin_label(key))
+            if not (key == "business" and hidden is not None):
+                out["missing"].append(cabin_label(key))
             continue
         total = rest + total_of(read)
         out["totals"].append({
@@ -1923,20 +2061,28 @@ def _multi_centre_rows(config: HolidayConfig, *,
             # reason this section exists. The itinerary is named in the skip log
             # rather than rendered as a dead end.
             continue
-        options = cabin_options(trip, hol.multi_centre_fares_for(trip.id, legs, fares=fares), budget)
-        if complete_only and not _has_complete_price(trip, options, hol.multi_centre_fare_for(trip.id, legs, fares=fares)):
+        options = cabin_options(trip, hol.multi_centre_fares_for(trip.id, legs, fares=fares), budget,
+                                travellers=int(getattr(config, "travellers", 5)),
+                                max_premium_pp=_max_premium_pp(config))
+        read = hol.multi_centre_fare_for(trip.id, legs, fares=fares)
+        if options.get("business_hidden") is not None:
+            # The rule-following read is the Business one; when that is not a deal the page's read is the Economy one.
+            read = options["reads"].get("economy")
+        if complete_only and not _has_complete_price(trip, options, read):
             continue
         rows.append({
             "trip": trip,
             # The legs are the trip's identity for a fare as well as for the
             # link, so they are kept on the row rather than rebuilt later.
             "legs": legs,
-            "read": hol.multi_centre_fare_for(trip.id, legs, fares=fares),
+            "read": read,
             # Both products (23 Oct 2026): the Business-long-haul read and the all-Economy read, each when read,
             # and, where the trip's own price itemises its flights, the trip's total under each.
             "reads": options["reads"],
             "cabin_totals": options["totals"],
             "cabin_missing": options["missing"],
+            # A Business read that was not a deal (owner, 8 Nov 2026): one line says so, and how much less Economy is.
+            "business_hidden": options.get("business_hidden"),
             "outbound": outbound,
             "return": returning,
             "nights": trip.total_nights,
@@ -3184,6 +3330,8 @@ def render_holiday_report_compact_text(
             )
         if _has_priced_flight_row(card["flights"]):
             lines.append(f"  {FLIGHT_ROWS_ARE_TRIP_TOTALS}")
+        if card.get("business_note"):
+            lines.append(f"  {card['business_note']}")
         read = card["flight_read"]
         if read:
             lines.append(f"  Outbound flight behind the price, read {read['read_on']}"

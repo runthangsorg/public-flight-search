@@ -400,7 +400,8 @@ def _flight_block(row: Mapping[str, Any]) -> dict[str, Any]:
     # own price, date, vendor, cabin words and, where the read has them, every flight; ``options`` is what the page
     # prints when there are two, and the top-level fields above stay the primary read's, so one-read pages are unchanged.
     options = []
-    for key in ("business", "economy"):
+    # Economy first: it is the headline everywhere (owner, 8 Nov 2026).
+    for key in ("economy", "business"):
         option_read = (row.get("reads") or {}).get(key)
         if option_read:
             options.append({"key": key, "label": _he().cabin_label(key, option_read), "read": option_read,
@@ -732,6 +733,10 @@ def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, gener
                 "flight": flight,
                 "cabin_totals": list(row.get("cabin_totals") or ()),
                 "cabin_missing": list(row.get("cabin_missing") or ()),
+                # One line when a Business read was set aside as not a deal (owner, 8 Nov 2026).
+                "business_hidden": (he.business_hidden_words(row["business_hidden"].get("saving"),
+                                                             row["business_hidden"].get("travellers", 5))
+                                    if row.get("business_hidden") else ""),
                 "bundled_flights": bool(flight["options"]) and not row.get("cabin_totals"),
                 "pair": pair,
                 "no_pair_words": (NO_BUILD_WORDS if trip.kind == "operator" else NO_PACKAGE_WORDS),
@@ -939,6 +944,10 @@ def _flights_two_html(d: Mapping[str, Any], level: int) -> str:
     return "".join(out)
 
 
+def _business_hidden_html(d: Mapping[str, Any]) -> str:
+    return f'<div style="margin:4px 0 0 0">{escape(d["business_hidden"])}</div>' if d.get("business_hidden") else ""
+
+
 def _flights_html(d: Mapping[str, Any], level: int) -> str:
     if len(d["flight"]["options"]) == 2:
         return _flights_two_html(d, level)
@@ -948,6 +957,7 @@ def _flights_html(d: Mapping[str, Any], level: int) -> str:
         out.append("<div>" + _a(f["read_url"], f["read_line"], bold=True) + "</div>")
     else:
         out.append("<div>Not read for these dates yet. " + _a(f["search_url"], "Search these flights", bold=True) + "</div>")
+    out.append(_business_hidden_html(d))
     out.append("<div>" + "<br>".join(escape(n) for n in _flights_notes(f, level)) + "</div>")
     return "".join(out)
 
@@ -966,8 +976,9 @@ def _short_flights_html(d: Mapping[str, Any]) -> str:
             f'{escape(day_words(lf["leg"][2]))} {escape(place_words(lf["leg"][0]))} → {escape(place_words(lf["leg"][1]))}: '
             f'<span style="color:{ink}">{escape(leg_flight_words(lf["flight"]))}</span>'
             for lf in f["leg_flights"])
-        return _heading("Flights") + head + "<div>" + lines + "<br>" + escape(TIMES_ARE_LOCAL_WORDS) + "</div>"
-    return _heading("Flights") + head + "<div>" + escape(f["times_note"]) + "</div>"
+        return (_heading("Flights") + head + _business_hidden_html(d) + "<div>" + lines + "<br>"
+                + escape(TIMES_ARE_LOCAL_WORDS) + "</div>")
+    return _heading("Flights") + head + _business_hidden_html(d) + "<div>" + escape(f["times_note"]) + "</div>"
 
 
 def _pair_html(d: Mapping[str, Any], level: int) -> str:
@@ -1216,6 +1227,8 @@ def dossier_lines(d: Mapping[str, Any]) -> list[str]:
         out.extend(f"    {note}" for note in _two_option_notes(d, FULL))
     elif f["status"] == "read":
         out.append(f"    {f['read_line']}: {f['read_url']}")
+        if d.get("business_hidden"):
+            out.append(f"    {d['business_hidden']}")
         out.extend(f"    {note}" for note in _flights_notes(f, FULL))
     else:
         out.append(f"    Not read for these dates yet. Search these flights: {f['search_url']}")
