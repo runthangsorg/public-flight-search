@@ -43,10 +43,12 @@ _EVERY_BUSINESS_READ_IS_A_DEAL = patch("public_flight_search.holiday_email.busin
 
 
 def setUpModule():
+    _LEG_RULE.start()
     _EVERY_BUSINESS_READ_IS_A_DEAL.start()
 
 
 def tearDownModule():
+    _LEG_RULE.stop()
     _EVERY_BUSINESS_READ_IS_A_DEAL.stop()
 
 
@@ -223,6 +225,11 @@ class TheContractIsDocumentedTests(unittest.TestCase):
         for doc in (hol._is_multi_centre_read.__doc__, td.__doc__):
             for word in ("flights", "departure_local", "arrival_local", "cabin_mix", "layover"):
                 self.assertIn(word, doc)
+
+# Rule 4 (8 Nov 2026) is tested in test_business_over_eight_hours; these tests lay out pages from one-journey reads.
+from leg_rule_off import lift_leg_rule as _lift_leg_rule  # noqa: E402
+
+_LEG_RULE = _lift_leg_rule()
 
 
 if __name__ == "__main__":

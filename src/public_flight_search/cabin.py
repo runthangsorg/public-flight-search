@@ -1,4 +1,13 @@
-"""Cabin policy: BUSINESS only when a leg is over 8 hours or the stopover is not overnight.
+"""Cabin policy: any flight leg over 8 hours is BUSINESS; shorter legs may be ECONOMY.
+
+**Rule 4, 2026-11-08, verbatim, the rule in force:**
+
+> reject economy where a leg is more than 8hrs, has to be business.
+
+``economy_allowed`` holds it: an Economy read is offered only when every leg is shown to be 8 hours or less, and a
+priced itinerary whose only read has an economy leg over 8 hours is not offered at that price. It overrides the
+earlier 8 Nov "business only when it is a deal" gate for legs over 8 hours; the quality-carrier list stays (Kenya
+Airways and Ethiopian are on it). Rules 1-3 below are the history it supersedes.
 
 Three owner rules, each narrowing the one before it.
 
@@ -189,6 +198,16 @@ def business_justified(leg_hours: Sequence[float], connection_hours: Sequence[fl
     if sum(legs) + sum(connections) <= BUSINESS_FLIGHT_HOURS:
         return False
     return any(hours < OVERNIGHT_STOPOVER_HOURS for hours in connections)
+
+
+def economy_allowed(leg_hours: Sequence[Optional[float]]) -> bool:
+    """Rule 4 (owner, 8 Nov 2026): Economy only when EVERY leg is shown to be 8 hours or less.
+
+    "reject economy where a leg is more than 8hrs, has to be business." A leg whose length nobody could measure
+    (``None``) is not shown to be short, an empty journey shows nothing, and 8.0 exactly is not over 8.
+    """
+    legs = list(leg_hours)
+    return bool(legs) and all(hours is not None and float(hours) <= BUSINESS_FLIGHT_HOURS for hours in legs)
 
 
 def has_leg_data(leg_hours: Any, connection_hours: Any) -> bool:

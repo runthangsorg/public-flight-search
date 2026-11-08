@@ -250,6 +250,19 @@ class TheBodyNamesItAndTheTextIsAsItWasTests(unittest.TestCase):
         self.assertNotIn("attached", a)
         self.assertEqual(a.count("Itinerary"), len(_rows(_reads())), "the text part is still every dossier in full")
 
+# Rule 4 (8 Nov 2026) is tested in test_business_over_eight_hours; these tests lay out pages from one-journey reads.
+from leg_rule_off import lift_leg_rule as _lift_leg_rule  # noqa: E402
+
+_LEG_RULE = _lift_leg_rule()
+
+
+def setUpModule():
+    _LEG_RULE.start()
+
+
+def tearDownModule():
+    _LEG_RULE.stop()
+
 
 if __name__ == "__main__":
     unittest.main()

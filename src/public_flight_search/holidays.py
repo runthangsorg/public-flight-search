@@ -110,8 +110,8 @@ class HolidayConfig:
     #: A trip is shown only when flights were read for its dates (owner, 23 Oct 2026: "either give the complete price or
     #: don't bother"). Layout tests switch it off; a real config never needs to name it.
     complete_price_only: bool = True
-    #: The most a Business figure may cost over Economy per person and still be shown when the Business trip does not
-    #: fit the budget (owner, 8 Nov 2026). ``None`` uses ``holiday_email.BUSINESS_DEAL_MAX_PREMIUM_PP_GBP`` (£1,200).
+    #: RETIRED 8 Nov 2026 (rule 4: a leg over 8 hours is Business whatever it costs). It capped how much Business could
+    #: cost over Economy; an older config may still name it, so it is accepted, validated and no longer read.
     business_max_premium_pp_gbp: Optional[float] = None
     #: A trip more than 20% over the budget is one line in the body, not a page (owner, 8 Nov 2026). Layout tests switch
     #: it off so they can look at every page; a real config never needs to name it.

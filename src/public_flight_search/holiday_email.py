@@ -33,7 +33,9 @@ from html import escape
 import re
 from typing import Any, Mapping, Optional, Sequence, Union
 
+from . import cabin as cabin_module
 from . import climate
+from . import leg_hours as leg_hours_module
 from . import holidays as hol
 from .business_airlines import quality_business_carrier
 from .cabin import BUSINESS_FLIGHT_HOURS, SHORT_HAUL_CABIN
@@ -965,10 +967,7 @@ def _card_business_is_deal(option: Mapping[str, Any], options: Sequence[Mapping[
         long_haul = minutes is None or float(minutes) > BUSINESS_FLIGHT_HOURS * 60
     else:
         long_haul = (duration_hours(option.get("duration")) or 0.0) > BUSINESS_FLIGHT_HOURS
-    return business_is_deal(
-        business_total=_option_total(option), economy_total=_card_economy_total(options, kind),
-        carriers=[str(option.get("carrier") or "")], long_haul=long_haul, trip_total=None, budget=0.0,
-        travellers=travellers, fits=bool(option.get("within_budget")))
+    return business_is_deal(carriers=[str(option.get("carrier") or "")], long_haul=long_haul)
 
 
 def business_note_words(deal: PackageDeal, *, travellers: int = 5) -> str:
@@ -979,8 +978,7 @@ def business_note_words(deal: PackageDeal, *, travellers: int = 5) -> str:
             continue
         if _option_total(option) <= 0 or _card_business_is_deal(option, options, travellers):
             continue
-        economy = _card_economy_total(options, str(option.get("kind", "")))
-        return business_hidden_words(_option_total(option) - economy if economy is not None else None, travellers)
+        return business_hidden_words()
     return ""
 
 
@@ -1916,11 +1914,6 @@ def cabin_label(key: str, read: Optional[Mapping[str, Any]] = None) -> str:
     return CABIN_LABELS["business"]
 
 
-#: The most a Business figure may cost over Economy, per person, and still be shown when the Business trip does not fit
-#: the budget (owner, 8 Nov 2026: business only when it "is a really good deal and good airline and long"). A config may
-#: set its own with ``business_max_premium_pp_gbp``; this is the default.
-BUSINESS_DEAL_MAX_PREMIUM_PP_GBP = 1_200
-
 _DURATION_RE = re.compile(r"^\s*(?:(\d+)\s*h(?:rs?|ours?)?)?\s*(?:(\d+)\s*m(?:in(?:ute)?s?)?)?\s*$", re.I)
 
 
@@ -1949,42 +1942,24 @@ def _business_long_carriers(read: Mapping[str, Any]) -> list[str]:
     return []
 
 
-def business_is_deal(*, business_total: float, economy_total: Optional[float], carriers: Sequence[str],
-                     long_haul: bool, trip_total: Optional[float], budget: float, travellers: int,
-                     max_premium_pp: float = BUSINESS_DEAL_MAX_PREMIUM_PP_GBP,
-                     fits: Optional[bool] = None) -> bool:
-    """The owner's rule for showing a Business figure (8 Nov 2026), ALL of:
-
-    * a long-haul flight over 8 hours in Business (``long_haul``);
-    * every carrier on those flights is on ``BUSINESS_QUALITY_CARRIERS``;
-    * the Business whole-trip total fits the budget, OR Business costs at most ``max_premium_pp`` a head more than
-      Economy. A trip whose total cannot be re-priced in Business (a package) has only the premium test.
-    """
-    if not long_haul or not carriers or not all(quality_business_carrier(c) for c in carriers):
-        return False
-    if fits is None:
-        fits = trip_total is not None and budget > 0 and trip_total <= budget
-    cheap = (economy_total is not None
-             and business_total - economy_total <= float(max_premium_pp) * max(int(travellers), 1))
-    return fits or cheap
+def business_is_deal(*, carriers: Sequence[str], long_haul: bool) -> bool:
+    """Whether a Business figure may be shown (rule 4, owner 8 Nov 2026): a flight over 8 hours is in Business, and
+    every carrier on those flights is on ``BUSINESS_QUALITY_CARRIERS``. What it costs over Economy no longer matters:
+    a leg over 8 hours has no Economy price to compare with. (Named for the rule it replaced, "business only when it
+    is a deal"; callers still use the name.)"""
+    return bool(long_haul and carriers and all(quality_business_carrier(c) for c in carriers))
 
 
-def business_hidden_words(saving: Optional[float], travellers: int = 5) -> str:
-    """``Business not shown: not a deal for these dates (economy is £4,000 less for 5)``."""
-    tail = f" (economy is {_gbp(saving)} less for {int(travellers)})" if saving is not None and saving > 0 else ""
-    return f"Business not shown: not a deal for these dates{tail}"
+ECONOMY_LEG_REFUSAL = "a flight leg is over 8 hours: it needs a business read"
 
 
-def _max_premium_pp(config: Any) -> float:
-    try:
-        value = float(getattr(config, "business_max_premium_pp_gbp", None))
-    except (TypeError, ValueError):
-        return float(BUSINESS_DEAL_MAX_PREMIUM_PP_GBP)
-    return value if value > 0 else float(BUSINESS_DEAL_MAX_PREMIUM_PP_GBP)
+def business_hidden_words(saving: Optional[float] = None, travellers: int = 5) -> str:
+    """The one line a Business read set aside says: its long flight is not on a quality carrier (rule 4, 8 Nov 2026)."""
+    return "Business not shown: its long flight is not on a quality carrier"
 
 
-def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: float, *, travellers: int = 5,
-                  max_premium_pp: float = BUSINESS_DEAL_MAX_PREMIUM_PP_GBP) -> dict[str, Any]:
+def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: float, *,
+                  travellers: int = 5) -> dict[str, Any]:
     """A trip's two flight products from what was read, and its total under each where that can be said.
 
     ``reads`` is ``holidays.multi_centre_fares_for``: one read per cabin. The ``business`` option is the cheaper of the
@@ -2004,21 +1979,25 @@ def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: flo
     economy = reads.get("ECONOMY")
     line = trip_flights_line(trip)
     rest = (float(trip.cost_low_gbp) - float(line.gbp)) if line is not None else None
-    # Business only when it is a real deal (owner, 8 Nov 2026); otherwise the read is set aside and the page says one
-    # line, with how much less Economy is. A Business read that is set aside is NOT "not read".
+    # Rule 4 (owner, 8 Nov 2026): "reject economy where a leg is more than 8hrs, has to be business". An Economy read
+    # is offered only when every leg is shown to be 8 hours or less; otherwise it is set aside and the trip needs a
+    # Business read. A Business read is offered whatever it costs over Economy, but only on a quality carrier flying
+    # a leg over 8 hours (Kenya Airways and Ethiopian included); it is the one price a long-legged trip has.
+    economy_refused = ""
+    if economy is not None and not cabin_module.economy_allowed(
+            leg_hours_module.read_leg_hours(economy, getattr(trip, "legs", ()) or (), duration_hours)):
+        economy = None
+        economy_refused = ECONOMY_LEG_REFUSAL
     hidden: Optional[dict[str, Any]] = None
     if business is not None:
-        economy_total = total_of(economy) if economy is not None else None
-        if not business_is_deal(
-                business_total=total_of(business), economy_total=economy_total,
-                carriers=_business_long_carriers(business), long_haul=bool(_business_long_carriers(business)),
-                trip_total=(rest + total_of(business)) if rest is not None else None,
-                budget=budget, travellers=travellers, max_premium_pp=max_premium_pp):
-            hidden = {"saving": (total_of(business) - economy_total) if economy_total is not None else None,
-                      "travellers": int(travellers)}
+        carriers = _business_long_carriers(business)
+        if not business_is_deal(carriers=carriers, long_haul=bool(carriers)):
+            hidden = {"saving": None, "travellers": int(travellers),
+                      "reason": "no long flight on a quality carrier"}
             business = None
     chosen = {"business": business, "economy": economy}
-    out: dict[str, Any] = {"reads": chosen, "totals": [], "missing": [], "business_hidden": hidden}
+    out: dict[str, Any] = {"reads": chosen, "totals": [], "missing": [], "business_hidden": hidden,
+                           "economy_refused": economy_refused}
     if line is None or not (business or economy):
         if line is not None and hidden is not None:
             # A Business read was set aside and no Economy one exists: say Economy is the one still to read.
@@ -2178,12 +2157,11 @@ def _multi_centre_rows(config: HolidayConfig, *,
             # rather than rendered as a dead end.
             continue
         options = cabin_options(trip, hol.multi_centre_fares_for(trip.id, legs, fares=fares), budget,
-                                travellers=int(getattr(config, "travellers", 5)),
-                                max_premium_pp=_max_premium_pp(config))
+                                travellers=int(getattr(config, "travellers", 5)))
         read = hol.multi_centre_fare_for(trip.id, legs, fares=fares)
-        if options.get("business_hidden") is not None:
-            # The rule-following read is the Business one; when that is not a deal the page's read is the Economy one.
-            read = options["reads"].get("economy")
+        if options.get("business_hidden") is not None or options.get("economy_refused"):
+            # Only an offered read stands for the page: Economy where it was offered, else the Business one.
+            read = options["reads"].get("economy") or options["reads"].get("business")
         if complete_only and not _has_complete_price(trip, options, read):
             continue
         rows.append({
@@ -2199,6 +2177,7 @@ def _multi_centre_rows(config: HolidayConfig, *,
             "cabin_missing": options["missing"],
             # A Business read that was not a deal (owner, 8 Nov 2026): one line says so, and how much less Economy is.
             "business_hidden": options.get("business_hidden"),
+            "economy_refused": options.get("economy_refused", ""),
             "outbound": outbound,
             "return": returning,
             "nights": trip.total_nights,
