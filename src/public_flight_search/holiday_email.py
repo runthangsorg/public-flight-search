@@ -1849,8 +1849,8 @@ CABIN_NOTE = (
 #: in a few words ("Search link opens Economy.", "Reads for comparison only.").
 HOW_TO_READ_HEADING = "How to read this"
 HOW_TO_READ_TIMES = "All clock times are local to each airport."
-HOW_TO_READ_PACKAGE = ("A package's price includes its own flights, so it does not change with the flight reads on its "
-                       "page; they are shown for comparison.")
+HOW_TO_READ_PACKAGE = ("A trip price that does not itemise its flights (a package or an estimate) includes them, so it "
+                       "does not change with the flight reads on its page; they are shown for comparison.")
 HOW_TO_READ_SEARCH = "A trip's Flights search link opens Economy, whatever cabin the price beside it was read in."
 
 
@@ -3371,6 +3371,10 @@ def _render_compact(
             if total(levels, shown_cards, shortened=True) <= limit:
                 break
             moved.add(d["id"])
+    if not full_detail and not moved and all(level == td.FULL for level in levels.values()):
+        # Nothing was shortened or moved, so the footer does not say where shortened pages are (same size or smaller,
+        # so the budget above still holds).
+        after_cards[-1] = _how_to_read_html([d for d in dossiers if d["id"] not in as_lines], body=False)
     out.append('<div id="trips"></div>')
     kept = [d for d in paged if d["id"] not in moved]
     out.append(_shortened_summary_html(kept, levels))

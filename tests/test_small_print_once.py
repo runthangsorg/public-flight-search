@@ -80,7 +80,7 @@ class EachSentenceIsPrintedOnceTests(unittest.TestCase):
     def test_the_footer_carries_each_explanation(self):
         footer = visible_text(self.html)[visible_text(self.html).index(FOOTER):]
         for words in ("Business long-haul is Business on every flight over 8 hours", "local to each airport",
-                      "includes its own flights", "opens Economy"):
+                      "includes them, so it does not change with the flight reads", "opens Economy"):
             self.assertIn(words, footer, words)
 
     def test_a_trip_specific_exception_stays_inline_in_a_few_words(self):
@@ -119,3 +119,20 @@ class TheBodyKeepsItsBookingLinksTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheFooterSaysOnlyWhatIsTrueTests(unittest.TestCase):
+    def test_with_nothing_shortened_the_footer_does_not_say_a_page_is_shorter(self):
+        with patch.object(hol, "EMAIL_HTML_BUDGET_BYTES", 10 ** 9):
+            html, _text, _full = _renders(_every_trip_read())
+        footer = visible_text(html)[visible_text(html).index(FOOTER):]
+        self.assertNotIn("page here is shorter", footer)
+
+    def test_with_pages_shortened_it_says_where_the_full_pages_are(self):
+        html, _text, _full = _renders(_every_trip_read())
+        self.assertIn('data-level="', html, "the fixture needs a shortened page")
+        footer = visible_text(html)[visible_text(html).index(FOOTER):]
+        self.assertIn("july-trips-full.html and the plain-text version have it in full", footer)
+
+    def test_the_bundled_flights_sentence_covers_an_estimate_as_well_as_a_package(self):
+        self.assertIn("a package or an estimate", he.HOW_TO_READ_PACKAGE)
