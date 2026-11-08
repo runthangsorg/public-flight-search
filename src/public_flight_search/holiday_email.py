@@ -28,7 +28,7 @@ time — no price is ever retyped.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 import re
 from typing import Any, Mapping, Optional, Sequence, Union
@@ -1997,6 +1997,57 @@ def _has_complete_price(trip: Any, options: Mapping[str, Any], read: Any) -> boo
     return bool((any(reads.values()) if isinstance(reads, Mapping) else bool(reads)) or read)
 
 
+def _plan_end_date(trip: Any, outbound: str) -> str:
+    """The day the trip's own plan ends: the outbound plus the nights its stops add up to."""
+    start = datetime.strptime(str(outbound)[:10], "%Y-%m-%d")
+    return (start + timedelta(days=int(trip.total_nights))).strftime("%Y-%m-%d")
+
+
+def _read_returns(trip_id: str, outbound: str, fares: Optional[Mapping[Any, Any]]) -> list[str]:
+    """Every return date a read for this trip from this outbound was made for, earliest first."""
+    found: set[str] = set()
+    for key in (fares or {}):
+        if not (isinstance(key, tuple) and len(key) >= 2 and key[0] == trip_id):
+            continue
+        legs = key[1]
+        try:
+            if str(legs[0][2]) == outbound:
+                found.add(str(legs[-1][2]))
+        except (IndexError, TypeError):
+            continue
+    return sorted(found)
+
+
+def _trip_return_date(trip: Any, outbound: str, config: HolidayConfig,
+                      fares: Optional[Mapping[Any, Any]]) -> str:
+    """The day this trip flies home (owner, 8 Nov 2026: no unplanned nights).
+
+    Every trip used to be dated on ONE date pair, the middle of the report's priceable pairs (27 Jun -> 14 Jul), whatever
+    its own length, and ``multi_centre_wanted`` asked the private reader for exactly those legs: so a 10-night plan came
+    back with a flight home 7 nights after it ended. Now, in order:
+
+    1. a read whose return is the plan's own end (outbound + the trip's nights);
+    2. else a read on the nearest configured return date at or after it;
+    3. else, when reads exist only for other dates, the nearest of those at or after the plan's end (the latest before
+       it when none is after), and the page's price line says how many nights the total covers;
+    4. with no read at all, the plan's own end, so the wanted list asks the next hunt for the right legs.
+    """
+    plan_end = _plan_end_date(trip, outbound)
+    candidates = [plan_end] + sorted(r for r in getattr(config, "return_dates", ()) if str(r) > plan_end)
+    for returning in candidates:
+        try:
+            legs = trip_legs_for_dates(trip, outbound, returning)
+        except ValueError:
+            continue
+        if hol.multi_centre_fares_for(trip.id, legs, fares=fares) or hol.multi_centre_fare_for(trip.id, legs, fares=fares):
+            return returning
+    read = _read_returns(trip.id, outbound, fares)
+    if read:
+        after = [r for r in read if r >= plan_end]
+        return after[0] if after else read[-1]
+    return plan_end
+
+
 def _multi_centre_rows(config: HolidayConfig, *,
                        fares: Optional[Mapping[Any, Any]] = None,
                        complete_only: bool = False) -> list[dict[str, Any]]:
@@ -2020,7 +2071,8 @@ def _multi_centre_rows(config: HolidayConfig, *,
         return []
     if not pairs:
         return []
-    outbound, returning = pairs[len(pairs) // 2]
+    # The outbound is the middle priceable pair's; the flight home is each trip's own (``_trip_return_date``).
+    outbound = pairs[len(pairs) // 2][0]
     try:
         trips = load_multi_centre(config)
     except Exception:  # noqa: BLE001 - see above
@@ -2055,6 +2107,7 @@ def _multi_centre_rows(config: HolidayConfig, *,
         if excluded:
             continue
         try:
+            returning = _trip_return_date(trip, outbound, config, fares)
             legs = trip_legs_for_dates(trip, outbound, returning)
         except ValueError:
             # No usable date pair means no usable link, and a link is the whole

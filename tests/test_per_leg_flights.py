@@ -49,7 +49,9 @@ def setUpModule():
 def tearDownModule():
     _EVERY_BUSINESS_READ_IS_A_DEAL.stop()
 
-LEGS_AF01 = [("LHR", "JRO", "2027-06-27"), ("JRO", "ZNZ", "2027-07-01"), ("ZNZ", "LHR", "2027-07-14")]
+
+# 8 Nov 2026: the flight home is on the day AF-01's 9-night plan ends (test_no_unplanned_nights), not 14 Jul.
+LEGS_AF01 = [("LHR", "JRO", "2027-06-27"), ("JRO", "ZNZ", "2027-07-01"), ("ZNZ", "LHR", "2027-07-06")]
 
 FLIGHTS = [
     {"origin": "LHR", "destination": "JRO", "departure_local": "2027-06-27T09:30:00",

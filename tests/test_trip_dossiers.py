@@ -349,10 +349,12 @@ class NotCollectedIsSaidNotInventedTests(unittest.TestCase):
         part = visible_text(_slice(_html(), "trip-AF-03"))
         self.assertIn("nights per property not stated", part)
 
-    def test_the_nights_the_date_pair_adds_are_named(self):
+    def test_the_flight_home_is_on_the_day_the_plan_ends(self):
+        # 8 Nov 2026 (owner): no unplanned nights. AF-01's 9-night plan from 27 Jun flies home on 6 Jul, so there is
+        # no gap to name (test_no_unplanned_nights pins the read choice and the price-line note).
         part = visible_text(_slice(_html(), "trip-AF-01"))
-        self.assertIn("8 nights", part)
-        self.assertIn("not planned or priced", part)
+        self.assertIn("Tue 6 Jul · Fly Zanzibar (ZNZ) → London", part)
+        self.assertNotIn("not planned or priced", part)
 
     def test_no_dossier_calls_a_guess_a_price(self):
         for ident in _ids(_html()):

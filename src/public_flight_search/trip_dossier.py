@@ -692,11 +692,15 @@ def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, gener
                     steps.append(step)
             other_rows = [by_id[t.id] for t in pairs.get(trip.id, []) if t.id in by_id]
             pair = _pair_block(row, other_rows[0], first=order_index[trip.id] < order_index[other_rows[0]["trip"].id]) if other_rows else None
+            # The flight home is on the plan's last day unless the only flights read are for later dates (owner,
+            # 8 Nov 2026); then the PRICE line says what the total covers, and the itinerary carries no gap sentence.
+            nights_note = ""
             if plan.unplanned_nights:
-                plan_note = (f"The plan ends {day_words(plan.plan_end)} and your flight home is "
-                             f"{day_words(plan.return_date)}: {nights_phrase(plan.unplanned_nights)} "
-                             f"({window_words(plan.plan_end, plan.return_date)}) are not planned or priced here.")
-            elif plan.cut_nights:
+                extra = plan.unplanned_nights
+                nights_note = (f"Flights read home {day_words(plan.return_date)}: this total covers the "
+                               f"{trip.total_nights} planned nights; the {extra} extra night{'s' if extra != 1 else ''} "
+                               f"to {day_words(plan.return_date)} {'are' if extra != 1 else 'is'} not priced.")
+            if plan.cut_nights:
                 plan_note = (f"This plan is {nights_phrase(plan.cut_nights)} longer than the dates, so the last stay "
                              f"is cut at the flight home on {day_words(plan.return_date)}.")
             else:
@@ -730,6 +734,7 @@ def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, gener
                 "has_lodges": any(lodge for s in steps if s["type"] == "stay" for lodge in s["lodges"]),
                 "any_rated": any(lodge["ratings"] for s in steps if s["type"] == "stay" for lodge in s["lodges"]),
                 "plan_note": plan_note,
+                "nights_note": nights_note,
                 "flight": flight,
                 "cabin_totals": list(row.get("cabin_totals") or ()),
                 "cabin_missing": list(row.get("cabin_missing") or ()),
@@ -1095,6 +1100,8 @@ def _header_html(d: Mapping[str, Any]) -> str:
                 f'<b style="font-size:24px;line-height:1.1;color:{accent}">{escape(d["price_words"])}</b></div>',
                 f'<div style="margin:4px 0 0 0"><span style="background:{chip[0]};color:{chip[1]};'
                 f'padding:2px 8px;border-radius:9999px">{escape(chip[2])}</span></div>']
+    if d.get("nights_note"):
+        out.append(f'<div style="margin:3px 0 0 0;color:#fcd34d">{escape(d["nights_note"])}</div>')
     for warning in d["warnings"]:
         out.append(f'<div style="margin:3px 0 0 0;color:#fcd34d">{escape(f"⚠ {warning}")}</div>')
     return "".join(out)
@@ -1163,6 +1170,8 @@ def dossier_lines(d: Mapping[str, Any]) -> list[str]:
         out.extend(f"  {label} has not been read for these dates yet." for label in d["cabin_missing"])
     else:
         out.append(f"  {d['verdict'] if d['fits'] is not True else 'low end fits the budget'}")
+    if d.get("nights_note"):
+        out.append(f"  {d['nights_note']}")
     for warning in d["warnings"]:
         out.append(f"  ! {warning}")
     out.append("")
