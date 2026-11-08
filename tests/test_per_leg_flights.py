@@ -137,8 +137,9 @@ class EachFlightIsPrintedOnItsOwnLegTests(unittest.TestCase):
         self.assertNotIn("Qatar Airways", _leg_line(text, "London", "Kilimanjaro (JRO)"))
 
     def test_times_are_said_to_be_local_once(self):
-        text = visible_text(_page(_fares(FLIGHTS)))
-        self.assertEqual(text.count("local to each airport"), 1)
+        # 8 Nov 2026: once in the e-mail, in the "How to read this" footer, not on the page.
+        self.assertEqual(visible_text(_html(fares=_fares(FLIGHTS))).count("local to each airport"), 1)
+        self.assertNotIn("local to each airport", visible_text(_page(_fares(FLIGHTS))))
 
     def test_with_a_complete_list_nothing_is_said_to_be_missing(self):
         text = visible_text(_page(_fares(FLIGHTS)))
@@ -204,7 +205,7 @@ class EveryLevelAndThePlainTextCarryItTests(unittest.TestCase):
         fares = _fares(FLIGHTS)
         html = _html(fares=fares, deals=_deals(2), budget=100_000)
         part = _slice(html, "trip-AF-01")
-        if "longest notes" in visible_text(part):
+        if 'data-level="trimmed"' in part:
             text = visible_text(part)
             self.assertIn("Precision Air", _leg_line(text, "Kilimanjaro (JRO)", "Zanzibar (ZNZ)"))
 

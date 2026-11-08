@@ -1844,6 +1844,50 @@ CABIN_NOTE = (
 )
 
 
+#: The small print every trip page used to repeat, said once at the foot of the e-mail (owner, 8 Nov 2026: the repeats
+#: pushed the body past Gmail's clip, which then cut the last pages' booking links). A page keeps only its own exception,
+#: in a few words ("Search link opens Economy.", "Reads for comparison only.").
+HOW_TO_READ_HEADING = "How to read this"
+HOW_TO_READ_TIMES = "All clock times are local to each airport."
+HOW_TO_READ_PACKAGE = ("A package's price includes its own flights, so it does not change with the flight reads on its "
+                       "page; they are shown for comparison.")
+HOW_TO_READ_SEARCH = "A trip's Flights search link opens Economy, whatever cabin the price beside it was read in."
+
+
+def _how_to_read(dossiers: Sequence[Mapping[str, Any]], *, body: bool = False, attachment_name: str = "") -> list[str]:
+    """The footer's sentences that apply to the pages this e-mail carries, each once; empty when none does."""
+    flights = [d["flight"] for d in dossiers]
+    options = [o for f in flights for o in f["options"]]
+    lines: list[str] = []
+    if any(len(f["options"]) >= 2 for f in flights):
+        lines.append(CABIN_NOTE)
+    if any(f["has_flights"] or f["times"] for f in flights) or any(o["has_flights"] or o["times"] for o in options):
+        lines.append(HOW_TO_READ_TIMES)
+    if any(d.get("bundled_flights") for d in dossiers):
+        lines.append(HOW_TO_READ_PACKAGE)
+    if any(f["search_cabin_note"] for f in flights) or any(o["search_cabin_note"] for o in options):
+        lines.append(HOW_TO_READ_SEARCH)
+    if body and dossiers:
+        where = f"{attachment_name} and the plain-text version" if attachment_name else "the plain-text version"
+        lines.append(f"Where a trip page here is shorter (the line over the trips says how many), {where} "
+                     f"have it in full.")
+    return lines
+
+
+def _how_to_read_html(dossiers: Sequence[Mapping[str, Any]], *, body: bool, attachment_name: str = "") -> str:
+    lines = _how_to_read(dossiers, body=body, attachment_name=attachment_name)
+    if not lines:
+        return ""
+    return (f'<div style="font-size:13px; color:{_MUTED}; margin:16px 0 0 0; padding:8px 0 0 0; '
+            f'border-top:1px solid {_LINE};"><strong style="color:{_INK};">{HOW_TO_READ_HEADING}</strong><br>'
+            + "<br>".join(_esc(line) for line in lines) + "</div>")
+
+
+def _how_to_read_lines(dossiers: Sequence[Mapping[str, Any]]) -> list[str]:
+    lines = _how_to_read(dossiers)
+    return (["", HOW_TO_READ_HEADING] + [f"  {line}" for line in lines]) if lines else []
+
+
 def cabin_label(key: str, read: Optional[Mapping[str, Any]] = None) -> str:
     """``with Business long-haul`` / ``with Business on every flight`` / ``all economy``."""
     if key == "economy":
@@ -3223,6 +3267,7 @@ def _render_compact(
         _over_budget_html(config),
         _watch_html(config),
         _notes_html(config, deals, left_out=left_out),
+        _how_to_read_html(dossiers, body=not full_detail, attachment_name=attachment_name),
     ]
     resorts_head = (
         f'<div id="resorts" style="font-size:15px; font-weight:700; color:{_INK}; margin:18px 0 0 0;">'
@@ -3444,6 +3489,7 @@ def render_holiday_report_compact_text(
     if notes:
         lines.append("Notes")
         lines.extend("  " + note for note in notes)
+    lines.extend(_how_to_read_lines(dossiers))
     return "\n".join(lines).rstrip() + "\n"
 
 

@@ -54,9 +54,9 @@ from .multi_centre import MultiCentreTrip, counterparts, trip_legs_for_dates, tr
 #: for a lower level for the LAST dossiers first when it is near Gmail's size limit.
 FULL, TRIMMED, SHORT = 0, 1, 2
 
-#: What the e-mail says in the place of what it left out; the text part is always full.
-SHORTENED_WORDS = "Shortened to fit Gmail's size limit: the booking links and the rest are in the plain-text version."
-TRIMMED_WORDS = "Shortened to fit Gmail's size limit: the longest notes are in the plain-text version."
+#: The level a shortened page was cut to, as an attribute on its card (owner, 8 Nov 2026: the sentence each shortened page
+#: used to end with is said once, in the "How to read this" footer, and the line over the trips names how many).
+LEVEL_NAMES = {1: "trimmed", 2: "short"}
 
 NO_PACKAGE_WORDS = "no equivalent vendor package found yet"
 NO_CARD_PACKAGE_WORDS = "no vendor package read for these dates"
@@ -452,7 +452,8 @@ def _read_block(row: Mapping[str, Any], read: Mapping[str, Any], legs: Sequence[
         block["times_note"] = FIRST_TIMES_WORDS
     # A read in a cabin other than Economy was not made on the Economy search this page links.
     if read_cabin and read_cabin != "ECONOMY":
-        block["search_cabin_note"] = "The flights search link opens Economy, not the cabin this price was read in."
+        # The general rule is in the footer (owner, 8 Nov 2026); the page keeps the exception in a few words.
+        block["search_cabin_note"] = "Search link opens Economy."
     # The newer rows carry every flight, in date order. When they do, each leg prints its own flight and the
     # first-flight shortcut (and its "other flights are not captured") is not used: nothing is missing to say.
     if isinstance(read.get("flights"), (list, tuple)) and read.get("flights"):
@@ -844,10 +845,15 @@ def _stay_html(stay: Mapping[str, Any], level: int, *, show_basis: bool, say_unr
 
 
 def _short_stop_line(stay: Mapping[str, Any]) -> str:
-    """One stay on one line, for the short form: the dates, the nights, the place and the properties by name."""
-    names = ", ".join(lodge["name"] for lodge in stay["lodges"])
+    """One stay on one line, for the short form: the dates, the nights, the place and the properties by name.
+
+    Each property keeps its first booking link (owner, 8 Nov 2026: a shortened page must keep its booking links).
+    """
+    names = ", ".join(escape(lodge["name"]) + (" " + _a(lodge["links"][0][1], lodge["links"][0][0])
+                                               if lodge["links"] else "")
+                      for lodge in stay["lodges"])
     return (f'{_k(escape(stay["window"]) + " · " + escape(nights_phrase(stay["nights"])))} · '
-            f'{escape(stay["place"])}' + (f" ({escape(names)})" if names else ""))
+            f'{escape(stay["place"])}' + (f" ({names})" if names else ""))
 
 
 def _itinerary_html(d: Mapping[str, Any], level: int) -> str:
@@ -869,7 +875,12 @@ def _itinerary_html(d: Mapping[str, Any], level: int) -> str:
     return "".join(out)
 
 
-def _flights_notes(f: Mapping[str, Any], level: int) -> list[str]:
+#: A package's price includes its own flights, so a flight read beside it does not change it. The full sentence is in the
+#: footer; a page with reads says this much (owner, 8 Nov 2026).
+FOR_COMPARISON_WORDS = "Reads for comparison only."
+
+
+def _flights_notes(f: Mapping[str, Any], level: int, *, bundled: bool = False) -> list[str]:
     """The plain words under the read line, as unescaped text pieces (the callers escape and join them)."""
     notes: list[str] = []
     if f["price_uses"]:
@@ -877,7 +888,7 @@ def _flights_notes(f: Mapping[str, Any], level: int) -> list[str]:
     if f["status"] == "read":
         if f["has_flights"]:
             notes.append("Each flight's own times, carrier, stops, duration and cabin are on its line in the "
-                         "Itinerary above. " + TIMES_ARE_LOCAL_WORDS)
+                         "Itinerary above.")
             if f["vendor"]:
                 notes.append(f"Read through {f['vendor']}.")
         else:
@@ -888,6 +899,8 @@ def _flights_notes(f: Mapping[str, Any], level: int) -> list[str]:
             notes.append("The other flights on this trip were not itemised by the read.")
     if f["times_note"]:
         notes.append(f["times_note"])
+    if bundled and f["status"] == "read":
+        notes.append(FOR_COMPARISON_WORDS)
     notes.append(f["search_cabin_note"] or f"Searched as {f['cabin']}, 5 travellers.")
     if level == FULL and f["shape"]:
         notes.append(f["shape"])
@@ -905,17 +918,17 @@ def _option_leg_lines(option: Mapping[str, Any]) -> list[tuple[str, str]]:
 
 
 def _two_option_notes(d: Mapping[str, Any], level: int) -> list[str]:
-    """Words under the two reads: what each product is, the local-time line, and what is not captured, once each."""
+    """Words under the two reads: what is not captured, and this trip's exceptions in a few words.
+
+    What each product is (``CABIN_NOTE``) and that clock times are local are said once, in the footer (owner, 8 Nov 2026).
+    """
     f = d["flight"]
-    notes = [_he().CABIN_NOTE]
-    if any(o["has_flights"] for o in f["options"]):
-        notes.append(TIMES_ARE_LOCAL_WORDS)
+    notes: list[str] = []
     lacking = next((o for o in f["options"] if not o["has_flights"]), None)
     if lacking is not None and lacking["times_note"]:
         notes.append(lacking["times_note"])
     if d["bundled_flights"]:
-        notes.append("This trip's price includes its own flights, so it does not change with these reads; "
-                     "they are shown for comparison.")
+        notes.append(FOR_COMPARISON_WORDS)
     cabin_note = next((o["search_cabin_note"] for o in f["options"] if o["search_cabin_note"]), "")
     notes.append(cabin_note or f"Searched as {f['cabin']}, 5 travellers.")
     if level == FULL and f["shape"]:
@@ -945,7 +958,9 @@ def _flights_two_html(d: Mapping[str, Any], level: int) -> str:
             lines.append(f"First flight on that read: {escape(option['first_flight'])}")
         if lines:
             out.append("<div>" + "<br>".join(lines) + "</div>")
-    out.append('<div style="margin:7px 0 0 0">' + "<br>".join(escape(n) for n in _two_option_notes(d, level)) + "</div>")
+    notes = _two_option_notes(d, level)
+    if notes:
+        out.append('<div style="margin:7px 0 0 0">' + "<br>".join(escape(n) for n in notes) + "</div>")
     return "".join(out)
 
 
@@ -963,7 +978,7 @@ def _flights_html(d: Mapping[str, Any], level: int) -> str:
     else:
         out.append("<div>Not read for these dates yet. " + _a(f["search_url"], "Search these flights", bold=True) + "</div>")
     out.append(_business_hidden_html(d))
-    out.append("<div>" + "<br>".join(escape(n) for n in _flights_notes(f, level)) + "</div>")
+    out.append("<div>" + "<br>".join(escape(n) for n in _flights_notes(f, level, bundled=d["bundled_flights"])) + "</div>")
     return "".join(out)
 
 
@@ -981,8 +996,7 @@ def _short_flights_html(d: Mapping[str, Any]) -> str:
             f'{escape(day_words(lf["leg"][2]))} {escape(place_words(lf["leg"][0]))} → {escape(place_words(lf["leg"][1]))}: '
             f'<span style="color:{ink}">{escape(leg_flight_words(lf["flight"]))}</span>'
             for lf in f["leg_flights"])
-        return (_heading("Flights") + head + _business_hidden_html(d) + "<div>" + lines + "<br>"
-                + escape(TIMES_ARE_LOCAL_WORDS) + "</div>")
+        return _heading("Flights") + head + _business_hidden_html(d) + "<div>" + lines + "</div>"
     return _heading("Flights") + head + _business_hidden_html(d) + "<div>" + escape(f["times_note"]) + "</div>"
 
 
@@ -1119,7 +1133,8 @@ def _links_section_html(d: Mapping[str, Any]) -> str:
 def dossier_html(d: Mapping[str, Any], level: int = FULL) -> str:
     """One trip's dossier card. ``level`` is FULL, TRIMMED or SHORT (see the module constants)."""
     muted, line = _palette()[1], _palette()[3]
-    out = [f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" id="{d["anchor"]}" '
+    shortened = f' data-level="{LEVEL_NAMES[level]}"' if level in LEVEL_NAMES else ""
+    out = [f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" id="{d["anchor"]}"{shortened} '
            f'style="border-collapse:collapse;background:#1e293b;border:1px solid {line};border-radius:10px;margin:12px 0 0 0">'
            f'<tr><td style="padding:12px 14px;font-size:13px;color:{muted};line-height:1.45">',
            _header_html(d)]
@@ -1139,15 +1154,12 @@ def dossier_html(d: Mapping[str, Any], level: int = FULL) -> str:
         out.append(f'<div style="margin:6px 0 0 0"><b>Why it is here:</b> {escape(d["why"])}<br>'
                    f'<b>The catch:</b> {escape(d["catch"])}</div>')
         out.append(_links_section_html(d))
-        out.append(f'<div style="margin:8px 0 0 0">{escape(SHORTENED_WORDS)}</div>')
     else:
         out.append(_pair_html(d, level))
         out.append(_itinerary_html(d, level))
         out.append(_flights_html(d, level))
         out.append(_price_html(d, level))
         out.append(_links_section_html(d))
-        if level == TRIMMED:
-            out.append(f'<div style="margin:8px 0 0 0">{escape(TRIMMED_WORDS)}</div>')
     out.append("</td></tr></table>")
     return "".join(out)
 
@@ -1238,7 +1250,7 @@ def dossier_lines(d: Mapping[str, Any]) -> list[str]:
         out.append(f"    {f['read_line']}: {f['read_url']}")
         if d.get("business_hidden"):
             out.append(f"    {d['business_hidden']}")
-        out.extend(f"    {note}" for note in _flights_notes(f, FULL))
+        out.extend(f"    {note}" for note in _flights_notes(f, FULL, bundled=d["bundled_flights"]))
     else:
         out.append(f"    Not read for these dates yet. Search these flights: {f['search_url']}")
         out.extend(f"    {note}" for note in _flights_notes(f, FULL))

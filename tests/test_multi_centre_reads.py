@@ -394,11 +394,14 @@ class MultiCentreWantedTests(unittest.TestCase):
 class MultiCentreRenderTests(unittest.TestCase):
     """The block: a range plus, where one was read, the dated fare."""
 
-    def _render(self, config, fares):
+    def _render(self, config, fares, budget=10 ** 9):
+        # What the block SAYS, so by default with no byte budget: since 8 Nov 2026 a shortened page keeps its booking
+        # links, so at the real budget the last pages move to the attachment sooner. The size test passes the real one.
         deals = collect_holiday_deals(config)
-        return render_holiday_report_compact(
-            config, generated_at=GENERATED_AT, deals=deals, multi_centre_fares=fares
-        )
+        with patch.object(hol, "EMAIL_HTML_BUDGET_BYTES", budget):
+            return render_holiday_report_compact(
+                config, generated_at=GENERATED_AT, deals=deals, multi_centre_fares=fares
+            )
 
     def _text(self, config, fares):
         deals = collect_holiday_deals(config)
@@ -506,7 +509,7 @@ class MultiCentreRenderTests(unittest.TestCase):
                 fares = {hol.multi_centre_fare_key(row["trip"], row["legs"]):
                          _multi_centre_read(row)
                          for row in _declared(config)}
-                html = self._render(config, fares)
+                html = self._render(config, fares, budget=hol.EMAIL_HTML_BUDGET_BYTES)
                 attachment = self._full(config, fares)
                 size = len(html.encode("utf-8"))
                 self.assertLessEqual(size, hol.EMAIL_HTML_BUDGET_BYTES)

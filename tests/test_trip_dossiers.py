@@ -594,12 +594,12 @@ class SizeAndShorteningTests(unittest.TestCase):
         return len(html.encode("utf-8"))
 
     def _levels(self, html):
-        """0 full, 1 trimmed, 2 short: read off the one line each shortened page ends with."""
+        """0 full, 1 trimmed, 2 short: read off the level each shortened page's card carries (8 Nov 2026: the sentence
+        each shortened page used to end with is said once, in the footer)."""
         levels = []
         for ident in _ids(html):
-            text = visible_text(_slice(html, f"trip-{ident}"))
-            levels.append(2 if "the booking links and the rest are in the plain-text" in text
-                          else 1 if "the longest notes are in the plain-text" in text else 0)
+            part = _slice(html, f"trip-{ident}")
+            levels.append(2 if 'data-level="short"' in part else 1 if 'data-level="trimmed"' in part else 0)
         return levels
 
     def test_the_real_shape_fits_the_budget_with_every_trip_read_and_twelve_cards(self):
@@ -634,7 +634,8 @@ class SizeAndShorteningTests(unittest.TestCase):
             with self.subTest(budget=budget):
                 levels = self._levels(_html(fares=self.fares, deals=_deals(2), budget=budget))
                 self.assertEqual(levels, sorted(levels), "once a trip is shortened every trip after it is too")
-        tight = self._levels(_html(fares=self.fares, deals=_deals(2), budget=84_000))
+        # 96 KB, the real budget: since 8 Nov 2026 a short page keeps its booking links, so 84 KB is short throughout.
+        tight = self._levels(_html(fares=self.fares, deals=_deals(2), budget=96_000))
         self.assertLess(tight[0], tight[-1], "the Tanzania safari + Zanzibar pages lose detail last")
         self.assertEqual(tight[-1], 2)
 

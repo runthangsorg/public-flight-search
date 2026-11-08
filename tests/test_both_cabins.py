@@ -199,7 +199,7 @@ class TheTripTotalIsShownUnderBothReadsTests(unittest.TestCase):
         self.assertEqual(d["cabin_totals"], [], "the package price cannot be recomputed per cabin")
         text = visible_text(_page(fares, "AF-01"))
         self.assertIn("£21,385–£25,235", text)
-        self.assertIn("price includes its own flights", text)
+        self.assertIn("Reads for comparison only.", text)
         self.assertIn("£20,000", text)
         self.assertIn("£5,000", text)
 
@@ -226,10 +226,11 @@ class TheFlightsSectionPrintsBothReadsTests(unittest.TestCase):
         self.assertNotRegex(line, r"Economy\.|, Economy,")
 
     def test_one_line_says_what_each_product_is_made_of(self):
-        text = visible_text(_page(_both("AF-10")))
+        # 8 Nov 2026: said once, in the "How to read this" footer, not on every page.
+        text = visible_text(_html(fares=_both("AF-10")))
         self.assertIn("Business long-haul is Business on every flight over 8 hours and Economy on the shorter ones", text)
-        self.assertIn("different products", text)
         self.assertEqual(text.count("different products"), 1)
+        self.assertNotIn("different products", visible_text(_page(_both("AF-10"))))
 
     def test_the_per_leg_times_of_both_reads_are_printed(self):
         legs = _legs("AF-10")
@@ -316,8 +317,9 @@ class TheTextAndTheAttachmentAndTheBudgetTests(unittest.TestCase):
                                               multi_centre_fares=_both())
         part = visible_text(_slice(html, "trip-AF-10"))
         self.assertNotIn("Shortened to fit", part)
-        for word in ("£24,164", "£9,164", "Flights only, 5 people: £20,000", "Flights only, 5 people: £5,000", "different products"):
+        for word in ("£24,164", "£9,164", "Flights only, 5 people: £20,000", "Flights only, 5 people: £5,000"):
             self.assertIn(word, part, word)
+        self.assertEqual(visible_text(html).count("different products"), 1, "said once, in the footer")
 
     def test_every_trip_read_in_both_cabins_still_fits_the_body_budget_and_loses_least_important_detail_first(self):
         fares = _load([_row(t, "ECONOMY", 5_000) for t in WANTED] + [_row(t, "MIXED", 20_000) for t in WANTED])

@@ -434,9 +434,15 @@ class PrintedBreakdownArithmeticTests(unittest.TestCase):
                 f"£{total:,}",
             )
 
+    def _render_all_cards(self, deals):
+        # Arithmetic, not size: no byte budget, so no card is shed (8 Nov 2026: a shortened trip page now keeps its
+        # booking links, so at the real budget the sixth card can give way to them).
+        with patch.object(hol, "EMAIL_HTML_BUDGET_BYTES", 10 ** 9):
+            return _render(deals=deals)
+
     def test_the_printed_html_parts_add_up_to_the_printed_headline(self):
         deals = self._deals_with_pence()
-        self._assert_lines_add_up(visible_text(_render(deals=deals)), len(deals))
+        self._assert_lines_add_up(visible_text(self._render_all_cards(deals)), len(deals))
 
     def test_the_printed_text_parts_add_up_to_the_printed_headline(self):
         deals = self._deals_with_pence()
@@ -447,7 +453,7 @@ class PrintedBreakdownArithmeticTests(unittest.TestCase):
 
     def test_html_and_text_print_the_same_breakdown_for_every_card(self):
         deals = self._deals_with_pence()
-        html_lines = self._LINE.findall(visible_text(_render(deals=deals)))
+        html_lines = self._LINE.findall(visible_text(self._render_all_cards(deals)))
         text_lines = self._LINE.findall(
             render_holiday_report_compact_text(
                 _config(), generated_at=GENERATED_AT, deals=deals
