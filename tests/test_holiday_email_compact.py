@@ -253,11 +253,11 @@ class AtAGlanceTableTests(unittest.TestCase):
 
     def test_the_table_states_the_key_line_once(self):
         text = visible_text(_render())
-        self.assertIn("Every price is the total for 5, door to door.", text)
+        self.assertIn("Every price is the trip total for 5, door to door", text)
 
     def test_the_key_line_carries_the_party_size_from_the_config(self):
         text = visible_text(_render(config=_config(travellers=4)))
-        self.assertIn("Every price is the total for 4, door to door.", text)
+        self.assertIn("Every price is the trip total for 4, door to door", text)
 
     def test_the_table_has_no_price_change_column(self):
         """Owner 2026-10-08: price changes are not worth the space.
@@ -1185,7 +1185,7 @@ class StyleSwitchTests(unittest.TestCase):
                     hotel_evidence_path=str(Path(tmp) / "absent-hotel.json"),
                     live_evidence_path=str(Path(tmp) / "absent-live.json"),
                 )
-        self.assertIn("Every price is the total for 5, door to door.", visible_text(sent["html"]))
+        self.assertIn("Every price is the trip total for 5, door to door", visible_text(sent["html"]))
         self.assertIn("flights £", sent["text"])
 
     def test_no_email_the_job_sends_carries_the_change_digest(self):

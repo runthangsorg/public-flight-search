@@ -138,7 +138,7 @@ class OverviewCoversEveryOptionTests(unittest.TestCase):
         region = visible_text(_overview_region(_html(STAMPS_AS_ON_22_OCT, multi_centre_fares=_fares_with_one_africa_read())))
         for word in ("estimate", "operator package", "self-build", "over", "fits"):
             self.assertIn(word, region)
-        self.assertRegex(region, r"flights read 20 Oct", "a trip with a read flight fare says when it was read")
+        self.assertRegex(region, r"Flights only, 5 people, read 20 Oct", "a trip with a read flight fare says when it was read")
 
     def test_the_overview_is_part_of_the_plain_text_too(self):
         text = _text(STAMPS_AS_ON_22_OCT)

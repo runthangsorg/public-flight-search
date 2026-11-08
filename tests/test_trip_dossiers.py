@@ -273,14 +273,14 @@ class NotCollectedIsSaidNotInventedTests(unittest.TestCase):
         mix = "Business LHR-JRO, ZNZ-LHR + Economy JRO-ZNZ"
         fares = _reads(["AF-01"], cabin="MIXED", cabin_mix=mix, total_gbp=21000.0)
         part = visible_text(_slice(_html(fares=fares), "trip-AF-01"))
-        self.assertIn(f"the whole trip, {mix}, read", part)
-        self.assertNotIn("the whole trip, Economy, read", part)
+        self.assertIn(f"Flights only, 5 people: £21,000, {mix}, read", part)
+        self.assertNotIn(", Economy, read", part)
         text = _text(fares=fares)
         self.assertIn(mix, text)
 
     def test_a_pure_economy_read_still_says_economy(self):
         part = visible_text(_slice(_html(fares=_reads(["AF-01"])), "trip-AF-01"))
-        self.assertIn("the whole trip, Economy, read", part)
+        self.assertIn("Flights only, 5 people: £5,134, Economy, read", part)
 
     def test_times_that_the_read_carries_are_shown_and_not_called_missing(self):
         fares = _reads(["AF-01"], departure_local="2027-06-27T21:40:00", arrival_local="2027-06-28T13:05:00")
@@ -298,7 +298,7 @@ class NotCollectedIsSaidNotInventedTests(unittest.TestCase):
         self.assertIn("1 stop", part)
         self.assertIn("3 hrs NBO", part)
         self.assertIn("12 hrs 50 min", part)
-        self.assertIn("£5,134 for 5", part)
+        self.assertIn("Flights only, 5 people: £5,134", part)
         self.assertIn("20 Oct", part)
 
     def test_a_self_build_priced_with_flights_from_other_dates_says_which_figure_its_price_uses(self):

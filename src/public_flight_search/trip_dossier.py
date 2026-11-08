@@ -427,7 +427,9 @@ def _read_block(row: Mapping[str, Any], read: Mapping[str, Any], legs: Sequence[
         cabin_words = read_cabin.capitalize()
     else:
         cabin_words = cabin_default
-    block["read_line"] = (f"{he._gbp(read.get('total_gbp'))} for {party}, the whole trip, {cabin_words}, "
+    # A FLIGHTS-ONLY figure, and the words say so (owner, 8 Nov 2026: "£10,139 for 5, the whole trip" read as the
+    # price of the holiday). It is every flight on the trip, never the stays.
+    block["read_line"] = (f"Flights only, {party} people: {he._gbp(read.get('total_gbp'))}, {cabin_words}, "
                           f"read {he._read_day_words(read.get('observed_at'))} for these exact dates")
     block["read_url"] = _http(read.get("source_url")) or row["url"]
     # The read's page IS the search when it carries the same legs (the private reader builds it with the same
@@ -581,10 +583,11 @@ def _flights_words(trip: MultiCentreTrip, row: Mapping[str, Any]) -> str:
         return "included in the price" if "flight" in text else "not stated"
     for line in trip.cost_lines:
         if "flight" in line.label.lower():
-            return f"{he._gbp(line.gbp)} in the price, {line.basis}" if line.basis else f"{he._gbp(line.gbp)} in the price"
+            return (f"flights only {he._gbp(line.gbp)}, in the trip price, {line.basis}" if line.basis
+                    else f"flights only {he._gbp(line.gbp)}, in the trip price")
     read = row.get("read")
     if read:
-        return f"{he._gbp(read.get('total_gbp'))} read {he._read_day_words(read.get('observed_at'))}"
+        return f"flights only {he._gbp(read.get('total_gbp'))}, read {he._read_day_words(read.get('observed_at'))}"
     return "not itemised"
 
 
@@ -714,6 +717,8 @@ def build_trip_dossiers(config: Any, rows: Sequence[Mapping[str, Any]], *, gener
                 "nights": trip.total_nights,
                 "price_words": he._multi_centre_price_words(row["low"], row["high"]),
                 "price_label": trip.price_label(),
+                # What the trip's own figure covers: the whole trip (owner, 8 Nov 2026).
+                "covers": he.trip_covers_words(trip),
                 "verdict": he._multi_centre_verdict(row),
                 "fits": row["fits"],
                 "budget": budget,
@@ -1057,7 +1062,9 @@ def _header_html(d: Mapping[str, Any]) -> str:
     if d["operator_ref"]:
         out.append(f'<div>{escape(d["operator_ref"])}</div>')
     if d["cabin_totals"]:
-        # The trip's own price itemises its flights, so its total can be said under each read (23 Oct 2026).
+        # The trip's own price itemises its flights, so its total can be said under each read (23 Oct 2026); what that
+        # total covers is said once, over them (owner, 8 Nov 2026).
+        covers = f'Trip total for 5 ({escape(he.TRIP_COVERS_BUILD)})<br>'
         for item in d["cabin_totals"]:
             if item["fits"] is None:
                 tchip = ("#273449", "#cbd5e1", "no budget set, no verdict")
@@ -1065,15 +1072,16 @@ def _header_html(d: Mapping[str, Any]) -> str:
                 tchip = ("#14532d", "#bbf7d0", f"fits the {he._gbp(d['budget'])} budget")
             else:
                 tchip = ("#78350f", "#fde68a", f"{he._gbp(item['gap'])} over the {he._gbp(d['budget'])} budget")
-            out.append(f'<div style="margin:6px 0 0 0">{escape(item["label"])}<br>'
+            out.append(f'<div style="margin:6px 0 0 0">{covers}{escape(item["label"])}<br>'
                        f'<b style="font-size:22px;line-height:1.1;color:{accent}">{escape(he._gbp(item["total"]))}</b> '
-                       f'for 5, door to door <span style="background:{tchip[0]};color:{tchip[1]};padding:2px 8px;'
+                       f'<span style="background:{tchip[0]};color:{tchip[1]};padding:2px 8px;'
                        f'border-radius:9999px">{escape(tchip[2])}</span></div>')
+            covers = ""
         for label in d["cabin_missing"]:
             out.append(f'<div style="margin:4px 0 0 0">{escape(label)} has not been read for these dates yet.</div>')
     else:
-        out += [f'<div style="margin:5px 0 0 0"><b style="font-size:24px;line-height:1.1;color:{accent}">'
-                f'{escape(d["price_words"])}</b> for 5, door to door</div>',
+        out += [f'<div style="margin:5px 0 0 0">Trip total for 5 ({escape(d["covers"])})<br>'
+                f'<b style="font-size:24px;line-height:1.1;color:{accent}">{escape(d["price_words"])}</b></div>',
                 f'<div style="margin:4px 0 0 0"><span style="background:{chip[0]};color:{chip[1]};'
                 f'padding:2px 8px;border-radius:9999px">{escape(chip[2])}</span></div>']
     for warning in d["warnings"]:
@@ -1134,13 +1142,13 @@ def dossier_lines(d: Mapping[str, Any]) -> list[str]:
     """The same dossier as plain text. Always full: the text part has no byte budget to meet."""
     he = _he()
     out = [f"{d['title']}",
-           f"  {d['kind_label']} · {d['nights']} nights · {d['price_words']} for 5, door to door · {d['price_label']}"]
+           f"  {d['kind_label']} · {d['nights']} nights · Trip total for 5: {d['price_words']} ({d['covers']}) · {d['price_label']}"]
     if d["operator_ref"]:
         out.append(f"  {d['operator_ref']}")
     if d["cabin_totals"]:
         he = _he()
         for item in d["cabin_totals"]:
-            out.append(f"  {item['label']}: {he._cabin_total_words(item, d['budget'])} (for 5, door to door)")
+            out.append(f"  Trip total for 5, {item['label']} ({he.TRIP_COVERS_BUILD}): {he._cabin_total_words(item, d['budget'])}")
         out.extend(f"  {label} has not been read for these dates yet." for label in d["cabin_missing"])
     else:
         out.append(f"  {d['verdict'] if d['fits'] is not True else 'low end fits the budget'}")

@@ -37,7 +37,7 @@ from public_flight_search.holiday_email import (
 
 from test_holiday_email_compact import _config, _deals, visible_text
 from test_multi_centre_reads import _multi_centre_read
-from test_trip_dossiers import NOW, STAMPS, UNLIMITED, _html, _ids, _rows, _slice, _table_ids
+from test_trip_dossiers import NOW, STAMPS, UNLIMITED, _attachment, _html, _ids, _rows, _slice, _table_ids
 
 BUDGET = 12_000.0
 MIX = "Business LHR-JRO, ZNZ-LHR + Economy JRO-ZNZ"
@@ -188,9 +188,9 @@ class TheFlightsSectionPrintsBothReadsTests(unittest.TestCase):
         fares = _both("AF-10")
         part = _page(fares)
         text = visible_text(part)
-        self.assertIn("£20,000 for 5", text)
+        self.assertIn("Flights only, 5 people: £20,000", text)
         self.assertIn(MIX, text)
-        self.assertIn("£5,000 for 5", text)
+        self.assertIn("Flights only, 5 people: £5,000", text)
         self.assertIn("20 Oct", text)
         self.assertIn("22 Oct", text)
         self.assertIn("Read through kayak", text)
@@ -200,7 +200,7 @@ class TheFlightsSectionPrintsBothReadsTests(unittest.TestCase):
 
     def test_the_mixed_read_is_never_called_economy(self):
         text = visible_text(_page(_both("AF-10")))
-        line = re.search(r"£20,000 for 5[^.]*\.", text).group(0)
+        line = re.search(r"Flights only, 5 people: £20,000[^.]*\.", text).group(0)
         self.assertIn("Business", line)
         self.assertNotRegex(line, r"Economy\.|, Economy,")
 
@@ -284,7 +284,7 @@ class TheTextAndTheAttachmentAndTheBudgetTests(unittest.TestCase):
     def test_the_plain_text_carries_both_totals_both_reads_and_the_note(self):
         text = render_holiday_report_compact_text(_config(), generated_at=NOW, deals=_deals(2), evidence_stamps=STAMPS,
                                                   multi_centre_fares=_both())
-        for word in ("with Business long-haul", "£24,164", "all economy", "£9,164", "£20,000 for 5", "£5,000 for 5",
+        for word in ("with Business long-haul", "£24,164", "all economy", "£9,164", "Flights only, 5 people: £20,000", "Flights only, 5 people: £5,000",
                      "different products"):
             self.assertIn(word, text, word)
         self.assertNotIn("all economy has not been read", text.split("Self-build: Kruger self-drive 4 nights + Cape Town 8 nights\n")[1][:1500])
@@ -295,18 +295,22 @@ class TheTextAndTheAttachmentAndTheBudgetTests(unittest.TestCase):
                                               multi_centre_fares=_both())
         part = visible_text(_slice(html, "trip-AF-10"))
         self.assertNotIn("Shortened to fit", part)
-        for word in ("£24,164", "£9,164", "£20,000 for 5", "£5,000 for 5", "different products"):
+        for word in ("£24,164", "£9,164", "Flights only, 5 people: £20,000", "Flights only, 5 people: £5,000", "different products"):
             self.assertIn(word, part, word)
 
     def test_every_trip_read_in_both_cabins_still_fits_the_body_budget_and_loses_least_important_detail_first(self):
         fares = _load([_row(t, "ECONOMY", 5_000) for t in WANTED] + [_row(t, "MIXED", 20_000) for t in WANTED])
         html = _html(fares=fares, deals=_deals(2), budget=hol.EMAIL_HTML_BUDGET_BYTES)
         self.assertLessEqual(len(html.encode("utf-8")), hol.EMAIL_HTML_BUDGET_BYTES)
-        self.assertEqual(sorted(_ids(html)), sorted(WANTED))
+        # 8 Nov 2026: every price now says what it covers, so with all 18 trips read in both cabins the last page can
+        # move to the full-detail attachment (the 30 Oct rule); no trip leaves the body's table or the e-mail.
+        attachment = _attachment(fares=fares, deals=_deals(2))
+        self.assertEqual(sorted(set(_ids(html)) | set(_ids(attachment))), sorted(WANTED))
+        self.assertEqual(sorted(_table_ids(html)), sorted(WANTED))
         for ident in _ids(html):
             text = visible_text(_slice(html, f"trip-{ident}"))
-            self.assertIn("£20,000 for 5", text, ident)
-            self.assertIn("£5,000 for 5", text, ident)
+            self.assertIn("Flights only, 5 people: £20,000", text, ident)
+            self.assertIn("Flights only, 5 people: £5,000", text, ident)
 
     def test_the_html_stays_well_formed_with_both_cabins_at_every_budget(self):
         from test_trip_dossiers import WellFormedTests

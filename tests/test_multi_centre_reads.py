@@ -421,7 +421,7 @@ class MultiCentreRenderTests(unittest.TestCase):
         html = self._render(config, self._fares(want))
         text = self._text(config, self._fares(want))
         # 22 Oct 2026: the read is the first line of the trip page's Flights section, in words.
-        line = f"£{SYNTHETIC_TOTAL:,.0f} for 5, the whole trip, Economy, read {SYNTHETIC_READ_DAY} for these exact dates"
+        line = f"Flights only, 5 people: £{SYNTHETIC_TOTAL:,.0f}, Economy, read {SYNTHETIC_READ_DAY} for these exact dates"
         self.assertIn(line, html)
         self.assertIn(line, text)
         # Linked to the page the fare was read from, not to the search link.
@@ -452,7 +452,7 @@ class MultiCentreRenderTests(unittest.TestCase):
                          [True] + [False] * (len(rows) - 1))
         html = self._render(config, fares)
         text = self._text(config, fares)
-        phrase = f"£{SYNTHETIC_TOTAL:,.0f} for 5, the whole trip, Economy, read "
+        phrase = f"Flights only, 5 people: £{SYNTHETIC_TOTAL:,.0f}, Economy, read "
         self.assertEqual(html.count(phrase), 1)
         self.assertEqual(text.count(phrase), 1)
         # The unread trips still show their range and their own verdict, and say they were not read.
@@ -491,7 +491,7 @@ class MultiCentreRenderTests(unittest.TestCase):
         html = self._render(config, elsewhere)
         self.assertIn(MULTI_CENTRE_HEAD_NO_READ, html)
         self.assertNotIn(MULTI_CENTRE_HEAD_PRICE_READ, html)
-        self.assertNotIn(f"£{SYNTHETIC_TOTAL:,.0f} for 5, the whole trip", html)
+        self.assertNotIn(f"Flights only, 5 people: £{SYNTHETIC_TOTAL:,.0f}", html)
 
     def test_the_priced_block_stays_inside_the_mail_byte_budget(self):
         """A read adds a line to every priced row, and the report must still fit.
@@ -532,11 +532,11 @@ class MultiCentreRenderTests(unittest.TestCase):
         self.assertIsNone(multi_centre_fare_for(want["trip"], want["legs"]))
         self.assertEqual(multi_centre_fares_registry(), {})
         html = self._render(config, {})
-        self.assertNotIn(f"£{SYNTHETIC_TOTAL:,.0f} for 5, the whole trip", html)
+        self.assertNotIn(f"Flights only, 5 people: £{SYNTHETIC_TOTAL:,.0f}", html)
         lines = _multi_centre_lines(config)
         self.assertTrue(lines)
         joined = " ".join(lines)
-        self.assertNotIn("the whole trip, Economy, read", joined)
+        self.assertNotIn("Flights only, 5 people:", joined)
         self.assertIn("Not read for these dates yet", joined)
 
 
