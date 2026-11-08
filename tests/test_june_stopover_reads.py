@@ -22,6 +22,7 @@ import public_flight_search.holidays as hol
 from public_flight_search.holidays import (
     STOPOVER_HUBS,
     STOPOVER_LINK_HUBS,
+    STOPOVER_WANTED_HUBS,
     collect_holiday_deals,
     load_holiday_config,
     render_flight_options,
@@ -196,7 +197,7 @@ class StopoverWantedTests(unittest.TestCase):
                     set(row), {"pair", "hub", "airport", "season", "cabin"}
                 )
                 self.assertEqual(len(row["pair"]), 2)
-                self.assertIn(row["hub"], STOPOVER_LINK_HUBS)
+                self.assertIn(row["hub"], STOPOVER_WANTED_HUBS)
                 self.assertEqual(row["season"], "summer")
                 self.assertIn(row["cabin"], {"ECONOMY", "BUSINESS"})
                 self.assertRegex(row["airport"], r"^[A-Z]{3}$")
@@ -216,7 +217,7 @@ class StopoverWantedTests(unittest.TestCase):
             ((deal.outbound_date, deal.return_date), hub,
              deal.destination_airport, cabin)
             for deal in deals if deal.flight_options
-            for hub in STOPOVER_LINK_HUBS
+            for hub in STOPOVER_WANTED_HUBS
             for cabin in ("ECONOMY", "BUSINESS")
             if not hol.stopover_fares_for(
                 hub, deal.destination_airport, "summer",
@@ -227,10 +228,30 @@ class StopoverWantedTests(unittest.TestCase):
         self.assertEqual(listed, expected)
         self.assertEqual(len(wanted), len(listed), "a row is listed once, however many cards need it")
 
+    def test_dubai_istanbul_and_zurich_rows_are_asked_for_in_economy(self):
+        # Owner, 8 Nov 2026: Economy flights that stop "somewhere nice" for a
+        # few days each way — Switzerland, Dubai and Istanbul as well as Doha
+        # and Muscat. Every long-haul card of the example config needs each of
+        # those itineraries read in Economy.
+        deals, wanted = self._wanted()
+        cards = {(deal.outbound_date, deal.return_date, deal.destination_airport)
+                 for deal in deals if deal.flight_options}
+        self.assertTrue(cards)
+        economy = {(row["pair"][0], row["pair"][1], row["airport"], row["hub"])
+                   for row in wanted if row["cabin"] == "ECONOMY"}
+        for hub in ("DXB", "IST", "ZRH"):
+            for outbound, returning, airport in sorted(cards):
+                if hol.stopover_fares_for(hub, airport, "summer", pair=(outbound, returning),
+                                          cabin="ECONOMY"):
+                    continue  # already read: not wanted, by design
+                with self.subTest(hub=hub, airport=airport):
+                    self.assertIn((outbound, returning, airport, hub), economy)
+
     def test_the_list_names_the_private_readers_stopover_hubs_only(self):
         # Singapore is a plane change, not a hub to stay in (owner, 2026-10-15).
         _deals, wanted = self._wanted()
         self.assertNotIn("SIN", STOPOVER_LINK_HUBS)
+        self.assertNotIn("SIN", STOPOVER_WANTED_HUBS)
         self.assertNotIn("SIN", {row["hub"] for row in wanted})
 
     def test_a_priced_read_removes_only_its_own_row(self):

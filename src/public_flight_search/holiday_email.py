@@ -984,6 +984,18 @@ def business_note_words(deal: PackageDeal, *, travellers: int = 5) -> str:
     return ""
 
 
+def _hub_nights(option: Mapping[str, Any]) -> int:
+    """Nights in the hub each way: the option's own figure, else its hub's, else 2."""
+    for value in (option.get("hub_nights_each_way"),
+                  hol.STOPOVER_HUBS.get(str(option.get("hub") or "").upper(), {}).get("nights_each_way")):
+        try:
+            if value and int(value) > 0:
+                return int(value)
+        except (TypeError, ValueError):
+            continue
+    return 2
+
+
 def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, str, FlightPrice]]:
     """A long-haul card's rows: Business, Economy, one Gulf stopover.
 
@@ -1057,9 +1069,15 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
             key=lambda o: (0 if o.get("within_budget") else 1, _option_total(o)),
         )
         hub = str(cheapest.get("hub_label") or cheapest.get("hub") or "Doha")
+        # The figure is the trip total (FLIGHT_ROWS_ARE_TRIP_TOTALS) and, on this
+        # row only, it also pays for the hub hotel: the row says so, so it is not
+        # read as flights + resort alone (owner, 8 Nov 2026).
+        board = str(cheapest.get("hub_board") or "")
+        board = hol.BOARD_LABELS.get(board_code(board), board) if board else ""
         rows.append((
             "Economy",
-            f"1-Stop via {hub}, 2 nights each way",
+            f"1-Stop via {hub}, {_hub_nights(cheapest)} nights each way + hotel there"
+            + (f" ({board})" if board else ""),
             _gbp(_option_total(cheapest)),
         ))
         rows.extend(_business_stopover_rows(options, travellers=travellers))
@@ -1092,7 +1110,8 @@ def flight_rows(deal: PackageDeal, *, travellers: int = 5) -> list[tuple[str, st
         else (price_text, url) if url
         else price_text
     )
-    rows.append(("Economy", f"1-Stop via {hub}, 2 nights each way", total))
+    nights = int(hol.STOPOVER_HUBS[hub_code].get("nights_each_way") or 2)
+    rows.append(("Economy", f"1-Stop via {hub}, {nights} nights each way", total))
     rows.extend(_business_stopover_rows(options, travellers=travellers))
     return rows
 

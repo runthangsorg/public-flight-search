@@ -34,6 +34,7 @@ from public_flight_search.holidays import (
     ISLAND_RULE_KEYS,
     STOPOVER_HUBS,
     STOPOVER_LINK_HUBS,
+    STOPOVER_WANTED_HUBS,
     board_code,
     collect_holiday_deals,
     filter_resorts,
@@ -195,6 +196,34 @@ class StopoverHotelTests(unittest.TestCase):
                 self.assertEqual(info["nights_each_way"], 2)
                 self.assertTrue(info["hotel"]["hotel_url"].startswith("https://"))
                 self.assertTrue(info["hotel"]["source"])
+
+    def test_istanbul_and_zurich_are_hubs_with_a_sourced_breakfast_hotel(self):
+        # Owner, 8 Nov 2026: "stopovers in switzerland, dubai, istanbul", Economy
+        # on every leg. Each new hub carries a hotel for five adults with its
+        # own source, and either a read rate or an estimate that says so.
+        labels = {"IST": "Istanbul", "ZRH": "Zurich (Switzerland)"}
+        for hub, label in labels.items():
+            with self.subTest(hub=hub):
+                self.assertIn(hub, STOPOVER_HUBS)
+                info = STOPOVER_HUBS[hub]
+                self.assertEqual(info["label"], label)
+                self.assertEqual(info["nights_each_way"], 2)
+                hotel = info["hotel"]
+                self.assertTrue(hotel["name"])
+                self.assertTrue(hotel["hotel_url"].startswith("https://"))
+                self.assertTrue(hotel["unit"])
+                self.assertIn(board_code(hotel["board"]), BREAKFAST_BASES)
+                self.assertGreater(float(hotel["nightly_gbp"]), 0)
+                self.assertTrue(hotel["source"])
+                self.assertIn(hotel["confidence"], {"market-supported", "estimate"})
+
+    def test_dubai_istanbul_and_zurich_are_asked_to_be_priced(self):
+        # The fares the planner asks the private reader for (stopover_wanted).
+        # The unpriced link list stays at Doha and Muscat for the e-mail size
+        # budget; a read fare through any hub here still prices its card.
+        self.assertEqual(STOPOVER_WANTED_HUBS, ("DOH", "MCT", "DXB", "IST", "ZRH"))
+        self.assertTrue(set(STOPOVER_WANTED_HUBS).issubset(set(STOPOVER_HUBS)))
+        self.assertTrue(set(STOPOVER_LINK_HUBS).issubset(set(STOPOVER_WANTED_HUBS)))
 
 
 class StopoverSeasonTests(unittest.TestCase):

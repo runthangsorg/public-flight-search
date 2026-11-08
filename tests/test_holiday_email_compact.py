@@ -31,6 +31,7 @@ from unittest.mock import patch
 
 from public_flight_search import holidays as hol
 from public_flight_search.holiday_email import (
+    FLIGHT_ROWS_ARE_TRIP_TOTALS,
     breakdown_parts,
     departure_range_words,
     flight_rows,
@@ -718,6 +719,45 @@ class FlightRowTests(unittest.TestCase):
         html = _render(deals=[_deal(flight_options=_long_haul_options())])
         self.assertIn("£6,042", html)
         self.assertIn("£4,542", html)
+
+    def test_a_priced_istanbul_or_zurich_stopover_says_the_hub_hotel_is_in_the_trip_total(self):
+        """Owner, 8 Nov 2026: Economy stopovers in Istanbul and Switzerland too.
+
+        A read fare through either hub renders the same "1-Stop via <hub>, 2
+        nights each way" row as Doha, priced as the trip total with the flights
+        AND the hub hotel in it, and the row says the hotel there is included —
+        the card's own line says the figure is the trip total, not the flights.
+        """
+        for hub, label, hotel in (("IST", "Istanbul", "Hub Hotel Istanbul"),
+                                  ("ZRH", "Zurich (Switzerland)", "Hub Hotel Zurich")):
+            with self.subTest(hub=hub):
+                option = _option(
+                    "stopover", "ECONOMY", 3100.0, 3000.0,
+                    hub=hub, hub_label=label, hub_hotel=hotel,
+                    hub_board="Bed & Breakfast", hub_nights_each_way=2,
+                    stopover_hotel_cost=1200.0, stopover_nights=4,
+                    outbound="2027-06-27", origin="LHR", resort_nights=10,
+                    **{"return": "2027-07-09"},
+                    flight_basis="multi-city fare read 2026-11-08",
+                    source_url="https://www.google.com/travel/flights/search?tfs=multi",
+                )
+                # flights 3,100 + resort 3,000 + hub hotel 1,200 = 7,300; +41.5 door to door.
+                option["total_pkg"] = 7300.0
+                option["true_d2d"] = 7341.5
+                deal = _deal(flight_options=_long_haul_options() + (option,))
+                html = _render(deals=[deal])
+                card = html[html.index('id="deal-1"'):_multi_start(html)]
+                self.assertIn(f"1-Stop via {label}, 2 nights each way + hotel there (Bed &amp; Breakfast)", card)
+                self.assertIn("£7,342", card)
+                self.assertNotIn("not priced yet", card)
+                self.assertIn(FLIGHT_ROWS_ARE_TRIP_TOTALS, card)
+                text = render_holiday_report_compact_text(_config(), generated_at=GENERATED_AT, deals=[deal])
+                self.assertIn(f"Economy · 1-Stop via {label}, 2 nights each way + hotel there (Bed & Breakfast) · £7,342",
+                              text)
+                # The detailed page itemises the same figure: flights + stay + the hub hotel.
+                detail = hol.render_flight_options([option], travellers=5)
+                self.assertIn(f"{label} hotel £1,200 ({hotel}, 4 nights, Bed &amp; Breakfast)", detail)
+                self.assertIn(f"10 nights at the resort + 2 in {label} each way", unescape(detail))
 
     def test_a_priced_stopover_shows_its_total(self):
         deal = _deal(flight_options=_long_haul_options() + (_stopover(),))

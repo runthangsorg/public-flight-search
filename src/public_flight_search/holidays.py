@@ -4109,7 +4109,8 @@ def summer_multi_centre_trips() -> tuple[dict[str, Any], ...]:
 # in july on way out and way back (not business class options)". About two
 # nights in Doha or Muscat each way, Economy on every leg, stopover hotels
 # included at breakfast minimum. Rates read 2026-09-30 from the Accor booking
-# engine for five adults, ECB EUR/GBP 0.85718 (2026-09-29).
+# engine for five adults, ECB EUR/GBP 0.85718 (2026-09-29), for DOH, MCT, AUH
+# and DXB; IST and ZRH were read 2026-11-08 at ECB 0.83415 (2026-11-06).
 STOPOVER_HUBS: dict[str, dict[str, Any]] = {
     "DOH": {
         "label": "Doha",
@@ -4178,6 +4179,48 @@ STOPOVER_HUBS: dict[str, dict[str, Any]] = {
             "confidence": "market-supported",
         },
     },
+    # Owner, 8 Nov 2026: "prefer economy flights that stop somewhere nice for a
+    # few days out and in ... stopovers in switzerland, dubai, istanbul". Economy
+    # on every leg, two nights each way like the Gulf hubs, a breakfast-included
+    # hotel for five adults in at most three rooms.
+    "IST": {
+        "label": "Istanbul",
+        "nights_each_way": 2,
+        "hotel": {
+            "name": "Novotel Istanbul Bosphorus",
+            "hotel_url": "https://all.accor.com/hotel/8654/index.en.shtml",
+            "board": "Bed & Breakfast",
+            "unit": "3 × Superior Room (2 + 2 + 1 adults)",
+            # "SAVER RATE- BREAKFAST INCLUDED" (public rate, non-refundable):
+            # 27-29 Jun 2027 EUR 492.80 + EUR 492.80 + EUR 448.00; 9-11 Jul 2027
+            # EUR 451.36 + EUR 451.36 + EUR 406.56. Four nights (3 rooms)
+            # EUR 2,742.88 = GBP 2,287.97 at ECB EUR/GBP 0.83415 (2026-11-06),
+            # GBP 571.99 a night. Guest rating 4.7/5 (2,084 reviews) on Accor.
+            "nightly_gbp": 571.99,
+            "source": "Accor ALL booking engine (hotel 8654), 27-29 Jun and 9-11 Jul 2027, public rate, read 2026-11-08",
+            "confidence": "market-supported",
+        },
+    },
+    # The Swiss hub is Zurich airport; the hotel is in the city (Kreis 5, about
+    # ten minutes from the main station by tram), not Lucerne.
+    "ZRH": {
+        "label": "Zurich (Switzerland)",
+        "nights_each_way": 2,
+        "hotel": {
+            "name": "Novotel Zurich City West",
+            "hotel_url": "https://all.accor.com/hotel/2731/index.en.shtml",
+            "board": "Bed & Breakfast",
+            "unit": "3 × Superior room with double bed and sofa (2 + 2 + 1 adults)",
+            # "SAVER RATE- BREAKFAST INCLUDED" (public rate, non-refundable):
+            # 27-29 Jun 2027 EUR 626.80 + EUR 626.80 + EUR 549.14; 9-11 Jul 2027
+            # EUR 691.34 + EUR 691.34 + EUR 613.68. Four nights (3 rooms)
+            # EUR 3,799.10 = GBP 3,169.02 at ECB EUR/GBP 0.83415 (2026-11-06),
+            # GBP 792.25 a night. Guest rating 4.4/5 (939 reviews) on Accor.
+            "nightly_gbp": 792.25,
+            "source": "Accor ALL booking engine (hotel 2731), 27-29 Jun and 9-11 Jul 2027, public rate, read 2026-11-08",
+            "confidence": "market-supported",
+        },
+    },
 }
 
 #: The "price this yourself" link list on a card with no read stopover fare
@@ -4187,7 +4230,18 @@ STOPOVER_HUBS: dict[str, dict[str, Any]] = {
 #: link path — sits within ~3 KB of the Gmail 102 KB clip already. A hub added
 #: to STOPOVER_HUBS for the *priced* path (stopover_fares_for, gated on an
 #: actual STOPOVER_READS entry) costs nothing here until it has a real fare.
+#: Re-measured 8 Nov 2026 with all five wanted hubs in this tuple: the July
+#: compact e-mail body barely moves (it names one hub), but the December
+#: detailed report grew from 79,290 to 82,869 bytes, past the 75% headroom
+#: guard (test_email_size_budget). So the link list stays at two hubs and only
+#: the list of fares to READ (STOPOVER_WANTED_HUBS) is wider.
 STOPOVER_LINK_HUBS: tuple[str, ...] = ("DOH", "MCT")
+
+#: The hubs ``stopover_wanted`` asks the private reader to price for every
+#: long-haul card (owner, 8 Nov 2026: "stopovers in switzerland, dubai,
+#: istanbul" alongside Doha and Muscat). A read fare for any of them prices the
+#: card's stopover row through STOPOVER_HUBS, whatever this link list holds.
+STOPOVER_WANTED_HUBS: tuple[str, ...] = ("DOH", "MCT", "DXB", "IST", "ZRH")
 
 #: Stopover itineraries whose whole-trip Economy price for five was read on
 #: Google Flights (multi-city: London - hub on the outbound date, hub - beach
@@ -5109,7 +5163,7 @@ def stopover_wanted(
     fares: Optional[Mapping[Any, Any]] = None,
     *,
     season: str = "winter",
-    hubs: Sequence[str] = STOPOVER_LINK_HUBS,
+    hubs: Sequence[str] = STOPOVER_WANTED_HUBS,
 ) -> list[dict[str, Any]]:
     """Every stopover fare this run's rendered cards need and do not have.
 
@@ -9847,13 +9901,13 @@ def render_flight_options(options: Sequence[Mapping[str, Any]], *, travellers: i
                 offered = True
                 out.append(
                     '<br>(' + ('c' if has_business else 'b')
-                    + ') Economy + 2 nights in a Gulf hub each way, hotel included: no '
+                    + ') Economy + 2 nights in a stopover hub each way, hotel included: no '
                            'whole-party fare was read for these dates, so nothing is priced here — '
                            'not priced yet, one click to price it:')
                 out.extend(lines)
         if not offered:
             letter = 'c' if has_business else 'b'
-            out.append('<br>(' + letter + ') Economy + 2 nights Doha or Muscat each way: not priced for these dates '
+            out.append('<br>(' + letter + ') Economy + 2 nights in a stopover hub each way: not priced for these dates '
                        '(no multi-city fare was read).')
     out.append('</div>')
     return ''.join(out)
