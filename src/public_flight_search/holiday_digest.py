@@ -138,6 +138,10 @@ def _trip_card(row: Mapping[str, Any]) -> Optional[Card]:
         total = float(read.get("total_gbp"))
     except (TypeError, ValueError):
         return None
+    try:
+        nights = (datetime.fromisoformat(str(row["return"])[:10]) - datetime.fromisoformat(str(row["outbound"])[:10])).days
+    except ValueError:
+        nights = int(row["nights"])
     mixed = str(read.get("cabin", "")).upper() == "MIXED"
     cabin_words = ("Business on the long legs" if mixed else
                    "Business" if str(read.get("cabin", "")).upper() == "BUSINESS" else "Economy")
@@ -146,10 +150,11 @@ def _trip_card(row: Mapping[str, Any]) -> Optional[Card]:
     url = str(read.get("source_url") or row.get("url") or "")
     return Card(
         kind="flights", title=trip.title, place=" + ".join(s.place.split("(")[0].strip() for s in trip.stops),
-        nights=int(row["nights"]), dates=f"{_day(row['outbound'])} – {_day(row['return'])}", total_gbp=total,
+        nights=nights, dates=f"{_day(row['outbound'])} – {_day(row['return'])}", total_gbp=total,
         covers="flights only, 5 people, stays not priced", shop=shop_name(url, read.get("vendor")), url=url,
         read_on=_read_day(read.get("observed_at")), flights=flights, hotel=_stay_line(trip),
-        facts=((str(trip.why).strip(),) if str(getattr(trip, "why", "")).strip() else ()), halal="")
+        facts=(((f"stays are planned for {int(row['nights'])} of the {nights} nights",) if int(row["nights"]) != nights else ())
+               + ((str(trip.why).strip(),) if str(getattr(trip, "why", "")).strip() else ())), halal="")
 
 
 def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_prices: Mapping[Any, PackagePrice],
@@ -194,20 +199,30 @@ def _span(config: Any) -> str:
     return f"{int(getattr(config, 'travellers', 5))} travellers · leaving {span} · confirmed prices only"
 
 
+_SECTION = ("font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#334155; "
+            "margin:18px 0 8px; border-bottom:2px solid #CBD5E1; padding-bottom:4px;")
+
+
 def _card_html(c: Card) -> str:
-    tag = (f' <span style="background:#dcf1e2; color:{_OK}; border-radius:9px; padding:1px 7px; font-size:12px; '
-           f'font-weight:600;">{_e(c.halal)}</span>' if c.halal else "")
-    facts = "".join(f'<div style="color:{_MUTED}; font-size:13px; margin-top:2px;">{_e(f)}</div>' for f in c.facts)
-    link = f'<a href="{_e(c.url)}" style="color:{_ACCENT};">{_e(c.shop)}</a>' if c.url else _e(c.shop)
-    return (f'<div style="background:{_CARD}; border:1px solid {_LINE}; border-left:5px solid #2b8fb3; border-radius:8px; '
-            f'padding:10px 12px; margin:10px 0; color:{_INK}; font-size:14px; line-height:1.45;">'
-            f'<div style="font-size:16px; font-weight:700;">{_e(c.title)}{tag}</div>'
-            f'<div style="color:{_MUTED}; font-size:13px;">{c.nights} nights · {_e(c.dates)}</div>'
-            f'<div style="margin-top:4px;"><span style="font-size:20px; font-weight:700; color:{_INK};">{_gbp(c.total_gbp)}</span>'
-            f' for 5 <span style="color:{_MUTED};">· {_e(c.covers)}</span></div>'
-            f'<div>Found: {link} · read {_e(c.read_on)}</div>'
-            f'<div>Flights: {_e(c.flights)}</div>'
-            + (f'<div>Hotel: {_e(c.hotel)}</div>' if c.hotel else "") + facts + '</div>')
+    """One card, laid out as Gemini 4 Argon advised from a screenshot of the first version (8 Nov 2026)."""
+    tag = (' <span style="display:inline-block; background:#DCFCE7; color:#166534; font-size:11px; font-weight:700; '
+           f'padding:2px 6px; border-radius:4px;">{_e(c.halal)}</span>' if c.halal else "")
+    row = "font-size:13px; line-height:1.4; color:#1E293B; margin:0 0 4px;"
+    facts = "".join(f'<div style="font-size:12px; color:#475569; font-style:italic; margin-top:6px; '
+                    f'border-top:1px dashed #E2E8F0; padding-top:4px;">{_e(f)}</div>' for f in c.facts[:2])
+    link = (f'<a href="{_e(c.url)}" style="color:#0369A1; font-weight:600; text-decoration:underline;">{_e(c.shop)}</a>'
+            if c.url else _e(c.shop))
+    stay = "Hotel" if c.kind == "package" else "Stays"
+    return (f'<div style="background:#FFFFFF; border:1px solid #CBD5E1; border-left:4px solid #0284C7; border-radius:6px; '
+            f'padding:12px; margin-bottom:10px; color:#0F172A;">'
+            f'<div style="font-size:15px; font-weight:700; color:#0F172A; margin:0 0 2px;">{_e(c.title)}{tag}</div>'
+            f'<div style="font-size:12px; color:#475569; margin:0 0 8px;">{c.nights} nights · {_e(c.dates)}</div>'
+            f'<div style="background:#F1F5F9; padding:6px 8px; border-radius:4px; margin-bottom:8px;">'
+            f'<span style="font-size:17px; font-weight:800; color:#0F172A;">{_gbp(c.total_gbp)}</span> '
+            f'<span style="font-size:12px; color:#334155;">for 5 · {_e(c.covers)}</span><br>'
+            f'<span style="font-size:12px; color:#334155;">Found: {link} · read {_e(c.read_on)}</span></div>'
+            f'<div style="{row}"><b>Flights</b> {_e(c.flights)}</div>'
+            + (f'<div style="{row}"><b>{stay}</b> {_e(c.hotel)}</div>' if c.hotel else "") + facts + '</div>')
 
 
 def _not_priced_html(digest: Digest) -> str:
@@ -217,30 +232,31 @@ def _not_priced_html(digest: Digest) -> str:
     maldives = [e.name for e in digest.watch if "Maldives" in e.area]
     watched = set(gili) | set(maldives)
     others = [n for n in digest.not_priced if n not in watched]
-    lines = []
+    items = []
     if others:
-        lines.append(_e(", ".join(others)))
+        items.append(_e("; ".join(others)))
     if gili:
-        lines.append(f"Gili Islands: {_e(', '.join(gili))}")
+        items.append(f"<b>Gili Islands</b>: {_e(', '.join(gili))}")
     if maldives:
-        lines.append(f"Maldives (seaplane transfer needed, to be priced in): {_e(', '.join(maldives))}")
-    return (f'<h2 style="font-size:16px; margin:22px 0 6px; color:{_INK};">Not yet priced</h2>'
-            f'<div style="font-size:13px; color:{_MUTED}; line-height:1.5;">' + "<br>".join(lines) + "</div>")
+        items.append(f"<b>Maldives</b> (seaplane transfer to be priced in): {_e(', '.join(maldives))}")
+    li = "".join(f"<li>{i}</li>" for i in items)
+    return (f'<div style="{_SECTION}">Not yet priced</div>'
+            f'<ul style="padding-left:16px; margin:4px 0; font-size:12px; color:#334155; line-height:1.5;">{li}</ul>')
 
 
 def render_digest_html(config: Any, digest: Digest, *, generated_at: str, attachment_name: str = "") -> str:
     title = _e(getattr(config, "report_title", "July holiday watch"))
     packages = [c for c in digest.cards if c.kind == "package"]
     searches = [c for c in digest.cards if c.kind == "flights"]
-    out = [f'<div style="max-width:720px; margin:0 auto; padding:14px 16px; background:#ffffff; color:{_INK}; '
+    out = [f'<div style="max-width:560px; margin:0 auto; padding:12px; background:#F8FAFC; color:#0F172A; '
            f'font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">',
            f'<h1 style="font-size:21px; margin:4px 0 4px; color:#3C4C55;">{title}</h1>',
            f'<div style="color:{_MUTED}; font-size:13px;">{_e(_span(config))} · checked {_e(_read_day(generated_at))}</div>']
     if packages:
-        out.append(f'<h2 style="font-size:16px; margin:20px 0 4px; color:{_INK};">Confirmed packages</h2>')
+        out.append(f'<div style="{_SECTION}">Confirmed packages</div>')
         out.extend(_card_html(c) for c in packages)
     if searches:
-        out.append(f'<h2 style="font-size:16px; margin:20px 0 4px; color:{_INK};">Flight searches, flights only</h2>')
+        out.append(f'<div style="{_SECTION}">Flight searches, flights only</div>')
         out.extend(_card_html(c) for c in searches)
     if not digest.cards:
         out.append(f'<div style="margin:16px 0; color:{_INK};">Nothing confirmed this week: no package or flight price was read for the trip dates.</div>')
@@ -260,7 +276,7 @@ def render_digest_text(config: Any, digest: Digest, *, generated_at: str, attach
                   f"  {c.nights} nights · {c.dates} · {_gbp(c.total_gbp)} for 5 · {c.covers}",
                   f"  Found: {c.shop} · read {c.read_on} · {c.url}", f"  Flights: {c.flights}"]
         if c.hotel:
-            lines.append(f"  Hotel: {c.hotel}")
+            lines.append(f"  {'Hotel' if c.kind == 'package' else 'Stays'}: {c.hotel}")
         lines += [f"  {f}" for f in c.facts] + [""]
     if not digest.cards:
         lines += ["Nothing confirmed this week: no package or flight price was read for the trip dates.", ""]

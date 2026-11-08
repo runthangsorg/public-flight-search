@@ -96,6 +96,16 @@ class FlightSearchCardTests(unittest.TestCase):
         self.assertTrue(card.url.startswith("https://"))
         self.assertIn("Self-build", card.title)
 
+    def test_the_nights_are_the_nights_between_the_dates_shown(self):
+        # A read for later dates than the plan prices the trip (no_unplanned_nights): the card counts the dates it prints.
+        rows = [dict(r, **{"return": "2027-07-14", "nights": 10})
+                for r in _multi_centre_rows(_config(), fares=load([deal_read(BUILD, "MIXED", 8_000)])) if r["trip"].id == BUILD]
+        digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
+        card = digest.cards[0]
+        self.assertEqual(card.dates, "27 Jun – 14 Jul")
+        self.assertEqual(card.nights, 17)
+        self.assertIn("stays are planned for 10 of the 17 nights", card.facts[0])
+
     def test_an_economy_read_with_a_long_leg_is_not_a_card(self):
         digest = _build(reads=[deal_read(BUILD, "ECONOMY", 4_000)])
         self.assertFalse([c for c in digest.cards if "Kruger" in c.title])
