@@ -1,0 +1,26 @@
+{
+  "schema": "watchlist/1",
+  "compiled_on": "2026-11-08",
+  "notes": [
+    "Names to price, never prices. Each entry is a lead from a grounded search that was then opened on the property's own page; nothing here is a rate, and an entry leaves this list only when a dated, sourced price replaces it.",
+    "halal is set only from a quote on the property's own page. An absent halal block means no source was found, which is not the same as no halal food."
+  ],
+  "entries": [
+    {"name": "Vila Ombak", "area": "Gili Trawangan", "kind": "resort", "url": "https://www.vilaombak.com/", "read_on": "2026-11-08",
+     "halal": {"tag": "halal food on site", "source_url": "https://www.vilaombak.com/", "read_on": "2026-11-08",
+               "quote": "Halal Indonesian food and Mediterranean specialties at Ipanema Restaurant."}},
+    {"name": "Cocana Resort", "area": "Gili Trawangan", "kind": "resort", "url": "https://cocanaresorts.com/", "read_on": "2026-11-08"},
+    {"name": "Ponte Villas", "area": "Gili Trawangan", "kind": "villas", "url": "https://pontevillas.com/", "read_on": "2026-11-08"},
+    {"name": "Mahamaya Resort", "area": "Gili Meno", "kind": "resort", "url": "https://www.mahamaya.co/", "read_on": "2026-11-08"},
+    {"name": "Villa Tokay", "area": "Gili Meno", "kind": "villa", "url": "https://villatokay.com/", "read_on": "2026-11-08"},
+    {"name": "Slow Gili Air", "area": "Gili Air", "kind": "resort", "url": "https://slowgiliair.com/", "read_on": "2026-11-08"},
+    {"name": "Angsana Velavaru", "area": "Dhaalu Atoll, Maldives", "kind": "resort", "url": "https://www.angsana.com/maldives/velavaru", "read_on": "2026-11-08",
+     "seaplane_required": true, "seaplane_source_url": "https://www.angsana.com/maldives/velavaru",
+     "seaplane_quote": "a 40-minute seaplane journey from Velana International Airport"},
+    {"name": "Sun Siyam Iru Fushi", "area": "Noonu Atoll, Maldives", "kind": "resort", "url": "https://www.sunsiyam.com/sun-siyam-iru-fushi/", "read_on": "2026-11-08",
+     "seaplane_required": true, "seaplane_source_url": "https://www.sunsiyam.com/sun-siyam-iru-fushi/",
+     "seaplane_quote": "seamless seaplane transfers"},
+    {"name": "Soneva Jani", "area": "Noonu Atoll, Maldives", "kind": "resort", "url": "https://soneva.com/resorts/soneva-jani/", "read_on": "2026-11-08",
+     "seaplane_required": true, "seaplane_source_url": ""}
+  ]
+}

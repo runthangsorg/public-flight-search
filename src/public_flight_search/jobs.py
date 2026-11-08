@@ -40,6 +40,8 @@ from .holiday_history import (
     summarize_trends,
 )
 from .hotel_media import load_hotel_media
+from .holiday_digest import build_digest, render_digest_html, render_digest_text
+from .holiday_email import _multi_centre_rows
 from .mailer import send_html
 
 
@@ -522,6 +524,12 @@ def run_holiday_planner(
     attachment_html = "" if detailed else render_holiday_report_full(config, **render_kwargs)
     html = (render(config, **render_kwargs) if detailed
             else render(config, attachment_name=attachment_name, **render_kwargs))
+    # THE JULY BODY IS THE DIGEST (owner, 8 Nov 2026): confirmed prices and searches only, one compact card each.
+    body_digest = None
+    if is_july and not detailed:
+        body_digest = build_digest(config, rows=_multi_centre_rows(config, fares=multi_centre_fares),
+                              package_prices=package_prices, generated_at=generated_at)
+        html = render_digest_html(config, body_digest, generated_at=generated_at, attachment_name=attachment_name)
     # The plain-text part the mailer already sends used to say "open this in an
     # HTML-capable client", which carried none of the decision; it now mirrors
     # the HTML in the same order with the same numbers.
@@ -530,6 +538,8 @@ def run_holiday_planner(
         if detailed
         else render_holiday_report_compact_text(config, **render_kwargs)
     )
+    if body_digest is not None:
+        text = render_digest_text(config, body_digest, generated_at=generated_at, attachment_name=attachment_name)
     # Last PRIOR observation: read BEFORE today's append lands.
     last_prior = "" if dry_run else last_history_observation(path=history_path)
     appended = 0 if dry_run else append_history(deals, path=history_path)
