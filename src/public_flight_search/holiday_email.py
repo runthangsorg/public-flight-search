@@ -2256,6 +2256,25 @@ def over_budget_line(total: Any, budget: Any) -> bool:
     return ceiling > 0 and amount > ceiling * OVER_BUDGET_LINE_FACTOR
 
 
+def trip_low_end(row: Mapping[str, Any]) -> Optional[float]:
+    """The trip's low end AS THE TABLE PRINTS IT: its cheapest cabin total where its price itemises its flights, else
+    the low end of its own range. (``_trip_priced_total`` takes the lower of the two, which is right for the ceiling but
+    would print a figure the table does not show.)"""
+    totals = []
+    for item in row.get("cabin_totals") or ():
+        try:
+            totals.append(float(item.get("total")))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    if totals:
+        return min(totals)
+    try:
+        low = float(row.get("low"))
+    except (TypeError, ValueError):
+        return None
+    return low if low > 0 else None
+
+
 def _over_budget_trips_html(rows: Sequence[Mapping[str, Any]], budget: float, attachment_name: str) -> str:
     """One line per trip more than 20% over the budget: title, nights, low end, how much over, and its page."""
     if not rows:
@@ -2267,7 +2286,7 @@ def _over_budget_trips_html(rows: Sequence[Mapping[str, Any]], budget: float, at
            f'end{_esc(where)}:</div>']
     for row in rows:
         trip = row["trip"]
-        low = _trip_priced_total(row) or 0.0
+        low = trip_low_end(row) or 0.0
         page = (f' · <a href="{_esc(attachment_name)}#trip-{_esc(trip.id)}" style="color:{_ACCENT}; '
                 f'text-decoration:none;">full page ↗</a>' if attachment_name else "")
         out.append(f'<div style="padding:2px 0 0 0;"><b style="color:{_INK};">{_esc(trip.title)}</b> · '
@@ -2903,7 +2922,7 @@ def _overview_trip_groups(config: HolidayConfig,
 
 
 def _overview_html(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
-                   generated_at: Any) -> str:
+                   generated_at: Any, as_lines: Optional[set] = None) -> str:
     """The trips half of the at-a-glance table; the resort table follows it directly.
 
     Two columns, because the owner reads this on a 380 px phone: the trip's name
@@ -2934,8 +2953,10 @@ def _overview_html(config: HolidayConfig, rows: Sequence[Mapping[str, Any]], *,
             f'text-transform:uppercase;letter-spacing:.04em">{_esc(group)}</td></tr>'
         )
         for item in entries:
+            # A trip that is a line in the "Over budget" list has no page in the body: its name opens the list.
+            target = "over-budget" if item["anchor"].removeprefix("trip-") in (as_lines or ()) else item["anchor"]
             out.append(
-                f'<tr><td valign="top" style="{cell}"><a href="#{item["anchor"]}" '
+                f'<tr><td valign="top" style="{cell}"><a href="#{target}" '
                 f'style="color:{_INK};text-decoration:none;font-size:13px"><b>{_esc(item["title"])}</b></a><br>'
                 f'{_esc(item["nights"])} &middot; {_esc(item["basis"])}</td>'
                 f'<td align="right" valign="top" style="{cell};white-space:nowrap">'
@@ -3272,7 +3293,7 @@ def _render_compact(
     over_rows = ([] if full_detail or not getattr(config, "over_budget_lines", True) else
                  # in the table's order, so the list reads like the table it shortens
                  [row for _k, _l, group in td.owner_order(multi_rows) for row in group
-                  if over_budget_line(_trip_priced_total(row), trip_budget)])
+                  if over_budget_line(trip_low_end(row), trip_budget)])
     as_lines = {row["trip"].id for row in over_rows}
     for key in ("cheapest", "tanzania"):
         if answers.get(key) and str(answers[key].get("anchor", "")).removeprefix("trip-") in as_lines:
@@ -3301,7 +3322,7 @@ def _render_compact(
         _header_html(config, generated_at=generated_at),
         _start_here_html(answers, attachment_line=attachment_line),
         _freshness_html(evidence_stamps, generated_at=generated_at),
-        _overview_html(config, multi_rows, generated_at=generated_at),
+        _overview_html(config, multi_rows, generated_at=generated_at, as_lines=as_lines),
     ]
     if cards:
         out.append(

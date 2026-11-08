@@ -50,7 +50,7 @@ class TheBodyListsThemTests(unittest.TestCase):
     def setUpClass(cls):
         cls.fares = _fares()
         cls.rows = {r["trip"].id: r for r in _multi_centre_rows(_config(), fares=cls.fares)}
-        cls.over = {i for i, r in cls.rows.items() if he.over_budget_line(he._trip_priced_total(r), BUDGET)}
+        cls.over = {i for i, r in cls.rows.items() if he.over_budget_line(he.trip_low_end(r), BUDGET)}
         cls.within = set(cls.rows) - cls.over
         cls.body, cls.text, cls.full = _render(cls.fares, budget=10 ** 9)
 
@@ -68,11 +68,31 @@ class TheBodyListsThemTests(unittest.TestCase):
         block = text[text.index("Over budget"):]
         for ident in self.over:
             row = self.rows[ident]
-            low = he._trip_priced_total(row)
+            low = he.trip_low_end(row)
             self.assertRegex(block, re.escape(row["trip"].title) + r"\s*·\s*" + str(row["trip"].total_nights)
                              + r" nights · " + re.escape(he._gbp(low)) + r"[^·]*· " + re.escape(he._gbp(low - BUDGET))
                              + " over", ident)
         self.assertIn(ATTACHMENT, block)
+
+    def test_the_low_end_is_the_figure_the_table_prints(self):
+        # An itemised trip's table figure is its cheapest cabin total, not the catalogue's low end (EU-02: the table
+        # prints "Economy £X" and the line must say the same £X).
+        row = self.rows["EU-02"]
+        cheapest = min(item["total"] for item in row["cabin_totals"])
+        self.assertNotEqual(round(cheapest), round(row["low"]), "the fixture needs the two figures to differ")
+        self.assertEqual(he.trip_low_end(row), cheapest)
+        self.assertEqual(he.trip_low_end(self.rows["AF-04"]), self.rows["AF-04"]["low"])
+        block = visible_text(self.body)[visible_text(self.body).index("Over budget"):]
+        self.assertIn(f"{he._gbp(cheapest)} low end", block)
+        self.assertNotIn(f"{he._gbp(row['low'])} low end", block)
+
+    def test_the_tables_name_links_to_the_line_when_the_trip_has_no_page(self):
+        table = self.body[self.body.index("Every option at a glance"):self.body.index('id="trips"')]
+        for ident in self.over:
+            self.assertNotIn(f'href="#trip-{ident}"', table, ident)
+        self.assertEqual(table.count('href="#over-budget"'), len(self.over))
+        for ident in self.within:
+            self.assertIn(f'href="#trip-{ident}"', table, ident)
 
     def test_each_line_is_a_link_to_the_attachment_page(self):
         start = self.body.index('id="over-budget"')
