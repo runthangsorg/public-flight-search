@@ -37,16 +37,18 @@ class TheQualityListTests(unittest.TestCase):
     def test_the_list_holds_the_major_full_service_carriers(self):
         codes = {code for code, _name in BUSINESS_QUALITY_CARRIERS}
         self.assertEqual(codes, {"QR", "EK", "EY", "SQ", "CX", "JL", "NH", "TK", "BA", "VS", "LX", "LH", "KL", "AF",
-                                 "WY", "QF"})
+                                 "WY", "QF", "KQ", "ET"})
 
     def test_names_codes_and_the_pages_own_spellings_are_matched(self):
         for name in ("Qatar Airways", "Emirates", "Etihad Airways", "Singapore Airlines", "Cathay Pacific", "JAL",
                      "Japan Airlines", "ANA", "Turkish Airlines", "British Airways", "Virgin Atlantic", "SWISS",
-                     "Lufthansa", "KLM", "Air France", "Oman Air", "Qantas", "QR", "Qatar Airways, British Airways"):
+                     "Lufthansa", "KLM", "Air France", "Oman Air", "Qantas", "QR", "Qatar Airways, British Airways",
+                     # Owner, 8 Nov 2026: Kenya Airways and Ethiopian count as good airlines for business.
+                     "Kenya Airways", "Ethiopian Airlines", "Ethiopian Air", "KQ", "ET", "Kenya Airways, Qatar Airways"):
             self.assertTrue(quality_business_carrier(name), name)
 
     def test_anything_else_or_a_mixture_or_an_unnamed_carrier_is_not(self):
-        for name in ("Kenya Airways", "Egyptair, Emirates", "Emirates, Airlink", "Multiple airlines",
+        for name in ("Egyptair, Emirates", "Emirates, Airlink", "Multiple airlines",
                      "British AirwaysIberia", "", "RwandAir", "Air India"):
             self.assertFalse(quality_business_carrier(name), name)
 
@@ -93,7 +95,7 @@ class TheTripPagesTests(unittest.TestCase):
 
     def test_a_carrier_off_the_quality_list_is_not_a_deal(self):
         html, text, full = self._render([deal_read(PACKAGE, "ECONOMY", 5_000),
-                                         deal_read(PACKAGE, "MIXED", 9_000, carrier="Kenya Airways")])
+                                         deal_read(PACKAGE, "MIXED", 9_000, carrier="RwandAir")])
         self._assert_hidden(html, text, full, "£4,000")
         self.assertNotIn("£9,000", visible_text(_slice(html, f"trip-{PACKAGE}")))
 

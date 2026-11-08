@@ -126,6 +126,9 @@ BUSINESS_QUALITY_CARRIERS = (
     ("CX", "Cathay Pacific"), ("JL", "Japan Airlines"), ("NH", "All Nippon Airways"), ("TK", "Turkish Airlines"),
     ("BA", "British Airways"), ("VS", "Virgin Atlantic"), ("LX", "Swiss"), ("LH", "Lufthansa"), ("KL", "KLM"),
     ("AF", "Air France"), ("WY", "Oman Air"), ("QF", "Qantas"),
+    # Owner, 8 Nov 2026: Kenya Airways and Ethiopian count as good airlines for business (they fly most of the
+    # Africa business reads).
+    ("KQ", "Kenya Airways"), ("ET", "Ethiopian"),  # "Ethiopian" matches both "Ethiopian Airlines" and "Ethiopian Air"
 )
 
 #: Two airlines' names run together by a page's parser ("British AirwaysIberia"): a lower-case letter directly followed
