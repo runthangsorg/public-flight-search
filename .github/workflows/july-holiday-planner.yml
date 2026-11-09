@@ -11,6 +11,11 @@ on:
         required: true
         default: true
         type: boolean
+      send_to_owner:
+        description: "Really e-mail the owner (with dry_run false). Agents preview with dry runs; never set this to test"
+        required: false
+        default: false
+        type: boolean
       force_send:
         description: "Send even when nothing changed since last report"
         required: false
@@ -33,7 +38,8 @@ jobs:
   planner:
     if: github.event_name == 'workflow_dispatch' || vars.ENABLE_JULY_HOLIDAY_PLANNER == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 30: the weekly live-fare read is ~42 one-traveller searches at least 10 s apart (owner, 9 Nov 2026).
+    timeout-minutes: 30
     # Workflow stays read-only; the history commit-back pushes to the PRIVATE
     # data repo (dealsearch) via a write-scoped deploy key secret, so
     # no write permission is ever granted on this public repo.
@@ -55,7 +61,7 @@ jobs:
       # same proven transport as the persist step. Best-effort: a seed
       # failure degrades to 'first time tracked' chips, never fails the run.
       - name: Seed price history from private data repo
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false && inputs.send_to_owner == true)
         env:
           HISTORY_DEPLOY_KEY: ${{ secrets.HISTORY_DEPLOY_KEY }}
         shell: bash
@@ -79,6 +85,11 @@ jobs:
           else
             touch data/july_holiday_price_history.jsonl
             echo "No prior July history file; starting fresh."
+          fi
+          # The business watcher's history feeds the Sunday e-mail's "Best business fares this week".
+          if [[ -f /tmp/history-seed/data/business_deals_history.jsonl ]]; then
+            cp /tmp/history-seed/data/business_deals_history.jsonl data/business_deals_history.jsonl
+            echo "Seeded $(wc -l < data/business_deals_history.jsonl) business-fare rows."
           fi
       # Live-fare evidence is CURRENT MARKET DATA; price history is
       # history-memory. A dry run must not see prior observations ("a dry run
@@ -195,6 +206,24 @@ jobs:
           if [[ "${stopover_batches}" -eq 0 ]]; then
             echo "::warning::No stopover_reads*.json in private repo; stopover cards offer the itinerary, not a price."
           fi
+      # ONE WEEKLY E-MAIL (owner, 9 Nov 2026): read this week's economy and business fares for every
+      # destination (one traveller, scaled in the e-mail and labelled so) for their own section. Read-only, so a
+      # dry run may do it too; a failed read leaves the section out and never stops the e-mail.
+      - name: Read this week's live fares
+        continue-on-error: true
+        env:
+          JULY_HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.JULY_HOLIDAY_SEARCH_CONFIG_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG_FILE="examples/july_holiday_config.json"
+          if [[ -n "${JULY_HOLIDAY_SEARCH_CONFIG_JSON:-}" ]]; then
+            umask 077
+            printf '%s' "${JULY_HOLIDAY_SEARCH_CONFIG_JSON}" > "${RUNNER_TEMP}/july_config.json"
+            CONFIG_FILE="${RUNNER_TEMP}/july_config.json"
+          fi
+          mkdir -p data
+          timeout 20m python -m public_flight_search july-weekly-fares --config "${CONFIG_FILE}" --out data/july_weekly_fares.json
       - name: Build and optionally deliver
         # JULY-SPECIFIC KNOBS ONLY. The generic HOLIDAY_SEARCH_CONFIG_JSON and
         # HOLIDAY_EMAIL_SUBJECT secrets belong to the December planner, and the
@@ -217,12 +246,14 @@ jobs:
           HOLIDAY_LIVE_FLIGHTS: "1"
           DISPATCH_DRY_RUN: ${{ inputs.dry_run }}
           DISPATCH_FORCE_SEND: ${{ inputs.force_send }}
+          DISPATCH_SEND_TO_OWNER: ${{ inputs.send_to_owner }}
           HOLIDAY_SEND_EVERY_RUN: ${{ vars.HOLIDAY_SEND_EVERY_RUN }}
         shell: bash
         run: |
           set -euo pipefail
           FORCE_FLAG=""
-          if [[ "${DISPATCH_FORCE_SEND:-false}" == "true" ]]; then
+          if [[ "${DISPATCH_FORCE_SEND:-false}" == "true" || "${GITHUB_EVENT_NAME}" == "schedule" ]]; then
+            # The Sunday run is the one weekly e-mail, so it always goes out, flat week or not.
             FORCE_FLAG="--force-send"
           fi
           CONFIG_ARG=""
@@ -230,13 +261,15 @@ jobs:
             CONFIG_ARG="--config examples/july_holiday_config.json"
             echo "::notice::no JULY_HOLIDAY_SEARCH_CONFIG_JSON secret; pricing the committed examples/july_holiday_config.json"
           fi
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${DISPATCH_DRY_RUN}" == "true" ]]; then
+          # A dispatch e-mails the owner only with dry_run false AND send_to_owner true: agents testing a layout
+          # sent three July e-mails on 8 Nov 2026.
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && ( "${DISPATCH_DRY_RUN}" == "true" || "${DISPATCH_SEND_TO_OWNER:-false}" != "true" ) ]]; then
             python -m public_flight_search july-holiday-planner --dry-run ${CONFIG_ARG}
           else
             python -m public_flight_search july-holiday-planner ${FORCE_FLAG} ${CONFIG_ARG}
           fi
       - name: Persist price history to private data repo
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false && inputs.send_to_owner == true)
         env:
           HISTORY_DEPLOY_KEY: ${{ secrets.HISTORY_DEPLOY_KEY }}
         shell: bash

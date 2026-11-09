@@ -39,6 +39,8 @@ def raw_config(**over):
         "max_searches_per_run": 40,
         "stop_after_blocked": 3,
         "absolute_caps_gbp": {"asia": 1000},
+        # These tests cover the cap path, which is opt-in since 9 Nov 2026.
+        "cap_alerts": True,
     }
     base.update(over)
     return base

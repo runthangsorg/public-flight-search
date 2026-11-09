@@ -151,6 +151,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return _evidence_contract(arguments[1:])
     if arguments and arguments[0] == "holiday-compare":
         return _holiday_compare(arguments[1:])
+    if arguments and arguments[0] == "july-weekly-fares":
+        from .weekly_fares import main as _weekly_fares
+
+        return _weekly_fares(arguments[1:])
     if arguments and arguments[0] == "business-deals":
         from .business_deals import main as _business_deals
 

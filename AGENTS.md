@@ -21,8 +21,9 @@ may hold only generic booleans and operating limits.
 ## What this repo is for
 
 Recurring GitHub-hosted compute for the December and July package-holiday planners (July: weekly,
-Sunday 08:00 UTC) and the daily business-class deal watch (business-deals.yml, owner decision 26 Oct 2026; it
-e-mails only when a deal fires), on free standard runners (holiday-planner.yml, july-holiday-planner.yml). Keep it that way: no self-hosted
+Sunday 08:00 UTC, the one weekly holiday e-mail: cards, this week's live economy and business fares for every
+destination, and the week's best business fares) and the daily business-class deal watch (business-deals.yml; since
+9 Nov 2026 it records daily and e-mails on its own only for a fare at least 40% under its route median), on free standard runners (holiday-planner.yml, july-holiday-planner.yml). Keep it that way: no self-hosted
 runners, no credentials in the repo, no personalised output committed. The paired flight digest
 (flight-digest.yml) was deleted on 2026-09-28 at the owner's instruction — do not reintroduce it
 without an owner decision.
@@ -32,6 +33,10 @@ without an owner decision.
 The owner's request is the authority to run a job live, send its email or
 publish: pass `--send` (or the workflow's equivalent input) when the task calls
 for it. Scripts keep dry-run as their default so a test never sends.
+
+Agents preview a layout with dry runs and screenshots, and never dispatch a live send: a `july-holiday-planner.yml`
+dispatch e-mails the owner only with `dry_run` false and `send_to_owner` true, which is the owner's own choice
+(three test e-mails reached him on 8 Nov 2026).
 
 ## Before you push
 

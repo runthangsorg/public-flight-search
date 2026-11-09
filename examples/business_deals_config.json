@@ -25,7 +25,7 @@
   "date_windows": [{"start": "2027-02-01", "end": "2027-06-30", "every_days": 30}],
   "min_days_ahead": 7,
   "min_observations": 5,
-  "median_drop_pct": 30,
+  "median_drop_pct": 40,
   "median_window_days": 90,
   "away_min_saving_pct": 20,
   "dedupe_days": 30,

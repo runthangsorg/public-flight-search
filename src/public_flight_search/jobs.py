@@ -540,6 +540,15 @@ def run_holiday_planner(
     )
     if body_digest is not None:
         text = render_digest_text(config, body_digest, generated_at=generated_at, attachment_name=attachment_name)
+    if is_july:
+        # ONE WEEKLY E-MAIL (owner, 9 Nov 2026): this week's live economy and business fares for every
+        # destination, and the business watcher's best fares, ride the Sunday body instead of separate e-mails.
+        from .weekly_fares import insert_section, weekly_sections
+
+        weekly_html, weekly_text = weekly_sections()
+        html = insert_section(html, weekly_html)
+        if weekly_text:
+            text = (text + "\n\n" + weekly_text) if text else weekly_text
     # Last PRIOR observation: read BEFORE today's append lands.
     last_prior = "" if dry_run else last_history_observation(path=history_path)
     appended = 0 if dry_run else append_history(deals, path=history_path)
