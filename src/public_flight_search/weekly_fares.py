@@ -25,6 +25,11 @@ from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 SCHEMA = "july_weekly_fares/1"
 DEFAULT_PATH = "data/july_weekly_fares.json"
 DEFAULT_BUSINESS_HISTORY = "data/business_deals_history.jsonl"
+DEFAULT_MULTIVENDOR_HISTORY = "data/business_deals_multivendor_history.jsonl"
+#: The workflow step is killed at 20 minutes; stop starting searches well before that.
+DEFAULT_BUDGET_SECONDS = 17 * 60
+#: The alerts' own minimum readings for a usable median (business_deals.BusinessDealsConfig.min_observations).
+MIN_MEDIAN_READINGS = 5
 CABINS = ("ECONOMY", "BUSINESS")
 ORIGIN = "LHR"
 #: The trip length the section quotes; the cards still price every configured pair.
@@ -107,15 +112,32 @@ def _cheapest(offers: Iterable[Any], search: FareSearch) -> Optional[Any]:
 
 
 def read_weekly_fares(config: Any, fetch: Callable[[FareSearch], tuple[str, Sequence[Any]]], *,
-                      now: Optional[datetime] = None, max_searches: Optional[int] = None) -> dict:
-    """Read every planned search; ``fetch`` returns ``(status, offers)`` with status ok, wall or failed."""
+                      now: Optional[datetime] = None, max_searches: Optional[int] = None,
+                      budget_seconds: Optional[float] = None, clock: Callable[[], float] = time.monotonic,
+                      checkpoint: Optional[Callable[[dict], None]] = None) -> dict:
+    """Read every planned search; ``fetch`` returns ``(status, offers)`` with status ok, wall or failed.
+
+    ``checkpoint`` is called with the payload so far after every search, so a killed run keeps what it read.
+    Once ``budget_seconds`` of wall clock have passed no new search starts; the rest are rows with status
+    "skipped" (out of time)."""
     now = now or datetime.now(timezone.utc)
     travellers = int(getattr(config, "travellers", 1) or 1)
-    rows = []
+    rows: list[dict] = []
     searches = plan(config)
     if max_searches is not None:
         searches = searches[:max_searches]
+    started = clock()
+
+    def payload() -> dict:
+        return {"schema": SCHEMA, "generated_at": now.isoformat(timespec="seconds"), "origin": ORIGIN,
+                "travellers": travellers, "rows": list(rows)}
+
     for search in searches:
+        if budget_seconds is not None and clock() - started >= budget_seconds:
+            rows.append({"airport": search.airport, "label": search.label, "cabin": search.cabin,
+                         "outbound": search.outbound, "return": search.return_date, "status": "skipped",
+                         "observed_at": now.isoformat(timespec="seconds")})
+            continue
         status, offers = fetch(search)
         row = {"airport": search.airport, "label": search.label, "cabin": search.cabin,
                "outbound": search.outbound, "return": search.return_date, "status": status,
@@ -130,8 +152,21 @@ def read_weekly_fares(config: Any, fetch: Callable[[FareSearch], tuple[str, Sequ
         elif status == "ok":
             row["status"] = "no fares"
         rows.append(row)
-    return {"schema": SCHEMA, "generated_at": now.isoformat(timespec="seconds"), "origin": ORIGIN,
-            "travellers": travellers, "rows": rows}
+        if checkpoint is not None:
+            checkpoint(payload())
+    final = payload()
+    if checkpoint is not None:
+        checkpoint(final)
+    return final
+
+
+def write_atomic(path: str, payload: Mapping[str, Any]) -> None:
+    """Write JSON so a reader (or a killed run) never sees a half-written file."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    os.replace(tmp, target)
 
 
 def make_google_fetch() -> Callable[[FareSearch], tuple[str, Sequence[Any]]]:
@@ -183,24 +218,25 @@ def _stamp(value: Any) -> Optional[datetime]:
 
 
 def best_business_this_week(history: Iterable[Mapping[str, Any]], now: datetime, *, days: int = 7,
-                            limit: int = 8, window_days: int = 90) -> list[dict]:
-    """The cheapest business fare per destination observed in the last ``days``, with its route median."""
-    rows = [r for r in history if _stamp(r.get("observed_at")) and r.get("per_person_gbp")]
-    medians: dict[str, list[float]] = {}
-    for r in rows:
-        if _stamp(r["observed_at"]) >= now - timedelta(days=window_days):
-            medians.setdefault(str(r.get("destination")), []).append(float(r["per_person_gbp"]))
+                            limit: int = 8, window_days: int = 90,
+                            min_readings: int = MIN_MEDIAN_READINGS) -> list[dict]:
+    """The cheapest business fare per destination observed in the last ``days``, with its route median.
+
+    The median is the alerts' own baseline (same origin, destination, cabin, departure month and trip length,
+    last ``window_days``, at least ``min_readings`` readings); without that history there is no percentage."""
+    from .business_deals import route_median
+
+    all_rows = [r for r in history if _stamp(r.get("observed_at")) and r.get("per_person_gbp")]
     best: dict[str, dict] = {}
-    for r in rows:
+    for r in all_rows:
         if _stamp(r["observed_at"]) < now - timedelta(days=days):
             continue
         dest = str(r.get("destination"))
         if dest not in best or float(r["per_person_gbp"]) < float(best[dest]["per_person_gbp"]):
             best[dest] = dict(r)
     out = []
-    for dest, r in best.items():
-        pool = medians.get(dest, [])
-        median = statistics.median(pool) if len(pool) >= 3 else None
+    for r in best.values():
+        median, _n = route_median(all_rows, r, now, window_days=window_days, min_observations=min_readings)
         r["median_gbp"] = round(median, 2) if median else None
         r["pct_below_median"] = round((1 - float(r["per_person_gbp"]) / median) * 100, 1) if median else None
         out.append(r)
@@ -298,7 +334,7 @@ def render_section_html(weekly: Optional[Mapping[str, Any]], business: Sequence[
             route = f'{r.get("origin", "")}→{r.get("destination", "")} {str(r.get("departure", ""))[:10]}'
             pct = r.get("pct_below_median")
             vs = (f"{pct:.0f}% under {_gbp(float(r['median_gbp']))}" if pct is not None and pct > 0
-                  else (f"usual {_gbp(float(r['median_gbp']))}" if r.get("median_gbp") else "too new to compare"))
+                  else (f"usual {_gbp(float(r['median_gbp']))}" if r.get("median_gbp") else "no price history yet"))
             link = r.get("booking_url") or ""
             price = _gbp(float(r["per_person_gbp"])) + f'<br><span style="color:#475569; font-size:11px;">{e(str(r.get("airline", "")))}</span>'
             price = f'<a href="{e(link)}" style="color:#155f8f;">{price}</a>' if link else price
@@ -342,6 +378,11 @@ def weekly_sections(now: Optional[datetime] = None) -> tuple[str, str]:
     now = now or datetime.now(timezone.utc)
     weekly = load_weekly_fares(os.environ.get("JULY_WEEKLY_FARES_PATH", DEFAULT_PATH))
     history = read_jsonl(os.environ.get("BUSINESS_DEALS_HISTORY", DEFAULT_BUSINESS_HISTORY))
+    # The multi-vendor watcher's history rides the same private clone (same row shape); dedupe by fingerprint + read time.
+    seen = {(r.get("fingerprint"), r.get("observed_at")) for r in history if r.get("fingerprint")}
+    for r in read_jsonl(os.environ.get("BUSINESS_DEALS_MULTIVENDOR_HISTORY", DEFAULT_MULTIVENDOR_HISTORY)):
+        if (r.get("fingerprint"), r.get("observed_at")) not in seen:
+            history.append(r)
     business = best_business_this_week(history, now)
     return render_section_html(weekly, business), render_section_text(weekly, business)
 
@@ -355,6 +396,8 @@ def main(arguments: Sequence[str]) -> int:
     parser.add_argument("--config", default="examples/july_holiday_config.json")
     parser.add_argument("--out", default=DEFAULT_PATH)
     parser.add_argument("--max-searches", type=int, default=None)
+    parser.add_argument("--budget-seconds", type=float, default=DEFAULT_BUDGET_SECONDS,
+                        help="stop starting new searches after this many seconds of wall clock")
     parser.add_argument("--plan-only", action="store_true", help="print the searches; read nothing")
     args = parser.parse_args(list(arguments))
     config = load_holiday_config(Path(args.config).read_text(encoding="utf-8"))
@@ -362,9 +405,9 @@ def main(arguments: Sequence[str]) -> int:
         for s in plan(config):
             print(f"{s.airport} {s.cabin} {s.outbound}→{s.return_date} ({s.label})")
         return 0
-    payload = read_weekly_fares(config, make_google_fetch(), max_searches=args.max_searches)
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    Path(args.out).write_text(json.dumps(payload, indent=1), encoding="utf-8")
+    payload = read_weekly_fares(config, make_google_fetch(), max_searches=args.max_searches,
+                                budget_seconds=args.budget_seconds,
+                                checkpoint=lambda partial: write_atomic(args.out, partial))
     counts: dict[str, int] = {}
     for r in payload["rows"]:
         counts[r["status"]] = counts.get(r["status"], 0) + 1

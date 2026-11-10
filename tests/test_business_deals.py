@@ -32,7 +32,7 @@ def raw_config(**over):
         ],
         "dates": [DEP],
         "min_observations": 5,
-        "median_drop_pct": 30,
+        "median_drop_pct": 40,
         "away_min_saving_pct": 20,
         "dedupe_days": 7,
         "redrop_pct": 2,
@@ -128,12 +128,12 @@ class DealRuleTests(JobCase):
         self.assertEqual(result.deals, [])
         self.assertEqual(sink.sent, [])
 
-    def test_median_trigger_needs_thirty_percent_below(self):
+    def test_median_trigger_needs_forty_percent_below(self):
         cfg = raw_config(absolute_caps_gbp={})
         write_history(self.history, median_history("LHR", 2000))
-        result, _, _ = self.run_job({"LHR": 1300}, config=cfg)  # ~35% under ~2002 median
+        result, _, _ = self.run_job({"LHR": 1150}, config=cfg)  # ~43% under ~2002 median
         self.assertEqual([d.trigger for d in result.deals], ["median"])
-        self.assertAlmostEqual(result.deals[0].pct_below_median, 35.0, delta=1.5)
+        self.assertAlmostEqual(result.deals[0].pct_below_median, 43.0, delta=1.5)
 
     def test_median_trigger_does_not_fire_at_twenty_five_percent(self):
         cfg = raw_config(absolute_caps_gbp={})
@@ -156,8 +156,8 @@ class DealRuleTests(JobCase):
     def test_positioning_cost_is_added_and_can_flip_the_winner(self):
         cfg = raw_config(absolute_caps_gbp={})
         write_history(self.history, median_history("LHR", 2200) + median_history("OSL", 2200, positioning=150))
-        # Oslo fare 1300 + 150 positioning = 1450 total: 34% under its own median, but not 20% under London 1400.
-        result, _, _ = self.run_job({"LHR": 1400, "OSL": 1300}, config=cfg)
+        # Oslo fare 1300 + 150 positioning = 1450 total: not 20% under London 1250.
+        result, _, _ = self.run_job({"LHR": 1250, "OSL": 1300}, config=cfg)
         self.assertEqual([d.origin for d in result.deals], ["LHR"])
         obs_total = {o["origin"]: o["total_gbp"] for o in map(json.loads, self.history.read_text().splitlines())
                      if o["observed_at"].startswith(NOW.date().isoformat())}
@@ -166,10 +166,10 @@ class DealRuleTests(JobCase):
     def test_away_origin_wins_when_total_beats_home_by_the_margin(self):
         cfg = raw_config(absolute_caps_gbp={})
         write_history(self.history, median_history("LHR", 2200) + median_history("OSL", 2200, positioning=150))
-        result, _, _ = self.run_job({"LHR": 1400, "OSL": 900}, config=cfg)  # 1050 total <= 1120
+        result, _, _ = self.run_job({"LHR": 1250, "OSL": 800}, config=cfg)  # 950 total <= 1000
         self.assertEqual(sorted(d.origin for d in result.deals), ["LHR", "OSL"])
         osl = [d for d in result.deals if d.origin == "OSL"][0]
-        self.assertAlmostEqual(osl.saving_vs_home_pct, 25.0, delta=0.5)
+        self.assertAlmostEqual(osl.saving_vs_home_pct, 24.0, delta=0.5)
 
     def test_away_origin_without_a_home_price_cannot_fire_on_median(self):
         cfg = raw_config(absolute_caps_gbp={})
@@ -445,12 +445,12 @@ class EmailTests(JobCase):
     def test_email_has_clickable_links_dates_total_median_and_last_seen(self):
         cfg = raw_config(absolute_caps_gbp={})
         write_history(self.history, median_history("LHR", 2000))
-        _, sink, _ = self.run_job({"LHR": 1300}, config=cfg)
+        _, sink, _ = self.run_job({"LHR": 1150}, config=cfg)
         subject, html, text = sink.sent[0]
         self.assertIn("Business-class deal", subject)
         self.assertIn('<a href="https://example.test/LHR-BKK">', html)
         self.assertIn("2027-03-01", html)
-        self.assertIn("£1,300", html)
+        self.assertIn("£1,150", html)
         self.assertIn("below median", html)
         self.assertIn(NOW.date().isoformat(), html)
         self.assertIn("https://example.test/LHR-BKK", text)

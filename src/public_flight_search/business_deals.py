@@ -386,7 +386,8 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
         title=str(raw.get("report_title") or "Business-class deals")[:120],
         origins=tuple(origins), destinations=tuple(destinations), dates=future,
         min_observations=int(_num(raw, "min_observations", 5, 3, 60)),
-        median_drop_pct=_num(raw, "median_drop_pct", INSTANT_ALERT_DROP_PCT, 5.0, 90.0),
+        # A floor, whatever the stored secret says (it was written when the example said 30): never alert below 40%.
+        median_drop_pct=max(INSTANT_ALERT_DROP_PCT, _num(raw, "median_drop_pct", INSTANT_ALERT_DROP_PCT, 5.0, 90.0)),
         median_window_days=int(_num(raw, "median_window_days", 90, 14, 365)),
         away_min_saving_pct=_num(raw, "away_min_saving_pct", 20.0, 0.0, 90.0),
         dedupe_days=int(_num(raw, "dedupe_days", 7, 1, 60)),
@@ -606,6 +607,25 @@ def _per_person(row: Mapping[str, Any]) -> Optional[float]:
 # --------------------------------------------------------------------------- deal rules
 
 
+def route_key(row: Mapping[str, Any]) -> tuple:
+    """The like-with-like group a fare is compared in: origin, destination, cabin, departure month, trip length."""
+    return (row.get("origin"), row.get("destination"), row.get("cabin_class"),
+            str(row.get("departure", ""))[:7], _row_trip_nights(row))
+
+
+def route_median(history: Sequence[Mapping[str, Any]], row: Mapping[str, Any], now: datetime, *,
+                 window_days: int = 90, min_observations: int = 5) -> tuple[Optional[float], int]:
+    """``(median, n)`` of per-person fares for ``row``'s route key over the window; median is None under the minimum.
+
+    The one baseline the instant alerts and the weekly e-mail both use."""
+    start = now - timedelta(days=window_days)
+    key = route_key(row)
+    pool = [pp for h in history if route_key(h) == key and (stamp := _when(h)) is not None and stamp >= start
+            and _total(h) is not None and (pp := _per_person(h)) is not None]
+    n = len(pool)
+    return (statistics.median(pool) if n >= min_observations else None), n
+
+
 def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Sequence[dict],
                cfg: BusinessDealsConfig, now: datetime) -> list[Deal]:
     origin_label = {o.code: o.label for o in cfg.origins}
@@ -622,8 +642,7 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
         if key and (key not in first_seen or stamp < first_seen[key]):
             first_seen[key] = stamp
         if stamp >= window_start:
-            pool[(row.get("origin"), row.get("destination"), row.get("cabin_class"),
-                  str(row.get("departure", ""))[:7], _row_trip_nights(row))].append(per_person)
+            pool[route_key(row)].append(per_person)
 
     def home_reference(obs: Mapping[str, Any]) -> Optional[float]:
         totals = [o["total_gbp"] for o in observations if o["origin_is_home"]
@@ -647,8 +666,7 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
     def judge(obs: Mapping[str, Any], *, redrop: bool = True) -> Optional[Deal]:
         total = obs["total_gbp"]
         per_person = obs["per_person_gbp"]
-        prior = pool.get((obs["origin"], obs["destination"], obs["cabin_class"], obs["departure"][:7],
-                          _row_trip_nights(obs)), [])
+        prior = pool.get(route_key(obs), [])
         n = len(prior)
         median = statistics.median(prior) if n else None
         pct = round((1 - per_person / median) * 100, 1) if median else None

@@ -86,6 +86,11 @@ jobs:
             touch data/july_holiday_price_history.jsonl
             echo "No prior July history file; starting fresh."
           fi
+          # The multi-vendor watcher writes its history into the same private repo; same row shape.
+          if [[ -f /tmp/history-seed/data/business_deals_multivendor_history.jsonl ]]; then
+            cp /tmp/history-seed/data/business_deals_multivendor_history.jsonl data/business_deals_multivendor_history.jsonl
+            echo "Seeded $(wc -l < data/business_deals_multivendor_history.jsonl) multi-vendor business-fare rows."
+          fi
           # The business watcher's history feeds the Sunday e-mail's "Best business fares this week".
           if [[ -f /tmp/history-seed/data/business_deals_history.jsonl ]]; then
             cp /tmp/history-seed/data/business_deals_history.jsonl data/business_deals_history.jsonl
@@ -223,7 +228,7 @@ jobs:
             CONFIG_FILE="${RUNNER_TEMP}/july_config.json"
           fi
           mkdir -p data
-          timeout 20m python -m public_flight_search july-weekly-fares --config "${CONFIG_FILE}" --out data/july_weekly_fares.json
+          timeout 20m python -m public_flight_search july-weekly-fares --config "${CONFIG_FILE}" --out data/july_weekly_fares.json --budget-seconds 1020
       - name: Build and optionally deliver
         # JULY-SPECIFIC KNOBS ONLY. The generic HOLIDAY_SEARCH_CONFIG_JSON and
         # HOLIDAY_EMAIL_SUBJECT secrets belong to the December planner, and the
