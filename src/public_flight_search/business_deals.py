@@ -59,12 +59,15 @@ SCALED_NOTE = ("Fares are searched for one traveller and multiplied by the party
 HISTORY_DEFAULT_PATH = Path("data/business_deals_history.jsonl")
 MAX_CONFIG_BYTES = 200_000
 _AIRPORT = re.compile(r"^[A-Z]{3}$")
+#: An instant business e-mail needs a fare this far under its route median (owner, 9 Nov 2026: one weekly
+#: holiday e-mail, plus an instant one only for an exceptional drop). Everything else is recorded for that e-mail.
+INSTANT_ALERT_DROP_PCT = 40.0
 _TOP_LEVEL = {
     "report_title", "notes", "origins", "destinations", "dates", "date_windows", "min_days_ahead",
     "min_observations", "median_drop_pct", "median_window_days", "away_min_saving_pct", "dedupe_days",
     "redrop_pct", "max_searches_per_run", "max_stops", "min_fare_gbp", "max_fare_gbp", "stop_after_blocked",
     "absolute_caps_gbp", "exclude_airlines", "exclude_destinations", "travellers", "trip_nights",
-    "airline_quality", "quality_premium_pct",
+    "airline_quality", "quality_premium_pct", "cap_alerts",
 }
 #: Destinations the watch never prices, whatever the config lists (owner, 30 Oct 2026: "i dont want to go to
 #: INDIA"; a Delhi fare was mailed because only one of the two engines had the exclusion). Connecting through one is
@@ -105,7 +108,7 @@ class BusinessDealsConfig:
     destinations: tuple[Destination, ...]
     dates: tuple[str, ...]
     min_observations: int = 5
-    median_drop_pct: float = 30.0
+    median_drop_pct: float = INSTANT_ALERT_DROP_PCT
     median_window_days: int = 90
     away_min_saving_pct: float = 20.0
     dedupe_days: int = 7
@@ -128,6 +131,9 @@ class BusinessDealsConfig:
     #: ``quality_premium_pct`` more per person than the cheapest (owner, 1 Nov 2026). Empty: cheapest leads.
     tier_1_airlines: tuple[str, ...] = ()
     quality_premium_pct: float = 10.0
+    #: A fare at or under its region's cap alone e-mails only when this is true. The weekly holiday e-mail shows
+    #: the week's best business fares, so an instant e-mail is kept for real drops (owner, 9 Nov 2026).
+    cap_alerts: bool = False
 
 @dataclass(frozen=True)
 class SearchSpec:
@@ -380,7 +386,8 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
         title=str(raw.get("report_title") or "Business-class deals")[:120],
         origins=tuple(origins), destinations=tuple(destinations), dates=future,
         min_observations=int(_num(raw, "min_observations", 5, 3, 60)),
-        median_drop_pct=_num(raw, "median_drop_pct", 30.0, 5.0, 90.0),
+        # A floor, whatever the stored secret says (it was written when the example said 30): never alert below 40%.
+        median_drop_pct=max(INSTANT_ALERT_DROP_PCT, _num(raw, "median_drop_pct", INSTANT_ALERT_DROP_PCT, 5.0, 90.0)),
         median_window_days=int(_num(raw, "median_window_days", 90, 14, 365)),
         away_min_saving_pct=_num(raw, "away_min_saving_pct", 20.0, 0.0, 90.0),
         dedupe_days=int(_num(raw, "dedupe_days", 7, 1, 60)),
@@ -397,6 +404,7 @@ def load_config(source: Any, *, today: Optional[date] = None) -> BusinessDealsCo
         trip_nights=_trip_nights(raw.get("trip_nights")),
         tier_1_airlines=tier_1,
         quality_premium_pct=_num(raw, "quality_premium_pct", 10.0, 0.0, 100.0),
+        cap_alerts=bool(raw.get("cap_alerts", False)),
     )
 
 
@@ -599,6 +607,25 @@ def _per_person(row: Mapping[str, Any]) -> Optional[float]:
 # --------------------------------------------------------------------------- deal rules
 
 
+def route_key(row: Mapping[str, Any]) -> tuple:
+    """The like-with-like group a fare is compared in: origin, destination, cabin, departure month, trip length."""
+    return (row.get("origin"), row.get("destination"), row.get("cabin_class"),
+            str(row.get("departure", ""))[:7], _row_trip_nights(row))
+
+
+def route_median(history: Sequence[Mapping[str, Any]], row: Mapping[str, Any], now: datetime, *,
+                 window_days: int = 90, min_observations: int = 5) -> tuple[Optional[float], int]:
+    """``(median, n)`` of per-person fares for ``row``'s route key over the window; median is None under the minimum.
+
+    The one baseline the instant alerts and the weekly e-mail both use."""
+    start = now - timedelta(days=window_days)
+    key = route_key(row)
+    pool = [pp for h in history if route_key(h) == key and (stamp := _when(h)) is not None and stamp >= start
+            and _total(h) is not None and (pp := _per_person(h)) is not None]
+    n = len(pool)
+    return (statistics.median(pool) if n >= min_observations else None), n
+
+
 def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Sequence[dict],
                cfg: BusinessDealsConfig, now: datetime) -> list[Deal]:
     origin_label = {o.code: o.label for o in cfg.origins}
@@ -615,8 +642,7 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
         if key and (key not in first_seen or stamp < first_seen[key]):
             first_seen[key] = stamp
         if stamp >= window_start:
-            pool[(row.get("origin"), row.get("destination"), row.get("cabin_class"),
-                  str(row.get("departure", ""))[:7], _row_trip_nights(row))].append(per_person)
+            pool[route_key(row)].append(per_person)
 
     def home_reference(obs: Mapping[str, Any]) -> Optional[float]:
         totals = [o["total_gbp"] for o in observations if o["origin_is_home"]
@@ -640,14 +666,13 @@ def find_deals(observations: Sequence[dict], history: Sequence[dict], alerts: Se
     def judge(obs: Mapping[str, Any], *, redrop: bool = True) -> Optional[Deal]:
         total = obs["total_gbp"]
         per_person = obs["per_person_gbp"]
-        prior = pool.get((obs["origin"], obs["destination"], obs["cabin_class"], obs["departure"][:7],
-                          _row_trip_nights(obs)), [])
+        prior = pool.get(route_key(obs), [])
         n = len(prior)
         median = statistics.median(prior) if n else None
         pct = round((1 - per_person / median) * 100, 1) if median else None
         median_hit = n >= cfg.min_observations and pct is not None and pct >= cfg.median_drop_pct
         cap = cfg.caps.get(obs["region"])
-        cap_hit = cap is not None and per_person <= cap
+        cap_hit = cfg.cap_alerts and cap is not None and per_person <= cap
         if not (median_hit or cap_hit):
             return None
         home_total = saving = None
