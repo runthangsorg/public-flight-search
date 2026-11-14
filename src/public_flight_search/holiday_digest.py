@@ -226,7 +226,8 @@ def _room_only_part(nights: int) -> str:
 
 def _trip_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]] = None, *,
                budget: float = 0.0, travellers: int = 5,
-               room_only_rates: Optional[Mapping[Any, Any]] = None) -> Optional[Card]:
+               room_only_rates: Optional[Mapping[Any, Any]] = None,
+               three_room_rates: Optional[Mapping[Any, Any]] = None) -> Optional[Card]:
     reads = row.get("reads") or {}
     read = reads.get("economy") or reads.get("business")
     if not read:
@@ -246,11 +247,13 @@ def _trip_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]] 
     bits = [str(read.get("carrier") or "").strip(), str(read.get("duration") or "").strip()]
     flights = f"{cabin_words}" + (": " + ", ".join(b for b in bits if b) if any(bits) else "")
     url = str(read.get("source_url") or row.get("url") or "")
-    # A run may have only room-only reads for this trip's nights (every Google Hotels row states no meal), so
-    # the card is priced whenever EITHER load has anything: `trip_total` prefers the breakfast read.
+    # A run may have only room-only reads, or only three-room reads, for this trip's nights (every Google
+    # Hotels row states no meal; a party of five often needs 2 + 2 + 1), so the card is priced whenever ANY
+    # load has anything: `trip_total` applies the preference (breakfast, then room only, then three rooms).
     priced = (trip_totals.trip_total(row, hotel_rates, flights_gbp=flights_total,
-                                     room_only_rates=room_only_rates)
-              if (hotel_rates or room_only_rates) else None)
+                                     room_only_rates=room_only_rates,
+                                     three_room_rates=three_room_rates)
+              if (hotel_rates or room_only_rates or three_room_rates) else None)
     facts = (((f"stays are planned for {int(row['nights'])} of the {nights} nights",) if int(row["nights"]) != nights else ())
              + ((str(trip.why).strip(),) if str(getattr(trip, "why", "")).strip() else ()))
     common = dict(
@@ -280,10 +283,12 @@ def _trip_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]] 
 
 def _watch_card(entry: Any, pair: Optional[tuple[str, str]], hotel_rates: Optional[Mapping[Any, Any]], *,
                 travellers: int,
-                room_only_rates: Optional[Mapping[Any, Any]] = None) -> Optional[Card]:
-    if not (pair and (hotel_rates or room_only_rates)):
+                room_only_rates: Optional[Mapping[Any, Any]] = None,
+                three_room_rates: Optional[Mapping[Any, Any]] = None) -> Optional[Card]:
+    if not (pair and (hotel_rates or room_only_rates or three_room_rates)):
         return None
-    rate = trip_totals._rate_for(hotel_rates, entry.name, pair[0], pair[1], room_only_rates)
+    rate = trip_totals._rate_for(hotel_rates, entry.name, pair[0], pair[1], room_only_rates,
+                                 three_room_rates)
     if rate is None:
         return None
     nights = (datetime.fromisoformat(pair[1]) - datetime.fromisoformat(pair[0])).days
@@ -292,6 +297,7 @@ def _watch_card(entry: Any, pair: Optional[tuple[str, str]], hotel_rates: Option
                      seller=trip_totals._seller(rate), source_url=str(rate.source_url or ""),
                      observed_at=str(rate.observed_at or ""), unit="; ".join(tuple(rate.units or ())[:2]),
                      two_rooms=str(rate.booking_shape or "") == "two_rooms_one_booking",
+                     three_rooms=str(rate.booking_shape or "") == "three_rooms_one_booking",
                      unit_guests=tuple(getattr(rate, "unit_guests", ()) or ()),
                      derived_total=bool(getattr(rate, "derived_total", False)),
                      property_url=str(entry.url or ""))
@@ -311,7 +317,7 @@ def _watch_card(entry: Any, pair: Optional[tuple[str, str]], hotel_rates: Option
 
 def _stays_only_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]],
                      room_only_rates: Optional[Mapping[Any, Any]], *, budget: float, travellers: int,
-                     reason: str) -> Optional[Card]:
+                     reason: str, three_room_rates: Optional[Mapping[Any, Any]] = None) -> Optional[Card]:
     """A trip with dated stays read but no accepted fare: a partly priced card, flights not priced.
 
     The stays are real, dated and bookable, so they belong on a card even when no fare may be
@@ -319,10 +325,11 @@ def _stays_only_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, 
     could act on was invisible. It is never a whole trip, even with every night priced, because
     the flights are still missing.
     """
-    if not (hotel_rates or room_only_rates):
+    if not (hotel_rates or room_only_rates or three_room_rates):
         return None
     trip = row["trip"]
-    priced = trip_totals.trip_total(row, hotel_rates, flights_gbp=None, room_only_rates=room_only_rates)
+    priced = trip_totals.trip_total(row, hotel_rates, flights_gbp=None, room_only_rates=room_only_rates,
+                                    three_room_rates=three_room_rates)
     if priced is None or not priced.any_stay_priced:
         return None
     try:
@@ -395,7 +402,8 @@ def _business_hidden_reason(hidden: Mapping[str, Any]) -> str:
 def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_prices: Mapping[Any, PackagePrice],
                  watch: Optional[Sequence[Any]] = None, generated_at: str = "",
                  hotel_rates: Optional[Mapping[Any, Any]] = None,
-                 room_only_rates: Optional[Mapping[Any, Any]] = None) -> Digest:
+                 room_only_rates: Optional[Mapping[Any, Any]] = None,
+                 three_room_rates: Optional[Mapping[Any, Any]] = None) -> Digest:
     budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
     travellers = int(getattr(config, "travellers", 5) or 5)
     cards: list[Card] = []
@@ -413,7 +421,7 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
             cards.append(card)
     for row in rows:
         card = _trip_card(row, hotel_rates, budget=budget, travellers=travellers,
-                          room_only_rates=room_only_rates)
+                          room_only_rates=room_only_rates, three_room_rates=three_room_rates)
         reason = ("the economy fare read has a leg over 8 hours; a business fare is still to be read"
                   if row.get("economy_refused") else "no fare read for these dates yet")
         hidden = row.get("business_hidden")
@@ -426,7 +434,8 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
             # priced card rather than a line under "Not yet priced" (and the reason moves onto its
             # Flights row). A lead follows the same rule.
             card = _stays_only_card(row, hotel_rates, room_only_rates, budget=budget,
-                                    travellers=travellers, reason=reason)
+                                    travellers=travellers, reason=reason,
+                                    three_room_rates=three_room_rates)
         if card is not None:
             cards.append(card)
             continue
@@ -441,7 +450,7 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
     pair = _reference_pair(config)
     for entry in entries:
         card = _watch_card(entry, pair, hotel_rates, travellers=travellers,
-                          room_only_rates=room_only_rates)
+                          room_only_rates=room_only_rates, three_room_rates=three_room_rates)
         if card is not None:
             cards.append(card)
             continue

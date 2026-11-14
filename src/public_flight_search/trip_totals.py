@@ -48,6 +48,9 @@ class StayPrice:
     observed_at: str = ""
     unit: str = ""
     two_rooms: bool = False
+    #: Priced as three rooms (2 + 2 + 1 for five adults), the last resort when no one-unit or two-room
+    #: read exists for these nights.
+    three_rooms: bool = False
     #: The adults each unit states, from the read itself (``(3, 2)`` for two rooms); empty when the read
     #: states none, and then the card says "2 rooms" and invents nothing.
     unit_guests: tuple[int, ...] = ()
@@ -73,6 +76,10 @@ class StayPrice:
         display strings ("Booking.com — 3 guests — 3"). With no stated counts it says only what it
         knows: "2 rooms", or nothing for one unit.
         """
+        if self.three_rooms:
+            if self.unit_guests:
+                return f"3 rooms ({' + '.join(str(guests) for guests in self.unit_guests)} guests)"
+            return "3 rooms"
         if self.two_rooms:
             if self.unit_guests:
                 return f"2 rooms ({' + '.join(str(guests) for guests in self.unit_guests)} guests)"
@@ -129,21 +136,49 @@ def _cheapest_read(loaded: Optional[Mapping[Any, Any]], name: str, check_in: str
     return min(rates, key=lambda rate: rate.price_gbp) if rates else None
 
 
+def _three_room_read(loaded: Optional[Mapping[Any, Any]], name: str, check_in: str,
+                     check_out: str) -> Any:
+    """The cheapest three-room rate for these nights, breakfast or better before room only.
+
+    One load holds every board (``hotel_evidence.load_three_room_rates``), so the preference the
+    other two loads get from being separate is applied here: a breakfast-or-better three-room
+    read wins, and a room-only one is used only when there is none.
+    """
+    if not loaded or not (name and check_in and check_out):
+        return None
+    entries = hotel_evidence_module._pair_entries(loaded, name, check_in, check_out, priceable_only=False)
+    rates = [entry.cheapest for entry in entries if getattr(entry, "cheapest", None) is not None]
+    if not rates:
+        return None
+    with_board = [rate for rate in rates
+                  if str(getattr(rate, "board", "")).upper() in hotel_evidence_module.DEAL_BOARDS]
+    return min(with_board or rates, key=lambda rate: rate.price_gbp)
+
+
 def _rate_for(hotel_rates: Optional[Mapping[Any, Any]], name: str, check_in: str, check_out: str,
-              room_only_rates: Optional[Mapping[Any, Any]] = None) -> Any:
-    """The cheapest rate for exactly this property and these nights, breakfast or better first.
+              room_only_rates: Optional[Mapping[Any, Any]] = None,
+              three_room_rates: Optional[Mapping[Any, Any]] = None) -> Any:
+    """The rate for exactly this property and these nights, in the brief's order of preference.
+
+    One is: a breakfast-or-better rate in one unit or two rooms; then room only in one unit or two
+    rooms; then a three-room rate (breakfast or better before room only, then cheapest).
 
     A room-only read is used only when NO breakfast-or-better read exists for the
     property and those nights: a trip total then prices the night from a real
     dated figure rather than leaving it open, and the stay carries board ``RO``
-    so the card says "room only". The two mappings are separate loads of the same
-    file (``hotel_evidence.load_room_only_rates``), so this is a preference
-    between two real reads and never a choice between a read and an estimate.
+    so the card says "room only". The mappings are separate loads of the same
+    file (``hotel_evidence.load_room_only_rates``, ``load_three_room_rates``), so
+    this is a preference between real reads and never a choice between a read
+    and an estimate; a three-room read is the shape of last resort because five
+    adults across three rooms is a booking their seller may not hold together.
     """
     rate = _cheapest_read(hotel_rates, name, check_in, check_out)
     if rate is not None:
         return rate
-    return _cheapest_read(room_only_rates, name, check_in, check_out)
+    rate = _cheapest_read(room_only_rates, name, check_in, check_out)
+    if rate is not None:
+        return rate
+    return _three_room_read(three_room_rates, name, check_in, check_out)
 
 
 def _priced(place: str, lodge: Any, check_in: str, check_out: str, nights: int, rate: Any) -> StayPrice:
@@ -152,14 +187,16 @@ def _priced(place: str, lodge: Any, check_in: str, check_out: str, nights: int, 
         place=place, property_name=lodge.name, check_in=check_in, check_out=check_out, nights=nights,
         total_gbp=float(rate.price_gbp), board=str(rate.board or ""), seller=_seller(rate),
         source_url=str(rate.source_url or ""), observed_at=str(rate.observed_at or ""),
-        unit="; ".join(units[:2]), two_rooms=str(rate.booking_shape or "") == "two_rooms_one_booking",
+        unit="; ".join(units[:3]), two_rooms=str(rate.booking_shape or "") == "two_rooms_one_booking",
+        three_rooms=str(rate.booking_shape or "") == "three_rooms_one_booking",
         unit_guests=tuple(getattr(rate, "unit_guests", ()) or ()),
         derived_total=bool(getattr(rate, "derived_total", False)),
         property_url=str(getattr(lodge, "url", "") or ""))
 
 
 def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]],
-                room_only_rates: Optional[Mapping[Any, Any]] = None) -> list[StayPrice]:
+                room_only_rates: Optional[Mapping[Any, Any]] = None,
+                three_room_rates: Optional[Mapping[Any, Any]] = None) -> list[StayPrice]:
     place = _place(stay.stop)
     if not stay.lodges:
         return [StayPrice(place=place, property_name="", check_in=stay.check_in, check_out=stay.check_out,
@@ -168,7 +205,8 @@ def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]],
     if dated and len(dated) == len(stay.lodges):
         out = []
         for ls in dated:
-            rate = _rate_for(hotel_rates, ls.lodge.name, ls.check_in, ls.check_out, room_only_rates)
+            rate = _rate_for(hotel_rates, ls.lodge.name, ls.check_in, ls.check_out, room_only_rates,
+                             three_room_rates)
             out.append(_priced(place, ls.lodge, ls.check_in, ls.check_out, ls.nights, rate) if rate is not None else
                        StayPrice(place=place, property_name=ls.lodge.name, check_in=ls.check_in,
                                  check_out=ls.check_out, nights=ls.nights,
@@ -177,7 +215,8 @@ def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]],
     # The source names properties without itemising their nights: each is an alternative for the whole stop.
     choices = []
     for ls in stay.lodges:
-        rate = _rate_for(hotel_rates, ls.lodge.name, stay.check_in, stay.check_out, room_only_rates)
+        rate = _rate_for(hotel_rates, ls.lodge.name, stay.check_in, stay.check_out, room_only_rates,
+                         three_room_rates)
         if rate is not None:
             choices.append(_priced(place, ls.lodge, stay.check_in, stay.check_out, stay.nights, rate))
     if choices:
@@ -190,14 +229,17 @@ def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]],
 
 def trip_total(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]], *,
                flights_gbp: Optional[float],
-               room_only_rates: Optional[Mapping[Any, Any]] = None) -> Optional[TripTotal]:
+               room_only_rates: Optional[Mapping[Any, Any]] = None,
+               three_room_rates: Optional[Mapping[Any, Any]] = None) -> Optional[TripTotal]:
     """The row's stays against the hotel reads. None when the row's dates cannot be planned.
 
     ``hotel_rates`` is the breakfast-or-better load and ``room_only_rates`` the
     room-only one; a stay takes a breakfast-rate read whenever one exists and only
     then falls back to a room-only read for the same property and nights. Either
     mapping may be empty or None — a run with only room-only evidence still prices
-    a trip, and it is labelled room only.
+    a trip, and it is labelled room only. ``three_room_rates`` is the three-room load, the last
+    shape tried for a night the other two do not price, and the stay then says "3 rooms (2 + 2 + 1
+guests)".
     """
     try:
         plan = trip_stays_for_dates(row["trip"], str(row["outbound"]), str(row["return"]))
@@ -206,7 +248,7 @@ def trip_total(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]],
     stays: list[StayPrice] = []
     for stay in plan.stays:
         if stay.nights > 0:
-            stays.extend(_stop_stays(stay, hotel_rates, room_only_rates))
+            stays.extend(_stop_stays(stay, hotel_rates, room_only_rates, three_room_rates))
     priced = [s for s in stays if s.priced]
     return TripTotal(stays=tuple(stays), flights_gbp=flights_gbp,
                      stays_gbp=float(sum(s.total_gbp for s in priced)),

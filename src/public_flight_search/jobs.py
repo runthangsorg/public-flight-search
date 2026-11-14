@@ -319,6 +319,10 @@ def run_holiday_planner(
     #: card still refuses room only; a multi-stop trip's total may use it, labelled. Loaded
     #: with the same clock and after the main load, whose module state this load leaves alone.
     room_only_rates: dict[tuple[str, str, str], object] = {}
+    #: And the same file's THREE-ROOM rates (2 + 2 + 1), the last shape a trip total tries: a party of
+    #: five at a hotel whose rooms sleep two is bookable as three rooms when no one-unit or two-room
+    #: read exists (owner, 14 Nov 2026). Loaded quietly, beside the room-only load.
+    three_room_rates: dict[tuple[str, str, str], object] = {}
     hotel_skipped: list[str] = []
     hotel_evidence_error: Optional[str] = None
     unit_check_basis: dict[str, int] = {}
@@ -344,6 +348,19 @@ def run_holiday_planner(
             print(
                 "hotel-evidence: room-only load failed: "
                 f"{type(room_only_exc).__name__}: {room_only_exc}",
+                file=sys.stderr,
+            )
+        try:
+            three_room_rates = dict(
+                hotel_evidence_module.load_three_room_rates(
+                    hotel_evidence_path, config, now=hotel_now
+                )
+            )
+        except Exception as three_room_exc:
+            three_room_rates = {}
+            print(
+                "hotel-evidence: three-room load failed: "
+                f"{type(three_room_exc).__name__}: {three_room_exc}",
                 file=sys.stderr,
             )
     except Exception as exc:
@@ -569,7 +586,8 @@ def run_holiday_planner(
         body_digest = build_digest(config, rows=_multi_centre_rows(config, fares=multi_centre_fares, include_leads=True),
                               package_prices=package_prices, generated_at=generated_at,
                               hotel_rates=hotel_rates or None,
-                              room_only_rates=room_only_rates or None)
+                              room_only_rates=room_only_rates or None,
+                              three_room_rates=three_room_rates or None)
         html = render_digest_html(config, body_digest, generated_at=generated_at, attachment_name=attachment_name)
     # The plain-text part the mailer already sends used to say "open this in an
     # HTML-capable client", which carried none of the decision; it now mirrors

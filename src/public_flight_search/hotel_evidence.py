@@ -61,6 +61,15 @@ ONE_BOOKING_SHAPES: frozenset[str] = frozenset(
     {"single_unit", "two_rooms_one_booking"}
 )
 
+#: The three-room shape (2 + 2 + 1 for five adults, when no seller prices a two-room split): a real way
+#: to book the party, but NOT one booking of one unit or two rooms, so it never reaches a single-resort
+#: deal card. Only ``load_three_room_rates`` accepts it, and only a trip total or a watch-list stay uses it.
+THREE_ROOM_SHAPES: frozenset[str] = frozenset({"three_rooms_one_booking"})
+
+#: Every board the evidence file states, for the three-room load: the brief's rule is any board, because
+#: the rate is a fallback for a night no one-unit or two-room read priced, and it says its own board.
+ANY_BOARD: frozenset[str] = frozenset({"RO", "BB", "HB", "FB", "AI"})
+
 #: ``price_basis`` values the engine writes.
 TOTAL_STAY_BASES: frozenset[str] = frozenset({"total_stay_rate"})
 NIGHTLY_BASES: frozenset[str] = frozenset({"nightly_room_rate"})
@@ -939,6 +948,35 @@ def load_room_only_rates(
     )
 
 
+def load_three_room_rates(
+    path: str,
+    config,
+    *,
+    now: Optional[str] = None,
+    max_age_hours: Optional[int] = None,
+) -> dict[tuple[str, str, str, str], HotelEvidence]:
+    """The same file's THREE-ROOM rates (2 + 2 + 1), under every other gate of the main load.
+
+    A hotel whose rooms sleep two shows no priced row for a party of five as one unit or as a
+    two-room split of three and two; three rooms (2, 2, 1) is then the real way to book them. A
+    trip total and a watch-list stay may price a night from such a read, labelled "3 rooms (2 + 2
+    + 1 guests)". A single-resort DEAL card may not, and ``load_hotel_evidence``'s accepted shapes
+    stay exactly as they are: this third load is how the rest of the report sees those reads
+    without loosening the deal gate for anyone. Same file, same gates, same key and same return
+    shape, with the booking shape as the one gate that differs; any board is kept, because the
+    read says its own board.
+
+    Quiet like ``load_room_only_rates``: no skip log, no unit-check basis counters and no shared
+    supplementary index, so the run summary still describes the main load. A missing or unreadable
+    file is an empty mapping.
+    """
+    return _load_rates(
+        path, config, now=now, max_age_hours=max_age_hours, boards=ANY_BOARD,
+        keeping="the board the read states", warn=_quiet, report=_quiet, supplemental=False,
+        shapes=THREE_ROOM_SHAPES,
+    )
+
+
 def _report(message: str) -> None:
     """A file-level problem, said on stderr the way every other load says it."""
     print(f"hotel-evidence: {message}", file=sys.stderr)
@@ -958,7 +996,7 @@ def _board_refusal(board: str, boards: frozenset[str], keeping: str) -> str:
 
 def _gate_rate(item, index: int, *, season: str, travellers: int, priced_pairs: set,
                now_dt: datetime, ceiling: int, boards: frozenset[str], keeping: str,
-               warn) -> Optional[tuple[HotelRate, bool]]:
+               warn, shapes: frozenset[str] = ONE_BOOKING_SHAPES) -> Optional[tuple[HotelRate, bool]]:
     """One record's gates, shared by both loads.
 
     Returns ``(rate, priceable_pair)`` for a record every gate admits, or
@@ -967,7 +1005,9 @@ def _gate_rate(item, index: int, *, season: str, travellers: int, priced_pairs: 
     ``load_room_only_rates`` — breakfast or better for a deal card, room only
     for a trip total's fallback — and it is passed in rather than duplicated, so
     season, dates, party, one booking, freshness, source URL and price can never
-    drift between the two loads.
+    drift between the loads. ``shapes`` is the same kind of gate: the main and
+    room-only loads take one unit or two rooms, and only ``load_three_room_rates``
+    admits the three-room shape.
     """
     if not isinstance(item, dict):
         warn(f"#{index}", "not an object")
@@ -1020,7 +1060,7 @@ def _gate_rate(item, index: int, *, season: str, travellers: int, priced_pairs: 
         )
         return None
     shape = str(item.get("booking_shape", "")).strip()
-    if shape not in ONE_BOOKING_SHAPES:
+    if shape not in shapes:
         warn(name, f"booking_shape {shape!r} is not one booking")
         return None
     board = str(item.get("board", "")).strip().upper()
@@ -1096,7 +1136,8 @@ def _gate_rate(item, index: int, *, season: str, travellers: int, priced_pairs: 
 
 def _load_rates(path: str, config, *, now: Optional[str], max_age_hours: Optional[int],
                 boards: frozenset[str], keeping: str, warn, report,
-                supplemental: bool) -> dict[tuple[str, str, str, str], HotelEvidence]:
+                supplemental: bool,
+                shapes: frozenset[str] = ONE_BOOKING_SHAPES) -> dict[tuple[str, str, str, str], HotelEvidence]:
     """Read one evidence file and return the entries every gate admits.
 
     ``supplemental`` is what makes ``load_hotel_evidence`` the main load: only it
@@ -1143,7 +1184,7 @@ def _load_rates(path: str, config, *, now: Optional[str], max_age_hours: Optiona
     for index, item in enumerate(rates):
         gated = _gate_rate(item, index, season=season, travellers=travellers,
                            priced_pairs=priced_pairs, now_dt=now_dt, ceiling=ceiling,
-                           boards=boards, warn=warn, keeping=keeping)
+                           boards=boards, warn=warn, keeping=keeping, shapes=shapes)
         if gated is None:
             continue
         rate, priceable_pair = gated
