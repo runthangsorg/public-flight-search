@@ -871,7 +871,7 @@ def _watch_rows_html(cards: Sequence[Card]) -> str:
             continue
         # Every part here is already HTML-safe: escaping the joined line a second time printed the
         # seller's <a> tag as text and let its unbreakable URL widen the box (14 Nov 2026).
-        detail = [c.place or "", c.dates, f"{_gbp(c.total_gbp)} {_per_night_phrase(stay)}".strip()]
+        detail = [_e(c.place or ""), _e(c.dates), _e(f"{_gbp(c.total_gbp)} {_per_night_phrase(stay)}".strip())]
         detail += _stay_facts(stay)
         detail += [_seller_link(stay), f"read {_e(_read_day(stay.observed_at))}"]
         facts = "".join(f'<div style="{_SMALL} {_LINE_MARGIN} font-style:italic;">{_e(fact)}</div>'

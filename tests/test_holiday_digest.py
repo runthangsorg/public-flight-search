@@ -596,3 +596,19 @@ class RenderedBodyDefectsTests(unittest.TestCase):
         card = next(c for c in digest.cards if c.title.startswith("Zanzibar 8 nights"))
         self.assertEqual(hd._open_nights_words(card), "Zanzibar 3n + 5n (Paradise Beach Resort)")
         self.assertNotIn("Paradise Beach Resort) (Paradise Beach Resort", hd._open_nights_words(card))
+
+
+def test_a_watch_row_escapes_its_place_once():
+    """Review, 14 Nov 2026: the area and dates went into the row unescaped."""
+    from public_flight_search import holiday_digest as hd
+    from public_flight_search.trip_totals import StayPrice
+
+    stay = StayPrice(place="Palm <Atoll> & Cove", property_name="Palm Cove Resort", check_in="2027-06-27",
+                     check_out="2027-07-04", nights=7, total_gbp=700.0, board="BB", seller="Example Stays",
+                     source_url="https://example.com/r?a=1&b=2", observed_at="2026-11-14T10:00:00+00:00")
+    card = hd.Card(kind="stay", title="Palm Cove Resort", place="Palm <Atoll> & Cove", nights=7,
+                   dates="27 Jun – 4 Jul", total_gbp=700.0, covers="stay only", shop="Example Stays",
+                   url=stay.source_url, read_on="14 Nov", flights="", hotel="", facts=(), halal="",
+                   stays=(stay,), stays_gbp=700.0, nights_priced=7, nights_planned=7, travellers=5)
+    html = hd._watch_rows_html([card])
+    assert "Palm &lt;Atoll&gt; &amp; Cove" in html and "<Atoll>" not in html and "&amp;amp;" not in html
