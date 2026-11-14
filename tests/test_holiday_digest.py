@@ -18,12 +18,15 @@ from public_flight_search import holiday_digest as hd
 from public_flight_search.holiday_email import _multi_centre_rows
 from public_flight_search.package_evidence import PackagePrice
 
+from dataclasses import replace
+
 from public_flight_search import holidays as hol
 from public_flight_search.jobs import run_holiday_planner
 
 from test_full_detail_attachment import SMTP_ENV, _sent_message
 from test_holiday_email_compact import JULY, _config, visible_text
 from test_price_says_what_it_covers import BUILD, PACKAGE, deal_read, load
+from test_trip_totals import _hotel_rates, _plan_lodges, _rate
 
 NOW = "2026-11-08T20:00:00+00:00"
 
@@ -265,3 +268,132 @@ class CarrierNamedOnceTests(unittest.TestCase):
                             {"carrier": "RwandAir", "cabin": "BUSINESS", "duration": "12h 30m"}]}
         options = cabin_options(trip, {"MIXED": read}, 12_000.0, travellers=5)
         self.assertEqual(options["business_hidden"]["carriers"], ["RwandAir"])
+
+
+class CompactRowsTests(unittest.TestCase):
+    """14 Nov 2026: the body was 9,000 px tall — twelve stays-only trips and the watch list were full cards.
+
+    Only whole trips, packages and part-priced trips whose FLIGHTS are read stay full-size; a trip with stays
+    read but no fare, and each watch-list stay, is one compact row, and the derived-total sentence is printed
+    once per section instead of inside every card.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rows = _multi_centre_rows(_config(), fares=load([deal_read(BUILD, "MIXED", 8_000),
+                                                              deal_read(PACKAGE, "MIXED", 9_000)]))
+        by_id = {r["trip"].id: r for r in cls.rows}
+        cls.build_lodges = _plan_lodges(by_id[BUILD])
+        cls.package_lodges = _plan_lodges(by_id[PACKAGE])
+        cls.mc01_lodge = _plan_lodges(by_id["MC-01"])[0]
+        cls.mc07_lodge = _plan_lodges(by_id["MC-07"])[0]
+        cls.watch_pair = hd._reference_pair(_config())
+        cls.entry = type("Entry", (), {"name": "SYNTHETIC Island Villa", "area": "Gili Meno",
+                                       "url": "https://example.org/SYNTHETIC-villa", "halal": None})()
+        rates = [_rate(name, ci, co, 200.0) for name, ci, co in cls.build_lodges]
+        rates.append(_rate(*cls.package_lodges[0], 300.0))
+        rates.append(_rate(*cls.mc01_lodge, 400.0))
+        rates.append(_rate(*cls.mc07_lodge, 350.0))
+        rates.append(_rate(cls.entry.name, *cls.watch_pair, 250.0))
+        cls.digest = hd.build_digest(_config(), rows=cls.rows, package_prices={}, watch=(cls.entry,),
+                                     generated_at=NOW, hotel_rates=_hotel_rates(rates))
+        cls.html = _html(cls.digest)
+        cls.text = _text(cls.digest)
+
+    def _cards(self, kind):
+        return [c for c in self.digest.cards if c.kind == kind]
+
+    def test_only_a_whole_trip_a_package_and_a_part_with_its_fare_are_full_cards(self):
+        self.assertEqual(len(self._cards("trip")), 1)
+        self.assertEqual(len([c for c in self._cards("part") if c.flights_gbp is not None]), 1)
+        self.assertEqual(len([c for c in self._cards("part") if c.flights_gbp is None]), 3)
+        self.assertEqual(len(self._cards("stay")), 1)
+        self.assertEqual(self.html.count('data-kind="card-trip"'), 1)
+        self.assertEqual(self.html.count('data-kind="card-part"'), 1, "the stays-only trips are not cards")
+        self.assertEqual(self.html.count('data-kind="row-stays-only"'), 3)
+        self.assertEqual(self.html.count('data-kind="row-stay"'), 1)
+        self.assertNotIn('data-kind="card-flights"', self.html, "no fare-only trip is a card")
+
+    def test_the_new_section_sits_between_partly_priced_and_the_watch_list(self):
+        for part in (self.html, self.text):
+            partly = part.index("Partly priced")
+            stays = part.index("Stays read, fares still to come")
+            watch = part.index("Stays priced, flights separate")
+            self.assertLess(partly, stays)
+            self.assertLess(stays, watch)
+        self.assertIn("These nights are priced; the trip joins the cards above when its fare is read.", self.html)
+        self.assertIn("These nights are priced; the trip joins the cards above when its fare is read.", self.text)
+
+    def test_a_stays_only_row_carries_the_trip_the_stays_and_the_open_nights(self):
+        stays_only = sorted((c for c in self._cards("part") if c.flights_gbp is None),
+                            key=lambda c: (-(c.nights_priced / c.nights_planned), c.stays_gbp))
+        rows = re.findall(r'<tr data-kind="row-stays-only">.*?</tr>', self.html)
+        self.assertEqual(len(rows), 3)
+        for row, card in zip(rows, stays_only):
+            self.assertIn(hd._e(card.title), row)
+            self.assertIn(f"{card.nights_priced} of {card.nights} nights", row)
+            self.assertIn(f"{card.nights} nights · {hd._e(card.dates)}", row)
+            self.assertIn("fare: " + hd._e(hd._fare_reason(card)), row)
+            for stay in card.stays:
+                if not stay.priced:
+                    continue
+                self.assertIn(hd._e(stay.property_name), row)
+                self.assertIn(f"{stay.nights} nights", row)
+                self.assertIn(f"{hd._gbp(stay.total_gbp)} ({hd._gbp(stay.total_gbp / stay.nights)} a night)", row)
+            open_nights = [s for s in card.stays if not s.priced]
+            if open_nights:
+                self.assertIn("still to price: " + hd._e(open_nights[0].place), row)
+
+    def test_the_rows_are_ordered_by_the_share_of_nights_priced_then_by_figure(self):
+        # Two trips price 7 of 12 nights; MC-01 prices 7 of 14, so it comes last.
+        rows = re.findall(r'<tr data-kind="row-stays-only">.*?</tr>', self.html)
+        self.assertIn("Halekulani Okinawa", rows[0])
+        self.assertIn("Halekulani Okinawa", rows[1], "the tied 7-of-12 rows stay together")
+        self.assertIn("Kalandara Resort Lombok", rows[-1])
+        shares = [c.nights_priced / c.nights_planned
+                  for c in hd._sorted_stays_rows([c for c in self._cards("part") if c.flights_gbp is None])]
+        self.assertEqual(shares, sorted(shares, reverse=True))
+        tie = [c for c in self._cards("part") if c.flights_gbp is None][0]
+        dear = replace(tie, title="Synthetic dear", nights_priced=7, nights_planned=14, stays_gbp=3_000.0)
+        cheap = replace(tie, title="Synthetic cheap", nights_priced=7, nights_planned=14, stays_gbp=2_000.0)
+        self.assertEqual([c.title for c in hd._sorted_stays_rows([dear, cheap])],
+                         ["Synthetic cheap", "Synthetic dear"])
+
+    def test_a_watch_stay_is_one_compact_row_with_its_night_rate(self):
+        (watch,) = self._cards("stay")
+        (row,) = re.findall(r'<tr data-kind="row-stay">.*?</tr>', self.html)
+        self.assertIn(hd._e(watch.title), row)
+        self.assertIn(hd._e(watch.place), row)
+        self.assertNotIn("<br><br>", row)
+        right = row[row.index('align="right"'):]
+        self.assertIn(f"<b>{hd._gbp(watch.total_gbp)}</b>", right)
+        self.assertIn(f"{watch.nights} nights", right)
+        self.assertIn(f"£{watch.total_gbp / watch.nights:,.0f} a night", row)
+
+    def test_a_full_card_shows_the_per_night_figure_in_its_stay_line(self):
+        (trip,) = self._cards("trip")
+        self.assertEqual({s.total_gbp / s.nights for s in trip.stays}, {200.0})
+        self.assertEqual(self.html.count("(£200 a night)"), len(trip.stays), "one per priced stay, in its detail line")
+        self.assertIn(f"{hd._gbp(trip.stays[0].total_gbp)} (£200 a night) · breakfast", self.text)
+
+    def test_the_derived_total_sentence_is_once_per_section_not_once_per_card(self):
+        groups = [[c for c in self.digest.cards if c.kind == "trip"],
+                  [c for c in self.digest.cards if c.kind == "package"],
+                  [c for c in self.digest.cards if c.kind == "part" and c.flights_gbp is not None],
+                  [c for c in self.digest.cards if c.kind == "part" and c.flights_gbp is None],
+                  [c for c in self.digest.cards if c.kind == "stay"]]
+        expected = sum(1 for g in groups if any(s.derived_total for c in g for s in c.stays))
+        self.assertGreater(expected, 1, "more than one section derives a stay total")
+        self.assertEqual(self.html.count(hd.DERIVED_TOTAL_NOTE), expected)
+        self.assertEqual(self.text.count(hd.DERIVED_TOTAL_NOTE), expected)
+        self.assertEqual(len(self.digest.cards), 6)
+
+    def test_the_text_part_has_the_same_rows_in_the_same_order(self):
+        self.assertIn("\nStays read, fares still to come\n", self.text)
+        self.assertIn("\nStays priced, flights separate\n", self.text)
+        first = self.text.index("Halekulani Okinawa")
+        second = self.text.index("Kalandara Resort Lombok")
+        self.assertLess(first, second)
+        self.assertIn("£2,450 (£350 a night)", self.text, "the per-night figure follows the stay total")
+        self.assertIn("£2,450 so far · 7 of 12 nights", self.text)
+        self.assertIn("  Why it is special: ", self.text)

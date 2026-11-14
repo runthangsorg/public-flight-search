@@ -205,11 +205,18 @@ DERIVED_TOTAL_NOTE = ("stay totals are the nightly price shown times the nights;
                       "taxes and resort fees may be added at booking")
 
 
-def _derived_fact(priced: Any) -> tuple[str, ...]:
-    """The sentence a card adds when any of its priced stays is a nightly-derived total."""
-    if priced is not None and any(stay.priced and stay.derived_total for stay in priced.stays):
-        return (DERIVED_TOTAL_NOTE,)
-    return ()
+def _has_derived_stay(cards: Sequence[Card]) -> bool:
+    """True when any card in this section has a priced stay whose total is a nightly figure x nights.
+
+    The sentence about that is printed ONCE per section, in its caption: repeated inside every card
+    it read as a footnote to nothing (14 Nov 2026).
+    """
+    return any(stay.priced and stay.derived_total for card in cards for stay in card.stays)
+
+
+def _section_caption(sub: str, cards: Sequence[Card]) -> str:
+    """A section's sub-caption, with the derived-total sentence once when its rows need it."""
+    return f"{sub} {DERIVED_TOTAL_NOTE}" if _has_derived_stay(cards) else sub
 
 
 def _room_only_part(nights: int) -> str:
@@ -245,8 +252,7 @@ def _trip_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]] 
                                      room_only_rates=room_only_rates)
               if (hotel_rates or room_only_rates) else None)
     facts = (((f"stays are planned for {int(row['nights'])} of the {nights} nights",) if int(row["nights"]) != nights else ())
-             + ((str(trip.why).strip(),) if str(getattr(trip, "why", "")).strip() else ())
-             + _derived_fact(priced))
+             + ((str(trip.why).strip(),) if str(getattr(trip, "why", "")).strip() else ()))
     common = dict(
         title=trip.title, place=" + ".join(s.place.split("(")[0].strip() for s in trip.stops), nights=nights,
         dates=f"{_day(row['outbound'])} – {_day(row['return'])}", shop=shop_name(url, read.get("vendor")), url=url,
@@ -292,8 +298,6 @@ def _watch_card(entry: Any, pair: Optional[tuple[str, str]], hotel_rates: Option
     facts = []
     if getattr(entry, "seaplane_required", False):
         facts.append("reached by seaplane: the transfer is charged by the resort and is not in this figure")
-    if stay.derived_total:
-        facts.append(DERIVED_TOTAL_NOTE)
     return Card(kind="stay", title=str(entry.name), place=str(entry.area), nights=nights,
                 dates=f"{_day(pair[0])} – {_day(pair[1])}", total_gbp=float(rate.price_gbp),
                 covers=(f"stay only, {travellers} people, "
@@ -326,8 +330,7 @@ def _stays_only_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, 
     except ValueError:
         nights = int(row["nights"])
     facts = (((f"stays are planned for {int(row['nights'])} of the {nights} nights",) if int(row["nights"]) != nights else ())
-             + ((str(trip.why).strip(),) if str(getattr(trip, "why", "")).strip() else ())
-             + _derived_fact(priced))
+             + ((str(trip.why).strip(),) if str(getattr(trip, "why", "")).strip() else ()))
     people = f"{travellers} people"
     return Card(
         kind="part", total_gbp=float(priced.stays_gbp),
@@ -549,14 +552,22 @@ def _stay_facts(s: StayPrice) -> list[str]:
     return [fact for fact in facts if fact]
 
 
+def _per_night_words(stay: StayPrice) -> str:
+    """The stay's total divided by its nights, to the pound; ``""`` when the nights are unknown."""
+    if stay.total_gbp is None or not stay.nights:
+        return ""
+    return _gbp(float(stay.total_gbp) / stay.nights)
+
+
 def _stay_row(s: StayPrice) -> str:
     when = f"{_day(s.check_in)} – {_day(s.check_out)}"
     name = _a(s.property_url, s.property_name) if s.property_name else _e("hotel not chosen yet")
     left = (f'<b>{_e(when)}</b> · {s.nights} night{"s" if s.nights != 1 else ""} · {_e(s.place)}<br>{name}')
     if s.priced:
         detail = " · ".join(_stay_facts(s))
+        per_night = f" · ({_per_night_words(s)} a night)" if _per_night_words(s) else ""
         left += (f'<br><span style="font-size:12px; color:#475569;">{_e(detail)}{" · " if detail else ""}'
-                 f'{_a(s.source_url, s.seller or "seller")} · read {_e(_read_day(s.observed_at))}</span>')
+                 f'{_a(s.source_url, s.seller or "seller")} · read {_e(_read_day(s.observed_at))}{_e(per_night)}</span>')
         right = f'<b>{_gbp(s.total_gbp)}</b>'
     else:
         left += f'<br><span style="font-size:12px; color:{_WARN_INK};">{_e(s.reason or "not priced")}</span>'
@@ -605,7 +616,8 @@ def _card_html(c: Card) -> str:
                  and " over the " not in f)
     notes_html = "".join(f'<div style="font-size:12px; color:#475569; margin-top:5px; border-top:1px dashed #E2E8F0; '
                          f'padding-top:4px; line-height:1.4;">{n}</div>' for n in notes)
-    return (f'<div style="background:#FFFFFF; border:1px solid #CBD5E1; border-left:4px solid {edge}; border-radius:6px; '
+    return (f'<div data-kind="card-{_e(c.kind)}" style="background:#FFFFFF; border:1px solid #CBD5E1; '
+            f'border-left:4px solid {edge}; border-radius:6px; '
             f'padding:12px; margin-bottom:12px; color:#0F172A;">{_chips(c)}'
             f'<div style="font-size:16px; font-weight:700; color:#0F172A; margin:0 0 2px; line-height:1.3;">{_e(c.title)}</div>'
             f'<div style="font-size:12px; color:#475569; margin:0 0 8px;">{c.nights} nights · {_e(c.dates)}'
@@ -623,7 +635,7 @@ def _flight_rows_html(cards: Sequence[Card]) -> str:
         facts = "".join(f'<br><span style="font-size:12px; color:#475569; font-style:italic;">{_e(f)}</span>'
                         for f in c.facts[:2])
         rows.append(
-            f'<tr><td style="{cell}"><b>{_e(c.title)}</b><br>'
+            f'<tr data-kind="row-flights"><td style="{cell}"><b>{_e(c.title)}</b><br>'
             f'<span style="font-size:12px; color:#475569;">{c.nights} nights · {_e(c.dates)} · {_e(c.flights)} · '
             f'{_a(c.url, c.shop)} · read {_e(c.read_on)}</span>'
             + (f'<br><span style="font-size:12px; color:#475569;">Stays to price: {_e(open_nights)}</span>' if open_nights else "")
@@ -634,6 +646,118 @@ def _flight_rows_html(cards: Sequence[Card]) -> str:
             f'background:#FFFFFF; border:1px solid #CBD5E1; border-radius:6px;"><tr><td style="padding:2px 12px;">'
             f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">'
             f'{"".join(rows)}</table></td></tr></table>')
+
+
+_ROW_CELL = ("padding:7px 0; border-top:1px solid #E2E8F0; font-size:13px; line-height:1.4; "
+             "color:#1E293B; vertical-align:top;")
+_SMALL = "font-size:12px; color:#475569;"
+
+
+def _is_full_card(c: Card) -> bool:
+    """Full-size cards: whole trips, packages, and partly priced trips whose FLIGHTS are read.
+
+    Everything else — a trip whose stays are read but whose fare is not, and a watch-list stay —
+    is a compact row: the full detail rides in the attached trip pages, and twelve full cards of
+    stays-only trips made the body nine screens tall (14 Nov 2026).
+    """
+    return c.kind in ("trip", "package") or (c.kind == "part" and c.flights_gbp is not None)
+
+
+def _is_stays_row(c: Card) -> bool:
+    return c.kind == "part" and c.flights_gbp is None
+
+
+def _fare_reason(c: Card) -> str:
+    """The reason a stays-only card carries on its Flights row, without the "not priced; " prefix."""
+    text = str(c.flights or "")
+    return text[len("not priced; "):] if text.startswith("not priced; ") else text
+
+
+def _seller_is_property(stay: StayPrice) -> bool:
+    """True when the seller IS the property, so the line need not name the same thing twice."""
+    seller = str(stay.seller or "").strip().casefold()
+    return bool(seller) and seller == str(stay.property_name or "").strip().casefold()
+
+
+def _compact_stay_line(s: StayPrice) -> str:
+    """One small line per priced stay: what it is, what it costs, and how it was read."""
+    parts = [f"{s.nights} night{'s' if s.nights != 1 else ''}", _gbp(s.total_gbp)]
+    per_night = _per_night_words(s)
+    if per_night:
+        parts[-1] = f"{_gbp(s.total_gbp)} ({per_night} a night)"
+    for fact in _stay_facts(s):
+        parts.append(fact)
+    seller = "" if _seller_is_property(s) else _a(s.source_url, s.seller or "seller")
+    if seller:
+        parts.append(seller)
+    return f'<br><span style="{_SMALL}">{_a(s.source_url, s.property_name or "hotel not chosen yet")} · ' + \
+           " · ".join(parts) + "</span>"
+
+
+def _still_to_price_html(c: Card) -> str:
+    open_nights = "; ".join(f"{s.place} {s.nights}n ({s.property_name or 'hotel not chosen'})"
+                            for s in c.stays if not s.priced)
+    return (f'<br><span style="font-size:12px; color:{_WARN_INK};">still to price: {_e(open_nights)}</span>'
+            if open_nights else "")
+
+
+def _stays_rows_html(cards: Sequence[Card]) -> str:
+    """The stays-read rows: the trip, its stays figure, the fare's reason, then one line per stay."""
+    rows = []
+    for c in _sorted_stays_rows(cards):
+        why = (f'<br><span style="font-size:12px; color:#475569; font-style:italic;">Why it is special: {_e(c.why)}</span>'
+               if c.why else "")
+        stay_lines = "".join(_compact_stay_line(s) for s in c.stays if s.priced)
+        rows.append(
+            f'<tr data-kind="row-stays-only"><td style="{_ROW_CELL}"><b>{_e(c.title)}</b><br>'
+            f'<span style="{_SMALL}">{c.nights} nights · {_e(c.dates)} · fare: {_e(_fare_reason(c))}</span>'
+            f'{stay_lines}{_still_to_price_html(c)}{why}</td>'
+            f'<td align="right" style="{_ROW_CELL} white-space:nowrap; padding-left:8px;">'
+            f'<b>{_gbp(c.stays_gbp)}</b><br><span style="font-size:11px; color:#475569;">'
+            f'{c.nights_priced} of {c.nights} nights</span></td></tr>')
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'style="border-collapse:collapse; background:#FFFFFF; border:1px solid #CBD5E1; border-radius:6px;">'
+            f'<tr><td style="padding:2px 12px;"><table role="presentation" width="100%" cellpadding="0" '
+            f'cellspacing="0" style="border-collapse:collapse;">{"".join(rows)}</table></td></tr></table>')
+
+
+def _watch_rows_html(cards: Sequence[Card]) -> str:
+    """A watch-list stay as one compact row: name, figure, then how its night was read."""
+    rows = []
+    for c in cards:
+        stay = next((s for s in c.stays if s.priced), None)
+        if stay is None:
+            continue
+        detail = [c.place or "", c.dates]
+        per_night = _per_night_words(stay)
+        if per_night:
+            detail.append(f"{per_night} a night")
+        detail += _stay_facts(stay)
+        seller = "" if _seller_is_property(stay) else _a(stay.source_url, stay.seller or "seller")
+        if seller:
+            detail.append(seller)
+        detail.append(f"read {_read_day(stay.observed_at)}")
+        facts = "".join(f'<br><span style="font-size:12px; color:#475569; font-style:italic;">{_e(fact)}</span>'
+                        for fact in c.facts)
+        tag = f' {_chip(c.halal, _GOOD_BG, _GOOD_INK)}' if c.halal else ""
+        rows.append(
+            f'<tr data-kind="row-stay"><td style="{_ROW_CELL}"><b>{_a(stay.source_url, c.title)}</b>{tag}<br>'
+            f'<span style="{_SMALL}">{_e(" · ".join(part for part in detail if part))}</span>{facts}</td>'
+            f'<td align="right" style="{_ROW_CELL} white-space:nowrap; padding-left:8px;">'
+            f'<b>{_gbp(c.total_gbp)}</b><br><span style="font-size:11px; color:#475569;">'
+            f'{c.nights} night{"s" if c.nights != 1 else ""}</span></td></tr>')
+    return (f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
+            f'style="border-collapse:collapse; background:#FFFFFF; border:1px solid #CBD5E1; border-radius:6px;">'
+            f'<tr><td style="padding:2px 12px;"><table role="presentation" width="100%" cellpadding="0" '
+            f'cellspacing="0" style="border-collapse:collapse;">{"".join(rows)}</table></td></tr></table>')
+
+
+def _sorted_stays_rows(cards: Sequence[Card]) -> list[Card]:
+    """Rows by how much of the trip is priced, most first, then by the figure: the closest to a card leads."""
+    def share(c: Card) -> float:
+        return (c.nights_priced / c.nights_planned) if c.nights_planned else 0.0
+
+    return sorted(cards, key=lambda c: (-share(c), c.stays_gbp))
 
 
 def _summary_html(digest: Digest, budget: float) -> str:
@@ -732,19 +856,30 @@ def render_digest_html(config: Any, digest: Digest, *, generated_at: str, attach
            f'<h1 style="font-size:21px; margin:4px 0 4px; color:#3C4C55;">{title}</h1>',
            f'<div style="color:{_MUTED}; font-size:13px;">{_e(_span(config))} · checked {_e(_read_day(generated_at))}</div>',
            _summary_html(digest, budget)]
+    part_with_flights = [c for c in by_kind["part"] if c.flights_gbp is not None]
+    stays_only = [c for c in by_kind["part"] if c.flights_gbp is None]
     if by_kind["trip"]:
-        out.append(_section("Whole trips, fully priced",
-                            "Flights and every night's stay were read for these exact dates and the whole party."))
+        out.append(_section("Whole trips, fully priced", _section_caption(
+            "Flights and every night's stay were read for these exact dates and the whole party.", by_kind["trip"])))
         out.extend(_card_html(c) for c in by_kind["trip"])
     if by_kind["package"]:
-        out.append(_section("Confirmed packages", "One operator price: flights and hotel together."))
+        out.append(_section("Confirmed packages", _section_caption(
+            "One operator price: flights and hotel together.", by_kind["package"])))
         out.extend(_card_html(c) for c in by_kind["package"])
-    if by_kind["part"]:
-        out.append(_section("Partly priced", "Flights and some stays are read; the nights marked are still open."))
-        out.extend(_card_html(c) for c in by_kind["part"])
+    if part_with_flights:
+        out.append(_section("Partly priced", _section_caption(
+            "Flights and some stays are read; the nights marked are still open.", part_with_flights)))
+        out.extend(_card_html(c) for c in part_with_flights)
+    if stays_only:
+        # Compact rows, not cards: twelve of these as full cards made the body nine screens tall, and
+        # the full detail is in the attached trip pages.
+        out.append(_section("Stays read, fares still to come", _section_caption(
+            "These nights are priced; the trip joins the cards above when its fare is read.", stays_only)))
+        out.append(_stays_rows_html(stays_only))
     if by_kind["stay"]:
-        out.append(_section("Stays priced, flights separate", "A dated rate for the whole party; add the flights."))
-        out.extend(_card_html(c) for c in by_kind["stay"])
+        out.append(_section("Stays priced, flights separate", _section_caption(
+            "A dated rate for the whole party; add the flights.", by_kind["stay"])))
+        out.append(_watch_rows_html(by_kind["stay"]))
     if by_kind["flights"]:
         out.append(_section("Flight searches, flights only", "The fare is read; no stay is priced beside it yet."))
         out.append(_flight_rows_html(by_kind["flights"]))
@@ -764,30 +899,113 @@ def _stay_text(s: StayPrice) -> str:
     if not s.priced:
         return f"    {when} · {s.nights}n · {s.place}: {name}: not priced ({s.reason or 'no read'})"
     detail = " · ".join(_stay_facts(s) + ([s.seller] if s.seller else ["seller"]))
-    return (f"    {when} · {s.nights}n · {s.place}: {name}: {_gbp(s.total_gbp)}"
+    per_night = f" ({_per_night_words(s)} a night)" if _per_night_words(s) else ""
+    return (f"    {when} · {s.nights}n · {s.place}: {name}: {_gbp(s.total_gbp)}{per_night}"
             + (f" · {detail}" if detail else "") + f" · read {_read_day(s.observed_at)} · {s.source_url}")
+
+
+def _card_text(c: Card) -> list[str]:
+    """One full card in the plain-text part, the same figures as its HTML card."""
+    fits = " · fits the budget" if c.fits else (f" · {_gbp(c.total_gbp - c.budget)} over budget" if c.fits is False else "")
+    lines = [f"{c.title}{' [' + c.halal + ']' if c.halal else ''}",
+             f"  {c.nights} nights · {c.dates} · {_gbp(c.total_gbp)} for {c.travellers} · {c.covers}{fits}"]
+    if c.kind in ("trip", "part"):
+        lines.append(f"  Made of: flights {_gbp(c.flights_gbp)} + stays {_gbp(c.stays_gbp)}")
+    if c.kind != "stay":
+        lines += [f"  Found: {c.shop} · read {c.read_on} · {c.url}", f"  Flights: {c.flights}"]
+        lines += [f"    {leg}" for leg in c.legs[:6]]
+    if c.stays:
+        lines.append("  Stays:")
+        lines += [_stay_text(s) for s in c.stays]
+    elif c.hotel:
+        lines.append(f"  {'Hotel' if c.kind == 'package' else 'Stays'}: {c.hotel}")
+    if c.kind in ("trip", "part") and c.catch:
+        lines.append(f"  Watch out: {c.catch}")
+    return lines + [f"  {f}" for f in c.facts] + [""]
+
+
+def _stays_row_text(c: Card) -> list[str]:
+    """One stays-read row in the plain-text part: figure, reason, a line per stay, the open nights."""
+    lines = [f"{c.title}",
+             f"  {_gbp(c.stays_gbp)} so far · {c.nights_priced} of {c.nights} nights",
+             f"  {c.nights} nights · {c.dates} · fare: {_fare_reason(c)}"]
+    for s in c.stays:
+        if not s.priced:
+            continue
+        parts = [f"{s.nights}n", _gbp(s.total_gbp)]
+        per_night = _per_night_words(s)
+        if per_night:
+            parts[-1] = f"{_gbp(s.total_gbp)} ({per_night} a night)"
+        parts += _stay_facts(s)
+        if not _seller_is_property(s):
+            parts.append(s.seller or "seller")
+        lines.append(f"    {s.property_name or 'hotel not chosen yet'} · " + " · ".join(parts))
+    open_nights = "; ".join(f"{s.place} {s.nights}n ({s.property_name or 'hotel not chosen'})"
+                            for s in c.stays if not s.priced)
+    if open_nights:
+        lines.append(f"    still to price: {open_nights}")
+    if c.why:
+        lines.append(f"    Why it is special: {c.why}")
+    return lines + [""]
+
+
+def _watch_row_text(c: Card) -> list[str]:
+    """One watch-list stay in the plain-text part: figure, then how its night was read."""
+    stay = next((s for s in c.stays if s.priced), None)
+    if stay is None:
+        return []
+    detail = [c.place or "", c.dates]
+    per_night = _per_night_words(stay)
+    if per_night:
+        detail.append(f"{per_night} a night")
+    detail += _stay_facts(stay)
+    if not _seller_is_property(stay):
+        detail.append(stay.seller or "seller")
+    detail.append(f"read {_read_day(stay.observed_at)}")
+    lines = [f"{c.title}{' [' + c.halal + ']' if c.halal else ''}",
+             f"  {c.nights} nights · {_gbp(c.total_gbp)}",
+             "  " + " · ".join(part for part in detail if part)]
+    lines += [f"  {fact}" for fact in c.facts]
+    return lines + [""]
 
 
 def render_digest_text(config: Any, digest: Digest, *, generated_at: str, attachment_name: str = "") -> str:
     lines = [str(getattr(config, "report_title", "July holiday watch")),
              f"{_span(config)} · checked {_read_day(generated_at)}", ""]
-    for c in digest.cards:
-        fits = " · fits the budget" if c.fits else (f" · {_gbp(c.total_gbp - c.budget)} over budget" if c.fits is False else "")
-        lines += [f"{c.title}{' [' + c.halal + ']' if c.halal else ''}",
-                  f"  {c.nights} nights · {c.dates} · {_gbp(c.total_gbp)} for {c.travellers} · {c.covers}{fits}"]
-        if c.kind in ("trip", "part"):
-            lines.append(f"  Made of: flights {_gbp(c.flights_gbp)} + stays {_gbp(c.stays_gbp)}")
-        if c.kind != "stay":
-            lines += [f"  Found: {c.shop} · read {c.read_on} · {c.url}", f"  Flights: {c.flights}"]
-            lines += [f"    {leg}" for leg in c.legs[:6]]
-        if c.stays:
-            lines.append("  Stays:")
-            lines += [_stay_text(s) for s in c.stays]
-        elif c.hotel:
-            lines.append(f"  {'Hotel' if c.kind == 'package' else 'Stays'}: {c.hotel}")
-        if c.kind in ("trip", "part") and c.catch:
-            lines.append(f"  Watch out: {c.catch}")
-        lines += [f"  {f}" for f in c.facts] + [""]
+    trips = [c for c in digest.cards if c.kind == "trip"]
+    packages = [c for c in digest.cards if c.kind == "package"]
+    partly = [c for c in digest.cards if _is_full_card(c) and c.kind == "part"]
+    for heading, sub, group in (
+        ("Whole trips, fully priced",
+         "Flights and every night's stay were read for these exact dates and the whole party.", trips),
+        ("Confirmed packages", "One operator price: flights and hotel together.", packages),
+        ("Partly priced", "Flights and some stays are read; the nights marked are still open.", partly),
+    ):
+        if not group:
+            continue
+        lines += [heading, f"  {_section_caption(sub, group)}", ""]
+        for c in group:
+            lines += _card_text(c)
+    stays_only = [c for c in digest.cards if _is_stays_row(c)]
+    if stays_only:
+        lines += ["Stays read, fares still to come",
+                  "These nights are priced; the trip joins the cards above when its fare is read."]
+        if _has_derived_stay(stays_only):
+            lines.append(DERIVED_TOTAL_NOTE)
+        lines.append("")
+        for c in _sorted_stays_rows(stays_only):
+            lines += _stays_row_text(c)
+    watch = [c for c in digest.cards if c.kind == "stay"]
+    if watch:
+        lines += ["Stays priced, flights separate",
+                  "A dated rate for the whole party; add the flights."]
+        if _has_derived_stay(watch):
+            lines.append(DERIVED_TOTAL_NOTE)
+        lines.append("")
+        for c in watch:
+            lines += _watch_row_text(c)
+    for c in [c for c in digest.cards if c.kind == "flights"]:
+        lines += _card_text(c)
     if not digest.cards:
         lines += ["Nothing confirmed this week: no package or flight price was read for the trip dates.", ""]
     if digest.not_priced:
