@@ -4908,8 +4908,16 @@ def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
         if day < kept_day:
             return
         if day == kept_day:
+            # A Business read on an accepted airline is the only one the report may show, so it is kept over a
+            # cheaper one on an airline that is not accepted (the pricer now prefers accepted airlines, and its
+            # evening read must not lose to the morning's cheaper set-aside one).
+            new_ok = cabin == "ECONOMY" or _read_on_accepted_carrier(item)
+            kept_ok = cabin == "ECONOMY" or _read_on_accepted_carrier(existing)
             new_detail, kept_detail = _read_has_leg_detail(item), _read_has_leg_detail(existing)
-            if new_detail == kept_detail:
+            if new_ok != kept_ok:
+                if not new_ok:
+                    return
+            elif new_detail == kept_detail:
                 if keep <= total:
                     return
             elif not new_detail:
@@ -4922,6 +4930,13 @@ def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
     index[key] = min(pool, key=lambda r: _priced_read_total(r) or float("inf"))
 
 
+def _read_on_accepted_carrier(item: Mapping[str, Any]) -> bool:
+    """True when every carrier the read names for its long flight is one a Business fare may be shown on."""
+    from .business_airlines import quality_business_carrier
+
+    return quality_business_carrier(str(item.get("carrier") or ""))
+
+
 def _read_has_leg_detail(item: Mapping[str, Any]) -> bool:
     """True when the read lists a duration for EVERY leg.
 
@@ -4929,7 +4944,7 @@ def _read_has_leg_detail(item: Mapping[str, Any]) -> bool:
     less (``cabin.economy_allowed``), so a read that states every leg's duration
     can be offered and a cheaper one that states none cannot — the trip is then
     refused for want of leg times even though a usable read was in the file
-    (14 Nov 2026: a £1,164 read with no legs beat a £1,178 read with all of them,
+    (14 Nov 2026: a £1,000 read with no legs beat a £1,010 read with all of them,
     and the trip was dropped). "Detail" is therefore not a tie-breaker on price:
     it is what makes the read usable at all.
     """

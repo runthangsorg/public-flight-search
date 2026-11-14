@@ -337,30 +337,30 @@ class MultiCentreFareIndexTests(_BatchCase):
             self.assertEqual(float(fare["total_gbp"]), 20000.0)
 
     def test_on_one_day_a_read_that_states_every_leg_beats_a_cheaper_one_that_states_none(self):
-        """14 Nov 2026: a £1,164 read with no leg times beat a £1,178 read that listed every leg, and the trip was then
+        """14 Nov 2026: a £1,000 read with no leg times beat a £1,010 read that listed every leg, and the trip was then
         refused because an Economy fare needs every leg SHOWN to be at most eight hours."""
-        bare = _multi_centre_read(self.want, total=1164.0)
-        detailed = _multi_centre_read(self.want, total=1178.0, flights=_leg_detail())
+        bare = _multi_centre_read(self.want, total=1000.0)
+        detailed = _multi_centre_read(self.want, total=1010.0, flights=_leg_detail())
         for order in ([bare, detailed], [detailed, bare]):
             with self.subTest(first="detailed" if order[0].get("flights") else "bare"):
                 (fare,) = _journeys(self._registry(order))
-                self.assertEqual(float(fare["total_gbp"]), 1178.0)
+                self.assertEqual(float(fare["total_gbp"]), 1010.0)
                 self.assertEqual(len(fare["flights"]), 2)
 
     def test_two_reads_that_both_state_every_leg_still_keep_the_cheaper(self):
-        a = _multi_centre_read(self.want, total=1178.0, flights=_leg_detail())
-        b = _multi_centre_read(self.want, total=1164.0, flights=_leg_detail("10h 50m", "1h 00m"))
+        a = _multi_centre_read(self.want, total=1010.0, flights=_leg_detail())
+        b = _multi_centre_read(self.want, total=1000.0, flights=_leg_detail("10h 50m", "1h 00m"))
         for order in ([a, b], [b, a]):
             (fare,) = _journeys(self._registry(order))
-            self.assertEqual(float(fare["total_gbp"]), 1164.0)
+            self.assertEqual(float(fare["total_gbp"]), 1000.0)
 
     def test_a_later_days_bare_read_still_replaces_an_earlier_days_detailed_one(self):
-        earlier = _multi_centre_read(self.want, total=1178.0, observed_at=SYNTHETIC_SECOND_READ_AT,
+        earlier = _multi_centre_read(self.want, total=1010.0, observed_at=SYNTHETIC_SECOND_READ_AT,
                                      flights=_leg_detail())
-        later = _multi_centre_read(self.want, total=1164.0)
+        later = _multi_centre_read(self.want, total=1000.0)
         for order in ([earlier, later], [later, earlier]):
             (fare,) = _journeys(self._registry(order))
-            self.assertEqual(float(fare["total_gbp"]), 1164.0)
+            self.assertEqual(float(fare["total_gbp"]), 1000.0)
             self.assertEqual(fare["observed_at"], SYNTHETIC_FIRST_READ_AT)
 
     def test_a_mixed_and_a_business_read_of_one_journey_keep_the_cheaper(self):
@@ -665,3 +665,22 @@ def tearDownModule():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_same_day_business_read_on_an_accepted_airline_is_kept_over_a_cheaper_unaccepted_one():
+    """14 Nov 2026: the pricer's evening read on an accepted airline must not lose to the morning's cheaper one."""
+    from public_flight_search import holidays as hol
+
+    legs = [["LHR", "AAA", "2027-06-27"], ["AAA", "LHR", "2027-07-10"]]
+
+    def read(total, carrier):
+        return {"kind": "multi_centre", "trip": "SYN-1", "legs": legs, "status": "priced", "cabin": "MIXED",
+                "total_gbp": total, "carrier": carrier, "observed_at": "2026-11-14T10:00:00+00:00"}
+
+    for order in ((read(9000.0, "Sample Air"), read(11000.0, "Kenya Airways")),
+                  (read(11000.0, "Kenya Airways"), read(9000.0, "Sample Air"))):
+        index = {}
+        for item in order:
+            hol._keep_multi_centre_read(item, "synthetic", index)
+        kept = [v for k, v in index.items() if k[-1] == "MIXED"]
+        assert [r["carrier"] for r in kept] == ["Kenya Airways"]

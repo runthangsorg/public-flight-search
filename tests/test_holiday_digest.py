@@ -246,33 +246,33 @@ if __name__ == "__main__":
 
 
 class CarrierNamedOnceTests(unittest.TestCase):
-    """14 Nov 2026, reading the rendered body: "a business fare was read on RwandAir, RwandAir, which is not ..." and
-    "Air Algerie, Emirates, Air Algerie, Emirates"."""
+    """14 Nov 2026, reading the rendered body: "a business fare was read on Sample Air, Sample Air, which is not ..." and
+    "Sample Air, Emirates, Sample Air, Emirates"."""
 
     def test_the_digest_names_a_carrier_once_however_often_the_read_repeats_it(self):
-        rows = _hidden_rows(["RwandAir", "RwandAir"])
+        rows = _hidden_rows(["Sample Air", "Sample Air"])
         digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
         (reason,) = [p.reason for p in digest.pending if not p.group]
         self.assertEqual(reason,
-                         "a business fare was read on RwandAir, not on the accepted airline list; "
+                         "a business fare was read on Sample Air, not on the accepted airline list; "
                          "a fare on an accepted airline is still to be read")
-        self.assertEqual(reason.count("RwandAir"), 1)
+        self.assertEqual(reason.count("Sample Air"), 1)
 
     def test_the_same_airline_makes_one_heading_for_every_trip_it_set_aside(self):
-        rows = _hidden_rows(["Egyptair", "Egyptair"]) + _hidden_rows(["Egyptair"])
+        rows = _hidden_rows(["Other Air", "Other Air"]) + _hidden_rows(["Other Air"])
         digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)
-        self.assertEqual(html.count("a business fare was read on Egyptair"), 1)
+        self.assertEqual(html.count("a business fare was read on Other Air"), 1)
 
     def test_cabin_options_records_the_carriers_once_each(self):
         from public_flight_search.holiday_email import cabin_options
 
         trip = type("Trip", (), {"cost_lines": (), "cost_low_gbp": 0.0, "legs": ()})()
         read = {"total_gbp": 20_000.0,
-                "flights": [{"carrier": "RwandAir", "cabin": "BUSINESS", "duration": "13h 10m"},
-                            {"carrier": "RwandAir", "cabin": "BUSINESS", "duration": "12h 30m"}]}
+                "flights": [{"carrier": "Sample Air", "cabin": "BUSINESS", "duration": "13h 10m"},
+                            {"carrier": "Sample Air", "cabin": "BUSINESS", "duration": "12h 30m"}]}
         options = cabin_options(trip, {"MIXED": read}, 12_000.0, travellers=5)
-        self.assertEqual(options["business_hidden"]["carriers"], ["RwandAir"])
+        self.assertEqual(options["business_hidden"]["carriers"], ["Sample Air"])
 
 
 class CompactRowsTests(unittest.TestCase):
@@ -509,9 +509,9 @@ class RenderedBodyDefectsTests(unittest.TestCase):
     # 5. Fare reasons are short and say the same thing as the group heading
     def test_the_short_fare_reasons_and_the_group_heading_wording(self):
         for carriers, short, heading in (
-            (["RwandAir", "RwandAir"],
-             "business found only on RwandAir (not on the accepted airline list)",
-             "a business fare was read on RwandAir, not on the accepted airline list"),
+            (["Sample Air", "Sample Air"],
+             "business found only on Sample Air (not on the accepted airline list)",
+             "a business fare was read on Sample Air, not on the accepted airline list"),
             (["Air A", "Air B", "Air C"],
              "business found only on Air A, Air B and Air C (not all on the accepted airline list)",
              "a business fare was read on Air A, Air B and Air C, not all on the accepted airline list"),
@@ -523,16 +523,16 @@ class RenderedBodyDefectsTests(unittest.TestCase):
             self.assertEqual(hd._business_hidden_short(hidden), short)
             self.assertTrue(hd._business_hidden_reason(hidden).startswith(heading))
         hidden_row = dict(self.unpriced[0], business_hidden={"saving": None, "travellers": 5, "reason": "",
-                                                             "carriers": ["RwandAir", "RwandAir"]}) \
+                                                             "carriers": ["Sample Air", "Sample Air"]}) \
             if False else None
         rows = [dict(r, business_hidden={"saving": None, "travellers": 5, "reason": "",
-                                         "carriers": ["RwandAir", "RwandAir"]})
+                                         "carriers": ["Sample Air", "Sample Air"]})
                 for r in self.unpriced if r["trip"].id == BUILD]
         digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW,
                                  hotel_rates=_hotel_rates([_rate(*self.lodges[BUILD][0], 200.0)]))
         for part in (hd.render_digest_html(_config(), digest, generated_at=NOW),
                      hd.render_digest_text(_config(), digest, generated_at=NOW)):
-            self.assertIn("fare: business found only on RwandAir "
+            self.assertIn("fare: business found only on Sample Air "
                           "(not on the accepted airline list)", part)
         economy = self._rows_digest(rows=[r for r in self.unpriced if r["trip"].id == BUILD],
                                     rates=[_rate(*self.lodges[BUILD][0], 200.0)], economy_refused=True)
@@ -681,14 +681,14 @@ class SecondVisualCheckTests(unittest.TestCase):
 
     # 2. One airline is not on the list; two or more are not ALL on it
     def test_one_unaccepted_carrier_is_not_on_the_list_and_several_are_not_all_on_it(self):
-        one = {"saving": None, "travellers": 5, "reason": "", "carriers": ["RwandAir", "RwandAir"]}
+        one = {"saving": None, "travellers": 5, "reason": "", "carriers": ["Sample Air", "Sample Air"]}
         several = {"saving": None, "travellers": 5, "reason": "", "carriers": ["Air A", "Air B"]}
         self.assertEqual(hd._business_hidden_short(one),
-                         "business found only on RwandAir (not on the accepted airline list)")
+                         "business found only on Sample Air (not on the accepted airline list)")
         self.assertEqual(hd._business_hidden_short(several),
                          "business found only on Air A and Air B (not all on the accepted airline list)")
         self.assertTrue(hd._business_hidden_reason(one).startswith(
-            "a business fare was read on RwandAir, not on the accepted airline list"))
+            "a business fare was read on Sample Air, not on the accepted airline list"))
         self.assertTrue(hd._business_hidden_reason(several).startswith(
             "a business fare was read on Air A and Air B, not all on the accepted airline list"))
 

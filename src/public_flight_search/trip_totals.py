@@ -216,7 +216,15 @@ def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]],
                                  check_out=ls.check_out, nights=ls.nights,
                                  property_url=str(ls.lodge.url or ""), reason="no dated rate read"))
         return out
-    # The source names properties without itemising their nights: each is an alternative for the whole stop.
+    if len(stay.lodges) > 1:
+        # Several properties and no nights against each: they may be alternatives or a sequence (a safari stop
+        # naming a city hotel and a camp). Pricing the whole stop from whichever has a rate put six nights of a
+        # safari in a city hotel (14 Nov 2026), so the stop stays open until the catalogue itemises it.
+        names = " or ".join(ls.lodge.name for ls in stay.lodges)
+        return [StayPrice(place=place, property_name=names, check_in=stay.check_in, check_out=stay.check_out,
+                          nights=stay.nights, property_url=str(stay.lodges[0].lodge.url or ""),
+                          reason="nights not itemised between these properties")]
+    # One property named for the whole stop.
     choices = []
     for ls in stay.lodges:
         rate = _rate_for(hotel_rates, ls.lodge.name, stay.check_in, stay.check_out, room_only_rates,

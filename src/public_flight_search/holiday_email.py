@@ -1993,7 +1993,7 @@ def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: flo
         carriers = _business_long_carriers(business)
         if not business_is_deal(carriers=carriers, long_haul=bool(carriers)):
             # One entry per carrier, first seen first, case-insensitively: a read names its carrier
-            # on every long leg, so "RwandAir, RwandAir" would otherwise reach the reason and split
+            # on every long leg, so "Sample Air, Sample Air" would otherwise reach the reason and split
             # one airline's trips across two headings.
             unique: list[str] = []
             seen: set[str] = set()

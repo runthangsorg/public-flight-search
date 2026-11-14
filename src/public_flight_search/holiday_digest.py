@@ -426,8 +426,8 @@ def _unique_carriers(carriers: Any) -> list[str]:
     """The carriers named once each, first seen first, case-insensitively.
 
     A read names its carrier on every long leg, so the same airline arrived twice and the reason
-    read "RwandAir, RwandAir"; two trips set aside for the same airline then formed two headings
-    ("Egyptair" and "Egyptair, Egyptair").
+    read "Sample Air, Sample Air"; two trips set aside for the same airline then formed two headings
+    ("Other Air" and "Other Air, Other Air").
     """
     seen: set[str] = set()
     names: list[str] = []
@@ -674,7 +674,7 @@ def _price_block(c: Card) -> str:
             f'{_budget_bar(c)}</div>')
 
 
-def _stay_facts(s: StayPrice) -> list[str]:
+def _stay_facts(s: StayPrice, *, derived: bool = True) -> list[str]:
     """The plain facts of a priced stay, in the order a reader needs them.
 
     Board, the booking's shape, then — when the figure is derived — how it was derived, then the
@@ -682,7 +682,7 @@ def _stay_facts(s: StayPrice) -> list[str]:
     read 14 Nov".
     """
     facts = [s.board_words, s.rooms_words]
-    if s.derived_total:
+    if s.derived_total and derived:
         facts.append(f"nightly price × {s.nights} night{'s' if s.nights != 1 else ''}")
     return [fact for fact in facts if fact]
 
@@ -971,7 +971,7 @@ def _compact_stay_line(s: StayPrice) -> str:
     """
     parts = [_nb(f"{s.nights} night{'s' if s.nights != 1 else ''}"),
              f"{_gbp(s.total_gbp)}&nbsp;{_per_night_html(s)}".strip()]
-    parts += [_e(fact) for fact in _stay_facts(s)]
+    parts += [_e(fact) for fact in _stay_facts(s, derived=False)]
     parts += [_seller_link(s), _nb(f"read {_read_day(s.observed_at)}")]
     return (f'<div style="{_SMALL} {_LINE_MARGIN}">'
             + _dot_join([_a(s.source_url, s.property_name or "hotel not chosen yet")] + parts) + "</div>")
@@ -1015,7 +1015,7 @@ def _watch_rows_html(cards: Sequence[Card]) -> str:
         # Every part here is already HTML-safe: escaping the joined line a second time printed the
         # seller's <a> tag as text and let its unbreakable URL widen the box (14 Nov 2026).
         detail = [_e(c.place or ""), _e(c.dates), f"{_gbp(c.total_gbp)}&nbsp;{_per_night_html(stay)}".strip()]
-        detail += [_e(fact) for fact in _stay_facts(stay)]
+        detail += [_e(fact) for fact in _stay_facts(stay, derived=False)]
         detail += [_seller_link(stay), _nb(f"read {_read_day(stay.observed_at)}")]
         facts = "".join(f'<div style="{_SMALL} {_LINE_MARGIN} font-style:italic;">{_e(fact)}</div>'
                         for fact in c.facts)
@@ -1230,7 +1230,7 @@ def _stays_row_text(c: Card) -> list[str]:
         lines.append("    Priced:")
     for s in priced:
         parts = [f"{s.nights}n", f"{_gbp(s.total_gbp)} {_per_night_phrase(s)}".strip()]
-        parts += _stay_facts(s)
+        parts += _stay_facts(s, derived=False)
         parts += ["the hotel's own rate" if _seller_is_property(s) else (s.seller or "seller"),
                   f"read {_read_day(s.observed_at)}"]
         lines.append(f"      {s.property_name or 'hotel not chosen yet'} · " + " · ".join(parts))
@@ -1248,7 +1248,7 @@ def _watch_row_text(c: Card) -> list[str]:
     if stay is None:
         return []
     detail = [c.place or "", c.dates, f"{_gbp(c.total_gbp)} {_per_night_phrase(stay)}".strip()]
-    detail += _stay_facts(stay)
+    detail += _stay_facts(stay, derived=False)
     detail += ["the hotel's own rate" if _seller_is_property(stay) else (stay.seller or "seller"),
                f"read {_read_day(stay.observed_at)}"]
     lines = [f"{c.title}{' [' + c.halal + ']' if c.halal else ''}",

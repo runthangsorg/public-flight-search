@@ -439,8 +439,23 @@ def test_a_three_room_stay_takes_the_breakfast_rate_over_a_cheaper_room_only_one
     from unittest import mock
     from public_flight_search import trip_totals as tt
 
-    ro = NS(price_gbp=1470.0, board="RO")
-    bb = NS(price_gbp=1860.0, board="BB")
+    ro = NS(price_gbp=900.0, board="RO")
+    bb = NS(price_gbp=1100.0, board="BB")
     entry = NS(cheapest=ro, rates=(ro, bb))
     with mock.patch.object(tt.hotel_evidence_module, "_pair_entries", return_value=(entry,)):
         assert tt._three_room_read({"k": entry}, "Palm Cove Resort", "2027-07-05", "2027-07-10") is bb
+
+
+def test_a_stop_naming_several_properties_without_nights_is_never_priced_from_one_of_them():
+    """14 Nov 2026: six safari nights were priced from the city hotel the stop also named."""
+    from types import SimpleNamespace as NS
+    from unittest import mock
+    from public_flight_search import trip_totals as tt
+
+    lodges = [NS(lodge=NS(name="Palm City Hotel", url="", area=""), check_in="", check_out="", nights=0),
+              NS(lodge=NS(name="Palm Bush Camp", url="", area=""), check_in="", check_out="", nights=0)]
+    stay = NS(stop=NS(place="City and bush"), lodges=lodges, check_in="2027-06-27", check_out="2027-07-03", nights=6)
+    rate = NS(price_gbp=600.0, board="BB")
+    with mock.patch.object(tt, "_rate_for", return_value=rate):
+        (only,) = tt._stop_stays(stay, {"k": 1})
+    assert not only.priced and only.nights == 6 and "not itemised" in only.reason
