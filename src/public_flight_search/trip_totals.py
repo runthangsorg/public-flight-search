@@ -48,6 +48,11 @@ class StayPrice:
     observed_at: str = ""
     unit: str = ""
     two_rooms: bool = False
+    #: The adults each unit states, from the read itself (``(3, 2)`` for two rooms); empty when the read
+    #: states none, and then the card says "2 rooms" and invents nothing.
+    unit_guests: tuple[int, ...] = ()
+    #: True when the figure is the page's nightly price times the nights rather than a stated stay total.
+    derived_total: bool = False
     property_url: str = ""
     #: Why no figure: "no property named", "nights not itemised", "no dated rate read".
     reason: str = ""
@@ -59,6 +64,22 @@ class StayPrice:
     @property
     def board_words(self) -> str:
         return _BOARD_WORDS.get(self.board, "")
+
+    @property
+    def rooms_words(self) -> str:
+        """The booking's shape in a reader's words: "2 rooms (3 + 2 guests)" or "one unit for 5".
+
+        Built from the units the read stated, so the two-room line no longer repeats the exporter's
+        display strings ("Booking.com — 3 guests — 3"). With no stated counts it says only what it
+        knows: "2 rooms", or nothing for one unit.
+        """
+        if self.two_rooms:
+            if self.unit_guests:
+                return f"2 rooms ({' + '.join(str(guests) for guests in self.unit_guests)} guests)"
+            return "2 rooms"
+        if self.unit_guests:
+            return f"one unit for {self.unit_guests[0]}"
+        return ""
 
 
 @dataclass(frozen=True)
@@ -132,6 +153,8 @@ def _priced(place: str, lodge: Any, check_in: str, check_out: str, nights: int, 
         total_gbp=float(rate.price_gbp), board=str(rate.board or ""), seller=_seller(rate),
         source_url=str(rate.source_url or ""), observed_at=str(rate.observed_at or ""),
         unit="; ".join(units[:2]), two_rooms=str(rate.booking_shape or "") == "two_rooms_one_booking",
+        unit_guests=tuple(getattr(rate, "unit_guests", ()) or ()),
+        derived_total=bool(getattr(rate, "derived_total", False)),
         property_url=str(getattr(lodge, "url", "") or ""))
 
 

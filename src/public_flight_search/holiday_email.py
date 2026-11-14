@@ -1992,11 +1992,21 @@ def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: flo
     if business is not None:
         carriers = _business_long_carriers(business)
         if not business_is_deal(carriers=carriers, long_haul=bool(carriers)):
+            # One entry per carrier, first seen first, case-insensitively: a read names its carrier
+            # on every long leg, so "RwandAir, RwandAir" would otherwise reach the reason and split
+            # one airline's trips across two headings.
+            unique: list[str] = []
+            seen: set[str] = set()
+            for carrier in carriers:
+                name = str(carrier).strip()
+                if name and name.casefold() not in seen:
+                    seen.add(name.casefold())
+                    unique.append(name)
             hidden = {"saving": None, "travellers": int(travellers),
                       "reason": "no long flight on a quality carrier",
                       # On whom the fare WAS read, so the body can say that rather than claim no
                       # business fare was read at all (owner, 14 Nov 2026). May be empty.
-                      "carriers": list(carriers)}
+                      "carriers": unique}
             business = None
     chosen = {"business": business, "economy": economy}
     out: dict[str, Any] = {"reads": chosen, "totals": [], "missing": [], "business_hidden": hidden,

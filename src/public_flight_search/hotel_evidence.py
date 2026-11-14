@@ -168,6 +168,14 @@ class HotelRate:
     units: tuple[str, ...] = ()
     #: None means the page did not say whether taxes are included.
     taxes_included: Optional[bool] = None
+    #: True when the stay total is the NIGHTLY figure the page showed times the nights, rather than a
+    #: total the page itself stated (the record's ``price_basis`` was ``nightly_room_rate``). The card
+    #: says so on the stay line, because a reader comparing it with a hotel's own total should know.
+    derived_total: bool = False
+    #: The adults each unit of the booking states, in unit order (``(3, 2)`` for two rooms of three and
+    #: two). Empty unless EVERY unit states one: "2 rooms (3 + 2 guests)" is printed only from the
+    #: record's own numbers, never parsed back out of a display string.
+    unit_guests: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -643,6 +651,33 @@ def _provider_of(rate: dict) -> str:
     return ""
 
 
+def _unit_guests(rate: dict) -> tuple[int, ...]:
+    """The adults each unit states, when every unit states one; empty otherwise.
+
+    Brand rows give ``adults``/``max_persons_stated``, aggregator rows give ``adults`` beside
+    ``guests_stated``. A unit that states no count makes the whole tuple empty rather than a
+    shorter one, so a two-room booking can never print one room's party as the pair's.
+    """
+    units = rate.get("units")
+    if not isinstance(units, list) or not units:
+        return ()
+    found: list[int] = []
+    for entry in units:
+        if not isinstance(entry, dict):
+            return ()
+        count = entry.get("adults")
+        if not isinstance(count, int) or isinstance(count, bool) or count <= 0:
+            count = entry.get("max_persons_stated")
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            return ()
+        if count <= 0:
+            return ()
+        found.append(count)
+    return tuple(found)
+
+
 def _unit_lines(rate: dict) -> tuple[str, ...]:
     """Units as the hotel states them, in the exporter's own words.
 
@@ -1053,6 +1088,8 @@ def _gate_rate(item, index: int, *, season: str, travellers: int, priced_pairs: 
         observed_at=observed_raw,
         booking_shape=shape,
         party_adults=adults,
+        derived_total=(stay_basis == "nightly_x_nights"),
+        unit_guests=_unit_guests(item),
     )
     return rate, priceable_pair
 

@@ -116,10 +116,23 @@ class TripTotalTests(unittest.TestCase):
         self.assertEqual(stay.total_gbp, 250.0 * nights)
         self.assertTrue(stay.two_rooms)
 
-    def test_without_a_flight_read_there_is_no_card_whatever_the_hotels_say(self):
+    def test_without_a_flight_read_a_trip_with_stays_read_is_a_partly_priced_card(self):
+        """14 Nov 2026: the stays are real and dated, so they belong on a card even with no accepted fare."""
         rows = _rows([])
         lodges = _plan_lodges(rows[0])
         digest = _build(rows, _hotel_rates([_rate(n, ci, co, 200.0) for n, ci, co in lodges]))
+        (card,) = digest.cards
+        self.assertEqual(card.kind, "part")
+        self.assertIsNone(card.flights_gbp)
+        self.assertEqual(card.total_gbp, card.stays_gbp)
+        self.assertIn("flights not priced yet", card.covers)
+        self.assertTrue(card.flights.startswith("not priced"))
+        self.assertNotIn(rows[0]["trip"].title, digest.not_priced)
+        self.assertFalse([p for p in digest.pending if p.name == rows[0]["trip"].title])
+
+    def test_without_a_flight_read_and_no_stays_read_there_is_no_card(self):
+        rows = _rows([])
+        digest = _build(rows, None)
         self.assertEqual(digest.cards, ())
         self.assertIn(rows[0]["trip"].title, digest.not_priced)
 
@@ -281,3 +294,132 @@ class NewestReadWinsTests(unittest.TestCase):
         b = deal_read(BUILD, "MIXED", 7_900, observed="2026-11-14T15:00:00+00:00")
         for order in ([a, b], [b, a]):
             self.assertEqual(float(self._read_for(order)["total_gbp"]), 7_900.0)
+
+
+class StayLineTests(unittest.TestCase):
+    """14 Nov 2026, reading the rendered body: a two-room stay printed the exporter's own unit strings
+    ("room only, 2 rooms, Booking.com — 3 guests — 3; Booking.com — 2 guests — 2 · Booking.com · read 14 Nov")."""
+
+    def setUp(self):
+        self.rows = _rows([deal_read(BUILD, "MIXED", 8_000)])
+        self.lodges = _plan_lodges(self.rows[0])
+
+    def _html(self, digest):
+        return hd.render_digest_html(_config(), digest, generated_at=NOW)
+
+    def test_a_two_room_stay_line_is_board_rooms_seller_read_html_and_text_alike(self):
+        digest = _build(self.rows, _hotel_rates([_rate(n, ci, co, 200.0, two_rooms=True) for n, ci, co in self.lodges]))
+        html, text = self._html(digest), hd.render_digest_text(_config(), digest, generated_at=NOW)
+        for part in (visible_text(html), text):
+            self.assertIn("2 rooms (3 + 2 guests)", part)
+            self.assertIn("read 14 Nov", part)
+            self.assertNotIn("SYNTHETIC room A", part)
+            self.assertNotIn("guests — 3", part)
+            self.assertEqual(part.count("SYNTHETIC Seller"), len(digest.cards[0].stays), "the seller is named once a stay")
+
+    def test_one_unit_says_one_unit_for_the_party(self):
+        digest = _build(self.rows, _hotel_rates([_rate(n, ci, co, 200.0) for n, ci, co in self.lodges]))
+        text = hd.render_digest_text(_config(), digest, generated_at=NOW)
+        self.assertIn("breakfast · one unit for 5 · nightly price × 4 nights · SYNTHETIC Seller · read 14 Nov", text)
+
+    def test_two_rooms_with_no_stated_counts_say_only_two_rooms(self):
+        rates = []
+        for name, check_in, check_out in self.lodges:
+            record = _rate(name, check_in, check_out, 200.0, two_rooms=True)
+            record["units"] = [{"name": "SYNTHETIC room A"}, {"name": "SYNTHETIC room B"}]
+            rates.append(record)
+        digest = _build(self.rows, _hotel_rates(rates))
+        text = hd.render_digest_text(_config(), digest, generated_at=NOW)
+        self.assertIn("2 rooms", text)
+        self.assertNotIn("2 rooms (", text)
+
+    def test_a_nightly_derived_total_says_so_on_the_stay_line(self):
+        digest = _build(self.rows, _hotel_rates([_rate(n, ci, co, 200.0) for n, ci, co in self.lodges]))
+        card = digest.cards[0]
+        self.assertTrue(all(stay.derived_total for stay in card.stays))
+        html = self._html(digest)
+        text = hd.render_digest_text(_config(), digest, generated_at=NOW)
+        for part in (visible_text(html), text):
+            self.assertIn(f"nightly price × {card.stays[0].nights} nights", part)
+            self.assertIn(hd.DERIVED_TOTAL_NOTE, part)
+
+
+class StaysWithoutAFareTests(unittest.TestCase):
+    """A trip whose flights have no accepted read but whose stays were read is a partly priced card, not a name
+    under "Not yet priced": the stays are the one thing a reader can act on."""
+
+    def setUp(self):
+        self.rows = _rows([deal_read(BUILD, "ECONOMY", 4_000)])
+        self.lodges = _plan_lodges(self.rows[0])
+
+    def test_the_card_counts_the_nights_and_names_why_the_flights_are_missing(self):
+        digest = _build(self.rows, _hotel_rates([_rate(*self.lodges[0], 200.0)]))
+        (card,) = digest.cards
+        self.assertEqual(card.kind, "part")
+        self.assertIsNone(card.flights_gbp)
+        self.assertEqual(card.total_gbp, card.stays_gbp)
+        self.assertIn("nights' stay, 5 people; flights not priced yet", card.covers)
+        self.assertEqual(card.flights,
+                         "not priced; the economy fare read has a leg over 8 hours; a business fare is still to be read")
+        rendered = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
+        self.assertIn("Partly priced", rendered)
+        self.assertIn("not priced", rendered)
+        self.assertNotIn(self.rows[0]["trip"].title, _not_priced_names(hd.render_digest_html(_config(), digest,
+                                                                                           generated_at=NOW)))
+        text = hd.render_digest_text(_config(), digest, generated_at=NOW)
+        self.assertIn("Flights: not priced; the economy fare read has a leg over 8 hours", text)
+
+    def test_every_night_priced_without_a_fare_is_still_partly_priced(self):
+        digest = _build(self.rows, _hotel_rates([_rate(n, ci, co, 200.0) for n, ci, co in self.lodges]))
+        (card,) = digest.cards
+        self.assertEqual(card.kind, "part")
+        self.assertNotIn("Whole trips, fully priced", hd.render_digest_html(_config(), digest, generated_at=NOW))
+
+    def test_a_lead_with_a_stay_priced_becomes_a_partly_priced_card_that_keeps_its_why(self):
+        from public_flight_search.holiday_email import _multi_centre_rows
+        rows = [r for r in _multi_centre_rows(_config(), fares=load([]), include_leads=True)
+                if r["trip"].id == "LD-01"]
+        lodges = _plan_lodges(rows[0])
+        digest = _build(rows, _hotel_rates([_rate(n, ci, co, 200.0) for n, ci, co in lodges]))
+        (card,) = digest.cards
+        self.assertEqual(card.kind, "part")
+        self.assertEqual(card.why, rows[0]["trip"].why)
+        self.assertIn("Why it is special", hd.render_digest_html(_config(), digest, generated_at=NOW))
+        self.assertFalse([p for p in digest.pending if p.name == card.title])
+
+
+class PartlyPricedOrderAndSummaryTests(unittest.TestCase):
+    def setUp(self):
+        self.rows = _rows([deal_read(BUILD, "MIXED", 8_000)])
+        self.lodges = _plan_lodges(self.rows[0])
+
+    def test_a_partly_priced_card_with_a_flight_read_sorts_before_a_stays_only_one(self):
+        # The same synthetic trip twice: one row with a fare read, one with none. Both price the same stays.
+        fare = self.rows[0]
+        no_fare = dict(_rows([])[0])
+        digest = _build([no_fare, fare], _hotel_rates([_rate(*self.lodges[0], 200.0)]))
+        parts = [c for c in digest.cards if c.kind == "part"]
+        self.assertEqual(len(parts), 2)
+        self.assertIsNotNone(parts[0].flights_gbp, "the card with a fare comes first")
+        self.assertIsNone(parts[1].flights_gbp)
+
+    def test_the_summary_counts_what_is_shown(self):
+        fare = self.rows[0]
+        no_fare = dict(_rows([])[0])
+        digest = _build([fare, no_fare], _hotel_rates([_rate(*self.lodges[0], 200.0)]))
+        text = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
+        self.assertIn("No whole trip is priced yet this week.", text)
+        self.assertIn("1 trip has flights and some stays read, 1 has stays only (below)", text)
+
+    def test_a_flights_only_week_says_flights_only_and_omits_the_zero_clauses(self):
+        digest = _build(self.rows, None)
+        text = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
+        self.assertIn("1 has flights only (below)", text)
+        self.assertNotIn("stays only", text)
+        self.assertNotIn("0 have", text)
+
+
+def _not_priced_names(html):
+    """The names listed under "Not yet priced" only (the marker is kept for other modules)."""
+    start = html.find(">Not yet priced</div>")
+    return html[start:] if start >= 0 else ""

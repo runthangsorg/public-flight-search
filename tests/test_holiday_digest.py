@@ -235,3 +235,33 @@ class TheJobSendsTheDigestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CarrierNamedOnceTests(unittest.TestCase):
+    """14 Nov 2026, reading the rendered body: "a business fare was read on RwandAir, RwandAir, which is not ..." and
+    "Air Algerie, Emirates, Air Algerie, Emirates"."""
+
+    def test_the_digest_names_a_carrier_once_however_often_the_read_repeats_it(self):
+        rows = _hidden_rows(["RwandAir", "RwandAir"])
+        digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
+        (reason,) = [p.reason for p in digest.pending if not p.group]
+        self.assertEqual(reason,
+                         "a business fare was read on RwandAir, which is not on the accepted airline list; "
+                         "a fare on an accepted airline is still to be read")
+        self.assertEqual(reason.count("RwandAir"), 1)
+
+    def test_the_same_airline_makes_one_heading_for_every_trip_it_set_aside(self):
+        rows = _hidden_rows(["Egyptair", "Egyptair"]) + _hidden_rows(["Egyptair"])
+        digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        self.assertEqual(html.count("a business fare was read on Egyptair"), 1)
+
+    def test_cabin_options_records_the_carriers_once_each(self):
+        from public_flight_search.holiday_email import cabin_options
+
+        trip = type("Trip", (), {"cost_lines": (), "cost_low_gbp": 0.0, "legs": ()})()
+        read = {"total_gbp": 20_000.0,
+                "flights": [{"carrier": "RwandAir", "cabin": "BUSINESS", "duration": "13h 10m"},
+                            {"carrier": "RwandAir", "cabin": "BUSINESS", "duration": "12h 30m"}]}
+        options = cabin_options(trip, {"MIXED": read}, 12_000.0, travellers=5)
+        self.assertEqual(options["business_hidden"]["carriers"], ["RwandAir"])
