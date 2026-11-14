@@ -2117,7 +2117,7 @@ def _multi_centre_rows(config: HolidayConfig, *,
     # The outbound is the middle priceable pair's; the flight home is each trip's own (``_trip_return_date``).
     outbound = pairs[len(pairs) // 2][0]
     try:
-        trips = load_multi_centre(config, include_leads=include_leads)
+        trips = load_multi_centre(config, include_leads=True) if include_leads else load_multi_centre(config)
     except Exception:  # noqa: BLE001 - see above
         return []
     budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
@@ -2349,7 +2349,7 @@ def _read_party(read: Mapping[str, Any]) -> int:
         return 5
 
 
-def multi_centre_wanted(config: HolidayConfig) -> list[dict[str, Any]]:
+def multi_centre_wanted(config: HolidayConfig, *, include_leads: bool = False) -> list[dict[str, Any]]:
     """Every two-centre trip this run renders, in the private reader's --wanted format.
 
     The other half of one seam, exactly as ``holidays.stopover_wanted`` is for
@@ -2372,8 +2372,8 @@ def multi_centre_wanted(config: HolidayConfig) -> list[dict[str, Any]]:
             "legs": [list(leg) for leg in row["legs"]],
             "season": row["trip"].season,
         }
-        # Leads too: a trip with no figure is exactly the trip whose fare must be read (14 Nov 2026).
-        for row in _multi_centre_rows(config, include_leads=True)
+        # ``include_leads`` (the job's own call): a trip with no figure is exactly the trip whose fare must be read.
+        for row in _multi_centre_rows(config, include_leads=include_leads)
     ]
 
 

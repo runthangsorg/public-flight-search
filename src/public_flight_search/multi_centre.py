@@ -37,6 +37,9 @@ from typing import Any, Optional, Sequence
 #: anywhere must find the same itineraries.
 DEFAULT_MULTI_CENTRE_PATH = str(Path(__file__).with_name("data") / "multi_centre.json")
 
+#: Figure-free leads live in their own file, so nothing that reads the priced catalogue can meet one.
+DEFAULT_LEADS_PATH = str(Path(__file__).with_name("data") / "trip_leads.json")
+
 #: The document shape ``multi_centre.json`` declares.
 SCHEMA = "multi_centre/1"
 
@@ -412,11 +415,29 @@ def load_multi_centre(
         return []
     wanted = season or season_for(config)
     trips: list[MultiCentreTrip] = []
-    for raw in payload.get("itineraries", ()) or ():
+    items = list(payload.get("itineraries", ()) or ())
+    if include_leads and path == DEFAULT_MULTI_CENTRE_PATH:
+        items += _lead_items()
+    seen: set[str] = set()
+    for raw in items:
         trip = _trip(raw)
-        if trip is not None and trip.season == wanted and (include_leads or trip.confidence != LEAD):
+        if (trip is not None and trip.season == wanted and trip.id not in seen
+                and (include_leads or trip.confidence != LEAD)):
+            seen.add(trip.id)
             trips.append(trip)
     return _link_counterparts(trips)
+
+
+def _lead_items(path: str = "") -> list:
+    """The shipped leads (``data/trip_leads.json``): figure-free trips, kept apart from the priced catalogue."""
+    try:
+        with open(path or DEFAULT_LEADS_PATH, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(payload, dict) or payload.get("schema") != SCHEMA:
+        return []
+    return [dict(item, lead=True) for item in payload.get("itineraries", ()) or () if isinstance(item, dict)]
 
 
 def _link_counterparts(trips: list[MultiCentreTrip]) -> list[MultiCentreTrip]:

@@ -242,7 +242,9 @@ class LeadTripTests(unittest.TestCase):
         leads = [t for t in load_multi_centre(_config(), include_leads=True) if t.confidence == "lead"]
         plain = {t.id for t in load_multi_centre(_config())}
         self.assertFalse(plain & {t.id for t in leads})
-        wanted = {w["trip"] for w in multi_centre_wanted(_config())}
+        wanted = {w["trip"] for w in multi_centre_wanted(_config(), include_leads=True)}
+        self.assertFalse({t.id for t in leads} & {w["trip"] for w in multi_centre_wanted(_config())})
+        self.assertGreaterEqual(len(leads), 10)
         rows = _multi_centre_rows(_config(), fares=load([]), include_leads=True)
         digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)

@@ -463,7 +463,7 @@ def run_holiday_planner(
     # so the section that prints a cost range can be priced by one command. It
     # lists every rendered trip, not only the unread ones, because a trip's legs
     # carry the dates and a new pair therefore needs a read of its own.
-    multi_centre_wants = multi_centre_wanted(config)
+    multi_centre_wants = multi_centre_wanted(config, include_leads=True)
     print(f"multi_centre_wanted: {len(multi_centre_wants)}")
     # ... and the stays (owner, 14 Nov 2026): every trip's dated properties and the watch-list resorts, in the
     # private hotel reader's --wanted shape, so the cards can show a trip total instead of "flights only".

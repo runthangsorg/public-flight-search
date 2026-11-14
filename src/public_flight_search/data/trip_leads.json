@@ -1,0 +1,853 @@
+{
+  "schema": "multi_centre/1",
+  "compiled_on": "2026-11-14",
+  "notes": [
+    "Leads: trips with NO figure. Each named property was opened on its own page on 2026-11-14 and nothing was priced; a stop whose hotel page would not open names no property. Only the confirmed-prices digest and the wanted lists load this file (multi_centre.load_multi_centre(include_leads=True)); a lead becomes a card only when its fare and its stays are read for the trip dates.",
+    "No halal tag is carried here: that needs a quote from the property's own page (watchlist.json)."
+  ],
+  "itineraries": [
+    {
+      "id": "LD-01",
+      "lead": true,
+      "region": "arabia",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Dubai 2 nights + Jebel Akhdar 4 nights + Salalah 6 nights",
+      "stops": [
+        {
+          "place": "Dubai",
+          "nights": 2,
+          "airport": "DXB",
+          "hotel": "",
+          "basis": ""
+        },
+        {
+          "place": "Jebel Akhdar, Oman",
+          "nights": 4,
+          "airport": "MCT",
+          "hotel": "",
+          "basis": ""
+        },
+        {
+          "place": "Salalah, Oman",
+          "nights": 6,
+          "airport": "SLL",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Al Baleed Resort Salalah by Anantara",
+              "nights": 6,
+              "area": "Salalah, Oman",
+              "url": "https://www.anantara.com/en/al-baleed-salalah"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DXB"
+        ],
+        [
+          "DXB",
+          "MCT"
+        ],
+        [
+          "MCT",
+          "SLL"
+        ],
+        [
+          "SLL",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "a canyon-rim mountain resort at 2,000 m, then Salalah in its green khareef season, with a Dubai stopover",
+      "catch": "Salalah's khareef is mist and drizzle, not beach sun; Muscat and Dubai are 40 C; the mountain road needs a 4x4; Dubai and Jebel Akhdar hotels still to choose",
+      "source_urls": [
+        "https://www.anantara.com/en/al-baleed-salalah"
+      ]
+    },
+    {
+      "id": "LD-02",
+      "lead": true,
+      "region": "asia",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Kuala Lumpur 3 nights + Tanjong Jara 4 nights + Redang Island 7 nights",
+      "stops": [
+        {
+          "place": "Kuala Lumpur",
+          "nights": 3,
+          "airport": "KUL",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Mandarin Oriental, Kuala Lumpur",
+              "nights": 3,
+              "area": "Kuala Lumpur",
+              "url": "https://www.mandarinoriental.com/en/kuala-lumpur/petronas-towers"
+            }
+          ]
+        },
+        {
+          "place": "Tanjong Jara, Terengganu",
+          "nights": 4,
+          "airport": "TGG",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Tanjong Jara Resort",
+              "nights": 4,
+              "area": "Tanjong Jara, Terengganu",
+              "url": "https://www.tanjongjararesort.com/"
+            }
+          ]
+        },
+        {
+          "place": "Redang Island, Malaysia",
+          "nights": 7,
+          "airport": "TGG",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "The Taaras Beach & Spa Resort",
+              "nights": 7,
+              "area": "Redang Island, Malaysia",
+              "url": "https://www.thetaaras.com/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "KUL"
+        ],
+        [
+          "KUL",
+          "TGG"
+        ],
+        [
+          "TGG",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "a Malay palace-style resort on the dry-season east coast, then a marine-park island, with a Kuala Lumpur stopover",
+      "catch": "one internal flight to Kuala Terengganu, then road and boat to Redang",
+      "source_urls": [
+        "https://www.mandarinoriental.com/en/kuala-lumpur/petronas-towers",
+        "https://www.tanjongjararesort.com/",
+        "https://www.thetaaras.com/"
+      ]
+    },
+    {
+      "id": "LD-03",
+      "lead": true,
+      "region": "asia",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Jakarta 2 nights + Labuan Bajo 5 nights + Sumba 7 nights",
+      "stops": [
+        {
+          "place": "Jakarta",
+          "nights": 2,
+          "airport": "CGK",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Four Seasons Hotel Jakarta",
+              "nights": 2,
+              "area": "Jakarta",
+              "url": "https://www.fourseasons.com/jakarta/"
+            }
+          ]
+        },
+        {
+          "place": "Labuan Bajo, Komodo",
+          "nights": 5,
+          "airport": "LBJ",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "AYANA Komodo Waecicu Beach",
+              "nights": 5,
+              "area": "Labuan Bajo, Komodo",
+              "url": "https://www.ayana.com/labuan-bajo/ayana-komodo/"
+            }
+          ]
+        },
+        {
+          "place": "Sumba",
+          "nights": 7,
+          "airport": "TMC",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Cap Karoso",
+              "nights": 7,
+              "area": "Sumba",
+              "url": "https://capkaroso.com/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "CGK"
+        ],
+        [
+          "CGK",
+          "LBJ"
+        ],
+        [
+          "LBJ",
+          "TMC"
+        ],
+        [
+          "TMC",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "Komodo National Park by boat, then a beach farm resort on Sumba, in the dry season",
+      "catch": "two internal flights; the Komodo boat night is separate from the hotel; halal meat is harder to find on Flores and Sumba",
+      "source_urls": [
+        "https://www.fourseasons.com/jakarta/",
+        "https://www.ayana.com/labuan-bajo/ayana-komodo/",
+        "https://capkaroso.com/"
+      ]
+    },
+    {
+      "id": "LD-04",
+      "lead": true,
+      "region": "asia",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Doha 2 nights + Anuradhapura 4 nights + Trincomalee 4 nights + Kalkudah 5 nights",
+      "stops": [
+        {
+          "place": "Doha",
+          "nights": 2,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 2,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        },
+        {
+          "place": "Anuradhapura, Sri Lanka",
+          "nights": 4,
+          "airport": "CMB",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Uga Ulagalla",
+              "nights": 4,
+              "area": "Anuradhapura, Sri Lanka",
+              "url": "https://www.ugaresorts.com/ulagalla/"
+            }
+          ]
+        },
+        {
+          "place": "Trincomalee, Sri Lanka",
+          "nights": 4,
+          "airport": "CMB",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Jungle Beach by Uga",
+              "nights": 4,
+              "area": "Trincomalee, Sri Lanka",
+              "url": "https://www.ugaresorts.com/junglebeach/"
+            }
+          ]
+        },
+        {
+          "place": "Kalkudah, Sri Lanka",
+          "nights": 5,
+          "airport": "CMB",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Karpaha Sands",
+              "nights": 5,
+              "area": "Kalkudah, Sri Lanka",
+              "url": "https://www.karpahasands.com/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "CMB"
+        ],
+        [
+          "CMB",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "three large private units in a row: a paddy-field pool villa, a jungle-cabin cluster on the beach and a tented beach suite, with a Doha stopover",
+      "catch": "4 to 6 hours by road from Colombo to the Cultural Triangle and the east coast",
+      "source_urls": [
+        "https://www.tivolihotels.com/en/souq-waqif-doha",
+        "https://www.ugaresorts.com/ulagalla/",
+        "https://www.ugaresorts.com/junglebeach/",
+        "https://www.karpahasands.com/"
+      ]
+    },
+    {
+      "id": "LD-05",
+      "lead": true,
+      "region": "africa",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "South Luangwa 7 nights + Mumbo Island 7 nights",
+      "stops": [
+        {
+          "place": "South Luangwa, Zambia",
+          "nights": 7,
+          "airport": "MFU",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Flatdogs Camp",
+              "nights": 7,
+              "area": "South Luangwa, Zambia",
+              "url": "https://www.flatdogscamp.com/"
+            }
+          ]
+        },
+        {
+          "place": "Mumbo Island, Lake Malawi",
+          "nights": 7,
+          "airport": "LLW",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Mumbo Island Camp",
+              "nights": 7,
+              "area": "Mumbo Island, Lake Malawi",
+              "url": "https://www.mumboisland.com/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "MFU"
+        ],
+        [
+          "LLW",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "a private safari treehouse in South Luangwa, then an uninhabited island camp on Lake Malawi",
+      "catch": "a long cross-border road transfer or a light-aircraft hop between Mfuwe and Lake Malawi; rustic by design",
+      "source_urls": [
+        "https://www.flatdogscamp.com/",
+        "https://www.mumboisland.com/"
+      ]
+    },
+    {
+      "id": "LD-06",
+      "lead": true,
+      "region": "africa",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Muscat 3 nights + Ol Pejeta 4 nights + Lamu Island 7 nights",
+      "stops": [
+        {
+          "place": "Muscat, Oman",
+          "nights": 3,
+          "airport": "MCT",
+          "hotel": "",
+          "basis": ""
+        },
+        {
+          "place": "Ol Pejeta, Laikipia, Kenya",
+          "nights": 4,
+          "airport": "NBO",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Sweetwaters Serena Camp",
+              "nights": 4,
+              "area": "Ol Pejeta, Laikipia, Kenya",
+              "url": "https://www.serenahotels.com/sweetwaters"
+            }
+          ]
+        },
+        {
+          "place": "Lamu Island, Kenya",
+          "nights": 7,
+          "airport": "LAU",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Kijani Hotel",
+              "nights": 7,
+              "area": "Lamu Island, Kenya",
+              "url": "https://www.kijani-lamu.com/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "MCT"
+        ],
+        [
+          "MCT",
+          "NBO"
+        ],
+        [
+          "NBO",
+          "LAU"
+        ],
+        [
+          "LAU",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "a rhino conservancy under Mount Kenya, then car-free Swahili Lamu, with a Muscat stopover",
+      "catch": "Muscat is 38 C or more in late June; Nanyuki to Lamu needs two internal flights; Muscat hotel still to choose",
+      "source_urls": [
+        "https://www.serenahotels.com/sweetwaters",
+        "https://www.kijani-lamu.com/"
+      ]
+    },
+    {
+      "id": "LD-07",
+      "lead": true,
+      "region": "africa",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Doha 2 nights + Saadani 5 nights + Mafia Island 7 nights",
+      "stops": [
+        {
+          "place": "Doha",
+          "nights": 2,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 2,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        },
+        {
+          "place": "Saadani, Tanzania",
+          "nights": 5,
+          "airport": "DAR",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "A Tent With A View Safari Lodge",
+              "nights": 5,
+              "area": "Saadani, Tanzania",
+              "url": "https://www.tentwithaview.com/"
+            }
+          ]
+        },
+        {
+          "place": "Mafia Island, Tanzania",
+          "nights": 7,
+          "airport": "MFA",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Butiama Beach Lodge",
+              "nights": 7,
+              "area": "Mafia Island, Tanzania",
+              "url": "https://www.butiamamafiaisland.com/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "DAR"
+        ],
+        [
+          "DAR",
+          "MFA"
+        ],
+        [
+          "MFA",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "bush that meets the ocean at Saadani, then a marine-park island with no crowds, with a Doha stopover",
+      "catch": "thicker bush than the Serengeti, so big cats take patience; whale sharks are an October to February sighting",
+      "source_urls": [
+        "https://www.tivolihotels.com/en/souq-waqif-doha",
+        "https://www.tentwithaview.com/",
+        "https://www.butiamamafiaisland.com/"
+      ]
+    },
+    {
+      "id": "LD-08",
+      "lead": true,
+      "region": "africa",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Nosy Be 8 nights + Nosy Tsarabanjina 4 nights",
+      "stops": [
+        {
+          "place": "Nosy Be, Madagascar",
+          "nights": 8,
+          "airport": "NOS",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Ravintsara Wellness Hotel",
+              "nights": 8,
+              "area": "Nosy Be, Madagascar",
+              "url": "https://www.ravintsarahotel.com/"
+            }
+          ]
+        },
+        {
+          "place": "Nosy Tsarabanjina, Madagascar",
+          "nights": 4,
+          "airport": "NOS",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Constance Tsarabanjina",
+              "nights": 4,
+              "area": "Nosy Tsarabanjina, Madagascar",
+              "url": "https://www.constancehotels.com/en/hotels-resorts/tsarabanjina/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "NOS"
+        ],
+        [
+          "NOS",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "a beach lodge among ylang-ylang on Nosy Be, then four nights on a private island in the Mitsio archipelago",
+      "catch": "a van and a 45 to 90 minute boat to the private island; long flights with one stop",
+      "source_urls": [
+        "https://www.ravintsarahotel.com/",
+        "https://www.constancehotels.com/en/hotels-resorts/tsarabanjina/"
+      ]
+    },
+    {
+      "id": "LD-09",
+      "lead": true,
+      "region": "europe",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Istanbul 2 nights + Cappadocia 4 nights + Faralya 7 nights",
+      "stops": [
+        {
+          "place": "Istanbul",
+          "nights": 2,
+          "airport": "IST",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Çırağan Palace Kempinski Istanbul",
+              "nights": 2,
+              "area": "Istanbul",
+              "url": "https://www.kempinski.com/en/ciragan-palace"
+            }
+          ]
+        },
+        {
+          "place": "Cappadocia",
+          "nights": 4,
+          "airport": "NAV",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Museum Hotel Cappadocia",
+              "nights": 4,
+              "area": "Cappadocia",
+              "url": "https://www.museumhotel.com.tr/en"
+            }
+          ]
+        },
+        {
+          "place": "Faralya, Fethiye",
+          "nights": 7,
+          "airport": "DLM",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Perdue Hotel Faralya",
+              "nights": 7,
+              "area": "Faralya, Fethiye",
+              "url": "https://perdue.com.tr/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "IST"
+        ],
+        [
+          "IST",
+          "NAV"
+        ],
+        [
+          "NAV",
+          "DLM"
+        ],
+        [
+          "DLM",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "a cave hotel in Cappadocia and a cliffside tented lodge above the Turquoise Coast, every flight under 8 hours, with an Istanbul stopover",
+      "catch": "Cappadocia to Dalaman connects through Istanbul; the cliffside lodge has many steps",
+      "source_urls": [
+        "https://www.kempinski.com/en/ciragan-palace",
+        "https://www.museumhotel.com.tr/en",
+        "https://perdue.com.tr/"
+      ]
+    },
+    {
+      "id": "LD-10",
+      "lead": true,
+      "region": "africa",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "High Atlas 7 nights + Oualidia 5 nights",
+      "stops": [
+        {
+          "place": "High Atlas, Morocco",
+          "nights": 7,
+          "airport": "RAK",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Kasbah Tamadot",
+              "nights": 7,
+              "area": "High Atlas, Morocco",
+              "url": "https://www.virginlimitededition.com/kasbah-tamadot/"
+            }
+          ]
+        },
+        {
+          "place": "Oualidia, Morocco",
+          "nights": 5,
+          "airport": "CMN",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "La Sultana Oualidia",
+              "nights": 5,
+              "area": "Oualidia, Morocco",
+              "url": "https://www.lasultanahotels.com/oualidia"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "RAK"
+        ],
+        [
+          "CMN",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "a High Atlas kasbah with a three-bedroom riad and private pool, then an Atlantic lagoon retreat; 3.5-hour flights",
+      "catch": "Marrakech itself is 35 C or more at midday; long road transfers between the mountains and the coast",
+      "source_urls": [
+        "https://www.virginlimitededition.com/kasbah-tamadot/",
+        "https://www.lasultanahotels.com/oualidia"
+      ]
+    },
+    {
+      "id": "LD-11",
+      "lead": true,
+      "region": "asia",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Tashkent 3 nights + Samarkand 5 nights + Bukhara 4 nights",
+      "stops": [
+        {
+          "place": "Tashkent",
+          "nights": 3,
+          "airport": "TAS",
+          "hotel": "",
+          "basis": ""
+        },
+        {
+          "place": "Samarkand",
+          "nights": 5,
+          "airport": "SKD",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Hilton Samarkand Regency",
+              "nights": 5,
+              "area": "Samarkand",
+              "url": "https://www.hilton.com/en/hotels/skdsrhi-hilton-samarkand-regency/"
+            }
+          ]
+        },
+        {
+          "place": "Bukhara",
+          "nights": 4,
+          "airport": "BHK",
+          "hotel": "",
+          "basis": ""
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "TAS"
+        ],
+        [
+          "BHK",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "Tashkent, Samarkand and Bukhara joined by the Afrosiyob high-speed train",
+      "catch": "Bukhara reaches 36 C in the afternoon; train seats sell out early; Tashkent and Bukhara hotels still to choose",
+      "source_urls": [
+        "https://www.hilton.com/en/hotels/skdsrhi-hilton-samarkand-regency/"
+      ]
+    },
+    {
+      "id": "LD-12",
+      "lead": true,
+      "region": "europe",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Manshausen Island 5 nights + Nusfjord 7 nights",
+      "stops": [
+        {
+          "place": "Manshausen Island, Norway",
+          "nights": 5,
+          "airport": "BOO",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Manshausen Island Resort",
+              "nights": 5,
+              "area": "Manshausen Island, Norway",
+              "url": "https://www.manshausen.no/"
+            }
+          ]
+        },
+        {
+          "place": "Nusfjord, Lofoten",
+          "nights": 7,
+          "airport": "LKN",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Nusfjord Arctic Resort",
+              "nights": 7,
+              "area": "Nusfjord, Lofoten",
+              "url": "https://nusfjord.com/"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "BOO"
+        ],
+        [
+          "LKN",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "a private-island sea cabin sleeping five under the midnight sun, then a preserved Lofoten fishing village",
+      "catch": "12 to 16 C air and cold sea; halal meat is not certified locally; two flights each way",
+      "source_urls": [
+        "https://www.manshausen.no/",
+        "https://nusfjord.com/"
+      ]
+    }
+  ]
+}
