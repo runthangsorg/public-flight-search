@@ -44,6 +44,9 @@ SCHEMA = "multi_centre/1"
 #: departure, ``winter`` for everything else (see ``holidays.is_summer_trip``).
 SEASONS: frozenset[str] = frozenset({"summer", "winter"})
 
+#: The ``confidence`` of a trip that carries no figure at all (``"lead": true`` in the file).
+LEAD = "lead"
+
 #: The label a fully-estimated range carries. No figure here was read as a
 #: fare.
 PRICE_LABEL = "estimate"
@@ -329,15 +332,22 @@ def _trip(item: Any) -> Optional[MultiCentreTrip]:
     if len(legs) < 2:
         _warn_skip(ident, "a two-centre search needs at least two legs")
         return None
-    try:
-        low = float(item.get("cost_low_gbp"))
-        high = float(item.get("cost_high_gbp"))
-    except (TypeError, ValueError):
-        _warn_skip(ident, "no usable cost range")
-        return None
-    if low <= 0 or high < low:
-        _warn_skip(ident, f"cost range {low}-{high} is not a range")
-        return None
+    lead = item.get("lead") is True
+    if lead:
+        # A lead (owner, 14 Nov 2026) is a trip worth reading that carries NO figure at all: its properties were
+        # opened on their own pages, nothing was priced, and no range is written down for it. It exists so the
+        # readers are asked for its fares and stays; only the confirmed-prices digest and the wanted lists see it.
+        low = high = 0.0
+    else:
+        try:
+            low = float(item.get("cost_low_gbp"))
+            high = float(item.get("cost_high_gbp"))
+        except (TypeError, ValueError):
+            _warn_skip(ident, "no usable cost range")
+            return None
+        if low <= 0 or high < low:
+            _warn_skip(ident, f"cost range {low}-{high} is not a range")
+            return None
     urls = tuple(
         str(u).strip() for u in item.get("source_urls", ()) or () if str(u).strip()
     )
@@ -361,13 +371,13 @@ def _trip(item: Any) -> Optional[MultiCentreTrip]:
         cost_basis=str(item.get("cost_basis", "")).strip(),
         why=str(item.get("why", "")).strip(),
         catch=str(item.get("catch", "")).strip(),
-        confidence=str(item.get("confidence", "")).strip() or "estimate",
+        confidence=LEAD if lead else (str(item.get("confidence", "")).strip() or "estimate"),
         source_urls=urls,
         kind=kind,
         operator_ref=operator_ref,
         region=str(item.get("region", "") or "").strip().lower(),
         compare_with=str(item.get("compare_with", "") or "").strip(),
-        cost_lines=_cost_lines(item, ident, low, high),
+        cost_lines=() if lead else _cost_lines(item, ident, low, high),
     )
 
 
@@ -376,8 +386,12 @@ def load_multi_centre(
     *,
     path: str = DEFAULT_MULTI_CENTRE_PATH,
     season: Optional[str] = None,
+    include_leads: bool = False,
 ) -> list[MultiCentreTrip]:
     """The itineraries for this run's season, in file order.
+
+    A ``lead`` (a trip with no figure, see ``_trip``) is returned only when ``include_leads`` is set: every caller
+    that prints a cost range must never meet one.
 
     ``config`` decides the season when ``season`` is not given; the tests pass
     a season directly so they need no config. A missing, unreadable or
@@ -400,7 +414,7 @@ def load_multi_centre(
     trips: list[MultiCentreTrip] = []
     for raw in payload.get("itineraries", ()) or ():
         trip = _trip(raw)
-        if trip is not None and trip.season == wanted:
+        if trip is not None and trip.season == wanted and (include_leads or trip.confidence != LEAD):
             trips.append(trip)
     return _link_counterparts(trips)
 

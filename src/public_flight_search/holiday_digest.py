@@ -307,7 +307,12 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
             not_priced.append(row["trip"].title)
             reason = ("the economy fare read has a leg over 8 hours; a business fare is still to be read"
                       if row.get("economy_refused") else "no fare read for these dates yet")
-            pending.append(Pending(row["trip"].title, reason, str(row.get("url") or "")))
+            if str(getattr(row["trip"], "confidence", "")) == "lead":
+                # A new idea with no figure yet: say what makes it worth reading, not a reason it is missing.
+                pending.append(Pending(row["trip"].title, str(getattr(row["trip"], "why", "") or "").strip(),
+                                       str(row.get("url") or ""), "ideas"))
+            else:
+                pending.append(Pending(row["trip"].title, reason, str(row.get("url") or "")))
         else:
             cards.append(card)
     entries = tuple(watch) if watch is not None else watchlist_module.load_watchlist()
@@ -537,6 +542,12 @@ def _not_priced_html(digest: Digest) -> str:
     for reason, group in by_reason.items():
         names = "; ".join(_pending_item(p) for p in group)
         items.append(f"{names}" + (f' <span style="color:#64748B;">({_e(reason)})</span>' if reason else ""))
+    ideas = [p for p in pending if p.group == "ideas"]
+    if ideas:
+        lines = "".join(f'<div style="margin:3px 0 0;">{_pending_item(p)}'
+                        + (f' <span style="color:#64748B;">— {_e(p.reason)}</span>' if p.reason else "") + '</div>'
+                        for p in ideas)
+        items.append(f"<b>New ideas, fares and stays being read</b>{lines}")
     gili = [p for p in pending if p.group == "Gili Islands"]
     maldives = [p for p in pending if p.group == "Maldives"]
     if gili:

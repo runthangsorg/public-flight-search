@@ -190,7 +190,7 @@ def _stay_wanted(config, multi_centre_fares) -> dict:
     from .holiday_digest import _reference_pair
 
     try:
-        rows = _multi_centre_rows(config, fares=multi_centre_fares)
+        rows = _multi_centre_rows(config, fares=multi_centre_fares, include_leads=True)
         return trip_totals.stay_wanted(config, rows, watch=watchlist.load_watchlist(),
                                        reference_pair=_reference_pair(config))
     except Exception as exc:  # noqa: BLE001 - a wanted list is a convenience for the next read
@@ -546,7 +546,7 @@ def run_holiday_planner(
     # THE JULY BODY IS THE DIGEST (owner, 8 Nov 2026): confirmed prices and searches only, one compact card each.
     body_digest = None
     if is_july and not detailed:
-        body_digest = build_digest(config, rows=_multi_centre_rows(config, fares=multi_centre_fares),
+        body_digest = build_digest(config, rows=_multi_centre_rows(config, fares=multi_centre_fares, include_leads=True),
                               package_prices=package_prices, generated_at=generated_at,
                               hotel_rates=hotel_rates or None)
         html = render_digest_html(config, body_digest, generated_at=generated_at, attachment_name=attachment_name)

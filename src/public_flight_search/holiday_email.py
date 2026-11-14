@@ -2092,7 +2092,8 @@ def _trip_return_date(trip: Any, outbound: str, config: HolidayConfig,
 
 def _multi_centre_rows(config: HolidayConfig, *,
                        fares: Optional[Mapping[Any, Any]] = None,
-                       complete_only: bool = False) -> list[dict[str, Any]]:
+                       complete_only: bool = False,
+                       include_leads: bool = False) -> list[dict[str, Any]]:
     """This season's two-centre itineraries with the runtime verdict on each.
 
     Three things are decided here rather than read from the file: whether the LOW
@@ -2116,7 +2117,7 @@ def _multi_centre_rows(config: HolidayConfig, *,
     # The outbound is the middle priceable pair's; the flight home is each trip's own (``_trip_return_date``).
     outbound = pairs[len(pairs) // 2][0]
     try:
-        trips = load_multi_centre(config)
+        trips = load_multi_centre(config, include_leads=include_leads)
     except Exception:  # noqa: BLE001 - see above
         return []
     budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
@@ -2371,7 +2372,8 @@ def multi_centre_wanted(config: HolidayConfig) -> list[dict[str, Any]]:
             "legs": [list(leg) for leg in row["legs"]],
             "season": row["trip"].season,
         }
-        for row in _multi_centre_rows(config)
+        # Leads too: a trip with no figure is exactly the trip whose fare must be read (14 Nov 2026).
+        for row in _multi_centre_rows(config, include_leads=True)
     ]
 
 

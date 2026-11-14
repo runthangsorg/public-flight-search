@@ -208,3 +208,51 @@ class StayWantedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LeadTripTests(unittest.TestCase):
+    """A lead is a trip with no figure at all: only the digest and the wanted lists may see it."""
+
+    LEAD = {"id": "LD-01", "lead": True, "season": "summer", "title": "SYNTHETIC Island 6 nights + SYNTHETIC City 6 nights",
+            "stops": [{"place": "SYNTHETIC Island", "nights": 6, "airport": "ZNZ", "hotel": "",
+                       "lodges": [{"name": "SYNTHETIC Reef Lodge", "nights": 6, "area": "SYNTHETIC Island",
+                                   "url": "https://example.org/SYNTHETIC-reef"}]},
+                      {"place": "SYNTHETIC City", "nights": 6, "airport": "MCT", "hotel": "",
+                       "lodges": [{"name": "SYNTHETIC Fort Hotel", "nights": 6, "area": "SYNTHETIC City"}]}],
+            "legs": [["LHR", "ZNZ"], ["ZNZ", "MCT"], ["MCT", "LHR"]], "why": "a reef lodge at a third of the usual price",
+            "catch": "small planes", "source_urls": ["https://example.org/SYNTHETIC-reef"]}
+
+    def _file(self, tmp):
+        path = Path(tmp) / "mc.json"
+        path.write_text(json.dumps({"schema": "multi_centre/1", "itineraries": [self.LEAD]}), encoding="utf-8")
+        return str(path)
+
+    def test_a_lead_loads_without_a_cost_range_only_when_asked_for(self):
+        from public_flight_search.multi_centre import load_multi_centre
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._file(tmp)
+            self.assertEqual(load_multi_centre(path=path, season="summer"), [])
+            trips = load_multi_centre(path=path, season="summer", include_leads=True)
+        self.assertEqual([t.id for t in trips], ["LD-01"])
+        self.assertEqual((trips[0].cost_low_gbp, trips[0].cost_high_gbp, trips[0].confidence), (0.0, 0.0, "lead"))
+
+    def test_the_shipped_leads_reach_the_wanted_lists_and_the_digest_but_no_range_renderer(self):
+        from public_flight_search.multi_centre import load_multi_centre
+        from public_flight_search.holiday_email import multi_centre_wanted, render_holiday_report_compact_text
+        leads = [t for t in load_multi_centre(_config(), include_leads=True) if t.confidence == "lead"]
+        plain = {t.id for t in load_multi_centre(_config())}
+        self.assertFalse(plain & {t.id for t in leads})
+        wanted = {w["trip"] for w in multi_centre_wanted(_config())}
+        rows = _multi_centre_rows(_config(), fares=load([]), include_leads=True)
+        digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        for trip in leads:
+            self.assertIn(trip.id, wanted)
+            self.assertIn(trip.title, digest.not_priced)
+            self.assertTrue(trip.why, f"{trip.id}: a lead says why it is worth reading")
+            for stop in trip.stops:
+                for lodge in stop.lodges:
+                    self.assertTrue(lodge.url.startswith("https://"), f"{trip.id}: {lodge.name} has no page")
+        if leads:
+            self.assertIn("New ideas, fares and stays being read", visible_text(html))
+        self.assertNotIn("£0", visible_text(html))
