@@ -310,7 +310,9 @@ class StayLineTests(unittest.TestCase):
     def test_a_two_room_stay_line_is_board_rooms_seller_read_html_and_text_alike(self):
         digest = _build(self.rows, _hotel_rates([_rate(n, ci, co, 200.0, two_rooms=True) for n, ci, co in self.lodges]))
         html, text = self._html(digest), hd.render_digest_text(_config(), digest, generated_at=NOW)
-        for part in (visible_text(html), text):
+        # Brief I (14 Nov 2026): the HTML keeps "read 14 Nov" and the room counts on one line with
+        # non-breaking spaces, so the visible text is compared with them as ordinary spaces.
+        for part in (visible_text(html).replace("\xa0", " "), text):
             self.assertIn("2 rooms (3 + 2 guests)", part)
             self.assertIn("read 14 Nov", part)
             self.assertNotIn("SYNTHETIC room A", part)
@@ -414,12 +416,13 @@ class PartlyPricedOrderAndSummaryTests(unittest.TestCase):
         digest = _build([fare, no_fare], _hotel_rates([_rate(*self.lodges[0], 200.0)]))
         text = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
         self.assertIn("No whole trip is priced yet this week.", text)
-        self.assertIn("1 trip has flights and some stays read, 1 has stays only (below)", text)
+        self.assertIn("1 trip has flights and some stays priced, and 1 trip has stays priced and awaits "
+                      "a fare (all below)", text)
 
     def test_a_flights_only_week_says_flights_only_and_omits_the_zero_clauses(self):
         digest = _build(self.rows, None)
         text = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
-        self.assertIn("1 has flights only (below)", text)
+        self.assertIn("1 trip has a fare only (all below)", text)
         self.assertNotIn("stays only", text)
         self.assertNotIn("0 have", text)
 
