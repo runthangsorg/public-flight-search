@@ -4902,16 +4902,42 @@ def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
     if existing is not None and (keep := _priced_read_total(existing)) is not None:
         # Same cabin. A read from a LATER DAY is the current fare and replaces an earlier day's, dearer or not
         # (14 Nov 2026: a two-week-old read hid that morning's because it was cheaper); two looks on the same day
-        # are two looks at one fare, and the cheaper is kept.
+        # are two looks at one fare, and the cheaper is kept — except that a read carrying per-leg detail is kept
+        # over one that carries none, whichever is cheaper, because the bare read cannot be offered at all.
         day, kept_day = _read_day_key(item), _read_day_key(existing)
-        if day < kept_day or (day == kept_day and keep <= total):
+        if day < kept_day:
             return
+        if day == kept_day:
+            new_detail, kept_detail = _read_has_leg_detail(item), _read_has_leg_detail(existing)
+            if new_detail == kept_detail:
+                if keep <= total:
+                    return
+            elif not new_detail:
+                return
     index[cabin_key] = dict(item)
     # The one answer to the old question: a rule-following read (MIXED or BUSINESS, the cheaper) before an Economy one.
     candidates = [index[key + (c,)] for c in _CABIN_ORDER if (key + (c,)) in index]
     rule_following = [r for r in candidates if _read_cabin(r) != "ECONOMY"]
     pool = rule_following or candidates
     index[key] = min(pool, key=lambda r: _priced_read_total(r) or float("inf"))
+
+
+def _read_has_leg_detail(item: Mapping[str, Any]) -> bool:
+    """True when the read lists a duration for EVERY leg.
+
+    An Economy read is only offered when every leg is SHOWN to be eight hours or
+    less (``cabin.economy_allowed``), so a read that states every leg's duration
+    can be offered and a cheaper one that states none cannot — the trip is then
+    refused for want of leg times even though a usable read was in the file
+    (14 Nov 2026: a £1,164 read with no legs beat a £1,178 read with all of them,
+    and the trip was dropped). "Detail" is therefore not a tie-breaker on price:
+    it is what makes the read usable at all.
+    """
+    flights = item.get("flights")
+    if not isinstance(flights, (list, tuple)) or not flights:
+        return False
+    return all(isinstance(flight, Mapping) and str(flight.get("duration") or "").strip()
+               for flight in flights)
 
 
 def _read_day_key(item: Mapping[str, Any]) -> str:

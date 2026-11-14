@@ -112,9 +112,21 @@ def _trip(config):
     return declared[0]
 
 
+def _leg_detail(*durations) -> list[dict]:
+    """The ``flights`` list a read carries when it states every leg, synthetic and stamped.
+
+    Without it a read names no leg at all, which is exactly the shape a page that
+    lists no leg times produces.
+    """
+    return [{"origin": "LHR", "destination": "SYNTHETIC HUB", "departure_local": "2027-06-27T09:00:00",
+             "arrival_local": "2027-06-27T21:00:00", "carrier": "SYNTHETIC carrier", "stops": 1,
+             "duration": duration, "layover": "1h 30m", "cabin": "ECONOMY", "vendor": "SYNTHETIC vendor"}
+            for duration in (durations or ("11h 40m", "1h 05m"))]
+
+
 def _multi_centre_read(want, *, total=SYNTHETIC_TOTAL, status="priced",
                        observed_at=SYNTHETIC_FIRST_READ_AT, source=SYNTHETIC_SOURCE,
-                       travellers=5, season=None) -> dict:
+                       travellers=5, season=None, flights=None) -> dict:
     """One SYNTHETIC two-centre read, in the shape Part A writes it.
 
     The key order and the full key set (``kind``/``trip``/``legs`` on top of the
@@ -144,6 +156,7 @@ def _multi_centre_read(want, *, total=SYNTHETIC_TOTAL, status="priced",
         "note": "SYNTHETIC read",
         "kind": "multi_centre",
         "trip": want["trip"],
+        **({"flights": list(flights)} if flights is not None else {}),
     }
 
 
@@ -322,6 +335,33 @@ class MultiCentreFareIndexTests(_BatchCase):
         for order in ([current, earlier], [earlier, current]):
             (fare,) = _journeys(self._registry(order))
             self.assertEqual(float(fare["total_gbp"]), 20000.0)
+
+    def test_on_one_day_a_read_that_states_every_leg_beats_a_cheaper_one_that_states_none(self):
+        """14 Nov 2026: a £1,164 read with no leg times beat a £1,178 read that listed every leg, and the trip was then
+        refused because an Economy fare needs every leg SHOWN to be at most eight hours."""
+        bare = _multi_centre_read(self.want, total=1164.0)
+        detailed = _multi_centre_read(self.want, total=1178.0, flights=_leg_detail())
+        for order in ([bare, detailed], [detailed, bare]):
+            with self.subTest(first="detailed" if order[0].get("flights") else "bare"):
+                (fare,) = _journeys(self._registry(order))
+                self.assertEqual(float(fare["total_gbp"]), 1178.0)
+                self.assertEqual(len(fare["flights"]), 2)
+
+    def test_two_reads_that_both_state_every_leg_still_keep_the_cheaper(self):
+        a = _multi_centre_read(self.want, total=1178.0, flights=_leg_detail())
+        b = _multi_centre_read(self.want, total=1164.0, flights=_leg_detail("10h 50m", "1h 00m"))
+        for order in ([a, b], [b, a]):
+            (fare,) = _journeys(self._registry(order))
+            self.assertEqual(float(fare["total_gbp"]), 1164.0)
+
+    def test_a_later_days_bare_read_still_replaces_an_earlier_days_detailed_one(self):
+        earlier = _multi_centre_read(self.want, total=1178.0, observed_at=SYNTHETIC_SECOND_READ_AT,
+                                     flights=_leg_detail())
+        later = _multi_centre_read(self.want, total=1164.0)
+        for order in ([earlier, later], [later, earlier]):
+            (fare,) = _journeys(self._registry(order))
+            self.assertEqual(float(fare["total_gbp"]), 1164.0)
+            self.assertEqual(fare["observed_at"], SYNTHETIC_FIRST_READ_AT)
 
     def test_a_mixed_and_a_business_read_of_one_journey_keep_the_cheaper(self):
         mixed = dict(_multi_centre_read(self.want, total=20000.0), cabin="MIXED", cabin_mix="x")
