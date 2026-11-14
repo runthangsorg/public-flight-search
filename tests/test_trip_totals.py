@@ -363,13 +363,14 @@ class StaysWithoutAFareTests(unittest.TestCase):
                          "not priced; the economy fare read has a leg over 8 hours; a business fare is still to be read")
         rendered = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
         # A stays-only trip is a compact row under its own heading since brief F (14 Nov 2026), not a card
-        # under "Partly priced"; the fare's absence is on the row's fare clause instead of a Flights line.
+        # under "Partly priced"; the row carries the SHORT fare reason (brief H), the long sentence being
+        # the group heading for trips with no stay priced at all.
         self.assertIn("Stays read, fares still to come", rendered)
-        self.assertIn("the economy fare read has a leg over 8 hours", rendered)
+        self.assertIn("fare: economy has a leg over 8 hours; business not read yet", rendered)
         self.assertNotIn(self.rows[0]["trip"].title, _not_priced_names(hd.render_digest_html(_config(), digest,
                                                                                            generated_at=NOW)))
         text = hd.render_digest_text(_config(), digest, generated_at=NOW)
-        self.assertIn("fare: the economy fare read has a leg over 8 hours", text)
+        self.assertIn("fare: economy has a leg over 8 hours; business not read yet", text)
 
     def test_every_night_priced_without_a_fare_is_still_partly_priced(self):
         digest = _build(self.rows, _hotel_rates([_rate(n, ci, co, 200.0) for n, ci, co in self.lodges]))
@@ -386,7 +387,9 @@ class StaysWithoutAFareTests(unittest.TestCase):
         (card,) = digest.cards
         self.assertEqual(card.kind, "part")
         self.assertEqual(card.why, rows[0]["trip"].why)
-        self.assertIn("Why it is special", hd.render_digest_html(_config(), digest, generated_at=NOW))
+        # Brief H (14 Nov 2026): a compact row's why line is the trip's own words in italics, with no
+        # "Why it is special:" label; the text still has to be on the row.
+        self.assertIn(hd._e(card.why), hd.render_digest_html(_config(), digest, generated_at=NOW))
         self.assertFalse([p for p in digest.pending if p.name == card.title])
 
 
