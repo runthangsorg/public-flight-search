@@ -446,8 +446,7 @@ class RenderedBodyDefectsTests(unittest.TestCase):
         self.assertNotIn("&y=2", html.replace("&amp;y=2", ""))
         self.assertEqual(html.count('href="' + hd._e(url) + '"'), 2, "the title link and the seller link")
         self.assertIn("table-layout:fixed", html)
-        self.assertIn("word-break:break-word", html)
-        self.assertIn("overflow-wrap:anywhere", html)
+        self.assertIn("overflow-wrap:break-word", html)  # breaks a long URL, never an ordinary word
         self.assertIn("width:120px", html, "wide enough at 390 px for the two-line figure label")
 
     # 2. Every right-hand figure says who and what it covers

@@ -792,9 +792,9 @@ _ROW_TABLE = "border-collapse:collapse; table-layout:fixed; width:100%;"
 #: A compact row's text cell: fixed layout and a break-anywhere rule, so a 300-character seller URL cannot
 #: widen the box past the viewport and clip the figure off-screen (seen at 640 px and 390 px, 14 Nov 2026).
 _ROW_CELL = ("padding:7px 0; border-top:1px solid #E2E8F0; font-size:13px; line-height:1.45; "
-             "color:#1E293B; vertical-align:top; word-break:break-word; overflow-wrap:anywhere;")
+             "color:#1E293B; vertical-align:top; overflow-wrap:break-word;")
 _ROW_CELL_FIRST = ("padding:7px 0; font-size:13px; line-height:1.45; "
-                   "color:#1E293B; vertical-align:top; word-break:break-word; overflow-wrap:anywhere;")
+                   "color:#1E293B; vertical-align:top; overflow-wrap:break-word;")
 #: The figure column, fixed so the text column cannot push it off a phone screen.
 #: Wide enough at 390 px that "for 5 · stays only" sits on one line above "N of M nights".
 _ROW_FIGURE = ("width:120px; padding:7px 0 7px 8px; border-top:1px solid #E2E8F0; font-size:13px; "
@@ -883,7 +883,12 @@ def _per_night_phrase(stay: StayPrice) -> str:
 def _per_night_html(stay: StayPrice) -> str:
     """``_per_night_phrase`` as HTML whose spaces are all non-breaking, so it never splits."""
     phrase = _per_night_phrase(stay)
-    return _nb(phrase) if phrase else ""
+    if not phrase:
+        return ""
+    # Only "(£590 a night" is held together: the whole phrase as one token was wider than a phone's text
+    # column and was broken mid-word ("all three r/ooms", 14 Nov 2026).
+    head, sep, tail = phrase.partition(" a night")
+    return _nb(head + sep) + _e(tail)
 
 
 def _figure_label_parts(c: Card, kind: str) -> tuple[str, str]:

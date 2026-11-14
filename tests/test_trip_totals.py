@@ -431,3 +431,16 @@ def _not_priced_names(html):
     """The names listed under "Not yet priced" only (the marker is kept for other modules)."""
     start = html.find(">Not yet priced</div>")
     return html[start:] if start >= 0 else ""
+
+
+def test_a_three_room_stay_takes_the_breakfast_rate_over_a_cheaper_room_only_one():
+    """14 Nov 2026: one entry held both boards and only its cheapest (room only) was looked at."""
+    from types import SimpleNamespace as NS
+    from unittest import mock
+    from public_flight_search import trip_totals as tt
+
+    ro = NS(price_gbp=1470.0, board="RO")
+    bb = NS(price_gbp=1860.0, board="BB")
+    entry = NS(cheapest=ro, rates=(ro, bb))
+    with mock.patch.object(tt.hotel_evidence_module, "_pair_entries", return_value=(entry,)):
+        assert tt._three_room_read({"k": entry}, "Palm Cove Resort", "2027-07-05", "2027-07-10") is bb

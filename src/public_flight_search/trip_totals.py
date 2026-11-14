@@ -147,7 +147,11 @@ def _three_room_read(loaded: Optional[Mapping[Any, Any]], name: str, check_in: s
     if not loaded or not (name and check_in and check_out):
         return None
     entries = hotel_evidence_module._pair_entries(loaded, name, check_in, check_out, priceable_only=False)
-    rates = [entry.cheapest for entry in entries if getattr(entry, "cheapest", None) is not None]
+    # every rate of each entry, not only its cheapest: the cheapest of a seller's rates is usually the
+    # room-only one, and it hid a breakfast rate read for the same nights (14 Nov 2026)
+    rates = [rate for entry in entries
+             for rate in (tuple(getattr(entry, "rates", ()) or ()) or (getattr(entry, "cheapest", None),))
+             if rate is not None]
     if not rates:
         return None
     with_board = [rate for rate in rates
