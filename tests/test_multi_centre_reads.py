@@ -306,12 +306,22 @@ class MultiCentreFareIndexTests(_BatchCase):
                 self.assertEqual(fare["cabin"], "MIXED")
                 self.assertEqual(fare["cabin_mix"], "Business LHR-XYZ + Economy hop")
 
-    def test_two_mixed_reads_of_one_journey_keep_the_cheaper(self):
+    def test_two_mixed_reads_of_one_journey_on_one_day_keep_the_cheaper(self):
         a = dict(_multi_centre_read(self.want, total=20000.0), cabin="MIXED", cabin_mix="x")
-        b = dict(_multi_centre_read(self.want, total=18000.0, observed_at=SYNTHETIC_SECOND_READ_AT),
+        b = dict(_multi_centre_read(self.want, total=18000.0, observed_at=SYNTHETIC_FIRST_READ_AT[:11] + "16:00:00+00:00"),
                  cabin="MIXED", cabin_mix="x")
         (fare,) = _journeys(self._registry([a, b]))
         self.assertEqual(float(fare["total_gbp"]), 18000.0)
+
+    def test_an_earlier_days_cheaper_read_does_not_hide_the_current_one(self):
+        # 14 Nov 2026: the index kept the cheaper of two same-cabin reads whatever their age, so a fare read weeks
+        # ago was quoted over the one read that morning. The later day's read is the fare.
+        current = dict(_multi_centre_read(self.want, total=20000.0), cabin="MIXED", cabin_mix="x")
+        earlier = dict(_multi_centre_read(self.want, total=18000.0, observed_at=SYNTHETIC_SECOND_READ_AT),
+                       cabin="MIXED", cabin_mix="x")
+        for order in ([current, earlier], [earlier, current]):
+            (fare,) = _journeys(self._registry(order))
+            self.assertEqual(float(fare["total_gbp"]), 20000.0)
 
     def test_a_mixed_and_a_business_read_of_one_journey_keep_the_cheaper(self):
         mixed = dict(_multi_centre_read(self.want, total=20000.0), cabin="MIXED", cabin_mix="x")

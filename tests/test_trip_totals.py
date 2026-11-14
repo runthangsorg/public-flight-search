@@ -258,3 +258,26 @@ class LeadTripTests(unittest.TestCase):
         if leads:
             self.assertIn("New ideas, fares and stays being read", visible_text(html))
         self.assertNotIn("£0", visible_text(html))
+
+
+class NewestReadWinsTests(unittest.TestCase):
+    """A fare read two weeks ago is not this week's fare, however much cheaper it was (14 Nov 2026: a 1 Nov read
+    hid the read made that morning because the index kept the cheaper of two same-cabin reads whatever their age)."""
+
+    def _read_for(self, reads):
+        fares = load(reads)
+        row = [r for r in _multi_centre_rows(_config(), fares=fares) if r["trip"].id == BUILD][0]
+        return row["reads"]["business"]
+
+    def test_a_later_days_read_replaces_an_earlier_cheaper_one(self):
+        old = deal_read(BUILD, "MIXED", 7_000, observed="2026-11-01T09:00:00+00:00")
+        new = deal_read(BUILD, "MIXED", 8_200, observed="2026-11-14T09:00:00+00:00")
+        for order in ([old, new], [new, old]):
+            read = self._read_for(order)
+            self.assertEqual(float(read["total_gbp"]), 8_200.0, "the newest day's read, in either file order")
+
+    def test_two_reads_on_the_same_day_keep_the_cheaper(self):
+        a = deal_read(BUILD, "MIXED", 8_200, observed="2026-11-14T09:00:00+00:00")
+        b = deal_read(BUILD, "MIXED", 7_900, observed="2026-11-14T15:00:00+00:00")
+        for order in ([a, b], [b, a]):
+            self.assertEqual(float(self._read_for(order)["total_gbp"]), 7_900.0)

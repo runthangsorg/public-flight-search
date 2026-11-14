@@ -4883,8 +4883,7 @@ def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
     answer anything at all and IS named, because nothing else would show it.
 
     One read is kept PER CABIN (23 Oct 2026, owner: "i want both business and economy"). Two reads in the SAME cabin
-    are two looks at one journey: the cheaper is kept, the same rule ``_stopover_fares`` applies, so the dearer can
-    never be quoted. Two reads in DIFFERENT cabins are two products and BOTH are kept: ``ECONOMY`` (Economy on every
+    are two looks at one journey: the later DAY's read is kept, and of two made the same day the cheaper. Two reads in DIFFERENT cabins are two products and BOTH are kept: ``ECONOMY`` (Economy on every
     flight) and the owner's rule (Business on a leg over eight hours, economy on a shorter one: ``MIXED``, or
     ``BUSINESS`` all the way). Neither can hide the other, however much cheaper. They are filed under
     ``(trip, legs, cabin)``; ``(trip, legs)`` keeps answering the old single question with the rule-following read
@@ -4900,14 +4899,25 @@ def _keep_multi_centre_read(item: Mapping[str, Any], where: str,
     cabin = _read_cabin(item)
     cabin_key = key + (cabin,)
     existing = index.get(cabin_key)
-    if existing is not None and (keep := _priced_read_total(existing)) is not None and keep <= total:
-        return                              # same cabin: the cheaper look
+    if existing is not None and (keep := _priced_read_total(existing)) is not None:
+        # Same cabin. A read from a LATER DAY is the current fare and replaces an earlier day's, dearer or not
+        # (14 Nov 2026: a two-week-old read hid that morning's because it was cheaper); two looks on the same day
+        # are two looks at one fare, and the cheaper is kept.
+        day, kept_day = _read_day_key(item), _read_day_key(existing)
+        if day < kept_day or (day == kept_day and keep <= total):
+            return
     index[cabin_key] = dict(item)
     # The one answer to the old question: a rule-following read (MIXED or BUSINESS, the cheaper) before an Economy one.
     candidates = [index[key + (c,)] for c in _CABIN_ORDER if (key + (c,)) in index]
     rule_following = [r for r in candidates if _read_cabin(r) != "ECONOMY"]
     pool = rule_following or candidates
     index[key] = min(pool, key=lambda r: _priced_read_total(r) or float("inf"))
+
+
+def _read_day_key(item: Mapping[str, Any]) -> str:
+    """The UTC day a read was made, as ``YYYY-MM-DD``; empty (oldest) when it does not say."""
+    text = str(item.get("observed_at") or "").strip()
+    return text[:10] if len(text) >= 10 and text[4] == "-" and text[7] == "-" else ""
 
 
 #: The cabins a two-centre read can answer for, in the order they are looked up.
