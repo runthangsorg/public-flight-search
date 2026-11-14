@@ -199,8 +199,14 @@ def _leg_lines(read: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def _room_only_part(nights: int) -> str:
+    """How a card names the nights it priced from a room-only read."""
+    return f"{nights} nights room only, no meals" if nights != 1 else "1 night room only, no meals"
+
+
 def _trip_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]] = None, *,
-               budget: float = 0.0, travellers: int = 5) -> Optional[Card]:
+               budget: float = 0.0, travellers: int = 5,
+               room_only_rates: Optional[Mapping[Any, Any]] = None) -> Optional[Card]:
     reads = row.get("reads") or {}
     read = reads.get("economy") or reads.get("business")
     if not read:
@@ -220,7 +226,11 @@ def _trip_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]] 
     bits = [str(read.get("carrier") or "").strip(), str(read.get("duration") or "").strip()]
     flights = f"{cabin_words}" + (": " + ", ".join(b for b in bits if b) if any(bits) else "")
     url = str(read.get("source_url") or row.get("url") or "")
-    priced = trip_totals.trip_total(row, hotel_rates, flights_gbp=flights_total) if hotel_rates else None
+    # A run may have only room-only reads for this trip's nights (every Google Hotels row states no meal), so
+    # the card is priced whenever EITHER load has anything: `trip_total` prefers the breakfast read.
+    priced = (trip_totals.trip_total(row, hotel_rates, flights_gbp=flights_total,
+                                     room_only_rates=room_only_rates)
+              if (hotel_rates or room_only_rates) else None)
     facts = (((f"stays are planned for {int(row['nights'])} of the {nights} nights",) if int(row["nights"]) != nights else ())
              + ((str(trip.why).strip(),) if str(getattr(trip, "why", "")).strip() else ()))
     common = dict(
@@ -232,13 +242,16 @@ def _trip_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]] 
     people = f"{travellers} people"
     if priced is not None and priced.complete and priced.nights_planned == nights:
         return Card(kind="trip", total_gbp=float(priced.total_gbp),
-                    covers=f"trip total, {people}: flights + every night's stay", stays=priced.stays,
+                    covers=(f"trip total, {people}: flights + every night's stay"
+                            + (f" ({_room_only_part(priced.room_only_nights)})" if priced.room_only_nights else "")),
+                    stays=priced.stays,
                     stays_gbp=priced.stays_gbp, nights_priced=priced.nights_priced,
                     nights_planned=priced.nights_planned, **common)
     if priced is not None and priced.any_stay_priced:
         return Card(kind="part", total_gbp=flights_total + priced.stays_gbp,
                     covers=(f"flights + {priced.nights_priced} of {nights} nights' stay, {people}; "
-                            f"the other nights are not priced"),
+                            f"the other nights are not priced"
+                            + (f"; {priced.room_only_nights} nights room only" if priced.room_only_nights else "")),
                     stays=priced.stays, stays_gbp=priced.stays_gbp, nights_priced=priced.nights_priced,
                     nights_planned=priced.nights_planned, **common)
     return Card(kind="flights", total_gbp=flights_total, covers=f"flights only, {people}, stays not priced",
@@ -246,10 +259,11 @@ def _trip_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]] 
 
 
 def _watch_card(entry: Any, pair: Optional[tuple[str, str]], hotel_rates: Optional[Mapping[Any, Any]], *,
-                travellers: int) -> Optional[Card]:
-    if not (pair and hotel_rates):
+                travellers: int,
+                room_only_rates: Optional[Mapping[Any, Any]] = None) -> Optional[Card]:
+    if not (pair and (hotel_rates or room_only_rates)):
         return None
-    rate = trip_totals._rate_for(hotel_rates, entry.name, pair[0], pair[1])
+    rate = trip_totals._rate_for(hotel_rates, entry.name, pair[0], pair[1], room_only_rates)
     if rate is None:
         return None
     nights = (datetime.fromisoformat(pair[1]) - datetime.fromisoformat(pair[0])).days
@@ -263,7 +277,9 @@ def _watch_card(entry: Any, pair: Optional[tuple[str, str]], hotel_rates: Option
         facts.append("reached by seaplane: the transfer is charged by the resort and is not in this figure")
     return Card(kind="stay", title=str(entry.name), place=str(entry.area), nights=nights,
                 dates=f"{_day(pair[0])} – {_day(pair[1])}", total_gbp=float(rate.price_gbp),
-                covers=f"stay only, {travellers} people, {stay.board_words or 'board as stated'}; flights not included",
+                covers=(f"stay only, {travellers} people, "
+                        f"{(stay.board_words or 'board as stated') + (' (no meals)' if stay.board == 'RO' else '')}; "
+                        "flights not included"),
                 shop=stay.seller, url=stay.source_url, read_on=_read_day(stay.observed_at), flights="",
                 hotel=stay.unit, facts=tuple(facts), halal=entry.halal.tag if getattr(entry, "halal", None) else "",
                 stays=(stay,), stays_gbp=float(rate.price_gbp), nights_priced=nights, nights_planned=nights,
@@ -283,9 +299,27 @@ def _reference_pair(config: Any) -> Optional[tuple[str, str]]:
     return tuple(pairs[len(pairs) // 2]) if pairs else None  # type: ignore[return-value]
 
 
+def _business_hidden_reason(hidden: Mapping[str, Any]) -> str:
+    """Why a Business read was set aside: on whom it was flown, and what is still to read.
+
+    The old wording said no business fare had been read at all whenever the
+    economy read had a long leg, which was false for every trip whose business
+    read was set aside on the carrier list. The reason now names the carriers
+    the read was on, so the reader can see the trip is NOT unread — it is read
+    on an airline the owner's rule does not accept.
+    """
+    carriers = [str(carrier).strip() for carrier in (hidden.get("carriers") or []) if str(carrier).strip()]
+    if carriers:
+        return (f"a business fare was read on {', '.join(carriers)}, which is not on the accepted airline list; "
+                "a fare on an accepted airline is still to be read")
+    return ("a business fare was read, but not on an accepted airline; "
+            "a fare on an accepted airline is still to be read")
+
+
 def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_prices: Mapping[Any, PackagePrice],
                  watch: Optional[Sequence[Any]] = None, generated_at: str = "",
-                 hotel_rates: Optional[Mapping[Any, Any]] = None) -> Digest:
+                 hotel_rates: Optional[Mapping[Any, Any]] = None,
+                 room_only_rates: Optional[Mapping[Any, Any]] = None) -> Digest:
     budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
     travellers = int(getattr(config, "travellers", 5) or 5)
     cards: list[Card] = []
@@ -302,7 +336,8 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
         else:
             cards.append(card)
     for row in rows:
-        card = _trip_card(row, hotel_rates, budget=budget, travellers=travellers)
+        card = _trip_card(row, hotel_rates, budget=budget, travellers=travellers,
+                          room_only_rates=room_only_rates)
         if card is None:
             not_priced.append(row["trip"].title)
             reason = ("the economy fare read has a leg over 8 hours; a business fare is still to be read"
@@ -312,13 +347,19 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
                 pending.append(Pending(row["trip"].title, str(getattr(row["trip"], "why", "") or "").strip(),
                                        str(row.get("url") or ""), "ideas"))
             else:
+                hidden = row.get("business_hidden")
+                if hidden:
+                    # A fare WAS read, on an airline the rule does not accept: name it instead of
+                    # claiming the trip is unread (owner, 14 Nov 2026).
+                    reason = _business_hidden_reason(hidden)
                 pending.append(Pending(row["trip"].title, reason, str(row.get("url") or "")))
         else:
             cards.append(card)
     entries = tuple(watch) if watch is not None else watchlist_module.load_watchlist()
     pair = _reference_pair(config)
     for entry in entries:
-        card = _watch_card(entry, pair, hotel_rates, travellers=travellers)
+        card = _watch_card(entry, pair, hotel_rates, travellers=travellers,
+                          room_only_rates=room_only_rates)
         if card is not None:
             cards.append(card)
             continue
@@ -540,8 +581,10 @@ def _not_priced_html(digest: Digest) -> str:
     for p in trips:
         by_reason.setdefault(p.reason, []).append(p)
     for reason, group in by_reason.items():
-        names = "; ".join(_pending_item(p) for p in group)
-        items.append(f"{names}" + (f' <span style="color:#64748B;">({_e(reason)})</span>' if reason else ""))
+        # The reason once, then one line per trip (owner, 14 Nov 2026): a paragraph of thirteen links
+        # separated by semicolons was unreadable, and the reason is the same for every one of them.
+        lines = "".join(f'<div style="margin:3px 0 0;">{_pending_item(p)}</div>' for p in group)
+        items.append((f'<b style="color:#334155;">{_e(reason)}</b>' if reason else "") + lines)
     ideas = [p for p in pending if p.group == "ideas"]
     if ideas:
         lines = "".join(f'<div style="margin:3px 0 0;">{_pending_item(p)}'
@@ -631,7 +674,24 @@ def render_digest_text(config: Any, digest: Digest, *, generated_at: str, attach
     if not digest.cards:
         lines += ["Nothing confirmed this week: no package or flight price was read for the trip dates.", ""]
     if digest.not_priced:
-        lines += ["Not yet priced: " + ", ".join(digest.not_priced)]
+        pending = list(digest.pending) or [Pending(n) for n in digest.not_priced]
+        by_reason: dict[str, list[Pending]] = {}
+        for p in (p for p in pending if not p.group):
+            by_reason.setdefault(p.reason, []).append(p)
+        lines.append("Not yet priced")
+        for reason, group in by_reason.items():
+            if reason:
+                lines.append(f"{reason}")
+            lines += [f"  {p.name}" for p in group]
+        for group_name, label in (("ideas", "New ideas, fares and stays being read"),
+                                  ("Gili Islands", "Gili Islands"),
+                                  ("Maldives", "Maldives (seaplane transfer to be priced in)")):
+            members = [p for p in pending if p.group == group_name]
+            if not members:
+                continue
+            lines.append(label)
+            lines += [f"  {p.name}" + (f" — {p.reason}" if p.reason and group_name == "ideas" else "")
+                      for p in members]
     if attachment_name:
         lines += ["", f"Full trip pages for every option are attached: {attachment_name}"]
     return "\n".join(lines) + "\n"

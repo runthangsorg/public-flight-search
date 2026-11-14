@@ -315,17 +315,37 @@ def run_holiday_planner(
         hotel_evidence_module.DEFAULT_HOTEL_EVIDENCE_PATH,
     )
     hotel_rates: dict[tuple[str, str, str], object] = {}
+    #: The SAME file's room-only rates, for the trip totals only (owner, 14 Nov 2026). A deal
+    #: card still refuses room only; a multi-stop trip's total may use it, labelled. Loaded
+    #: with the same clock and after the main load, whose module state this load leaves alone.
+    room_only_rates: dict[tuple[str, str, str], object] = {}
     hotel_skipped: list[str] = []
     hotel_evidence_error: Optional[str] = None
     unit_check_basis: dict[str, int] = {}
     try:
+        hotel_now = datetime.now(timezone.utc).isoformat()
         hotel_rates = dict(
             hotel_evidence_module.load_hotel_evidence(
-                config, path=hotel_evidence_path, now=datetime.now(timezone.utc).isoformat()
+                config, path=hotel_evidence_path, now=hotel_now
             )
         )
         hotel_skipped = hotel_evidence_module.consume_hotel_skip_log()
         unit_check_basis = hotel_evidence_module.consume_hotel_unit_check_basis()
+        # A failed room-only load is an empty mapping, never a failed run: the trip cards
+        # then say what they said before this load existed.
+        try:
+            room_only_rates = dict(
+                hotel_evidence_module.load_room_only_rates(
+                    hotel_evidence_path, config, now=hotel_now
+                )
+            )
+        except Exception as room_only_exc:
+            room_only_rates = {}
+            print(
+                "hotel-evidence: room-only load failed: "
+                f"{type(room_only_exc).__name__}: {room_only_exc}",
+                file=sys.stderr,
+            )
     except Exception as exc:
         hotel_rates = {}
         hotel_evidence_error = f"{type(exc).__name__}: {exc}"
@@ -548,7 +568,8 @@ def run_holiday_planner(
     if is_july and not detailed:
         body_digest = build_digest(config, rows=_multi_centre_rows(config, fares=multi_centre_fares, include_leads=True),
                               package_prices=package_prices, generated_at=generated_at,
-                              hotel_rates=hotel_rates or None)
+                              hotel_rates=hotel_rates or None,
+                              room_only_rates=room_only_rates or None)
         html = render_digest_html(config, body_digest, generated_at=generated_at, attachment_name=attachment_name)
     # The plain-text part the mailer already sends used to say "open this in an
     # HTML-capable client", which carried none of the decision; it now mirrors

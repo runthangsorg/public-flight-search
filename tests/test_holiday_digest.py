@@ -139,6 +139,73 @@ class NothingEstimatedTests(unittest.TestCase):
         self.assertNotRegex(html, r"background:\s*#(0|1|2)[0-9a-f]{5}")
 
 
+def _hidden_rows(carriers):
+    """The rows of one trip whose business read was set aside, with its carriers recorded."""
+    rows = [r for r in _multi_centre_rows(_config(), fares=load([deal_read(BUILD, "ECONOMY", 4_000)]))
+            if r["trip"].id == BUILD]
+    return [dict(r, business_hidden={"saving": None, "travellers": 5,
+                                     "reason": "no long flight on a quality carrier",
+                                     "carriers": list(carriers)}) for r in rows]
+
+
+class BusinessHiddenReasonTests(unittest.TestCase):
+    """A business fare WAS read, on an airline the rule does not accept: say so (owner, 14 Nov 2026)."""
+
+    def _reason(self, carriers):
+        digest = hd.build_digest(_config(), rows=_hidden_rows(carriers), package_prices={}, watch=(),
+                                 generated_at=NOW)
+        self.assertEqual(digest.cards, ())
+        return [p.reason for p in digest.pending if not p.group][0]
+
+    def test_the_reason_names_the_airline_the_fare_was_read_on(self):
+        self.assertEqual(self._reason(["SYNTHETIC Air"]),
+                         "a business fare was read on SYNTHETIC Air, which is not on the accepted airline list; "
+                         "a fare on an accepted airline is still to be read")
+
+    def test_it_names_every_carrier_of_the_read(self):
+        self.assertIn("SYNTHETIC Air, Second SYNTHETIC Air", self._reason(["SYNTHETIC Air", "Second SYNTHETIC Air"]))
+
+    def test_with_no_carrier_recorded_it_still_says_a_fare_was_read(self):
+        self.assertEqual(self._reason([]),
+                         "a business fare was read, but not on an accepted airline; "
+                         "a fare on an accepted airline is still to be read")
+
+    def test_no_price_is_printed_for_it(self):
+        html = hd.render_digest_html(_config(), hd.build_digest(
+            _config(), rows=_hidden_rows(["SYNTHETIC Air"]), package_prices={}, watch=(), generated_at=NOW),
+            generated_at=NOW)
+        self.assertNotIn("£4,000", html)
+
+
+class NotYetPricedRenderingTests(unittest.TestCase):
+    """The reason once, then one line per trip: thirteen links in one paragraph was unreadable."""
+
+    def setUp(self):
+        self.digest = _build()
+        self.trips = [p for p in self.digest.pending if not p.group]
+
+    def test_the_html_keeps_its_section_marker(self):
+        self.assertIn(">Not yet priced</div>", _html(self.digest))
+
+    def test_the_reason_is_one_bold_line_and_each_trip_has_its_own_line(self):
+        html = _html(self.digest)
+        self.assertGreater(len(self.trips), 6, "the July run has many unread trips")
+        reason = self.trips[0].reason
+        self.assertEqual(html.count(f"<b style=\"color:#334155;\">{reason}</b>"), 1,
+                         "the shared reason is stated once, not once per trip")
+        lines = re.findall(r'<div style="margin:3px 0 0;">.*?</div>', html)
+        for p in self.trips:
+            self.assertEqual(sum(1 for line in lines if hd._e(p.name) in line), 1, p.name)
+
+    def test_the_text_part_is_a_reason_line_then_two_space_indented_trips(self):
+        text = _text(self.digest)
+        self.assertIn("\nNot yet priced\n", text)
+        self.assertIn(f"\n{self.trips[0].reason}\n", text)
+        for p in self.trips:
+            self.assertIn(f"\n  {p.name}\n", text)
+        self.assertNotIn("Not yet priced: " + self.trips[0].name, text)
+
+
 class TheJobSendsTheDigestTests(unittest.TestCase):
     def setUp(self):
         self.saved = (hol.LAST_FILTERED_OUT, hol.LAST_OVER_BUDGET, hol.LAST_CLIMATE_EXCLUDED)

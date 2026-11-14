@@ -71,6 +71,11 @@ NIGHTLY_BASES: frozenset[str] = frozenset({"nightly_room_rate"})
 #: already, because it includes no meals, exactly as ``RO`` does not either.
 DEAL_BOARDS: frozenset[str] = frozenset({"BB", "HB", "FB", "AI"})
 
+#: The one board a TRIP total may price a night with when no breakfast-or-better
+#: read exists for it. Never a deal card's board: ``load_hotel_evidence`` keeps
+#: ``DEAL_BOARDS`` for that, and this set only reaches ``load_room_only_rates``.
+ROOM_ONLY_BOARDS: frozenset[str] = frozenset({"RO"})
+
 #: Boards that include no meals, with the reason shown when one is dropped.
 #: Naming the code alone ("SC") tells an operator nothing about why their rate
 #: vanished from the report.
@@ -862,7 +867,206 @@ A rate is kept only when every one of the brief's conditions holds:
     _SKIP_LOG.clear()
     _SUPPLEMENTAL_BY_PROPERTY.clear()
     _UNIT_CHECK_BASIS.clear()
+    return _load_rates(
+        path, config, now=now, max_age_hours=max_age_hours, boards=DEAL_BOARDS,
+        keeping="breakfast or better", warn=_warn_skip, report=_report, supplemental=True,
+    )
 
+
+def load_room_only_rates(
+    path: str,
+    config,
+    *,
+    now: Optional[str] = None,
+    max_age_hours: Optional[int] = None,
+) -> dict[tuple[str, str, str, str], HotelEvidence]:
+    """The same file's ROOM-ONLY rates, under every other gate of the main load.
+
+    A trip total may price a night from a room-only stay, labelled "room only":
+    for a multi-stop trip a dated room-only figure is still a real price for that
+    night. A single-resort DEAL card may not, because the owner's rule for a
+    holiday deal is breakfast or better — and that rule stays in
+    ``load_hotel_evidence``. This second load is how a trip total sees the
+    room-only reads without loosening the deal gate for anyone: same file, same
+    gates, same key and same return shape, with the board as the one gate that
+    differs.
+
+    It deliberately touches no module state. The skip log, the unit-check basis
+    counters and the per-property supplementary index belong to the MAIN load,
+    and a second load that overwrote them would make the run summary describe
+    this walk instead of that one. A missing or unreadable file is an empty
+    mapping, and nothing is printed: the main load has already said what the
+    file was.
+    """
+    return _load_rates(
+        path, config, now=now, max_age_hours=max_age_hours, boards=ROOM_ONLY_BOARDS,
+        keeping="room only", warn=_quiet, report=_quiet, supplemental=False,
+    )
+
+
+def _report(message: str) -> None:
+    """A file-level problem, said on stderr the way every other load says it."""
+    print(f"hotel-evidence: {message}", file=sys.stderr)
+
+
+def _quiet(_what: str, _reason: str = "") -> None:
+    """A load that must not repeat what the main load already said."""
+    return None
+
+
+def _board_refusal(board: str, boards: frozenset[str], keeping: str) -> str:
+    """Why this board is not one this load keeps, in the reader's own terms."""
+    if boards is DEAL_BOARDS:
+        return NO_MEAL_BOARDS.get(board, f"board {board!r} is not {keeping}")
+    return f"board {board!r} is not {keeping}"
+
+
+def _gate_rate(item, index: int, *, season: str, travellers: int, priced_pairs: set,
+               now_dt: datetime, ceiling: int, boards: frozenset[str], keeping: str,
+               warn) -> Optional[tuple[HotelRate, bool]]:
+    """One record's gates, shared by both loads.
+
+    Returns ``(rate, priceable_pair)`` for a record every gate admits, or
+    ``None`` after calling ``warn`` with the reason it did not. The board is the
+    one gate that differs between ``load_hotel_evidence`` and
+    ``load_room_only_rates`` — breakfast or better for a deal card, room only
+    for a trip total's fallback — and it is passed in rather than duplicated, so
+    season, dates, party, one booking, freshness, source URL and price can never
+    drift between the two loads.
+    """
+    if not isinstance(item, dict):
+        warn(f"#{index}", "not an object")
+        return None
+    name = str(item.get("property_name", "")).strip()
+    if not name:
+        warn(f"#{index}", "property_name missing")
+        return None
+    check_in = str(item.get("check_in", "")).strip()
+    check_out = str(item.get("check_out", "")).strip()
+
+    record_season = str(item.get("season", "")).strip() or _season_of(check_in)
+    # BRIEF-H15 §1 (2026-10-05). "Same season" is decided by the DATES on the
+    # read, not only by the label the exporter wrote: this gate used to be
+    # the only thing keeping a December read out of a July card, and now that
+    # a read for a pair outside the window is kept, a record that declares
+    # one season and carries the dates of another has more reach than it had.
+    # 0 of the 71 rates in the shipped evidence file disagree; a record that
+    # does is refused rather than asked to carry a nightly five months away.
+    dates_season = _season_of(check_in)
+    if season and dates_season and dates_season != season:
+        warn(
+            name,
+            f"its own dates {check_in} are {dates_season}, "
+            f"and this run prices {season}",
+        )
+        return None
+    if season and record_season and record_season != season:
+        warn(name, f"season {record_season!r} is not the season this run prices ({season})")
+        return None
+    if not bool(item.get("exact_date_match", False)):
+        warn(name, "exact_date_match is false — nearest dates are not these dates")
+        return None
+    # BRIEF-H15 §1 (2026-10-05). A read whose pair is NOT one this run
+    # prices used to be dropped here, which meant a read for 20–27 Jul could
+    # never inform a card on a 28 Jun–12 Jul pair: the card fell back to the
+    # catalogue guess while a real nightly for the same property, board,
+    # unit and season sat unread in the same file. Every other gate below
+    # still has to hold — it is a rate read for a real stay, not a
+    # candidate — and the entry is marked so it can never be an exact-date
+    # price (see ``HotelEvidence.pair_is_priceable``).
+    priceable_pair = (check_in, check_out) in priced_pairs
+    party = item.get("party") or {}
+    adults = int(party.get("adults", 0) or 0) if isinstance(party, dict) else 0
+    children = int(party.get("children", 0) or 0) if isinstance(party, dict) else 0
+    if travellers and adults + children != travellers:
+        warn(
+            name,
+            f"party {adults + children} != report party {travellers}",
+        )
+        return None
+    shape = str(item.get("booking_shape", "")).strip()
+    if shape not in ONE_BOOKING_SHAPES:
+        warn(name, f"booking_shape {shape!r} is not one booking")
+        return None
+    board = str(item.get("board", "")).strip().upper()
+    if board not in boards:
+        warn(name, _board_refusal(board, boards, keeping))
+        return None
+    source_url = str(item.get("source_url", "")).strip()
+    if not source_url.startswith(("http://", "https://")):
+        warn(name, "source_url missing or not http(s)")
+        return None
+    observed_raw = str(item.get("observed_at", "")).strip()
+    observed = _parse_observed_at(observed_raw)
+    if observed is None:
+        warn(name, "observed_at missing or unparseable")
+        return None
+    age_hours = (now_dt - observed).total_seconds() / 3600.0
+    if age_hours < 0:
+        warn(name, "observed_at is in the future")
+        return None
+    if age_hours > ceiling:
+        warn(
+            name,
+            f"stale: observed {age_hours:.0f}h ago (max {ceiling}h)",
+        )
+        return None
+    priced = _price_for(item)
+    if priced is None:
+        warn(name, "no GBP public price and no derived_gbp figure")
+        return None
+    value, basis, label, stay_basis, how = priced
+    cancellation, payment = _terms_by_field(item)
+    refundable = _refundable(item)
+    try:
+        nights = int(item.get("nights", 0) or 0)
+    except (TypeError, ValueError):
+        nights = 0
+    rate = HotelRate(
+        property_name=name,
+        destination_key=str(item.get("destination_key", "")).strip(),
+        season=record_season,
+        vendor=str(item.get("vendor", "")).strip(),
+        check_in=check_in,
+        check_out=check_out,
+        nights=nights,
+        rate_name=str(item.get("rate_name", "")).strip(),
+        board=board,
+        price_gbp=value,
+        price_basis=basis,
+        price_label=label,
+        currency=str(item.get("currency", "")).strip().upper(),
+        price_how=how,
+        stay_basis=stay_basis,
+        refundable=refundable,
+        terms=_terms_for(item, refundable=refundable),
+        cancellation=cancellation,
+        payment=payment,
+        provider=_provider_of(item),
+        refundable_stated=_refundable_stated(item),
+        units=_unit_lines(item),
+        taxes_included=(
+            item.get("taxes_included")
+            if isinstance(item.get("taxes_included"), bool) else None
+        ),
+        source_url=source_url,
+        observed_at=observed_raw,
+        booking_shape=shape,
+        party_adults=adults,
+    )
+    return rate, priceable_pair
+
+
+def _load_rates(path: str, config, *, now: Optional[str], max_age_hours: Optional[int],
+                boards: frozenset[str], keeping: str, warn, report,
+                supplemental: bool) -> dict[tuple[str, str, str, str], HotelEvidence]:
+    """Read one evidence file and return the entries every gate admits.
+
+    ``supplemental`` is what makes ``load_hotel_evidence`` the main load: only it
+    indexes the file's unit checks, ratings, facts and blocked sources into this
+    module's registries. The room-only load passes False and so leaves them, and
+    the skip log, belonging to the main load.
+    """
     now_dt = _parse_observed_at(now) or datetime.now(timezone.utc)
     ceiling = max_age_hours if max_age_hours and max_age_hours > 0 else hotel_evidence_max_age_hours()
 
@@ -878,16 +1082,14 @@ A rate is kept only when every one of the brief's conditions holds:
         with open(path, encoding="utf-8") as handle:
             payload = json.load(handle)
     except FileNotFoundError:
-        _SUPPLEMENTAL_BY_PROPERTY.clear()
         return {}
     except (json.JSONDecodeError, OSError) as exc:
-        print(f"hotel-evidence: unreadable {path}: {exc}", file=sys.stderr)
-        _SUPPLEMENTAL_BY_PROPERTY.clear()
+        report(f"unreadable {path}: {exc}")
         return {}
 
     rates = payload.get("rates", []) if isinstance(payload, dict) else payload
     if not isinstance(rates, list):
-        print(f"hotel-evidence: {path} has no rates list", file=sys.stderr)
+        report(f"{path} has no rates list")
         return {}
 
     qualifying: dict[tuple[str, str, str, str], list[HotelRate]] = {}
@@ -898,137 +1100,20 @@ A rate is kept only when every one of the brief's conditions holds:
     # Indexed BEFORE the rates are walked, and for every property the file
     # mentions rather than only the priced ones: a unit check for a property we
     # found no rate for is still a fact about the property.
-    _SUPPLEMENTAL_BY_PROPERTY.update(_index_supplemental(payload))
-    _tally_unit_check_basis()
+    if supplemental:
+        _SUPPLEMENTAL_BY_PROPERTY.update(_index_supplemental(payload))
+        _tally_unit_check_basis()
     for index, item in enumerate(rates):
-        if not isinstance(item, dict):
-            _warn_skip(f"#{index}", "not an object")
+        gated = _gate_rate(item, index, season=season, travellers=travellers,
+                           priced_pairs=priced_pairs, now_dt=now_dt, ceiling=ceiling,
+                           boards=boards, warn=warn, keeping=keeping)
+        if gated is None:
             continue
-        name = str(item.get("property_name", "")).strip()
-        if not name:
-            _warn_skip(f"#{index}", "property_name missing")
-            continue
-        check_in = str(item.get("check_in", "")).strip()
-        check_out = str(item.get("check_out", "")).strip()
-
-        record_season = str(item.get("season", "")).strip() or _season_of(check_in)
-        # BRIEF-H15 §1 (2026-10-05). "Same season" is decided by the DATES on the
-        # read, not only by the label the exporter wrote: this gate used to be
-        # the only thing keeping a December read out of a July card, and now that
-        # a read for a pair outside the window is kept, a record that declares
-        # one season and carries the dates of another has more reach than it had.
-        # 0 of the 71 rates in the shipped evidence file disagree; a record that
-        # does is refused rather than asked to carry a nightly five months away.
-        dates_season = _season_of(check_in)
-        if season and dates_season and dates_season != season:
-            _warn_skip(
-                name,
-                f"its own dates {check_in} are {dates_season}, "
-                f"and this run prices {season}",
-            )
-            continue
-        if season and record_season and record_season != season:
-            _warn_skip(name, f"season {record_season!r} is not the season this run prices ({season})")
-            continue
-        if not bool(item.get("exact_date_match", False)):
-            _warn_skip(name, "exact_date_match is false — nearest dates are not these dates")
-            continue
-        # BRIEF-H15 §1 (2026-10-05). A read whose pair is NOT one this run
-        # prices used to be dropped here, which meant a read for 20–27 Jul could
-        # never inform a card on a 28 Jun–12 Jul pair: the card fell back to the
-        # catalogue guess while a real nightly for the same property, board,
-        # unit and season sat unread in the same file. Every other gate below
-        # still has to hold — it is a rate read for a real stay, not a
-        # candidate — and the entry is marked so it can never be an exact-date
-        # price (see ``HotelEvidence.pair_is_priceable``).
-        priceable_pair = (check_in, check_out) in priced_pairs
-        party = item.get("party") or {}
-        adults = int(party.get("adults", 0) or 0) if isinstance(party, dict) else 0
-        children = int(party.get("children", 0) or 0) if isinstance(party, dict) else 0
-        if travellers and adults + children != travellers:
-            _warn_skip(
-                name,
-                f"party {adults + children} != report party {travellers}",
-            )
-            continue
-        shape = str(item.get("booking_shape", "")).strip()
-        if shape not in ONE_BOOKING_SHAPES:
-            _warn_skip(name, f"booking_shape {shape!r} is not one booking")
-            continue
-        board = str(item.get("board", "")).strip().upper()
-        if board not in DEAL_BOARDS:
-            _warn_skip(
-                name,
-                NO_MEAL_BOARDS.get(
-                    board, f"board {board!r} is not breakfast or better"
-                ),
-            )
-            continue
-        source_url = str(item.get("source_url", "")).strip()
-        if not source_url.startswith(("http://", "https://")):
-            _warn_skip(name, "source_url missing or not http(s)")
-            continue
-        observed_raw = str(item.get("observed_at", "")).strip()
-        observed = _parse_observed_at(observed_raw)
-        if observed is None:
-            _warn_skip(name, "observed_at missing or unparseable")
-            continue
-        age_hours = (now_dt - observed).total_seconds() / 3600.0
-        if age_hours < 0:
-            _warn_skip(name, "observed_at is in the future")
-            continue
-        if age_hours > ceiling:
-            _warn_skip(
-                name,
-                f"stale: observed {age_hours:.0f}h ago (max {ceiling}h)",
-            )
-            continue
-        priced = _price_for(item)
-        if priced is None:
-            _warn_skip(name, "no GBP public price and no derived_gbp figure")
-            continue
-        value, basis, label, stay_basis, how = priced
-        cancellation, payment = _terms_by_field(item)
-        refundable = _refundable(item)
-        try:
-            nights = int(item.get("nights", 0) or 0)
-        except (TypeError, ValueError):
-            nights = 0
-        rate = HotelRate(
-            property_name=name,
-            destination_key=str(item.get("destination_key", "")).strip(),
-            season=record_season,
-            vendor=str(item.get("vendor", "")).strip(),
-            check_in=check_in,
-            check_out=check_out,
-            nights=nights,
-            rate_name=str(item.get("rate_name", "")).strip(),
-            board=board,
-            price_gbp=value,
-            price_basis=basis,
-            price_label=label,
-            currency=str(item.get("currency", "")).strip().upper(),
-            price_how=how,
-            stay_basis=stay_basis,
-            refundable=refundable,
-            terms=_terms_for(item, refundable=refundable),
-            cancellation=cancellation,
-            payment=payment,
-            provider=_provider_of(item),
-            refundable_stated=_refundable_stated(item),
-            units=_unit_lines(item),
-            taxes_included=(
-                item.get("taxes_included")
-                if isinstance(item.get("taxes_included"), bool) else None
-            ),
-            source_url=source_url,
-            observed_at=observed_raw,
-            booking_shape=shape,
-            party_adults=adults,
-        )
-        qualifying.setdefault((name, check_in, check_out, shape), []).append(rate)
+        rate, priceable_pair = gated
+        key = (rate.property_name, rate.check_in, rate.check_out, rate.booking_shape)
+        qualifying.setdefault(key, []).append(rate)
         if priceable_pair:
-            priceable_keys.add((name, check_in, check_out, shape))
+            priceable_keys.add(key)
 
     entries: dict[tuple[str, str, str, str], HotelEvidence] = {}
     for key, found in qualifying.items():
@@ -1052,10 +1137,10 @@ A rate is kept only when every one of the brief's conditions holds:
             cheapest=cheapest,
             flexible=flexible,
             rates=tuple(sorted(found, key=lambda rate: rate.price_gbp)),
-            unit_checks=_unit_checks(payload, name, check_in, check_out),
-            ratings=_ratings(payload, name),
-            facts=_facts(payload, name),
-            blocked=_blocked(payload, name),
+            unit_checks=_unit_checks(payload, name, check_in, check_out) if supplemental else (),
+            ratings=_ratings(payload, name) if supplemental else (),
+            facts=_facts(payload, name) if supplemental else (),
+            blocked=_blocked(payload, name) if supplemental else (),
             pair_is_priceable=key in priceable_keys,
         )
     return entries

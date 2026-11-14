@@ -4,8 +4,11 @@ The July body said "flights only, stays not priced" on every trip card (owner, 1
 because a two-centre trip's hotels were never looked up in the hotel evidence: that file priced single-resort cards
 only. This module joins the two. Each stop's named property is dated by ``multi_centre.trip_stays_for_dates`` (the
 same chain that dates the flights), and a rate is used only when it was read for THAT property and THOSE nights for
-the whole party, breakfast or better, inside the freshness window (every gate is ``hotel_evidence.load_hotel_evidence``'s
-own). Nothing is estimated: a stay with no such read is named as unpriced and the trip stays "partly priced".
+the whole party, inside the freshness window (every gate is ``hotel_evidence.load_hotel_evidence``'s own). A
+breakfast-or-better read always wins; where there is none, a room-only read for the same nights still prices the night
+and says "room only", because a dated room-only figure is a real price for a trip total even though it is not a holiday
+deal card (``hotel_evidence.load_room_only_rates``). Nothing is estimated: a stay with no such read is named as
+unpriced and the trip stays "partly priced".
 
 ``stay_wanted`` is the other half: the exact (property, check-in, check-out) list this run would have used, in the
 ``stay_wanted/1`` shape the private hotel reader takes, so one command prices next week's cards.
@@ -22,7 +25,11 @@ from .multi_centre import trip_stays_for_dates
 
 STAY_WANTED_SCHEMA = "stay_wanted/1"
 
-_BOARD_WORDS = {"AI": "all inclusive", "FB": "full board", "HB": "half board", "BB": "breakfast"}
+#: The board as the card says it. ``RO`` is here because a TRIP total may price a
+#: night from a room-only read — labelled, never passed off as a holiday deal —
+#: while a single-resort deal card still refuses it (``hotel_evidence.DEAL_BOARDS``).
+_BOARD_WORDS = {"AI": "all inclusive", "FB": "full board", "HB": "half board", "BB": "breakfast",
+                "RO": "room only"}
 
 
 @dataclass(frozen=True)
@@ -63,6 +70,9 @@ class TripTotal:
     stays_gbp: float
     nights_priced: int
     nights_planned: int
+    #: Nights priced from a room-only read: real, dated, and no meals. Named on the card so a reader is never
+    #: told a hotel price includes breakfast when the board it was read on was room only.
+    room_only_nights: int = 0
 
     @property
     def complete(self) -> bool:
@@ -89,13 +99,30 @@ def _seller(rate: Any) -> str:
     return str(getattr(rate, "vendor", "") or "").split(" as listed")[0].strip()
 
 
-def _rate_for(hotel_rates: Optional[Mapping[Any, Any]], name: str, check_in: str, check_out: str) -> Any:
-    """The cheapest qualifying rate read for exactly this property and these nights, or None."""
-    if not hotel_rates or not (name and check_in and check_out):
+def _cheapest_read(loaded: Optional[Mapping[Any, Any]], name: str, check_in: str, check_out: str) -> Any:
+    """The cheapest entry's rate this mapping holds for exactly this property and these nights."""
+    if not loaded or not (name and check_in and check_out):
         return None
-    entries = hotel_evidence_module._pair_entries(hotel_rates, name, check_in, check_out, priceable_only=False)
+    entries = hotel_evidence_module._pair_entries(loaded, name, check_in, check_out, priceable_only=False)
     rates = [entry.cheapest for entry in entries if getattr(entry, "cheapest", None) is not None]
     return min(rates, key=lambda rate: rate.price_gbp) if rates else None
+
+
+def _rate_for(hotel_rates: Optional[Mapping[Any, Any]], name: str, check_in: str, check_out: str,
+              room_only_rates: Optional[Mapping[Any, Any]] = None) -> Any:
+    """The cheapest rate for exactly this property and these nights, breakfast or better first.
+
+    A room-only read is used only when NO breakfast-or-better read exists for the
+    property and those nights: a trip total then prices the night from a real
+    dated figure rather than leaving it open, and the stay carries board ``RO``
+    so the card says "room only". The two mappings are separate loads of the same
+    file (``hotel_evidence.load_room_only_rates``), so this is a preference
+    between two real reads and never a choice between a read and an estimate.
+    """
+    rate = _cheapest_read(hotel_rates, name, check_in, check_out)
+    if rate is not None:
+        return rate
+    return _cheapest_read(room_only_rates, name, check_in, check_out)
 
 
 def _priced(place: str, lodge: Any, check_in: str, check_out: str, nights: int, rate: Any) -> StayPrice:
@@ -108,7 +135,8 @@ def _priced(place: str, lodge: Any, check_in: str, check_out: str, nights: int, 
         property_url=str(getattr(lodge, "url", "") or ""))
 
 
-def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]]) -> list[StayPrice]:
+def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]],
+                room_only_rates: Optional[Mapping[Any, Any]] = None) -> list[StayPrice]:
     place = _place(stay.stop)
     if not stay.lodges:
         return [StayPrice(place=place, property_name="", check_in=stay.check_in, check_out=stay.check_out,
@@ -117,7 +145,7 @@ def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]]) -> list[Sta
     if dated and len(dated) == len(stay.lodges):
         out = []
         for ls in dated:
-            rate = _rate_for(hotel_rates, ls.lodge.name, ls.check_in, ls.check_out)
+            rate = _rate_for(hotel_rates, ls.lodge.name, ls.check_in, ls.check_out, room_only_rates)
             out.append(_priced(place, ls.lodge, ls.check_in, ls.check_out, ls.nights, rate) if rate is not None else
                        StayPrice(place=place, property_name=ls.lodge.name, check_in=ls.check_in,
                                  check_out=ls.check_out, nights=ls.nights,
@@ -126,7 +154,7 @@ def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]]) -> list[Sta
     # The source names properties without itemising their nights: each is an alternative for the whole stop.
     choices = []
     for ls in stay.lodges:
-        rate = _rate_for(hotel_rates, ls.lodge.name, stay.check_in, stay.check_out)
+        rate = _rate_for(hotel_rates, ls.lodge.name, stay.check_in, stay.check_out, room_only_rates)
         if rate is not None:
             choices.append(_priced(place, ls.lodge, stay.check_in, stay.check_out, stay.nights, rate))
     if choices:
@@ -138,8 +166,16 @@ def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]]) -> list[Sta
 
 
 def trip_total(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]], *,
-               flights_gbp: Optional[float]) -> Optional[TripTotal]:
-    """The row's stays against the hotel reads. None when the row's dates cannot be planned."""
+               flights_gbp: Optional[float],
+               room_only_rates: Optional[Mapping[Any, Any]] = None) -> Optional[TripTotal]:
+    """The row's stays against the hotel reads. None when the row's dates cannot be planned.
+
+    ``hotel_rates`` is the breakfast-or-better load and ``room_only_rates`` the
+    room-only one; a stay takes a breakfast-rate read whenever one exists and only
+    then falls back to a room-only read for the same property and nights. Either
+    mapping may be empty or None — a run with only room-only evidence still prices
+    a trip, and it is labelled room only.
+    """
     try:
         plan = trip_stays_for_dates(row["trip"], str(row["outbound"]), str(row["return"]))
     except (KeyError, ValueError):
@@ -147,12 +183,13 @@ def trip_total(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]],
     stays: list[StayPrice] = []
     for stay in plan.stays:
         if stay.nights > 0:
-            stays.extend(_stop_stays(stay, hotel_rates))
+            stays.extend(_stop_stays(stay, hotel_rates, room_only_rates))
     priced = [s for s in stays if s.priced]
     return TripTotal(stays=tuple(stays), flights_gbp=flights_gbp,
                      stays_gbp=float(sum(s.total_gbp for s in priced)),
                      nights_priced=sum(s.nights for s in priced),
-                     nights_planned=sum(s.nights for s in stays))
+                     nights_planned=sum(s.nights for s in stays),
+                     room_only_nights=sum(s.nights for s in priced if s.board == "RO"))
 
 
 def _key(text: str) -> str:

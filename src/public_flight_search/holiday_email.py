@@ -1993,7 +1993,10 @@ def cabin_options(trip: Any, reads: Mapping[str, Mapping[str, Any]], budget: flo
         carriers = _business_long_carriers(business)
         if not business_is_deal(carriers=carriers, long_haul=bool(carriers)):
             hidden = {"saving": None, "travellers": int(travellers),
-                      "reason": "no long flight on a quality carrier"}
+                      "reason": "no long flight on a quality carrier",
+                      # On whom the fare WAS read, so the body can say that rather than claim no
+                      # business fare was read at all (owner, 14 Nov 2026). May be empty.
+                      "carriers": list(carriers)}
             business = None
     chosen = {"business": business, "economy": economy}
     out: dict[str, Any] = {"reads": chosen, "totals": [], "missing": [], "business_hidden": hidden,
