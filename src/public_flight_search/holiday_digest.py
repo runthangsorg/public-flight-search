@@ -670,7 +670,7 @@ def _price_block(c: Card) -> str:
             f'<span style="font-size:22px; font-weight:800; color:#0F172A;">{_gbp(c.total_gbp)}</span>'
             f'{" so far:" if c.kind == "part" else ""}'
             f'<span style="font-size:12px; color:#334155;"> '
-            + _dot_join([_e(c.covers), _nowrap(each)]) + f"</span>{made_of}{found}"
+            + _dot_join([_e(c.covers), _nb(each)]) + f"</span>{made_of}{found}"
             f'{_budget_bar(c)}</div>')
 
 
