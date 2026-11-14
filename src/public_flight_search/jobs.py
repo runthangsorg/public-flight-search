@@ -184,6 +184,21 @@ def _write_step_summary(result: dict) -> None:
         return
 
 
+def _stay_wanted(config, multi_centre_fares) -> dict:
+    """The dated stays the private hotel reader should read for this run's trips and watch list; never a failure."""
+    from . import trip_totals, watchlist
+    from .holiday_digest import _reference_pair
+
+    try:
+        rows = _multi_centre_rows(config, fares=multi_centre_fares)
+        return trip_totals.stay_wanted(config, rows, watch=watchlist.load_watchlist(),
+                                       reference_pair=_reference_pair(config))
+    except Exception as exc:  # noqa: BLE001 - a wanted list is a convenience for the next read
+        print(f"stay_wanted: not built ({type(exc).__name__}: {exc})", file=sys.stderr)
+        return {"schema": trip_totals.STAY_WANTED_SCHEMA, "travellers": int(getattr(config, "travellers", 5) or 5),
+                "stays": []}
+
+
 def _newest_stamp(items) -> str:
     """The newest ``observed_at`` among evidence entries, or ``""`` when there are none.
 
@@ -450,6 +465,10 @@ def run_holiday_planner(
     # carry the dates and a new pair therefore needs a read of its own.
     multi_centre_wants = multi_centre_wanted(config)
     print(f"multi_centre_wanted: {len(multi_centre_wants)}")
+    # ... and the stays (owner, 14 Nov 2026): every trip's dated properties and the watch-list resorts, in the
+    # private hotel reader's --wanted shape, so the cards can show a trip total instead of "flights only".
+    stay_wants = _stay_wanted(config, multi_centre_fares)
+    print(f"stay_wanted: {len(stay_wants.get('stays', []))}")
     # MEMORY BEFORE BUILD: the workflow seeds `history_path` from the
     # private repo in a dedicated bash step (proven transport) BEFORE this
     # job runs, so trends, chips and the change digest describe real
@@ -528,7 +547,8 @@ def run_holiday_planner(
     body_digest = None
     if is_july and not detailed:
         body_digest = build_digest(config, rows=_multi_centre_rows(config, fares=multi_centre_fares),
-                              package_prices=package_prices, generated_at=generated_at)
+                              package_prices=package_prices, generated_at=generated_at,
+                              hotel_rates=hotel_rates or None)
         html = render_digest_html(config, body_digest, generated_at=generated_at, attachment_name=attachment_name)
     # The plain-text part the mailer already sends used to say "open this in an
     # HTML-capable client", which carried none of the decision; it now mirrors
@@ -728,6 +748,7 @@ def run_holiday_planner(
         # showing ranges means the reads are for date pairs this config no longer
         # prices, which is waste the next read can be aimed away from.
         "multi_centre_wanted": multi_centre_wants,
+        "stay_wanted": stay_wants,
         "multi_centre_reads_loaded": sum(1 for k in multi_centre_fares if len(k) == 2),
         # The stays the climate gate dropped this run (owner direction
         # 2026-10-15): one entry per place per area, collected while the cards,
