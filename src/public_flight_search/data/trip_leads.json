@@ -290,12 +290,18 @@
           "airport": "CMB",
           "hotel": "",
           "basis": "",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "Karpaha Sands",
               "nights": 5,
               "area": "Kalkudah, Sri Lanka",
               "url": "https://www.karpahasands.com/"
+            },
+            {
+              "name": "Amaya Beach Pasikuda",
+              "area": "Pasikudah Bay",
+              "url": "https://amayaresorts.com/amayabeach"
             }
           ]
         }
@@ -321,7 +327,8 @@
         "https://www.tivolihotels.com/en/souq-waqif-doha",
         "https://www.ugaresorts.com/ulagalla/",
         "https://www.ugaresorts.com/junglebeach/",
-        "https://www.karpahasands.com/"
+        "https://www.karpahasands.com/",
+        "https://amayaresorts.com/amayabeach"
       ]
     },
     {
@@ -339,12 +346,18 @@
           "airport": "MFU",
           "hotel": "",
           "basis": "",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "Flatdogs Camp",
               "nights": 7,
               "area": "South Luangwa, Zambia",
               "url": "https://www.flatdogscamp.com/"
+            },
+            {
+              "name": "Msandile River Lodge",
+              "area": "South Luangwa, Nsefu sector",
+              "url": "https://www.msandileriverlodge.com/"
             }
           ]
         },
@@ -379,7 +392,8 @@
       "catch": "a long cross-border road transfer or a light-aircraft hop between Mfuwe and Lake Malawi; rustic by design",
       "source_urls": [
         "https://www.flatdogscamp.com/",
-        "https://www.mumboisland.com/"
+        "https://www.mumboisland.com/",
+        "https://www.msandileriverlodge.com/"
       ]
     },
     {
@@ -419,12 +433,18 @@
           "airport": "LAU",
           "hotel": "",
           "basis": "",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "Kijani Hotel",
               "nights": 7,
               "area": "Lamu Island, Kenya",
               "url": "https://www.kijani-lamu.com/"
+            },
+            {
+              "name": "The Majlis Hotel Lamu",
+              "area": "Manda Island, Lamu",
+              "url": "https://themajlisresorts.com/"
             }
           ]
         }
@@ -452,7 +472,8 @@
       "catch": "Muscat is 38 C or more in late June; Nanyuki to Lamu needs two internal flights; Muscat hotel still to choose",
       "source_urls": [
         "https://www.serenahotels.com/sweetwaters",
-        "https://www.kijani-lamu.com/"
+        "https://www.kijani-lamu.com/",
+        "https://themajlisresorts.com/"
       ]
     },
     {
@@ -500,12 +521,23 @@
           "airport": "MFA",
           "hotel": "",
           "basis": "",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "Butiama Beach Lodge",
               "nights": 7,
               "area": "Mafia Island, Tanzania",
               "url": "https://www.butiamamafiaisland.com/"
+            },
+            {
+              "name": "Pole Pole Bungalows",
+              "area": "Utende, Mafia Island",
+              "url": "https://www.polepole.com/"
+            },
+            {
+              "name": "Chole Mjini Treehouse Lodge",
+              "area": "Chole Island, Mafia archipelago",
+              "url": "https://www.cholemjini.com/"
             }
           ]
         }
@@ -534,7 +566,9 @@
       "source_urls": [
         "https://www.tivolihotels.com/en/souq-waqif-doha",
         "https://www.tentwithaview.com/",
-        "https://www.butiamamafiaisland.com/"
+        "https://www.butiamamafiaisland.com/",
+        "https://www.polepole.com/",
+        "https://www.cholemjini.com/"
       ]
     },
     {
@@ -552,12 +586,18 @@
           "airport": "NOS",
           "hotel": "",
           "basis": "",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "Ravintsara Wellness Hotel",
               "nights": 8,
               "area": "Nosy Be, Madagascar",
               "url": "https://www.ravintsarahotel.com/"
+            },
+            {
+              "name": "VOI Andilana Beach Resort",
+              "area": "Andilana, Nosy Be",
+              "url": "https://www.voihotels.com/en/resort/voi-andilana-beach"
             }
           ]
         },
@@ -592,7 +632,8 @@
       "catch": "a van and a 45 to 90 minute boat to the private island; long flights with one stop",
       "source_urls": [
         "https://www.ravintsarahotel.com/",
-        "https://www.constancehotels.com/en/hotels-resorts/tsarabanjina/"
+        "https://www.constancehotels.com/en/hotels-resorts/tsarabanjina/",
+        "https://www.voihotels.com/en/resort/voi-andilana-beach"
       ]
     },
     {
@@ -625,12 +666,23 @@
           "airport": "NAV",
           "hotel": "",
           "basis": "",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "Museum Hotel Cappadocia",
               "nights": 4,
               "area": "Cappadocia",
               "url": "https://www.museumhotel.com.tr/en"
+            },
+            {
+              "name": "Artemis Cave Suites",
+              "area": "Cappadocia",
+              "url": "https://www.artemiscavesuites.com/"
+            },
+            {
+              "name": "Kayakapi Premium Caves - Cappadocia",
+              "area": "Ürgüp, Cappadocia",
+              "url": "https://www.kayakapi.com/"
             }
           ]
         },
@@ -640,12 +692,18 @@
           "airport": "DLM",
           "hotel": "",
           "basis": "",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "Perdue Hotel Faralya",
               "nights": 7,
               "area": "Faralya, Fethiye",
               "url": "https://perdue.com.tr/"
+            },
+            {
+              "name": "Lissiya Hotel",
+              "area": "Faralya, Fethiye",
+              "url": "https://www.lissiyahotel.com/"
             }
           ]
         }
@@ -674,7 +732,10 @@
       "source_urls": [
         "https://www.kempinski.com/en/ciragan-palace",
         "https://www.museumhotel.com.tr/en",
-        "https://perdue.com.tr/"
+        "https://perdue.com.tr/",
+        "https://www.artemiscavesuites.com/",
+        "https://www.kayakapi.com/",
+        "https://www.lissiyahotel.com/"
       ]
     },
     {
@@ -821,12 +882,23 @@
           "airport": "LKN",
           "hotel": "",
           "basis": "",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "Nusfjord Arctic Resort",
               "nights": 7,
               "area": "Nusfjord, Lofoten",
               "url": "https://nusfjord.com/"
+            },
+            {
+              "name": "Sakrisøy Rorbuer AS",
+              "area": "Sakrisøy, Lofoten",
+              "url": "https://sakrisoy.no/"
+            },
+            {
+              "name": "Hattvika Lodge",
+              "area": "Lofoten",
+              "url": "https://hattvikalodge.no/"
             }
           ]
         }
@@ -846,7 +918,9 @@
       "catch": "12 to 16 C air and cold sea; halal meat is not certified locally; two flights each way",
       "source_urls": [
         "https://www.manshausen.no/",
-        "https://nusfjord.com/"
+        "https://nusfjord.com/",
+        "https://sakrisoy.no/",
+        "https://hattvikalodge.no/"
       ]
     }
   ]
