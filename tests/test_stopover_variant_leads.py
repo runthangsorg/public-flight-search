@@ -156,3 +156,13 @@ class RenamedPropertyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_the_one_way_sri_lanka_trip_is_retired_for_its_stopover_both_ways_version():
+    """Owner, 15 Nov 2026: "retire the old Sri Lanka trip" (LD-04 is replaced by LD-13)."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    path = _Path(__file__).resolve().parents[1] / "src" / "public_flight_search" / "data" / "trip_leads.json"
+    ids = [t["id"] for t in _json.loads(path.read_text(encoding="utf-8"))["itineraries"]]
+    assert "LD-04" not in ids and "LD-13" in ids
