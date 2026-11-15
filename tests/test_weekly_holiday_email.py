@@ -177,11 +177,18 @@ class WeeklyFaresTests(unittest.TestCase):
         self.assertIn("Best business fares this week", html)
         self.assertIn("40%", html)
 
-    def test_the_sections_go_before_not_yet_priced(self):
-        body = '<div>cards</div><div style="x">Not yet priced</div><div>list</div></div>'
+    def test_the_sections_go_before_the_not_shown_footnote(self):
+        """The digest's foot is headed "Not shown" since 15 Nov 2026; the weekly fares belong above it."""
+        body = '<div>cards</div><div style="x">Not shown</div><div>list</div></div>'
         out = wf.insert_section(body, "<p>WEEKLY</p>")
-        self.assertLess(out.index("WEEKLY"), out.index("Not yet priced"))
+        self.assertLess(out.index("WEEKLY"), out.index("Not shown"))
         self.assertEqual(wf.insert_section(body, ""), body)
+
+    def test_a_body_with_no_footnote_still_gets_the_sections(self):
+        body = '<div>cards</div></div>'
+        out = wf.insert_section(body, "<p>WEEKLY</p>")
+        self.assertLess(out.index("cards"), out.index("WEEKLY"))
+        self.assertTrue(out.endswith("</div>"))
 
 
 class DispatchNeverEmailsUnlessAskedTests(unittest.TestCase):

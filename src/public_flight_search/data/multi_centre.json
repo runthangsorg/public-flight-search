@@ -11,6 +11,7 @@
   "itineraries": [
     {
       "id": "MC-01",
+      "region": "asia",
       "title": "Bali 7 nights + Lombok 7 nights",
       "season": "summer",
       "stops": [
@@ -66,6 +67,7 @@
     },
     {
       "id": "MC-05",
+      "region": "asia",
       "title": "Da Nang 7 nights + Hoi An 6 nights",
       "season": "summer",
       "stops": [
@@ -108,6 +110,7 @@
     },
     {
       "id": "MC-07",
+      "region": "asia",
       "title": "Tokyo 5 nights + Okinawa 7 nights",
       "season": "summer",
       "stops": [
@@ -163,6 +166,7 @@
     },
     {
       "id": "MC-11",
+      "region": "middle_east",
       "title": "Muscat 4 nights + Abu Dhabi or Dubai 4 nights",
       "season": "winter",
       "stops": [
@@ -218,6 +222,7 @@
     },
     {
       "id": "MC-12",
+      "region": "africa",
       "title": "Zanzibar 5 nights + Muscat 3 nights",
       "season": "winter",
       "stops": [

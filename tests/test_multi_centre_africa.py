@@ -96,7 +96,10 @@ class ShippedAfricaTests(unittest.TestCase):
 
     def _africa(self):
         payload = json.loads(DATA.read_text(encoding="utf-8"))
-        return [i for i in payload["itineraries"] if i.get("region") == "africa"]
+        # The summer catalogue's Africa group: MC-12 carries a region since 15 Nov 2026 (the digest buckets
+        # by it), and it is a winter trip with no kind and no source list, which this test is not about.
+        return [i for i in payload["itineraries"]
+                if i.get("region") == "africa" and i.get("season") == "summer"]
 
     def test_every_africa_trip_has_named_lodges_and_a_source(self):
         for item in self._africa():

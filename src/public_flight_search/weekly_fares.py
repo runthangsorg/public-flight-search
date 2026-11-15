@@ -361,10 +361,14 @@ def render_section_text(weekly: Optional[Mapping[str, Any]], business: Sequence[
 
 
 def insert_section(html: str, section: str) -> str:
-    """Put the weekly sections before "Not yet priced" when the body has it, else before the body's last </div>."""
+    """Put the weekly sections before the body's "Not shown" footnote, else before its last </div>.
+
+    The digest's foot is headed "Not shown" since 15 Nov 2026 (it was "Not yet priced"); the weekly fares
+    belong above that footnote and below every card, and a body with no footnote at all still gets them.
+    """
     if not section:
         return html
-    marker = html.find(">Not yet priced</div>")
+    marker = html.find(">Not shown</div>")
     if marker != -1:
         start = html.rfind("<div", 0, marker)
         if start != -1:
