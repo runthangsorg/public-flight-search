@@ -459,3 +459,115 @@ def test_a_stop_naming_several_properties_without_nights_is_never_priced_from_on
     with mock.patch.object(tt, "_rate_for", return_value=rate):
         (only,) = tt._stop_stays(stay, {"k": 1})
     assert not only.priced and only.nights == 6 and "not itemised" in only.reason
+
+
+def _multi_property_stay(*, lodging="", nights=6):
+    """A stop naming two properties with no nights against each, as `lodging` says it shares them."""
+    from types import SimpleNamespace as NS
+    lodges = [NS(lodge=NS(name=name, url="", area=""), check_in="", check_out="", nights=0)
+              for name in ("SYNTHETIC City Hotel", "SYNTHETIC Bush Camp")]
+    return NS(stop=NS(place="SYNTHETIC Park (city and bush)", lodging=lodging), lodges=lodges,
+              check_in="2027-06-27", check_out="2027-07-03", nights=nights)
+
+
+def _fake_rate(price):
+    from types import SimpleNamespace as NS
+    return NS(price_gbp=price, units=(), board="BB", source_url="https://example.org/SYNTHETIC-rate",
+              observed_at="2026-11-14T09:00:00+00:00", booking_shape="single_unit", unit_guests=(5,),
+              derived_total=False)
+
+
+class SeveralPropertiesTests(unittest.TestCase):
+    """Brief K (14 Nov 2026): a stop naming several properties says which case it is, and only
+    ALTERNATIVES are priced for the whole stop. Nothing is read from the wording."""
+
+    def _priced_by(self, prices):
+        from unittest import mock
+        return mock.patch.object(tt, "_rate_for",
+                                 side_effect=lambda *args, **kwargs: (_fake_rate(prices[args[1]])
+                                                                     if args[1] in prices else None))
+
+    def test_alternatives_price_the_whole_stop_from_the_cheapest_read(self):
+        stay = _multi_property_stay(lodging="alternatives")
+        with self._priced_by({"SYNTHETIC City Hotel": 900.0, "SYNTHETIC Bush Camp": 1_400.0}):
+            (only,) = tt._stop_stays(stay, {"k": 1})
+        self.assertTrue(only.priced)
+        self.assertEqual(only.total_gbp, 900.0)
+        self.assertEqual(only.nights, 6, "each alternative holds the WHOLE stop")
+        self.assertEqual((only.check_in, only.check_out), ("2027-06-27", "2027-07-03"))
+        self.assertEqual(only.property_name, "SYNTHETIC City Hotel")
+        self.assertEqual(only.one_of, ("SYNTHETIC City Hotel", "SYNTHETIC Bush Camp"))
+        self.assertEqual(hd._stay_name(only),
+                         "SYNTHETIC City Hotel (one of: SYNTHETIC City Hotel or SYNTHETIC Bush Camp)")
+
+    def test_alternatives_with_no_read_are_unpriced_and_name_both(self):
+        stay = _multi_property_stay(lodging="alternatives")
+        with self._priced_by({}):
+            (only,) = tt._stop_stays(stay, {"k": 1})
+        self.assertFalse(only.priced)
+        self.assertEqual(only.reason, "no dated rate read")
+        self.assertEqual(only.property_name, "SYNTHETIC City Hotel or SYNTHETIC Bush Camp")
+        self.assertEqual(only.nights, 6)
+
+    def test_a_sequence_is_unpriced_whatever_was_read(self):
+        from unittest import mock
+        stay = _multi_property_stay(lodging="sequence")
+        with mock.patch.object(tt, "_rate_for", side_effect=AssertionError("a sequence is never priced")):
+            (only,) = tt._stop_stays(stay, {"k": 1})
+        self.assertFalse(only.priced)
+        self.assertEqual(only.reason, "the nights at each property are not itemised")
+        self.assertEqual(only.property_name, "SYNTHETIC City Hotel, then SYNTHETIC Bush Camp")
+
+    def test_an_unflagged_stop_keeps_todays_wording_and_is_never_priced(self):
+        from unittest import mock
+        stay = _multi_property_stay()
+        with mock.patch.object(tt, "_rate_for", side_effect=AssertionError("an unstated stop is never priced")):
+            (only,) = tt._stop_stays(stay, {"k": 1})
+        self.assertFalse(only.priced)
+        self.assertEqual(only.reason, "nights not itemised between these properties")
+        self.assertEqual(only.property_name, "SYNTHETIC City Hotel or SYNTHETIC Bush Camp")
+
+    def test_a_sequence_says_so_in_the_still_to_price_clause(self):
+        from types import SimpleNamespace as NS
+        stay = tt.StayPrice(place="SYNTHETIC Park", property_name="SYNTHETIC City Hotel, then SYNTHETIC Bush Camp",
+                            check_in="2027-06-27", check_out="2027-07-03", nights=6,
+                            reason="the nights at each property are not itemised", lodging="sequence")
+        card = NS(stays=(stay,), areas={})
+        self.assertEqual(hd._open_nights_words(card),
+                         "SYNTHETIC Park 6n (SYNTHETIC City Hotel, then SYNTHETIC Bush Camp; "
+                         "nights at each not itemised)")
+
+    def test_stay_wanted_asks_for_alternatives_and_single_properties_only(self):
+        from public_flight_search.multi_centre import load_multi_centre
+        stops = [
+            {"place": "SYNTHETIC Alt Park", "nights": 4, "airport": "NBO", "hotel": "SYNTHETIC A or SYNTHETIC B",
+             "lodging": "alternatives",
+             "lodges": [{"name": "SYNTHETIC Alt Lodge", "area": "SYNTHETIC Alt Park"},
+                        {"name": "SYNTHETIC Alt Villa", "area": "SYNTHETIC Alt Park"}]},
+            {"place": "SYNTHETIC Seq Park", "nights": 6, "airport": "MBA", "hotel": "SYNTHETIC C then SYNTHETIC D",
+             "lodging": "sequence",
+             "lodges": [{"name": "SYNTHETIC Seq Lodge", "area": "SYNTHETIC Seq Park"},
+                        {"name": "SYNTHETIC Seq Camp", "area": "SYNTHETIC Seq Park"}]},
+            {"place": "SYNTHETIC Quiet Park", "nights": 3, "airport": "ZNZ", "hotel": "SYNTHETIC E, SYNTHETIC F",
+             "lodges": [{"name": "SYNTHETIC Quiet Lodge", "area": "SYNTHETIC Quiet Park"},
+                        {"name": "SYNTHETIC Quiet Camp", "area": "SYNTHETIC Quiet Park"}]},
+            {"place": "SYNTHETIC Solo Park", "nights": 2, "airport": "MCT", "hotel": "SYNTHETIC Solo Hotel",
+             "lodges": [{"name": "SYNTHETIC Solo Hotel", "area": "SYNTHETIC Solo Park"}]},
+        ]
+        trip = {"id": "SYN-1", "season": "summer", "title": "SYNTHETIC parks", "stops": stops,
+                "legs": [["LHR", "NBO"], ["NBO", "MBA"], ["MBA", "ZNZ"], ["ZNZ", "MCT"], ["MCT", "LHR"]],
+                "cost_low_gbp": 1000, "cost_high_gbp": 2000, "cost_basis": "estimate"}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "mc.json"
+            path.write_text(json.dumps({"schema": "multi_centre/1", "itineraries": [trip]}), encoding="utf-8")
+            (loaded,) = load_multi_centre(path=path, season="summer")
+        doc = tt.stay_wanted(_config(), [{"trip": loaded, "outbound": "2027-06-27", "return": "2027-07-20"}])
+        listed = [(s["property_name"], s["check_in"], s["check_out"]) for s in doc["stays"]]
+        self.assertIn(("SYNTHETIC Alt Lodge", "2027-06-27", "2027-07-01"), listed)
+        self.assertIn(("SYNTHETIC Alt Villa", "2027-06-27", "2027-07-01"), listed)
+        names = {name for name, _, _ in listed}
+        self.assertEqual(names & {"SYNTHETIC Seq Lodge", "SYNTHETIC Seq Camp", "SYNTHETIC Quiet Lodge",
+                                  "SYNTHETIC Quiet Camp"}, set(),
+                         "a sequence or an unstated stop is not asked for: a whole-stop read at one of them is "
+                         "a read nobody can use")
+        self.assertIn("SYNTHETIC Solo Hotel", names, "a single property is still asked for the whole stop")

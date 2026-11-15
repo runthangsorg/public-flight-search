@@ -694,9 +694,20 @@ def _per_night_words(stay: StayPrice) -> str:
     return _gbp(float(stay.total_gbp) / stay.nights)
 
 
+def _stay_name(s: StayPrice) -> str:
+    """The property as a line names it, and whether it was one of several.
+
+    A stop whose catalogue entry says its several properties are ALTERNATIVES for the whole stop is
+    priced from whichever of them has a read, and the line has to say so: "Angama Mara (one of:
+    Angama Mara or Mara Serena Safari Lodge)". Nothing is added for a stop naming one property.
+    """
+    name = s.property_name or "hotel not chosen yet"
+    return f"{name} (one of: {' or '.join(s.one_of)})" if s.one_of else name
+
+
 def _stay_row(s: StayPrice) -> str:
     when = f"{_day(s.check_in)} – {_day(s.check_out)}"
-    name = _a(s.property_url, s.property_name) if s.property_name else _e("hotel not chosen yet")
+    name = _a(s.property_url, _stay_name(s)) if s.property_name else _e("hotel not chosen yet")
     head = _dot_join([f"<b>{_nb(when)}</b>", _nb(f"{s.nights} night{'s' if s.nights != 1 else ''}"),
                       _e(s.place)])
     left = f"{head}<br>{name}"
@@ -926,16 +937,22 @@ def _open_nights_words(c: Card, *, name_property: bool = True) -> str:
     # A lodge's own area is the place to name it under; the stop's place is only the fallback, because
     # it is often a sentence or a joined pair ("Arusha + central Serengeti") naming no one place.
     areas = dict(c.areas)
-    groups: dict[tuple[str, str], list[int]] = {}
+    groups: dict[tuple[str, str], list[StayPrice]] = {}
     for stay in c.stays:
         if stay.priced:
             continue
         place = areas.get(stay.property_name) or stay.place
-        groups.setdefault((place, stay.property_name if name_property else ""), []).append(stay.nights)
+        groups.setdefault((place, stay.property_name if name_property else ""), []).append(stay)
     out = []
-    for (place, name), nights in groups.items():
-        count = " + ".join(f"{nights_}" + "n" for nights_ in nights)
-        out.append(f"{place} {count}" + (f" ({name})" if name else ""))
+    for (place, name), stays in groups.items():
+        count = " + ".join(f"{stay.nights}" + "n" for stay in stays)
+        # A stop the catalogue calls a SEQUENCE names its properties in order and says the nights at
+        # each are not itemised: "Nairobi 6n (Argyle Grand Hotel Nairobi, then Enkorok Mara Camp;
+        # nights at each not itemised)". Its name is already the "A, then B" join.
+        detail = name
+        if name and all(getattr(stay, "lodging", "") == "sequence" for stay in stays):
+            detail = f"{name}; nights at each not itemised"
+        out.append(f"{place} {count}" + (f" ({detail})" if detail else ""))
     return "; ".join(out)
 
 
@@ -974,7 +991,7 @@ def _compact_stay_line(s: StayPrice) -> str:
     parts += [_e(fact) for fact in _stay_facts(s, derived=False)]
     parts += [_seller_link(s), _nb(f"read {_read_day(s.observed_at)}")]
     return (f'<div style="{_SMALL} {_LINE_MARGIN}">'
-            + _dot_join(["<b>" + _e(s.property_name or "hotel not chosen yet") + "</b>"] + parts) + "</div>")
+            + _dot_join(["<b>" + _e(_stay_name(s)) + "</b>"] + parts) + "</div>")
 
 
 def _still_to_price_html(c: Card) -> str:
@@ -1190,7 +1207,7 @@ def render_digest_html(config: Any, digest: Digest, *, generated_at: str, attach
 
 def _stay_text(s: StayPrice) -> str:
     when = f"{_day(s.check_in)} – {_day(s.check_out)}"
-    name = s.property_name or "hotel not chosen yet"
+    name = _stay_name(s)
     if not s.priced:
         return f"    {when} · {s.nights}n · {s.place}: {name}: not priced ({s.reason or 'no read'})"
     seller = "the hotel's own rate" if _seller_is_property(s) else (s.seller or "seller")
@@ -1233,7 +1250,7 @@ def _stays_row_text(c: Card) -> list[str]:
         parts += _stay_facts(s, derived=False)
         parts += ["the hotel's own rate" if _seller_is_property(s) else (s.seller or "seller"),
                   f"read {_read_day(s.observed_at)}"]
-        lines.append(f"      {s.property_name or 'hotel not chosen yet'} · " + " · ".join(parts))
+        lines.append(f"      {_stay_name(s)} · " + " · ".join(parts))
     open_nights = _open_nights_words(c)
     if open_nights:
         lines.append(f"    Still to price: {open_nights}")

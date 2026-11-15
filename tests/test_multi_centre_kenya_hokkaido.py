@@ -8,7 +8,9 @@ itinerary in that file.
 
 from __future__ import annotations
 
+import json
 import re
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from public_flight_search import holidays as hol
 from public_flight_search.holiday_email import multi_centre_wanted
 from public_flight_search.multi_centre import (
     DEFAULT_MULTI_CENTRE_PATH,
+    consume_multi_centre_skip_log,
     load_multi_centre,
 )
 
@@ -102,6 +105,56 @@ class WantedRowsTests(unittest.TestCase):
                 self.assertIsNotNone(day)
                 self.assertGreaterEqual(day, WINDOW_START)
                 self.assertLessEqual(day, WINDOW_END)
+
+
+class LodgingFlagTests(unittest.TestCase):
+    """Brief K (14 Nov 2026): a stop naming several properties says whether they are ALTERNATIVES for the
+    whole stop or a SEQUENCE of properties, and the loader refuses any other word rather than guessing."""
+
+    @staticmethod
+    def _trip(lodging):
+        stop = {"place": "SYNTHETIC Park", "nights": 6, "airport": "NBO", "hotel": "SYNTHETIC City Hotel, SYNTHETIC Bush Camp",
+                "lodges": [{"name": "SYNTHETIC City Hotel", "area": "SYNTHETIC City"},
+                           {"name": "SYNTHETIC Bush Camp", "area": "SYNTHETIC Park"}]}
+        if lodging is not None:
+            stop["lodging"] = lodging
+        return {"id": "SYN-1", "season": "summer", "title": "SYNTHETIC Park 6 nights + SYNTHETIC Beach 5 nights",
+                "stops": [stop, {"place": "SYNTHETIC Beach", "nights": 5, "airport": "MBA",
+                                 "hotel": "SYNTHETIC Reef Resort",
+                                 "lodges": [{"name": "SYNTHETIC Reef Resort", "nights": 5}]}],
+                "legs": [["LHR", "NBO"], ["NBO", "MBA"], ["MBA", "LHR"]],
+                "cost_low_gbp": 1000, "cost_high_gbp": 2000, "cost_basis": "estimate"}
+
+    def _load(self, lodging):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "mc.json"
+            path.write_text(json.dumps({"schema": "multi_centre/1", "itineraries": [self._trip(lodging)]}),
+                            encoding="utf-8")
+            trips = load_multi_centre(path=path, season="summer")
+        return trips, consume_multi_centre_skip_log()
+
+    def test_both_words_load_and_are_kept_on_the_stop(self):
+        for lodging in ("alternatives", "sequence"):
+            trips, skips = self._load(lodging)
+            self.assertEqual([t.id for t in trips], ["SYN-1"], skips)
+            self.assertEqual(trips[0].stops[0].lodging, lodging)
+            self.assertEqual(trips[0].stops[1].lodging, "", "a stop that says nothing keeps an empty flag")
+
+    def test_a_stop_with_no_flag_still_loads_with_an_empty_one(self):
+        trips, _ = self._load(None)
+        self.assertEqual(trips[0].stops[0].lodging, "")
+
+    def test_another_word_is_refused_with_an_error_naming_the_trip(self):
+        trips, skips = self._load("either")
+        self.assertEqual(trips, [], "a stop the catalogue states wrongly refuses its trip")
+        self.assertTrue(any("SYN-1" in line and "lodging" in line and "either" in line for line in skips), skips)
+
+    def test_the_shipped_kenya_and_africa_stops_carry_the_flags(self):
+        trips = {t.id: t for t in load_multi_centre(path=DEFAULT_MULTI_CENTRE_PATH, season="summer")}
+        self.assertEqual([s.lodging for s in trips["KE-01"].stops], ["alternatives", "alternatives"])
+        africa = {s.place: s.lodging for s in trips["AF-03"].stops}
+        self.assertEqual(africa["Nairobi, Masai Mara, Naivasha, Amboseli"], "sequence")
+        self.assertEqual(africa["Zanzibar"], "", "a stop whose one property holds its nights needs no flag")
 
 
 def _parse_date(value):

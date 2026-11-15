@@ -431,6 +431,7 @@
           "airport": "NBO",
           "hotel": "Argyle Grand Hotel Nairobi, Enkorok Mara Camp (full board, park fees in); Naivasha and Amboseli lodges not itemised",
           "basis": "operator guide price",
+          "lodging": "sequence",
           "lodges": [
             {
               "name": "Argyle Grand Hotel Nairobi",
@@ -1318,6 +1319,7 @@
           "airport": "NBO",
           "hotel": "Angama Mara, Mara Serena Safari Lodge — two rooms for 5 (no dated rate read)",
           "basis": "estimate",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "Angama Mara",
@@ -1338,6 +1340,7 @@
           "airport": "MBA",
           "hotel": "The Sands at Nomad, Almanara Luxury Villas — two rooms for 5 (no dated rate read)",
           "basis": "estimate",
+          "lodging": "alternatives",
           "lodges": [
             {
               "name": "The Sands at Nomad",

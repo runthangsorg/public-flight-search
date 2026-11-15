@@ -17,7 +17,7 @@ unpriced and the trip stays "partly priced".
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping, Optional, Sequence
 
 from . import hotel_evidence as hotel_evidence_module
@@ -57,8 +57,15 @@ class StayPrice:
     #: True when the figure is the page's nightly price times the nights rather than a stated stay total.
     derived_total: bool = False
     property_url: str = ""
-    #: Why no figure: "no property named", "nights not itemised", "no dated rate read".
+    #: Why no figure: "no property named", "nights not itemised between these properties",
+    #: "the nights at each property are not itemised", "no dated rate read".
     reason: str = ""
+    #: The stop's own statement of how its properties share it (``multi_centre``'s
+    #: ``lodging``): ``alternatives``, ``sequence``, or empty when it does not say.
+    lodging: str = ""
+    #: Every property of an ``alternatives`` stop, in catalogue order, when this figure is
+    #: one of them: the card then says "Angama Mara (one of: Angama Mara or Mara Serena)".
+    one_of: tuple[str, ...] = ()
 
     @property
     def priced(self) -> bool:
@@ -217,11 +224,36 @@ def _stop_stays(stay: Any, hotel_rates: Optional[Mapping[Any, Any]],
                                  property_url=str(ls.lodge.url or ""), reason="no dated rate read"))
         return out
     if len(stay.lodges) > 1:
-        # Several properties and no nights against each: they may be alternatives or a sequence (a safari stop
-        # naming a city hotel and a camp). Pricing the whole stop from whichever has a rate put six nights of a
-        # safari in a city hotel (14 Nov 2026), so the stop stays open until the catalogue itemises it.
-        names = " or ".join(ls.lodge.name for ls in stay.lodges)
-        return [StayPrice(place=place, property_name=names, check_in=stay.check_in, check_out=stay.check_out,
+        # Several properties and no nights against each. Pricing the whole stop from whichever has a rate put six
+        # nights of a safari in a city hotel (14 Nov 2026), so only a stop the CATALOGUE states is priced at all,
+        # and nothing is read into the wording: `lodging` says which case it is.
+        names = [ls.lodge.name for ls in stay.lodges]
+        lodging = str(getattr(stay.stop, "lodging", "") or "")
+        if lodging == "alternatives":
+            # Each property is the WHOLE stop ("this lodge or that one"): price each for the stop's own nights and
+            # keep the cheapest read, which is the pre-14-Nov behaviour restored only under this flag.
+            choices = []
+            for ls in stay.lodges:
+                rate = _rate_for(hotel_rates, ls.lodge.name, stay.check_in, stay.check_out, room_only_rates,
+                                 three_room_rates)
+                if rate is not None:
+                    choices.append(replace(
+                        _priced(place, ls.lodge, stay.check_in, stay.check_out, stay.nights, rate),
+                        lodging="alternatives", one_of=tuple(names)))
+            if choices:
+                return [min(choices, key=lambda s: s.total_gbp)]
+            return [StayPrice(place=place, property_name=" or ".join(names), check_in=stay.check_in,
+                              check_out=stay.check_out, nights=stay.nights,
+                              property_url=str(stay.lodges[0].lodge.url or ""),
+                              reason="no dated rate read", lodging="alternatives")]
+        if lodging == "sequence":
+            # The nights run through the properties in order and nobody itemised them: no figure can price this
+            # stop, and asking for the whole stop at one property would ask for a read nobody can use.
+            return [StayPrice(place=place, property_name=", then ".join(names), check_in=stay.check_in,
+                              check_out=stay.check_out, nights=stay.nights,
+                              property_url=str(stay.lodges[0].lodge.url or ""),
+                              reason="the nights at each property are not itemised", lodging="sequence")]
+        return [StayPrice(place=place, property_name=" or ".join(names), check_in=stay.check_in, check_out=stay.check_out,
                           nights=stay.nights, property_url=str(stay.lodges[0].lodge.url or ""),
                           reason="nights not itemised between these properties")]
     # One property named for the whole stop.
@@ -311,12 +343,17 @@ def stay_wanted(config: Any, rows: Sequence[Mapping[str, Any]], *, watch: Sequen
             if stay.nights <= 0:
                 continue
             all_dated = all(ls.check_in and ls.check_out and ls.nights for ls in stay.lodges)
-            for ls in stay.lodges:
-                area = ls.lodge.area or _place(stay.stop)
-                if all_dated:
-                    add(ls.lodge.name, area, ls.check_in, ls.check_out, trip.id)
-                else:
-                    add(ls.lodge.name, area, stay.check_in, stay.check_out, trip.id)
+            # A stop whose properties hold no nights is asked for as the whole stop only when they are
+            # ALTERNATIVES for it or there is one property. A sequence's nights are not itemised, so a read for
+            # the whole stop at one of its properties is a read nobody can use, and it is not asked for.
+            whole_stop = bool(getattr(stay.stop, "lodging", "") == "alternatives" or len(stay.lodges) == 1)
+            if all_dated or whole_stop:
+                for ls in stay.lodges:
+                    area = ls.lodge.area or _place(stay.stop)
+                    if all_dated:
+                        add(ls.lodge.name, area, ls.check_in, ls.check_out, trip.id)
+                    else:
+                        add(ls.lodge.name, area, stay.check_in, stay.check_out, trip.id)
     if reference_pair:
         for entry in watch:
             add(str(entry.name), str(entry.area), reference_pair[0], reference_pair[1], "watchlist")

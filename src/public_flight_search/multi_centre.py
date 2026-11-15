@@ -63,6 +63,13 @@ PRICE_LABEL_DATED = "dated lines, still a range"
 #: what every Asian trip in the file already was.
 KINDS: frozenset[str] = frozenset({"self-build", "operator"})
 
+#: How a stop's several properties share it, when the source says so: ``alternatives``
+#: ("this lodge or that one, for the whole stop") or ``sequence`` (a city hotel, then
+#: the camp, then lodges nobody itemised). A stop with no ``lodging`` is unknown, and
+#: nothing is read into its wording: ``trip_totals._stop_stays`` leaves it unpriced.
+#: Absent, or empty, means the source did not say.
+LODGING: frozenset[str] = frozenset({"alternatives", "sequence"})
+
 
 @dataclass(frozen=True)
 class Lodge:
@@ -112,6 +119,10 @@ class MultiCentreStop:
     hotel: str
     basis: str
     lodges: tuple[Lodge, ...] = ()
+    #: ``alternatives`` or ``sequence`` when the source says how several properties
+    #: share this stop (see ``LODGING``); empty when it does not say. Ignored when every
+    #: property carries its own nights, because then the stop is already itemised.
+    lodging: str = ""
 
 
 @dataclass(frozen=True)
@@ -279,7 +290,11 @@ def _cost_lines(item: Any, ident: str, low: float, high: float) -> tuple[CostLin
     return tuple(lines)
 
 
-def _stop(item: Any) -> Optional[MultiCentreStop]:
+class _StopRefused(Exception):
+    """A stop the catalogue states wrongly: the trip is refused, and the skip log says why."""
+
+
+def _stop(item: Any, ident: str = "") -> Optional[MultiCentreStop]:
     if not isinstance(item, dict):
         return None
     place = str(item.get("place", "")).strip()
@@ -292,6 +307,14 @@ def _stop(item: Any) -> Optional[MultiCentreStop]:
         return None
     if nights <= 0:
         return None
+    # How several properties share the stop, as the catalogue states it. A typo here
+    # would price a safari stop from one city hotel, so an unreadable value refuses the
+    # trip (named by its id) rather than falling back to "unknown".
+    lodging = str(item.get("lodging", "") or "").strip().lower()
+    if lodging and lodging not in LODGING:
+        _warn_skip(ident or place,
+                   f"stop {place!r}: lodging {lodging!r} is not one of {sorted(LODGING)}; the trip is refused")
+        raise _StopRefused(place)
     lodges = tuple(l for l in (_lodge(raw) for raw in item.get("lodges", ()) or ()) if l)
     itemised = [l.nights for l in lodges if l.nights is not None]
     if sum(itemised) > nights:
@@ -306,6 +329,7 @@ def _stop(item: Any) -> Optional[MultiCentreStop]:
         hotel=str(item.get("hotel", "")).strip(),
         basis=str(item.get("basis", "")).strip(),
         lodges=lodges,
+        lodging=lodging,
     )
 
 
@@ -322,7 +346,10 @@ def _trip(item: Any) -> Optional[MultiCentreTrip]:
     if season not in SEASONS:
         _warn_skip(ident, f"unknown season {season!r}")
         return None
-    stops = tuple(s for s in (_stop(raw) for raw in item.get("stops", ()) or ()) if s)
+    try:
+        stops = tuple(s for s in (_stop(raw, ident) for raw in item.get("stops", ()) or ()) if s)
+    except _StopRefused:
+        return None
     if not stops:
         _warn_skip(ident, "no usable stop")
         return None
@@ -639,6 +666,7 @@ __all__ = [
     "MultiCentreTrip",
     "CostLine",
     "KINDS",
+    "LODGING",
     "Lodge",
     "LodgeStay",
     "PRICE_LABEL",
