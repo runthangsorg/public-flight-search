@@ -1155,6 +1155,10 @@
         ],
         [
           "MBA",
+          "NBO"
+        ],
+        [
+          "NBO",
           "DOH"
         ],
         [
@@ -1181,20 +1185,20 @@
       "kind": "self-build",
       "season": "summer",
       "operator_ref": "",
-      "title": "Doha 2 nights + Zanzibar 10 nights + Doha 1 night",
+      "title": "Dubai 2 nights + Zanzibar 10 nights + Dubai 1 night",
       "stops": [
         {
-          "place": "Doha",
+          "place": "Dubai",
           "nights": 2,
-          "airport": "DOH",
+          "airport": "DXB",
           "hotel": "",
           "basis": "",
           "lodges": [
             {
-              "name": "Souq Waqif Boutique Hotels by Tivoli",
-              "nights": 2,
-              "area": "Doha",
-              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+              "name": "Al Seef Heritage Hotel Dubai, Curio Collection by Hilton",
+              "area": "Dubai Creek",
+              "url": "https://www.hilton.com/en/hotels/dxbacqq-al-seef-heritage-hotel-dubai/",
+              "nights": 2
             }
           ]
         },
@@ -1220,17 +1224,17 @@
           ]
         },
         {
-          "place": "Doha",
+          "place": "Dubai",
           "nights": 1,
-          "airport": "DOH",
+          "airport": "DXB",
           "hotel": "",
           "basis": "",
           "lodges": [
             {
-              "name": "Souq Waqif Boutique Hotels by Tivoli",
-              "nights": 1,
-              "area": "Doha",
-              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+              "name": "Al Seef Heritage Hotel Dubai, Curio Collection by Hilton",
+              "area": "Dubai Creek",
+              "url": "https://www.hilton.com/en/hotels/dxbacqq-al-seef-heritage-hotel-dubai/",
+              "nights": 1
             }
           ]
         }
@@ -1238,28 +1242,28 @@
       "legs": [
         [
           "LHR",
-          "DOH"
+          "DXB"
         ],
         [
-          "DOH",
+          "DXB",
           "ZNZ"
         ],
         [
           "ZNZ",
-          "DOH"
+          "DXB"
         ],
         [
-          "DOH",
+          "DXB",
           "LHR"
         ]
       ],
       "flight_shape": "",
-      "why": "ten nights on Zanzibar's north-east coast either side of a night in Doha, every flight eight hours or less with a stopover each way",
+      "why": "ten nights on Zanzibar's north-east coast either side of a night in Dubai, every flight eight hours or less with a stopover each way",
       "catch": "a long road transfer from Zanzibar airport, and the stopover nights are in the city, not on the beach",
       "source_urls": [
-        "https://www.tivolihotels.com/en/souq-waqif-doha",
         "https://www.siyabona.com/pricing_blue-bay-beach-resort.html",
-        "https://oceanparadisezanzibar.com/"
+        "https://oceanparadisezanzibar.com/",
+        "https://www.hilton.com/en/hotels/dxbacqq-al-seef-heritage-hotel-dubai/"
       ]
     },
     {

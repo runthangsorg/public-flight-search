@@ -27,12 +27,12 @@ VARIANTS = {
     "LD-14": (
         "DOH",
         "Doha 2 nights + Masai Mara 4 nights + Diani 7 nights + Doha 1 night",
-        [["LHR", "DOH"], ["DOH", "NBO"], ["NBO", "MBA"], ["MBA", "DOH"], ["DOH", "LHR"]],
+        [["LHR", "DOH"], ["DOH", "NBO"], ["NBO", "MBA"], ["MBA", "NBO"], ["NBO", "DOH"], ["DOH", "LHR"]],
     ),
     "LD-15": (
-        "DOH",
-        "Doha 2 nights + Zanzibar 10 nights + Doha 1 night",
-        [["LHR", "DOH"], ["DOH", "ZNZ"], ["ZNZ", "DOH"], ["DOH", "LHR"]],
+        "DXB",
+        "Dubai 2 nights + Zanzibar 10 nights + Dubai 1 night",
+        [["LHR", "DXB"], ["DXB", "ZNZ"], ["ZNZ", "DXB"], ["DXB", "LHR"]],
     ),
     "LD-16": (
         "DXB",
