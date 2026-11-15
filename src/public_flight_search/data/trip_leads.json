@@ -598,6 +598,11 @@
               "name": "VOI Andilana Beach Resort",
               "area": "Andilana, Nosy Be",
               "url": "https://www.voihotels.com/en/resort/voi-andilana-beach"
+            },
+            {
+              "name": "VOI Amarina Resort",
+              "area": "Nosy Be",
+              "url": "https://www.voihotels.com/en/resort/voi-amarina"
             }
           ]
         },
@@ -633,7 +638,8 @@
       "source_urls": [
         "https://www.ravintsarahotel.com/",
         "https://www.constancehotels.com/en/hotels-resorts/tsarabanjina/",
-        "https://www.voihotels.com/en/resort/voi-andilana-beach"
+        "https://www.voihotels.com/en/resort/voi-andilana-beach",
+        "https://www.voihotels.com/en/resort/voi-amarina"
       ]
     },
     {
@@ -899,6 +905,11 @@
               "name": "Hattvika Lodge",
               "area": "Lofoten",
               "url": "https://hattvikalodge.no/"
+            },
+            {
+              "name": "Svinøya Rorbuer",
+              "area": "Svolvær, Lofoten",
+              "url": "https://www.svinoya.no/"
             }
           ]
         }
@@ -920,7 +931,8 @@
         "https://www.manshausen.no/",
         "https://nusfjord.com/",
         "https://sakrisoy.no/",
-        "https://hattvikalodge.no/"
+        "https://hattvikalodge.no/",
+        "https://www.svinoya.no/"
       ]
     }
   ]
