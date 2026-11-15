@@ -675,9 +675,9 @@
           "lodging": "alternatives",
           "lodges": [
             {
-              "name": "Museum Hotel Cappadocia",
+              "name": "Museum Hotel",
               "nights": 4,
-              "area": "Cappadocia",
+              "area": "Uchisar, Cappadocia",
               "url": "https://www.museumhotel.com.tr/en"
             },
             {
@@ -701,7 +701,7 @@
           "lodging": "alternatives",
           "lodges": [
             {
-              "name": "Perdue Hotel Faralya",
+              "name": "Perdue Hotel",
               "nights": 7,
               "area": "Faralya, Fethiye",
               "url": "https://perdue.com.tr/"
@@ -891,7 +891,7 @@
           "lodging": "alternatives",
           "lodges": [
             {
-              "name": "Nusfjord Arctic Resort",
+              "name": "Nusfjord Village & Resort",
               "nights": 7,
               "area": "Nusfjord, Lofoten",
               "url": "https://nusfjord.com/"
@@ -933,6 +933,542 @@
         "https://sakrisoy.no/",
         "https://hattvikalodge.no/",
         "https://www.svinoya.no/"
+      ]
+    },
+    {
+      "id": "LD-13",
+      "lead": true,
+      "region": "asia",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Doha 2 nights + Anuradhapura 4 nights + Trincomalee 4 nights + Kalkudah 4 nights + Doha 1 night",
+      "stops": [
+        {
+          "place": "Doha",
+          "nights": 2,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 2,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        },
+        {
+          "place": "Anuradhapura, Sri Lanka",
+          "nights": 4,
+          "airport": "CMB",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Uga Ulagalla",
+              "nights": 4,
+              "area": "Anuradhapura, Sri Lanka",
+              "url": "https://www.ugaresorts.com/ulagalla/"
+            }
+          ]
+        },
+        {
+          "place": "Trincomalee, Sri Lanka",
+          "nights": 4,
+          "airport": "CMB",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Jungle Beach by Uga",
+              "nights": 4,
+              "area": "Trincomalee, Sri Lanka",
+              "url": "https://www.ugaresorts.com/junglebeach/"
+            }
+          ]
+        },
+        {
+          "place": "Kalkudah, Sri Lanka",
+          "nights": 4,
+          "airport": "CMB",
+          "hotel": "",
+          "basis": "",
+          "lodging": "alternatives",
+          "lodges": [
+            {
+              "name": "Karpaha Sands",
+              "nights": 4,
+              "area": "Kalkudah, Sri Lanka",
+              "url": "https://www.karpahasands.com/"
+            },
+            {
+              "name": "Amaya Beach Pasikuda",
+              "area": "Pasikudah Bay",
+              "url": "https://amayaresorts.com/amayabeach"
+            }
+          ]
+        },
+        {
+          "place": "Doha",
+          "nights": 1,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 1,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "CMB"
+        ],
+        [
+          "CMB",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "Sri Lanka's cultural triangle and two east-coast beaches either side of a night in Doha, every flight eight hours or less with a stopover each way",
+      "catch": "the drives from Colombo to the cultural triangle and down the east coast take hours out of the beach days",
+      "source_urls": [
+        "https://www.tivolihotels.com/en/souq-waqif-doha",
+        "https://www.ugaresorts.com/ulagalla/",
+        "https://www.ugaresorts.com/junglebeach/",
+        "https://www.karpahasands.com/",
+        "https://amayaresorts.com/amayabeach"
+      ]
+    },
+    {
+      "id": "LD-14",
+      "lead": true,
+      "region": "africa",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Doha 2 nights + Masai Mara 4 nights + Diani 7 nights + Doha 1 night",
+      "stops": [
+        {
+          "place": "Doha",
+          "nights": 2,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 2,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        },
+        {
+          "place": "Masai Mara, Kenya",
+          "nights": 4,
+          "airport": "NBO",
+          "hotel": "",
+          "basis": "",
+          "lodging": "alternatives",
+          "lodges": [
+            {
+              "name": "Angama Mara",
+              "area": "Masai Mara",
+              "url": "https://angama.com/stay/angama-mara/"
+            },
+            {
+              "name": "Mara Serena Safari Lodge",
+              "area": "Masai Mara",
+              "url": "https://www.serenahotels.com/mara-serena"
+            }
+          ]
+        },
+        {
+          "place": "Diani Beach, Kenya",
+          "nights": 7,
+          "airport": "MBA",
+          "hotel": "",
+          "basis": "",
+          "lodging": "alternatives",
+          "lodges": [
+            {
+              "name": "The Sands at Nomad",
+              "area": "Diani Beach",
+              "url": "https://www.thesandsatnomad.com/"
+            },
+            {
+              "name": "Almanara Luxury Villas",
+              "area": "Diani Beach",
+              "url": "https://almanara-kenya.com/"
+            },
+            {
+              "name": "Swahili Beach Resort",
+              "area": "Diani Beach",
+              "url": "https://swahilibeach.com/"
+            }
+          ]
+        },
+        {
+          "place": "Doha",
+          "nights": 1,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 1,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "NBO"
+        ],
+        [
+          "NBO",
+          "MBA"
+        ],
+        [
+          "MBA",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "dry-season game viewing in the Mara and the Kenyan south coast either side of a night in Doha, every flight eight hours or less with a stopover each way",
+      "catch": "a light-aircraft hop into the Mara and a long road transfer to the coast, and the stopover nights are in the city, not on the beach",
+      "source_urls": [
+        "https://www.tivolihotels.com/en/souq-waqif-doha",
+        "https://angama.com/stay/angama-mara/",
+        "https://www.serenahotels.com/mara-serena",
+        "https://www.thesandsatnomad.com/",
+        "https://almanara-kenya.com/",
+        "https://swahilibeach.com/"
+      ]
+    },
+    {
+      "id": "LD-15",
+      "lead": true,
+      "region": "africa",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Doha 2 nights + Zanzibar 10 nights + Doha 1 night",
+      "stops": [
+        {
+          "place": "Doha",
+          "nights": 2,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 2,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        },
+        {
+          "place": "Zanzibar (Kiwengwa)",
+          "nights": 10,
+          "airport": "ZNZ",
+          "hotel": "",
+          "basis": "",
+          "lodging": "alternatives",
+          "lodges": [
+            {
+              "name": "Bluebay Beach Resort & Spa",
+              "nights": 10,
+              "area": "Kiwengwa, Zanzibar",
+              "url": "https://www.siyabona.com/pricing_blue-bay-beach-resort.html"
+            },
+            {
+              "name": "Ocean Paradise Resort",
+              "area": "Kiwengwa, Zanzibar",
+              "url": "https://oceanparadisezanzibar.com/"
+            }
+          ]
+        },
+        {
+          "place": "Doha",
+          "nights": 1,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 1,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "ZNZ"
+        ],
+        [
+          "ZNZ",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "ten nights on Zanzibar's north-east coast either side of a night in Doha, every flight eight hours or less with a stopover each way",
+      "catch": "a long road transfer from Zanzibar airport, and the stopover nights are in the city, not on the beach",
+      "source_urls": [
+        "https://www.tivolihotels.com/en/souq-waqif-doha",
+        "https://www.siyabona.com/pricing_blue-bay-beach-resort.html",
+        "https://oceanparadisezanzibar.com/"
+      ]
+    },
+    {
+      "id": "LD-16",
+      "lead": true,
+      "region": "indian_ocean",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Dubai 2 nights + Mauritius 9 nights + Dubai 1 night",
+      "stops": [
+        {
+          "place": "Dubai",
+          "nights": 2,
+          "airport": "DXB",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Al Seef Heritage Hotel Dubai, Curio Collection by Hilton",
+              "area": "Dubai Creek",
+              "url": "https://www.hilton.com/en/hotels/dxbacqq-al-seef-heritage-hotel-dubai/",
+              "nights": 2
+            }
+          ]
+        },
+        {
+          "place": "Mauritius",
+          "nights": 9,
+          "airport": "MRU",
+          "hotel": "",
+          "basis": "",
+          "lodging": "alternatives",
+          "lodges": [
+            {
+              "name": "Veranda Tamarin",
+              "nights": 9,
+              "area": "Tamarin, Mauritius",
+              "url": "https://veranda-resorts.com/en/mauritius-hotel-tamarin/"
+            },
+            {
+              "name": "Hotel 20 Degres Sud",
+              "area": "Grand Baie, Mauritius",
+              "url": "https://en.20degressud.com/"
+            }
+          ]
+        },
+        {
+          "place": "Dubai",
+          "nights": 1,
+          "airport": "DXB",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Al Seef Heritage Hotel Dubai, Curio Collection by Hilton",
+              "area": "Dubai Creek",
+              "url": "https://www.hilton.com/en/hotels/dxbacqq-al-seef-heritage-hotel-dubai/",
+              "nights": 1
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DXB"
+        ],
+        [
+          "DXB",
+          "MRU"
+        ],
+        [
+          "MRU",
+          "DXB"
+        ],
+        [
+          "DXB",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "nine nights on Mauritius either side of a night in Dubai, every flight eight hours or less with a stopover each way",
+      "catch": "the stopover nights are in the old city, not on a beach, and the flight to Mauritius lands late in the day",
+      "source_urls": [
+        "https://www.hilton.com/en/hotels/dxbacqq-al-seef-heritage-hotel-dubai/",
+        "https://veranda-resorts.com/en/mauritius-hotel-tamarin/",
+        "https://en.20degressud.com/"
+      ]
+    },
+    {
+      "id": "LD-17",
+      "lead": true,
+      "region": "asia",
+      "kind": "self-build",
+      "season": "summer",
+      "operator_ref": "",
+      "title": "Doha 2 nights + Kuala Lumpur 2 nights + Tanjong Jara 4 nights + Redang Island 6 nights + Doha 1 night",
+      "stops": [
+        {
+          "place": "Doha",
+          "nights": 2,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 2,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        },
+        {
+          "place": "Kuala Lumpur",
+          "nights": 2,
+          "airport": "KUL",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Mandarin Oriental, Kuala Lumpur",
+              "nights": 2,
+              "area": "Kuala Lumpur",
+              "url": "https://www.mandarinoriental.com/en/kuala-lumpur/petronas-towers"
+            }
+          ]
+        },
+        {
+          "place": "Tanjong Jara, Terengganu",
+          "nights": 4,
+          "airport": "TGG",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Tanjong Jara Resort",
+              "nights": 4,
+              "area": "Tanjong Jara, Terengganu",
+              "url": "https://www.tanjongjararesort.com/"
+            }
+          ]
+        },
+        {
+          "place": "Redang Island, Malaysia",
+          "nights": 6,
+          "airport": "TGG",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "The Taaras Beach & Spa Resort",
+              "nights": 6,
+              "area": "Redang Island, Malaysia",
+              "url": "https://www.thetaaras.com/"
+            }
+          ]
+        },
+        {
+          "place": "Doha",
+          "nights": 1,
+          "airport": "DOH",
+          "hotel": "",
+          "basis": "",
+          "lodges": [
+            {
+              "name": "Souq Waqif Boutique Hotels by Tivoli",
+              "nights": 1,
+              "area": "Doha",
+              "url": "https://www.tivolihotels.com/en/souq-waqif-doha"
+            }
+          ]
+        }
+      ],
+      "legs": [
+        [
+          "LHR",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "KUL"
+        ],
+        [
+          "KUL",
+          "TGG"
+        ],
+        [
+          "TGG",
+          "KUL"
+        ],
+        [
+          "KUL",
+          "DOH"
+        ],
+        [
+          "DOH",
+          "LHR"
+        ]
+      ],
+      "flight_shape": "",
+      "why": "a city stop, a dry-season east-coast resort and a marine-park island either side of a night in Doha, every flight eight hours or less with a stopover each way",
+      "catch": "five flights, and the return from Redang backtracks through Kuala Terengganu and Kuala Lumpur; the stopover nights are in the city, not on the beach",
+      "source_urls": [
+        "https://www.tivolihotels.com/en/souq-waqif-doha",
+        "https://www.mandarinoriental.com/en/kuala-lumpur/petronas-towers",
+        "https://www.tanjongjararesort.com/",
+        "https://www.thetaaras.com/"
       ]
     }
   ]
