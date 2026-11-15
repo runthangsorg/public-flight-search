@@ -1388,21 +1388,16 @@
       "title": "Hokkaido 5 nights + Okinawa 7 nights",
       "stops": [
         {
-          "place": "Niseko / Tomamu, Hokkaido",
+          "place": "Niseko, Hokkaido",
           "nights": 5,
           "airport": "CTS",
-          "hotel": "Park Hyatt Niseko Hanazono, Hoshino Resorts Tomamu — two rooms for 5 (no dated rate read)",
+          "hotel": "Park Hyatt Niseko Hanazono — two rooms for 5",
           "basis": "estimate",
           "lodges": [
             {
               "name": "Park Hyatt Niseko Hanazono",
-              "area": "Hokkaido",
+              "area": "Niseko, Hokkaido",
               "url": "https://www.hyatt.com/park-hyatt/en-US/ctsph-park-hyatt-niseko-hanazono"
-            },
-            {
-              "name": "Hoshino Resorts Tomamu",
-              "area": "Hokkaido",
-              "url": "https://www.hoshinoresorts.com/en/resortsandhotels/tomamu.html"
             }
           ]
         },
@@ -1442,7 +1437,7 @@
       "cost_high_gbp": 27000,
       "cost_basis": "all estimates: no dated rate or fare was read for these dates; range is a build, not a quote.",
       "why": "no tsuyu on Hokkaido; Okinawa is the warm beach",
-      "catch": "nothing is priced; July is typhoon season on Okinawa",
+      "catch": "July is typhoon season on Okinawa",
       "confidence": "estimate",
       "source_urls": [
         "https://www.hyatt.com/park-hyatt/en-US/ctsph-park-hyatt-niseko-hanazono",

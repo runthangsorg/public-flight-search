@@ -974,7 +974,7 @@ def _compact_stay_line(s: StayPrice) -> str:
     parts += [_e(fact) for fact in _stay_facts(s, derived=False)]
     parts += [_seller_link(s), _nb(f"read {_read_day(s.observed_at)}")]
     return (f'<div style="{_SMALL} {_LINE_MARGIN}">'
-            + _dot_join([_a(s.source_url, s.property_name or "hotel not chosen yet")] + parts) + "</div>")
+            + _dot_join(["<b>" + _e(s.property_name or "hotel not chosen yet") + "</b>"] + parts) + "</div>")
 
 
 def _still_to_price_html(c: Card) -> str:
@@ -1021,7 +1021,7 @@ def _watch_rows_html(cards: Sequence[Card]) -> str:
                         for fact in c.facts)
         tag = f' {_chip(c.halal, _GOOD_BG, _GOOD_INK)}' if c.halal else ""
         rows.append(
-            f'<tr data-kind="row-stay"><td style="{_ROW_CELL}"><b>{_a(stay.source_url, c.title)}</b>{tag}'
+            f'<tr data-kind="row-stay"><td style="{_ROW_CELL}"><b>{_e(c.title)}</b>{tag}'
             f'<div style="{_SMALL} {_LINE_MARGIN}">' + _dot_join(detail) + '</div>'
             f'{facts}</td>'
             f'<td style="{_ROW_FIGURE}"><b>{_gbp(c.total_gbp)}</b>'

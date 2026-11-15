@@ -444,7 +444,7 @@ class RenderedBodyDefectsTests(unittest.TestCase):
         self.assertNotIn("&lt;a", html, "the anchor tag was escaped a second time")
         self.assertNotIn("&amp;amp;", html)
         self.assertNotIn("&y=2", html.replace("&amp;y=2", ""))
-        self.assertEqual(html.count('href="' + hd._e(url) + '"'), 2, "the title link and the seller link")
+        self.assertEqual(html.count('href="' + hd._e(url) + '"'), 1, "the seller link is the one source link")
         self.assertIn("table-layout:fixed", html)
         self.assertIn("overflow-wrap:break-word", html)  # breaks a long URL, never an ordinary word
         self.assertIn("width:120px", html, "wide enough at 390 px for the two-line figure label")
