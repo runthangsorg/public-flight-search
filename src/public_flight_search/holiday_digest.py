@@ -183,6 +183,35 @@ def _region_name(value: Any) -> str:
     return REGION_NAMES.get(str(value or "").strip().lower(), "Other")
 
 
+#: Place words a package's destination key or a watch-list area carries, and the section each belongs in. A
+#: package has no catalogue ``region``: its destination is all it says, so the section is read from that.
+_PLACE_REGIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Europe", ("antalya", "turkey", "bodrum", "dalaman", "istanbul", "spain", "tenerife", "lanzarote", "canar",
+                "majorca", "mallorca", "greece", "crete", "rhodes", "cyprus", "paphos", "italy", "sardinia",
+                "portugal", "algarve", "madeira", "switzerland", "norway", "croatia", "malta")),
+    ("Middle East", ("dubai", "abu dhabi", "ras al", "oman", "muscat", "salalah", "qatar", "doha", "jordan")),
+    ("Indian Ocean", ("maldives", "mauritius", "seychelles", "atoll")),
+    ("Africa", ("zanzibar", "kenya", "tanzania", "south africa", "cape town", "morocco", "marrakech", "agadir",
+                "egypt", "sharm", "hurghada", "gambia", "cape verde", "madagascar")),
+    ("Asia", ("bali", "lombok", "gili", "indonesia", "thailand", "phuket", "samui", "khao lak", "krabi",
+              "malaysia", "langkawi", "vietnam", "sri lanka", "japan", "okinawa", "singapore")),
+    ("Americas", ("mexico", "cancun", "tulum", "riviera maya", "caribbean", "barbados", "antigua", "jamaica",
+                  "st lucia", "dominican", "punta cana", "cuba", "florida", "orlando")),
+)
+
+
+def _place_region(text: Any) -> str:
+    """The section for a destination key or an area ("antalya", "Gili Trawangan"); "Other" when no word is known."""
+    words = re.sub(r"[^a-z]+", " ", str(text or "").lower())
+    named = _region_name(text)
+    if named != "Other":
+        return named
+    for region, places in _PLACE_REGIONS:
+        if any(place in words for place in places):
+            return region
+    return "Other"
+
+
 def _region_id(name: str) -> str:
     """The in-page anchor for a section: ``#region-indian-ocean``."""
     return "region-" + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
@@ -224,7 +253,7 @@ def _package_card(price: PackagePrice, budget: float, travellers: int) -> Option
         shop=price.operator, url=price.source_url, read_on=_read_day(price.observed_at),
         flights=(price.flight_summary or f"flights included, {cabin.lower() or 'economy'}"),
         hotel=f"{price.property_name}, {price.board}", facts=tuple(facts), halal=fact.tag if fact else "",
-        budget=budget, travellers=travellers, region=_region_name(price.destination_key))
+        budget=budget, travellers=travellers, region=_place_region(price.destination_key))
 
 
 def _short_area(area: Any) -> str:
@@ -424,7 +453,7 @@ def _watch_card(entry: Any, pair: Optional[tuple[str, str]], hotel_rates: Option
                 shop=stay.seller, url=stay.source_url, read_on=_read_day(stay.observed_at), flights="",
                 hotel=stay.unit, facts=tuple(facts), halal=entry.halal.tag if getattr(entry, "halal", None) else "",
                 stays=(stay,), stays_gbp=float(rate.price_gbp), nights_priced=nights, nights_planned=nights,
-                travellers=travellers, region=_region_name(getattr(entry, "area", "")))
+                travellers=travellers, region=_place_region(getattr(entry, "area", "")))
 
 
 def _stays_only_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]],
@@ -544,7 +573,7 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
             refused[price.property_name] = cabin_module_reason()
             not_priced.append(price.property_name)
             pending.append(Pending(price.property_name, "package read in economy with a leg over 8 hours; needs a business read",
-                                   str(price.source_url or ""), region=_region_name(price.destination_key),
+                                   str(price.source_url or ""), region=_place_region(price.destination_key),
                                    nights=int(getattr(price, "nights", 0) or 0)))
         else:
             cards.append(card)

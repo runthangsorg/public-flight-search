@@ -1006,3 +1006,14 @@ class RegionBucketsAndFootnoteTests(unittest.TestCase):
         # 30 such cards from 199 KB to this; what is left is the facts and one style per element. The bound
         # below is the measured one, and 30 fully detailed cards do not fit in 90 KB.
         self.assertLess(len(html.encode("utf-8")), 115_000)
+
+
+def test_a_package_or_watch_place_is_filed_under_its_region_not_other():
+    from public_flight_search import holiday_digest as hd
+
+    assert hd._place_region("antalya") == "Europe"
+    assert hd._place_region("riviera_maya") == "Americas"
+    assert hd._place_region("Gili Trawangan") == "Asia"
+    assert hd._place_region("Dhaalu Atoll, Maldives") == "Indian Ocean"
+    assert hd._place_region("asia") == "Asia"
+    assert hd._place_region("somewhere unheard of") == "Other"
