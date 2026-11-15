@@ -24,9 +24,19 @@ from public_flight_search import holidays as hol
 from public_flight_search.jobs import run_holiday_planner
 
 from test_full_detail_attachment import SMTP_ENV, _sent_message
-from test_holiday_email_compact import JULY, _config, visible_text
+from test_holiday_email_compact import JULY, _config as _layout_config, visible_text
 from test_price_says_what_it_covers import BUILD, PACKAGE, deal_read, load
 from test_trip_totals import _hotel_rates, _plan_lodges, _rate
+
+
+def _config(**overrides):
+    """The layout helper next door, with the £25,000 ceiling brief M shipped in the example config.
+
+    The compact tests clear it because they want a page for every trip; these two files are where the ceiling's
+    own wording is pinned, so it is put back unless a test asks otherwise (``max_total_gbp=None``).
+    """
+    overrides.setdefault("max_total_gbp", 25_000.0)
+    return _layout_config(**overrides)
 
 NOW = "2026-11-08T20:00:00+00:00"
 
@@ -126,17 +136,23 @@ class NothingEstimatedTests(unittest.TestCase):
     def test_the_body_has_no_catalogue_estimate_range_or_no_reads_boilerplate(self):
         digest = _build(packages=[_package()], reads=[deal_read(BUILD, "MIXED", 8_000)])
         for part in (_html(digest), _text(digest)):
-            for banned in ("estimate", "from £", "no reads loaded", "range", "Winelands", "catalogue", "–£"):
+            # "from £" is the summary's own "from £X (<title>) to £Y" since 15 Nov 2026; every other
+            # catalogue word below still has no place in the body.
+            for banned in ("estimate", "no reads loaded", "range", "Winelands", "catalogue", "–£"):
                 self.assertNotIn(banned, part, banned)
 
     def test_the_watchlist_is_names_only_and_ends_the_email(self):
+        """15 Nov 2026: an unpriced watch stay is a name in the notes, with no figure and no link."""
         digest = _build()
         for name in ("Vila Ombak", "Angsana Velavaru"):
             self.assertIn(name, digest.not_priced)
         html = _html(digest)
         self.assertEqual(html.count("Not yet priced"), 1)
-        self.assertLess(html.index("Vila Ombak"), len(html))
-        self.assertIn("seaplane", html)
+        notes = html[html.index(">Not yet priced</div>"):]
+        for name in ("Vila Ombak", "Angsana Velavaru"):
+            self.assertIn(hd._e(name), notes)
+        self.assertNotIn("£", notes)
+        self.assertNotIn("<a ", notes)
 
     def test_the_body_stays_under_ninety_kilobytes_and_dark_text_on_light(self):
         digest = _build(packages=[_package(name=f"Resort {i}", total=5_000.0 + i) for i in range(40)])
@@ -195,23 +211,24 @@ class NotYetPricedRenderingTests(unittest.TestCase):
     def test_the_html_keeps_its_section_marker(self):
         self.assertIn(">Not yet priced</div>", _html(self.digest))
 
-    def test_the_reason_is_one_bold_line_and_each_trip_has_its_own_line(self):
+    def test_each_unread_trip_is_named_once_in_its_regions_note_line(self):
+        """15 Nov 2026: the body's note is one line per region of names and what is missing, no reasons."""
         html = _html(self.digest)
         self.assertGreater(len(self.trips), 6, "the July run has many unread trips")
-        reason = self.trips[0].reason
-        self.assertEqual(html.count(f"<b style=\"color:#334155;\">{reason}</b>"), 1,
-                         "the shared reason is stated once, not once per trip")
-        lines = re.findall(r'<div style="margin:3px 0 0; font-size:13px;">.*?</div>', html)
         for p in self.trips:
-            self.assertEqual(sum(1 for line in lines if hd._e(p.name) in line), 1, p.name)
+            self.assertEqual(html.count(hd._e(p.name)), 1, p.name)
+        notes = html[html.index(">Not yet priced</div>"):]
+        self.assertNotIn("£", notes)
+        self.assertNotIn("<a ", notes)
+        self.assertIn(hd._region_name(self.trips[0].region) + ":", notes)
 
-    def test_the_text_part_is_a_reason_line_then_two_space_indented_trips(self):
+    def test_the_text_part_lists_the_same_names_under_not_fully_priced(self):
         text = _text(self.digest)
-        self.assertIn("\nNot yet priced\n", text)
-        self.assertIn(f"\n{self.trips[0].reason}\n", text)
+        self.assertIn("\nNotes\n", text)
+        self.assertIn("Not fully priced yet (not shown above):", text)
         for p in self.trips:
-            self.assertIn(f"\n  {p.name}\n", text)
-        self.assertNotIn("Not yet priced: " + self.trips[0].name, text)
+            self.assertIn(p.name, text)
+        self.assertNotIn("£", text[text.index("Not fully priced yet"):])
 
 
 class TheJobSendsTheDigestTests(unittest.TestCase):
@@ -258,11 +275,16 @@ class CarrierNamedOnceTests(unittest.TestCase):
                          "a fare on an accepted airline is still to be read")
         self.assertEqual(reason.count("Sample Air"), 1)
 
-    def test_the_same_airline_makes_one_heading_for_every_trip_it_set_aside(self):
-        rows = _hidden_rows(["Other Air", "Other Air"]) + _hidden_rows(["Other Air"])
+    def test_the_reason_for_setting_a_fare_aside_is_not_repeated_in_the_body(self):
+        """15 Nov 2026: the reason stays in the digest's own pending list; the body names the trip only."""
+        rows = _hidden_rows(["Other Air", "Other Air"])
         digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)
-        self.assertEqual(html.count("a business fare was read on Other Air"), 1)
+        self.assertNotIn("a business fare was read on Other Air", html)
+        self.assertEqual(digest.pending[0].reason,
+                         "a business fare was read on Other Air, not on the accepted airline list; "
+                         "a fare on an accepted airline is still to be read")
+        self.assertEqual(html.count(hd._e(rows[0]["trip"].title)), 1, "one trip is one name in the notes")
 
     def test_cabin_options_records_the_carriers_once_each(self):
         from public_flight_search.holiday_email import cabin_options
@@ -276,11 +298,12 @@ class CarrierNamedOnceTests(unittest.TestCase):
 
 
 class CompactRowsTests(unittest.TestCase):
-    """14 Nov 2026: the body was 9,000 px tall — twelve stays-only trips and the watch list were full cards.
+    """15 Nov 2026: the body shows only fully priced holidays, so its compact rows are gone.
 
-    Only whole trips, packages and part-priced trips whose FLIGHTS are read stay full-size; a trip with stays
-    read but no fare, and each watch-list stay, is one compact row, and the derived-total sentence is printed
-    once per section instead of inside every card.
+    What those rows carried — the stay's seller and day, the open nights, the watch-list rate — is now
+    either on a whole-trip card or one line in the notes; the assertions below follow the data to where
+    it now lives. The row renderers themselves keep their own tests (a later compact section would reuse
+    them), and the defects found in them on 14 Nov 2026 are pinned where the body uses the same helpers.
     """
 
     @classmethod
@@ -308,73 +331,52 @@ class CompactRowsTests(unittest.TestCase):
     def _cards(self, kind):
         return [c for c in self.digest.cards if c.kind == kind]
 
-    def test_only_a_whole_trip_a_package_and_a_part_with_its_fare_are_full_cards(self):
+    def _notes(self, canvas, marker=">Not yet priced</div>"):
+        return canvas[canvas.index(marker):]
+
+    def test_only_a_whole_trip_is_a_card_in_the_body(self):
         self.assertEqual(len(self._cards("trip")), 1)
-        self.assertEqual(len([c for c in self._cards("part") if c.flights_gbp is not None]), 1)
-        self.assertEqual(len([c for c in self._cards("part") if c.flights_gbp is None]), 3)
-        self.assertEqual(len(self._cards("stay")), 1)
+        self.assertEqual(len([c for c in self._cards("part") if c.flights_gbp is not None]), 1,
+                         "the partly priced trip is still built, for its note line")
         self.assertEqual(self.html.count('data-kind="card-trip"'), 1)
-        self.assertEqual(self.html.count('data-kind="card-part"'), 1, "the stays-only trips are not cards")
-        self.assertEqual(self.html.count('data-kind="row-stays-only"'), 3)
-        self.assertEqual(self.html.count('data-kind="row-stay"'), 1)
-        self.assertNotIn('data-kind="card-flights"', self.html, "no fare-only trip is a card")
+        for kind in ("part", "flights", "stay"):
+            self.assertNotIn(f'data-kind="card-{kind}"', self.html, kind)
+        self.assertNotIn('data-kind="row-stays-only"', self.html)
+        self.assertNotIn('data-kind="row-stay"', self.html)
 
-    def test_the_new_section_sits_between_partly_priced_and_the_watch_list(self):
+    def test_the_four_old_sections_are_gone_and_a_region_heading_replaces_them(self):
         for part in (self.html, self.text):
-            partly = part.index("Partly priced")
-            stays = part.index("Stays read, fares still to come")
-            watch = part.index("Stays priced, flights separate")
-            self.assertLess(partly, stays)
-            self.assertLess(stays, watch)
-        self.assertIn("These nights are priced; the trip joins the cards above when its fare is read.", self.html)
-        self.assertIn("These nights are priced; the trip joins the cards above when its fare is read.", self.text)
+            for gone in ("Partly priced", "Stays read, fares still to come",
+                         "Stays priced, flights separate", "Flight searches, flights only"):
+                self.assertNotIn(gone, part, gone)
+        self.assertRegex(self.html, r"AFRICA · 1 holiday, from £[0-9,]+")
+        self.assertIn("== AFRICA ==", self.text)
 
-    def test_a_stays_only_row_carries_the_trip_the_stays_and_the_open_nights(self):
-        stays_only = sorted((c for c in self._cards("part") if c.flights_gbp is None),
-                            key=lambda c: (-(c.nights_priced / c.nights_planned), c.stays_gbp))
-        rows = re.findall(r'<tr data-kind="row-stays-only">.*?</tr>', self.html)
-        self.assertEqual(len(rows), 3)
-        for row, card in zip(rows, stays_only):
-            flat = _flat(row)
-            self.assertIn(hd._e(card.title), row)
-            self.assertIn(f"{card.nights_priced} of {card.nights} nights", flat)
-            self.assertIn(f"{card.nights} nights · {card.dates}", flat)
-            self.assertIn("fare: " + hd._fare_reason(card), flat)
-            for stay in card.stays:
-                if not stay.priced:
-                    continue
-                self.assertIn(hd._e(stay.property_name), row)
-                self.assertIn(f"{stay.nights} nights", flat)
-                self.assertIn(f"{hd._gbp(stay.total_gbp)} ({hd._gbp(stay.total_gbp / stay.nights)} a night)", flat)
-            if hd._open_nights_words(card):
-                self.assertIn("Still to price:</b> " + hd._e(hd._open_nights_words(card)), row)
+    def test_a_stays_only_trip_is_one_note_line_saying_what_is_missing(self):
+        notes = self._notes(self.html)
+        block = notes[notes.index("Not fully priced yet"):]
+        block = block[:block.index("Stay-only prices")] if "Stay-only prices" in block else block
+        self.assertNotIn("£", block, "no figure reaches a not-fully-priced line")
+        self.assertNotIn("<a ", block, "no links on a not-fully-priced line")
+        for card in [c for c in self._cards("part") if c.flights_gbp is None]:
+            self.assertEqual(block.count(hd._e(card.title)), 1, card.title)
+        self.assertRegex(block, r"\(missing: fare|[0-9]+ nights|nothing read yet")
 
-    def test_the_rows_are_ordered_by_the_share_of_nights_priced_then_by_figure(self):
-        # Two trips price 7 of 12 nights; MC-01 prices 7 of 14, so it comes last.
-        rows = re.findall(r'<tr data-kind="row-stays-only">.*?</tr>', self.html)
-        self.assertIn("Halekulani Okinawa", rows[0])
-        self.assertIn("Halekulani Okinawa", rows[1], "the tied 7-of-12 rows stay together")
-        self.assertIn("Kalandara Resort Lombok", rows[-1])
-        shares = [c.nights_priced / c.nights_planned
-                  for c in hd._sorted_stays_rows([c for c in self._cards("part") if c.flights_gbp is None])]
-        self.assertEqual(shares, sorted(shares, reverse=True))
-        tie = [c for c in self._cards("part") if c.flights_gbp is None][0]
-        dear = replace(tie, title="Synthetic dear", nights_priced=7, nights_planned=14, stays_gbp=3_000.0)
-        cheap = replace(tie, title="Synthetic cheap", nights_priced=7, nights_planned=14, stays_gbp=2_000.0)
-        self.assertEqual([c.title for c in hd._sorted_stays_rows([dear, cheap])],
-                         ["Synthetic cheap", "Synthetic dear"])
-
-    def test_a_watch_stay_is_one_compact_row_with_its_night_rate(self):
+    def test_a_watch_stay_is_one_line_in_the_notes_with_its_night_rate(self):
         (watch,) = self._cards("stay")
-        (row,) = re.findall(r'<tr data-kind="row-stay">.*?</tr>', self.html)
-        self.assertIn(hd._e(watch.title), row)
-        self.assertIn(hd._e(watch.place), row)
-        self.assertNotIn("<br><br>", row)
-        right = row[row.index("width:120px"):]
-        self.assertIn(f"<b>{hd._gbp(watch.total_gbp)}</b>", right)
-        self.assertIn("for 5 · stay only", _flat(right), "who the figure is for, on its own line")
-        self.assertIn(f"{watch.nights} nights", _flat(right), "the nights it covers, on the next line")
-        self.assertIn(f"£{watch.total_gbp / watch.nights:,.0f} a night", _flat(row))
+        notes = self._notes(self.html, "Stay-only prices on the watch list")
+        self.assertIn(f"{hd._e(watch.title)} {hd._gbp(watch.total_gbp)} for {watch.nights} nights (breakfast)",
+                      hd._visible(notes))
+        self.assertNotIn("<a ", notes)
+        text = self.text[self.text.index("Stay-only prices on the watch list"):]
+        self.assertIn(f"{watch.title} {hd._gbp(watch.total_gbp)} for {watch.nights} nights (breakfast)", text)
+
+    def test_the_derived_total_sentence_is_gone_and_each_stay_says_how_it_was_derived(self):
+        (trip,) = self._cards("trip")
+        self.assertTrue(all(stay.derived_total for stay in trip.stays))
+        for part in (self.html, self.text):
+            self.assertNotIn(hd.DERIVED_TOTAL_NOTE, part, "one sentence per card is not needed now")
+            self.assertIn(f"nightly price × {trip.stays[0].nights} nights", part)
 
     def test_a_full_card_shows_the_per_night_figure_in_its_stay_line(self):
         (trip,) = self._cards("trip")
@@ -383,34 +385,27 @@ class CompactRowsTests(unittest.TestCase):
                          "one per priced stay, in its detail line")
         self.assertIn(f"{hd._gbp(trip.stays[0].total_gbp)} (£200 a night) · breakfast", self.text)
 
-    def test_the_derived_total_sentence_is_once_per_section_not_once_per_card(self):
-        groups = [[c for c in self.digest.cards if c.kind == "trip"],
-                  [c for c in self.digest.cards if c.kind == "package"],
-                  [c for c in self.digest.cards if c.kind == "part" and c.flights_gbp is not None],
-                  [c for c in self.digest.cards if c.kind == "part" and c.flights_gbp is None],
-                  [c for c in self.digest.cards if c.kind == "stay"]]
-        expected = sum(1 for g in groups if any(s.derived_total for c in g for s in c.stays))
-        self.assertGreater(expected, 1, "more than one section derives a stay total")
-        self.assertEqual(self.html.count(hd.DERIVED_TOTAL_NOTE), expected)
-        self.assertEqual(self.text.count(hd.DERIVED_TOTAL_NOTE), expected)
-        self.assertEqual(len(self.digest.cards), 6)
+    def test_regions_are_in_the_fixed_order_and_each_is_cheapest_first(self):
+        (trip,) = self._cards("trip")
+        cheap = replace(trip, title="Synthetic cheap", total_gbp=5_000.0, region="Asia")
+        dear = replace(trip, title="Synthetic dear", total_gbp=6_000.0, region="Asia")
+        europe = replace(trip, title="Synthetic Europe", total_gbp=4_000.0, region="Europe")
+        groups = hd._region_groups([dear, cheap, europe])
+        self.assertEqual([name for name, _cards in groups], ["Europe", "Asia"])
+        self.assertEqual([c.title for c in dict(groups)["Asia"]], ["Synthetic cheap", "Synthetic dear"])
 
-    def test_the_text_part_has_the_same_rows_in_the_same_order(self):
-        self.assertIn("\nStays read, fares still to come\n", self.text)
-        self.assertIn("\nStays priced, flights separate\n", self.text)
-        first = self.text.index("Halekulani Okinawa")
-        second = self.text.index("Kalandara Resort Lombok")
-        self.assertLess(first, second)
-        self.assertIn("£2,450 (£350 a night)", self.text, "the per-night figure follows the stay total")
-        self.assertIn("£2,450 so far · for 5 · stays only, 7 of 12 nights", self.text)
-        self.assertIn("    the strongest July weather case", self.text, "the why line is the trip's own words")
+    def test_the_text_part_has_the_regions_then_the_notes(self):
+        self.assertLess(self.text.index("== AFRICA =="), self.text.index("\nNotes\n"))
+        for card in [c for c in self._cards("part") if c.flights_gbp is None]:
+            self.assertIn(card.title, self.text[self.text.index("\nNotes\n"):])
+
 
 class RenderedBodyDefectsTests(unittest.TestCase):
     """The defects a visual check of the rendered body found at 640 px and 390 px (14 Nov 2026).
 
-    One test per numbered item of brief H: the double-escaped seller link and the overflow, the figure
-    labels, the per-night wording, seller and source, the short fare reasons, the labelled row lines,
-    and the small things.
+    One test per numbered item of brief H, re-pointed at the 15 Nov 2026 body: the escaping and the
+    overflow, the figure labels, the per-night wording, seller and source, how a not-fully-priced trip is
+    worded, the note line in place of the labelled row, and the small things.
     """
 
     @classmethod
@@ -418,8 +413,11 @@ class RenderedBodyDefectsTests(unittest.TestCase):
         cls.pair = hd._reference_pair(_config())
         cls.entry = type("Entry", (), {"name": "SYNTHETIC Island Villa", "area": "Gili Meno",
                                        "url": "https://example.org/SYNTHETIC-villa", "halal": None})()
-        #: No fare read at all: every trip is stays-only (or a name in "Not yet priced").
+        #: No fare read at all: every trip is stays-only (or a name in the notes).
         cls.unpriced = _multi_centre_rows(_config(), fares=load([]))
+        #: One trip with a business read, so a whole-trip card can be built from its own nights.
+        cls.fare_rows = [r for r in _multi_centre_rows(_config(), fares=load([deal_read(BUILD, "MIXED", 8_000)]))
+                         if r["trip"].id == BUILD]
         cls.lodges = {r["trip"].id: _plan_lodges(r) for r in cls.unpriced}
 
     def _stay(self, **overrides):
@@ -432,37 +430,52 @@ class RenderedBodyDefectsTests(unittest.TestCase):
         return (digest, hd.render_digest_html(_config(), digest, generated_at=NOW),
                 hd.render_digest_text(_config(), digest, generated_at=NOW))
 
+    def _whole_trip(self, **rate_overrides):
+        """One whole-trip card: the synthetic fare read and a rate for every one of its nights."""
+        rows = self.fare_rows
+        rates = []
+        for name, check_in, check_out in self.lodges[BUILD]:
+            record = _rate(name, check_in, check_out, 200.0)
+            record.update(rate_overrides)
+            rates.append(record)
+        return hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW,
+                               hotel_rates=_hotel_rates(rates))
+
     def _rows_digest(self, rows=None, rates=(), **row_patch):
         rows = [dict(r, **row_patch) for r in (rows if rows is not None else self.unpriced)]
         return hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW,
                                hotel_rates=_hotel_rates(list(rates)))
 
-    # 1. Raw HTML printed and the row overflowing
+    # 1. Raw HTML printed and the card overflowing
     def test_a_long_seller_url_with_an_ampersand_is_escaped_once_and_cannot_overflow(self):
         url = "https://example.org/SYNTHETIC-" + "a" * 250 + "?x=1&y=2&z=3"
-        _digest, html, _text = self._stay(source_url=url)
+        digest = self._whole_trip(source_url=url)
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
         self.assertNotIn("&lt;a", html, "the anchor tag was escaped a second time")
         self.assertNotIn("&amp;amp;", html)
         self.assertNotIn("&y=2", html.replace("&amp;y=2", ""))
-        self.assertEqual(html.count('href="' + hd._e(url) + '"'), 1, "the seller link is the one source link")
-        self.assertIn("table-layout:fixed", html)
+        self.assertEqual(html.count('href="' + hd._e(url) + '"'), len(self.lodges[BUILD]),
+                         "the seller link is printed once a stay, escaped once")
         self.assertIn("overflow-wrap:break-word", html)  # breaks a long URL, never an ordinary word
-        self.assertIn("width:120px", html, "wide enough at 390 px for the two-line figure label")
 
-    # 2. Every right-hand figure says who and what it covers
-    def test_every_compact_figure_says_who_it_is_for_and_what_it_covers(self):
-        _digest, html, text = self._stay()
-        self.assertIn("for 5 · stay only", _flat(html))
-        self.assertIn("for 5 · stay only,", text)
-        self.assertIn("for 5 · stays only",
-                      _flat(hd.render_digest_html(_config(), self._rows_digest(
-                          rates=[_rate(*self.lodges[BUILD][0], 200.0)]), generated_at=NOW)))
+    # 2. Every figure says who and what it covers
+    def test_every_figure_says_who_it_is_for_and_what_it_covers(self):
+        digest = self._whole_trip()
+        (card,) = digest.cards
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        text = hd.render_digest_text(_config(), digest, generated_at=NOW)
+        self.assertIn("trip total, 5 people", _flat(html))
+        self.assertIn(f"{hd._gbp(card.flights_gbp)} for 5", _flat(html),
+                      "the flights figure says who it is for")
+        self.assertIn(f"£{card.total_gbp:,.0f} for 5", text)
+        # A trip that is not fully priced carries no figure in the body at all now.
         fare_only = hd.build_digest(_config(), rows=_multi_centre_rows(
             _config(), fares=load([deal_read("AF-02", "MIXED", 9_000)])), package_prices={},
             watch=(), generated_at=NOW)
         for part in (hd.render_digest_html(_config(), fare_only, generated_at=NOW),
                      hd.render_digest_text(_config(), fare_only, generated_at=NOW)):
-            self.assertIn("for 5 · flights only", _flat(part) if "<" in part else part)
+            self.assertNotIn("flights only", part)
+            self.assertNotIn("£9,000", part)
 
     # 3. The per-night figure says whether it is per room
     def test_the_per_night_figure_says_what_it_covers(self):
@@ -478,36 +491,42 @@ class RenderedBodyDefectsTests(unittest.TestCase):
         self.assertEqual(hd._per_night_phrase(stay(unit_guests=(2, 2, 1), three_rooms=True)),
                          "(£700 a night for all three rooms)")
         self.assertEqual(hd._per_night_phrase(stay(unit_guests=(5,))), "(£700 a night)")
-        rates = [_rate(name, ci, co, 200.0, two_rooms=True) for name, ci, co in self.lodges[BUILD]]
-        digest = self._rows_digest(rates=rates)
+        digest = self._whole_trip(booking_shape="two_rooms_one_booking",
+                                  units=[{"name": "SYNTHETIC room A", "adults": 3},
+                                         {"name": "SYNTHETIC room B", "adults": 2}])
+        self.assertEqual(digest.cards[0].kind, "trip")
         for part in (hd.render_digest_html(_config(), digest, generated_at=NOW),
                      hd.render_digest_text(_config(), digest, generated_at=NOW)):
             self.assertIn("a night for both rooms", _flat(part) if "<" in part else part)
 
     # 4. Seller and source
     def test_a_seller_that_is_the_property_says_the_hotels_own_rate_and_keeps_its_link(self):
-        rate = _rate(self.entry.name, self.pair[0], self.pair[1], 250.0, two_rooms=True)
+        from public_flight_search.trip_totals import StayPrice
+
         own_name = "SYNTHETIC Island Villa Resort & Spa"
-        rate["prices_shown"] = [dict(shown, provider=own_name) for shown in rate["prices_shown"]]
-        digest = hd.build_digest(_config(), rows=[], package_prices={}, watch=(self.entry,),
-                                 generated_at=NOW, hotel_rates=_hotel_rates([rate]))
+        stay = StayPrice(place="Gili Meno", property_name=own_name, check_in="2027-06-27",
+                         check_out="2027-07-04", nights=7, total_gbp=1_750.0, board="BB", seller=own_name,
+                         source_url="https://example.org/SYNTHETIC-own-rate",
+                         observed_at="2026-11-14T10:00:00+00:00", two_rooms=True)
+        html = hd._stay_row(stay)
+        self.assertIn(f">{hd._e(chr(39).join([]))}" if False else ">the hotel&#x27;s own rate</a>", html)
+        self.assertNotIn(f">{hd._e(own_name)}</a>", html)
+        self.assertIn('href="https://example.org/SYNTHETIC-own-rate"', html)
+
+    def test_every_priced_stay_line_carries_its_seller_and_the_day_it_was_read(self):
+        digest = self._whole_trip()
+        (card,) = digest.cards
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)
         text = hd.render_digest_text(_config(), digest, generated_at=NOW)
-        self.assertIn(f">{hd._e("the hotel's own rate")}</a>", html)
-        self.assertNotIn(f">{hd._e(own_name)}</a>", html)
-        self.assertIn("the hotel's own rate", text)
-        self.assertNotIn(f"{own_name} · read", text)
-        self.assertIn("href=", html)
-
-    def test_every_priced_stay_line_ends_with_a_source_link_and_the_day_it_was_read(self):
-        _digest, html, text = self._stay()
-        self.assertIn("read&nbsp;14&nbsp;Nov", html, "the day is one token, so it cannot split")
-        self.assertTrue(re.search(r" · read 14 Nov$", text, re.M), "the line ends with the day it was read")
+        self.assertEqual(html.count("read&nbsp;14&nbsp;Nov"), len(card.stays),
+                         "the day is one token, once a stay, so it cannot split")
+        for stay in card.stays:
+            self.assertIn(f'href="{hd._e(stay.source_url)}"', html)
         line = next(line for line in text.splitlines() if "read 14 Nov" in line)
         self.assertIn("SYNTHETIC Seller", line, "the seller is named, never dropped")
 
-    # 5. Fare reasons are short and say the same thing as the group heading
-    def test_the_short_fare_reasons_and_the_group_heading_wording(self):
+    # 5. A not-fully-priced trip says what is missing, in the note's own words
+    def test_the_short_fare_reasons_and_the_note_wording(self):
         for carriers, short, heading in (
             (["Sample Air", "Sample Air"],
              "business found only on Sample Air (not on the accepted airline list)",
@@ -522,9 +541,6 @@ class RenderedBodyDefectsTests(unittest.TestCase):
             hidden = {"saving": None, "travellers": 5, "reason": "", "carriers": carriers}
             self.assertEqual(hd._business_hidden_short(hidden), short)
             self.assertTrue(hd._business_hidden_reason(hidden).startswith(heading))
-        hidden_row = dict(self.unpriced[0], business_hidden={"saving": None, "travellers": 5, "reason": "",
-                                                             "carriers": ["Sample Air", "Sample Air"]}) \
-            if False else None
         rows = [dict(r, business_hidden={"saving": None, "travellers": 5, "reason": "",
                                          "carriers": ["Sample Air", "Sample Air"]})
                 for r in self.unpriced if r["trip"].id == BUILD]
@@ -532,36 +548,41 @@ class RenderedBodyDefectsTests(unittest.TestCase):
                                  hotel_rates=_hotel_rates([_rate(*self.lodges[BUILD][0], 200.0)]))
         for part in (hd.render_digest_html(_config(), digest, generated_at=NOW),
                      hd.render_digest_text(_config(), digest, generated_at=NOW)):
-            self.assertIn("fare: business found only on Sample Air "
-                          "(not on the accepted airline list)", part)
+            self.assertNotIn("business found only on Sample Air", part,
+                             "15 Nov 2026: the body names the trip and what is missing, nothing more")
+            self.assertRegex(part, r"\(missing: fare")
         economy = self._rows_digest(rows=[r for r in self.unpriced if r["trip"].id == BUILD],
                                     rates=[_rate(*self.lodges[BUILD][0], 200.0)], economy_refused=True)
         for part in (hd.render_digest_html(_config(), economy, generated_at=NOW),
                      hd.render_digest_text(_config(), economy, generated_at=NOW)):
-            self.assertIn("fare: economy has a leg over 8 hours; business not read yet", part)
+            self.assertNotIn("economy has a leg over 8 hours", part)
+            self.assertRegex(part, r"\(missing: fare")
         nothing = self._rows_digest(rows=[r for r in self.unpriced if r["trip"].id == BUILD],
                                     rates=[_rate(*self.lodges[BUILD][0], 200.0)])
-        self.assertIn("fare: not read yet", hd.render_digest_html(_config(), nothing, generated_at=NOW))
+        self.assertRegex(hd.render_digest_html(_config(), nothing, generated_at=NOW), r"\(missing: fare")
 
-    # 6. Compact trip rows are labelled lines, not a wall of text
-    def test_a_compact_trip_row_labels_its_lines_and_keeps_the_why_italic_and_unlabelled(self):
+    # 6. A partly priced trip is one plain note line, not a labelled row
+    def test_a_partly_priced_trip_is_one_note_line_and_keeps_no_labels(self):
         digest = self._rows_digest(rows=[r for r in self.unpriced if r["trip"].id == BUILD],
                                    rates=[_rate(*self.lodges[BUILD][0], 200.0)])
-        (row,) = re.findall(r'<tr data-kind="row-stays-only">.*?</tr>',
-                            hd.render_digest_html(_config(), digest, generated_at=NOW))
-        self.assertIn(">Priced:</div>", row)
-        self.assertIn("<b>Still to price:</b>", row)
-        self.assertIn("color:#92400E", row, "the open nights keep their amber colour")
-        self.assertIn("font-style:italic;", row)
-        self.assertNotIn("Why it is special", row)
-        self.assertIn("line-height:1.45", row)
-        self.assertIn("padding-left:10px", row, "the priced lines are indented under the label")
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        self.assertNotIn(">Priced:</div>", html)
+        self.assertNotIn("<b>Still to price:</b>", html)
+        self.assertNotIn("row-stays-only", html)
+        self.assertIn("background:#FFFBEB", html, "the summary box keeps its amber background when nothing is whole")
+        self.assertRegex(html, r"\(missing: fare")
 
-    # 7. The small things
+    # 7. Every separator is glued to the part before it
     def test_no_stay_line_ends_with_a_dangling_separator(self):
-        _digest, html, text = self._stay()
+        from public_flight_search.trip_totals import StayPrice
+
+        stay = StayPrice(place="Gili Meno", property_name="SYNTHETIC Island Villa", check_in="2027-06-27",
+                         check_out="2027-07-04", nights=7, total_gbp=700.0, board="BB",
+                         seller="Example Stays", source_url="https://example.com/r?a=1&b=2",
+                         observed_at="2026-11-14T10:00:00+00:00")
+        html, text = hd._stay_row(stay), hd._stay_text(stay)
         self.assertNotIn(" ·<", html)
-        self.assertNotIn(" ·\n", text)
+        self.assertNotIn(" ·\n", text + "\n")
 
     def test_the_section_caption_sentence_starts_with_a_capital_and_ends_with_a_full_stop(self):
         self.assertEqual(hd.DERIVED_TOTAL_NOTE,
@@ -572,26 +593,33 @@ class RenderedBodyDefectsTests(unittest.TestCase):
                                           rates=[_rate(*self.lodges[BUILD][0], 200.0)]).cards])
         self.assertTrue(caption.endswith(" " + hd.DERIVED_TOTAL_NOTE))
 
-    def test_the_summary_counts_equal_the_rows_each_section_renders(self):
+    def test_the_summary_counts_equal_the_cards_the_body_draws(self):
         fares = load([deal_read(BUILD, "MIXED", 8_000), deal_read(PACKAGE, "MIXED", 9_000),
                       deal_read("AF-02", "MIXED", 9_000)])
         rows = _multi_centre_rows(_config(), fares=fares)
         lodges = {r["trip"].id: _plan_lodges(r) for r in rows}
-        rates = [_rate(*lodges[BUILD][0], 300.0), _rate(*lodges[PACKAGE][0], 300.0)]
+        # Every night of the two trips that have a fare read, so both are whole holidays.
+        rates = [_rate(*lodge, 300.0) for trip in (BUILD, PACKAGE) for lodge in lodges[trip]]
         # Three stays-only trips whose first properties are distinct, so none shares a rate.
         rates += [_rate(*lodges[trip][0], 400.0) for trip in ("MC-01", "AF-01", "AF-04")]
         digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(),
                                  generated_at=NOW, hotel_rates=_hotel_rates(rates))
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)
         text = hd.render_digest_text(_config(), digest, generated_at=NOW)
-        self.assertEqual(html.count('data-kind="card-part"'), 2)
-        self.assertEqual(html.count('data-kind="row-stays-only"'), 3)
-        self.assertEqual(html.count('data-kind="row-flights"'), 1)
-        self.assertIn("2 trips have flights and some stays priced, 3 trips have stays priced and await a fare, "
-                      "and 1 trip has a fare only (all below).", html)
-        # The summary box is HTML-only; the plain text's sections carry the same rows.
-        self.assertEqual(text.count("    Priced:"), 3)
-        self.assertEqual(text.count("\nFlight searches, flights only\n"), 1)
+        under = [c for c in digest.cards if c.kind in ("trip", "package")]
+        self.assertGreaterEqual(len(under), 1, "this fixture prices at least one whole trip")
+        self.assertEqual(html.count('data-kind="card-trip"'), len([c for c in under if c.kind == "trip"]))
+        self.assertNotIn('data-kind="card-part"', html, "a partly priced trip is not a card any more")
+        self.assertIn(f"{len(under)} holiday{'s are' if len(under) != 1 else ' is'} fully priced"
+                      " at £25,000 or under", html)
+        regions = hd._region_groups(under)
+        for name, cards in regions:
+            self.assertIn(f"{hd._e(name.upper())} · {len(cards)} holiday", html)
+        self.assertEqual(text.count("== "), len(regions))
+        # Every trip that is not fully priced is named in the notes, in both parts.
+        for card in [c for c in digest.cards if c.kind in ("part", "flights")]:
+            self.assertIn(hd._e(card.title), html)
+            self.assertIn(card.title, text)
 
     def test_a_stop_split_around_another_stop_names_the_hotel_once(self):
         rows = [r for r in self.unpriced if r["trip"].id == PACKAGE]
@@ -653,31 +681,35 @@ class SecondVisualCheckTests(unittest.TestCase):
         return digest, hd.render_digest_html(_config(), digest, generated_at=NOW), \
             hd.render_digest_text(_config(), digest, generated_at=NOW)
 
-    # 1. The summary box reads as one sentence, not four categories
-    def test_the_summary_is_one_sentence_with_a_clause_per_kind_and_none_for_a_zero(self):
+    # 1. The summary box is one sentence of counts, and it counts only what the sections draw
+    def test_the_summary_is_one_sentence_of_the_fully_priced_holidays_and_their_range(self):
         fares = load([deal_read(BUILD, "MIXED", 8_000), deal_read(PACKAGE, "MIXED", 9_000),
                       deal_read("AF-02", "MIXED", 9_000)])
         rows = [r for r in _multi_centre_rows(_config(), fares=fares)
                 if r["trip"].id in (BUILD, PACKAGE, "AF-02", "MC-01", "AF-01", "AF-04")]
         lodges = {r["trip"].id: _plan_lodges(r) for r in rows}
-        rates = [_rate(*lodges[BUILD][0], 300.0), _rate(*lodges[PACKAGE][0], 300.0)]
+        rates = [_rate(*lodge, 300.0) for trip in (BUILD, PACKAGE) for lodge in lodges[trip]]
         rates += [_rate(*lodges[trip][0], 400.0) for trip in ("MC-01", "AF-01", "AF-04")]
         rates.append(_rate(self.entry.name, *self.pair, 250.0))
         digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(self.entry,),
                                  generated_at=NOW, hotel_rates=_hotel_rates(rates))
+        under, over, partial, pending = hd._split_holidays(digest, hd._ceiling(_config()))
         sentence = _flat(hd.render_digest_html(_config(), digest, generated_at=NOW))
-        self.assertIn("No whole trip is priced yet this week. 2 trips have flights and some stays priced, "
-                      "3 trips have stays priced and await a fare, 1 trip has a fare only, and "
-                      "1 watch-list stay is priced (all below).", sentence)
+        self.assertIn("2 holidays are fully priced at £25,000 or under for 5: from £", sentence)
+        self.assertIn(f"to £{max(c.total_gbp for c in under):,.0f}.", sentence)
+        self.assertIn(f"{len(under) + len(over) + len(partial) + len(pending)}", sentence)
+        self.assertIn(f"{len(partial) + len(pending)} are not fully priced yet;", sentence)
 
     def test_a_clause_with_a_count_of_zero_is_left_out_and_a_count_of_one_is_singular(self):
-        only_fare = hd.build_digest(_config(), rows=_multi_centre_rows(
-            _config(), fares=load([deal_read("AF-02", "MIXED", 9_000)])), package_prices={},
-            watch=(), generated_at=NOW)
+        rows = [r for r in _multi_centre_rows(_config(), fares=load([deal_read("AF-02", "MIXED", 9_000)]))
+                if r["trip"].id == "AF-02"]
+        only_fare = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
         sentence = _flat(hd.render_digest_html(_config(), only_fare, generated_at=NOW))
-        self.assertIn("No whole trip is priced yet this week. 1 trip has a fare only (all below).", sentence)
-        self.assertNotIn("stays priced and await", sentence)
-        self.assertNotIn("0 trip", sentence)
+        self.assertIn("No holiday is fully priced at £25,000 or under this week.", sentence)
+        self.assertIn("1 is not fully priced yet; listed in the notes at the foot.", sentence)
+        self.assertNotIn("more are priced but over", sentence, "no over-ceiling holiday in this digest")
+        self.assertNotIn("0 are", sentence)
+        self.assertNotIn("0 is", sentence)
 
     # 2. One airline is not on the list; two or more are not ALL on it
     def test_one_unaccepted_carrier_is_not_on_the_list_and_several_are_not_all_on_it(self):
@@ -699,8 +731,8 @@ class SecondVisualCheckTests(unittest.TestCase):
             self.assertIn(f"<b>{label}:</b> ", html)
 
     # 4. The tokens that must not split, and the two-line figure label
-    def test_the_named_tokens_never_split_and_the_figure_cell_holds_two_lines(self):
-        _digest, html, _text = self._trip()
+    def test_the_named_tokens_never_split_and_the_note_line_says_what_is_missing(self):
+        _digest, html, text = self._trip()
         for token in ("12&nbsp;nights", "4&nbsp;nights", "read&nbsp;14&nbsp;Nov",
                       "(£200&nbsp;a&nbsp;night)"):
             self.assertIn(token, html, token)
@@ -708,15 +740,10 @@ class SecondVisualCheckTests(unittest.TestCase):
         part = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW,
                                hotel_rates=_hotel_rates([_rate(*self.lodges[BUILD][0], 200.0)]))
         part_html = hd.render_digest_html(_config(), part, generated_at=NOW)
-        self.assertIn("4&nbsp;of&nbsp;12&nbsp;nights", part_html)
-        self.assertIn(f"{hd._gbp(800)}&nbsp;(£200&nbsp;a&nbsp;night)", part_html,
-                      "the stay figure and its bracketed per-night phrase never split")
-        _digest, watch_html, _text = self._stay()
-        self.assertIn("for&nbsp;5&nbsp;·&nbsp;stay&nbsp;only", watch_html)
-        self.assertRegex(watch_html,
-                         r'<div style="[^"]*white-space:nowrap;">for&nbsp;5&nbsp;·&nbsp;stay&nbsp;only</div>'
-                         r'<div style="[^"]*white-space:nowrap;">17&nbsp;nights</div>')
-        self.assertIn("width:120px", watch_html)
+        self.assertRegex(part_html, r"\(missing: fare and 8 nights\)",
+                         "one not-fully-priced trip says exactly what is missing")
+        self.assertNotIn("read&nbsp;14&nbsp;Nov", part_html,
+                         "a partly priced trip is not a card, so its stay lines are not in the body")
 
     # 5. A wrapped line never starts with the separator
     def test_a_separator_is_glued_to_the_part_before_it_so_no_line_can_start_with_it(self):
@@ -726,7 +753,9 @@ class SecondVisualCheckTests(unittest.TestCase):
         self.assertIn("x" * 45 + "&nbsp;· ", joined, "a part over 40 characters stays breakable")
         self.assertNotIn(" · ", joined, "no separator keeps a break opportunity before it")
         self.assertTrue(joined.endswith(">read 14 Nov</span>"), "the last part carries no separator")
-        self.assertNotIn(" · ", self._trip()[1])
+        card_html = self._trip()[1]
+        card = card_html[card_html.index('data-kind="card-trip"'):]
+        self.assertNotIn(" · ", card, "no part of a card keeps a break opportunity before its separator")
 
     # 6. A flight duration says what it is, and the fare says who it is for
     def test_a_flight_duration_is_labelled_and_the_fare_says_for_5(self):
@@ -742,9 +771,9 @@ class SecondVisualCheckTests(unittest.TestCase):
         fare_only = hd.build_digest(_config(), rows=_multi_centre_rows(
             _config(), fares=load([deal_read("AF-02", "MIXED", 9_000)])), package_prices={},
             watch=(), generated_at=NOW)
-        (row,) = re.findall(r'<tr data-kind="row-flights">.*?</tr>',
-                            hd.render_digest_html(_config(), fare_only, generated_at=NOW))
-        self.assertIn("longest leg 12h 10m", _flat(row))
+        rendered = hd.render_digest_html(_config(), fare_only, generated_at=NOW)
+        self.assertNotIn("row-flights", rendered, "a fare-only trip is a note line now, not a row")
+        self.assertIn(hd._e("Self-build"), rendered)
 
     # 7. Each lodge is named under its own area, not the stop's
     def test_each_open_lodge_is_named_under_its_own_area_and_falls_back_to_the_stop(self):
@@ -774,15 +803,127 @@ class SecondVisualCheckTests(unittest.TestCase):
         areas = dict(hd._lodge_areas(rows[0]["trip"]))
         self.assertEqual(areas, {"Satara Rest Camp": "Kruger National Park", "Commodore Hotel": "Cape Town"})
 
-    # 8. One font size on the "Not yet priced" list, and no phone-side scaling
-    def test_the_not_yet_priced_list_has_one_explicit_size_and_the_wrapper_does_not_scale(self):
+    # 8. One font size on the notes block, and no phone-side scaling
+    def test_the_notes_block_has_one_explicit_size_and_the_wrapper_does_not_scale(self):
         rows = _multi_centre_rows(_config(), fares=load([]), include_leads=True)
         digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW)
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)
         self.assertIn("-webkit-text-size-adjust:100%; text-size-adjust:100%;", html)
-        self.assertIn('<ul style="padding-left:16px; margin:4px 0; font-size:13px;', html)
-        self.assertRegex(html, r'<li style="margin:0 0 4px; font-size:13px;">')
-        self.assertRegex(html, r'<div style="margin:3px 0 0; font-size:13px;">',
-                         "the trip lines and the new ideas sub-items each state their size")
-        self.assertIn("New ideas, fares and stays being read", html)
-        self.assertNotIn("font-size:12px", html[html.index(">Not yet priced<"):])
+        notes = html[html.index(">Not yet priced<") - 200:]
+        self.assertIn("font-size:12px", notes, "the whole notes block is small grey text")
+        self.assertNotIn("<ul", notes)
+        self.assertNotIn("<li", notes)
+        self.assertNotIn("font-size:13px", notes, "no line inside the notes block is a different size")
+        self.assertIn("Not fully priced yet (not shown above):", notes)
+
+
+class WholeHolidaysOnlyLayoutTests(unittest.TestCase):
+    """Brief M (15 Nov 2026): the body shows only fully priced holidays at or under the ceiling, grouped by
+    region with a jump list; everything else is a short note at the foot.
+
+    The reader's words: "I don't want unpriced results because that misleads on the total price for a
+    holiday ... Don't send anything over £25k; you can just have a small footnote to say rejected with the
+    details, concise ... Ensure the buckets are by country or region in the mail so I can jump to a section."
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.pair = hd._reference_pair(_config())
+        cls.unpriced = _multi_centre_rows(_config(), fares=load([]))
+        cls.lodges = {r["trip"].id: _plan_lodges(r) for r in cls.unpriced}
+        fares = load([deal_read(BUILD, "MIXED", 8_000), deal_read(PACKAGE, "MIXED", 9_000),
+                      deal_read("AF-02", "MIXED", 9_000)])
+        cls.fare_rows = {r["trip"].id: r for r in _multi_centre_rows(_config(), fares=fares)}
+        cls.unpriced_rows = {r["trip"].id: r for r in cls.unpriced}
+
+    def _whole_trip_digest(self):
+        (card_rows,) = [self.fare_rows[BUILD]]
+        digest = hd.build_digest(_config(), rows=[card_rows], package_prices={}, watch=(), generated_at=NOW,
+                                 hotel_rates=_hotel_rates([_rate(name, ci, co, 200.0)
+                                                           for name, ci, co in self.lodges[BUILD]]))
+        (card,) = digest.cards
+        self.assertEqual(card.kind, "trip")
+        return digest, card
+
+    def test_a_whole_trip_is_a_card_under_its_region_with_a_places_line(self):
+        digest, card = self._whole_trip_digest()
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        anchor = "region-" + hd._region_name(card.region).lower().replace(" ", "-")
+        self.assertIn(f'id="{anchor}"', html, "the heading carries an id")
+        self.assertIn(f'<a name="{anchor}"></a>', html, "and an empty anchor, for the clients that need one")
+        self.assertIn(f'<a href="#{anchor}"', html, "the jump list links to it")
+        self.assertRegex(html, r">AFRICA · 1 holiday, from £[0-9,]+</div>")
+        self.assertEqual(list(card.places), ["Kruger National Park", "Cape Town"])
+        self.assertIn(hd._e("Kruger National Park") + "&nbsp;·", html, "the places line sits under the title")
+        self.assertIn("Cape Town</span>", html)
+
+    def test_a_whole_trip_over_the_ceiling_is_only_in_the_note_with_its_three_figures(self):
+        digest, card = self._whole_trip_digest()
+        ceiling = card.total_gbp - 100.0
+        config = replace(_config(), max_total_gbp=ceiling)
+        html = hd.render_digest_html(config, digest, generated_at=NOW)
+        text = hd.render_digest_text(config, digest, generated_at=NOW)
+        self.assertNotIn('data-kind="card-trip"', html, "an over-ceiling holiday is not a card")
+        for part in (html, text):
+            visible = part.replace("&nbsp;", " ").replace("\xa0", " ")
+            self.assertIn(f"Priced but over {hd._gbp(ceiling)} (not shown above):", visible)
+            self.assertIn(f"{hd._gbp(card.total_gbp)} for 5", visible)
+            self.assertIn(f"(flights {hd._gbp(card.flights_gbp)} + stays {hd._gbp(card.stays_gbp)})", part)
+            self.assertIn(hd._region_name(card.region), part)
+        self.assertIn(f'<a href="{hd._e(card.url)}"', html, "the title is the only link on the line")
+
+    def test_a_partly_priced_a_stays_only_and_a_flights_only_trip_are_notes_only(self):
+        rows = [self.fare_rows[BUILD], self.unpriced_rows[PACKAGE], self.fare_rows["AF-02"]]
+        rates = [_rate(*self.lodges[BUILD][0], 200.0), _rate(*self.lodges[PACKAGE][0], 300.0)]
+        digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW,
+                                 hotel_rates=_hotel_rates(rates))
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        notes = html[html.index(">Not yet priced</div>"):]
+        for row in rows:
+            title = hd._e(row["trip"].title)
+            self.assertIn(title, notes, row["trip"].id)
+            self.assertNotIn(f'data-kind="card-', html)
+        self.assertNotIn("£", notes, "no figure reaches a not-fully-priced line")
+        self.assertNotIn("<a ", notes, "and no link either")
+        self.assertRegex(notes, r"\(missing: fare and [0-9]+ nights\)")
+        self.assertRegex(notes, r"\(missing: [0-9]+ nights at ")
+
+    def test_the_jump_list_counts_each_region_it_links_to(self):
+        digest, card = self._whole_trip_digest()
+        europe = replace(card, title="Synthetic Europe trip", region="europe")
+        asia = replace(card, title="Synthetic Asia trip", region="asia", total_gbp=card.total_gbp + 500.0)
+        africa = replace(card, title="Synthetic Africa trip", region="africa", total_gbp=card.total_gbp + 250.0)
+        made = hd.Digest(cards=(asia, africa, europe), not_priced=(), pending=())
+        html = hd.render_digest_html(_config(), made, generated_at=NOW)
+        self.assertIn("Jump to:", html)
+        for name in ("Europe", "Africa", "Asia"):
+            self.assertIn(f'>{name} (1)</a>', html)
+        order = [html.index(f">{name} (1)</a>") for name in ("Europe", "Africa", "Asia")]
+        self.assertEqual(order, sorted(order), "the jump list follows the fixed region order")
+        self.assertNotIn(">Other (", html)
+        self.assertIn("EUROPE · 1 holiday", html)
+        self.assertIn("ASIA · 1 holiday", html)
+
+    def test_with_no_ceiling_nothing_is_rejected_for_price(self):
+        digest, card = self._whole_trip_digest()
+        config = replace(_config(), max_total_gbp=None)
+        html = hd.render_digest_html(config, digest, generated_at=NOW)
+        self.assertIn('data-kind="card-trip"', html)
+        self.assertNotIn("Priced but over", html)
+        self.assertIn("1 holiday is fully priced for 5", _flat(html), "no ceiling, so no ceiling in the words")
+
+    def test_the_body_of_twelve_whole_trips_and_forty_unpriced_ones_stays_under_95_kilobytes(self):
+        digest, card = self._whole_trip_digest()
+        whole = tuple(replace(card, title=f"SYNTHETIC whole trip {index}",
+                              total_gbp=card.total_gbp + index) for index in range(12))
+        pending = tuple(hd.Pending(f"SYNTHETIC two-centre trip {index} 7 nights + 7 nights",
+                                   "(nothing read yet)", region="africa" if index % 2 else "asia")
+                        for index in range(40))
+        made = hd.Digest(cards=whole, not_priced=tuple(item.name for item in pending), pending=pending)
+        html = hd.render_digest_html(_config(), made, generated_at=NOW)
+        self.assertEqual(html.count('data-kind="card-trip"'), 12)
+        self.assertEqual(html.count("(nothing read yet)"), 40)
+        self.assertLess(len(html.encode("utf-8")), 95_000)
+
+
+

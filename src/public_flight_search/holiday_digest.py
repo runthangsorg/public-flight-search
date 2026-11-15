@@ -83,6 +83,13 @@ class Card:
     #: which is often a sentence or a joined pair): "Serengeti" for a Serengeti lodge inside a
     #: Nairobi-and-Serengeti stop.
     areas: tuple[tuple[str, str], ...] = ()
+    #: The catalogue's own region for the trip (``multi_centre``'s ``region``), or a package's
+    #: destination key: the body's sections are its regions (``_region_name``), so this is where a
+    #: holiday is listed rather than a label nobody sorts by.
+    region: str = ""
+    #: The places of the trip's stops, in order ("Masai Mara", "Diani Beach"), for the one small line
+    #: under a card's title that says where the holiday actually goes.
+    places: tuple[str, ...] = ()
 
     @property
     def fits(self) -> Optional[bool]:
@@ -100,6 +107,8 @@ class Pending:
     reason: str = ""
     url: str = ""
     group: str = ""      # "" | "Gili Islands" | "Maldives"
+    #: The region the note at the foot lists it under (``_region_name``); empty is "Other".
+    region: str = ""
 
 
 @dataclass(frozen=True)
@@ -150,6 +159,44 @@ def _band(total: float) -> int:
     return int(total // 1000)
 
 
+#: The body's sections, in the fixed order the reader asked for (owner, 15 Nov 2026: "ensure the buckets are by
+#: country or region in the mail so I can jump to a section and know all the options in a region").
+REGION_ORDER: tuple[str, ...] = ("Europe", "Middle East", "Africa", "Indian Ocean", "Asia", "Americas", "Other")
+
+#: ``multi_centre.json``'s ``region`` values as those section names: one table, so a new catalogue value is one line
+#: here. Anything else — an empty value, a spelling nobody has used yet — is "Other", never a guess from the wording.
+REGION_NAMES: dict[str, str] = {
+    "europe": "Europe",
+    "middle-east": "Middle East", "middle_east": "Middle East", "middle east": "Middle East",
+    "africa": "Africa",
+    "indian-ocean": "Indian Ocean", "indian_ocean": "Indian Ocean", "indian ocean": "Indian Ocean",
+    "asia": "Asia",
+    "americas": "Americas",
+}
+
+
+def _region_name(value: Any) -> str:
+    """The section a holiday belongs in, from the catalogue's own region value."""
+    return REGION_NAMES.get(str(value or "").strip().lower(), "Other")
+
+
+def _region_id(name: str) -> str:
+    """The in-page anchor for a section: ``#region-indian-ocean``."""
+    return "region-" + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def _ceiling(config: Any) -> Optional[float]:
+    """The owner's ceiling on one holiday's total, by ``holiday_email._max_total_ceiling``'s own rule.
+
+    Imported inside the function because ``holiday_email`` imports this module: the key keeps its one reader, so
+    there is no second config key and no second meaning for it. ``None`` is no ceiling, and then nothing is
+    rejected for price.
+    """
+    from .holiday_email import _max_total_ceiling
+
+    return _max_total_ceiling(config)
+
+
 def _package_card(price: PackagePrice, budget: float, travellers: int) -> Optional[Card]:
     cabin = str(price.flight_cabin or "").upper()
     hours = cabin_module.resolve_flight_hours(price.destination_key, None)
@@ -169,7 +216,7 @@ def _package_card(price: PackagePrice, budget: float, travellers: int) -> Option
         shop=price.operator, url=price.source_url, read_on=_read_day(price.observed_at),
         flights=(price.flight_summary or f"flights included, {cabin.lower() or 'economy'}"),
         hotel=f"{price.property_name}, {price.board}", facts=tuple(facts), halal=fact.tag if fact else "",
-        budget=budget, travellers=travellers)
+        budget=budget, travellers=travellers, region=_region_name(price.destination_key))
 
 
 def _short_area(area: Any) -> str:
@@ -316,7 +363,9 @@ def _trip_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]] 
         read_on=_read_day(read.get("observed_at")), flights=flights, hotel=_stay_line(trip), facts=facts, halal="",
         flights_gbp=flights_total, legs=_leg_lines(read), why=str(getattr(trip, "why", "") or "").strip(),
         catch=str(getattr(trip, "catch", "") or "").strip(), budget=budget, travellers=travellers,
-        areas=_lodge_areas(trip), leg_parts=_leg_parts(read))
+        areas=_lodge_areas(trip), leg_parts=_leg_parts(read),
+        region=_region_name(getattr(trip, "region", "")),
+        places=tuple(str(s.place).split("(")[0].strip() for s in trip.stops))
     people = f"{travellers} people"
     if priced is not None and priced.complete and priced.nights_planned == nights:
         return Card(kind="trip", total_gbp=float(priced.total_gbp),
@@ -367,7 +416,7 @@ def _watch_card(entry: Any, pair: Optional[tuple[str, str]], hotel_rates: Option
                 shop=stay.seller, url=stay.source_url, read_on=_read_day(stay.observed_at), flights="",
                 hotel=stay.unit, facts=tuple(facts), halal=entry.halal.tag if getattr(entry, "halal", None) else "",
                 stays=(stay,), stays_gbp=float(rate.price_gbp), nights_priced=nights, nights_planned=nights,
-                travellers=travellers)
+                travellers=travellers, region=_region_name(getattr(entry, "area", "")))
 
 
 def _stays_only_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, Any]],
@@ -406,7 +455,9 @@ def _stays_only_card(row: Mapping[str, Any], hotel_rates: Optional[Mapping[Any, 
         read_on="", flights=f"not priced; {reason}", hotel=_stay_line(trip), facts=facts, halal="",
         flights_gbp=None, legs=(), why=str(getattr(trip, "why", "") or "").strip(),
         catch=str(getattr(trip, "catch", "") or "").strip(), budget=budget, travellers=travellers,
-        fare_short=fare_short, areas=_lodge_areas(trip))
+        fare_short=fare_short, areas=_lodge_areas(trip),
+        region=_region_name(getattr(trip, "region", "")),
+        places=tuple(str(s.place).split("(")[0].strip() for s in trip.stops))
 
 
 _KIND_ORDER = {"trip": 0, "package": 1, "part": 2, "stay": 3, "flights": 4}
@@ -485,7 +536,7 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
             refused[price.property_name] = cabin_module_reason()
             not_priced.append(price.property_name)
             pending.append(Pending(price.property_name, "package read in economy with a leg over 8 hours; needs a business read",
-                                   str(price.source_url or "")))
+                                   str(price.source_url or ""), region=_region_name(price.destination_key)))
         else:
             cards.append(card)
     for row in rows:
@@ -520,9 +571,11 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
         if str(getattr(row["trip"], "confidence", "")) == "lead":
             # A new idea with no figure yet: say what makes it worth reading, not a reason it is missing.
             pending.append(Pending(row["trip"].title, str(getattr(row["trip"], "why", "") or "").strip(),
-                                   str(row.get("url") or ""), "ideas"))
+                                   str(row.get("url") or ""), "ideas",
+                                   _region_name(getattr(row["trip"], "region", ""))))
         else:
-            pending.append(Pending(row["trip"].title, reason, str(row.get("url") or "")))
+            pending.append(Pending(row["trip"].title, reason, str(row.get("url") or ""),
+                                   region=_region_name(getattr(row["trip"], "region", ""))))
     entries = tuple(watch) if watch is not None else watchlist_module.load_watchlist()
     pair = _reference_pair(config)
     for entry in entries:
@@ -533,7 +586,8 @@ def build_digest(config: Any, *, rows: Sequence[Mapping[str, Any]], package_pric
             continue
         not_priced.append(entry.name)
         group = "Gili Islands" if "Gili" in entry.area else "Maldives" if "Maldives" in entry.area else ""
-        pending.append(Pending(entry.name, "no dated rate read for the whole party yet", str(entry.url or ""), group))
+        pending.append(Pending(entry.name, "no dated rate read for the whole party yet", str(entry.url or ""), group,
+                               _region_name(getattr(entry, "area", ""))))
     # Partly priced cards that HAVE a flight read come before the stays-only ones: a fare is the
     # harder half to read, and the figure on the stays-only card is not a trip price.
     cards.sort(key=lambda c: (_KIND_ORDER.get(c.kind, 9), 0 if c.fits else 1,
@@ -719,14 +773,18 @@ def _stay_row(s: StayPrice) -> str:
     else:
         left += f'<br><span style="font-size:12px; color:{_WARN_INK};">{_e(s.reason or "not priced")}</span>'
         right = '<span style="color:#92400E;">not priced</span>'
-    cell = "padding:6px 0; border-top:1px solid #E2E8F0; font-size:13px; line-height:1.4; color:#1E293B; vertical-align:top;"
+    # overflow-wrap: a seller's URL can be longer than the column, and a long URL must break inside it
+    # rather than widen the card (the defect the compact rows were fixed for, now on a whole-trip card).
+    cell = ("padding:6px 0; border-top:1px solid #E2E8F0; font-size:13px; line-height:1.4; color:#1E293B; "
+            "vertical-align:top; overflow-wrap:break-word;")
     return (f'<tr><td style="{cell}">{left}</td>'
             f'<td align="right" style="{cell} white-space:nowrap; padding-left:8px;">{right}</td></tr>')
 
 
 def _itinerary_html(c: Card) -> str:
     rows = []
-    cell = "padding:6px 0; border-top:1px solid #E2E8F0; font-size:13px; line-height:1.4; color:#1E293B; vertical-align:top;"
+    cell = ("padding:6px 0; border-top:1px solid #E2E8F0; font-size:13px; line-height:1.4; color:#1E293B; "
+            "vertical-align:top; overflow-wrap:break-word;")
     if c.kind in ("trip", "part", "flights") and (c.flights_gbp is not None or c.flights):
         legs = "".join(f'<br><span style="font-size:12px; color:#475569;">'
                        + _dot_join([_e(part) for part in parts]) + "</span>" for parts in c.leg_parts[:6])
@@ -768,15 +826,20 @@ def _card_html(c: Card) -> str:
                  and " over the " not in f)
     notes_html = "".join(f'<div style="font-size:12px; color:#475569; margin-top:5px; border-top:1px dashed #E2E8F0; '
                          f'padding-top:4px; line-height:1.4;">{n}</div>' for n in notes)
+    # The places its stops go to, one small line under the title: a reader who jumped to a region wants
+    # to see, inside it, where each holiday actually goes (owner, 15 Nov 2026).
+    places_html = (f'<div style="font-size:12px; color:#334155; margin:0 0 4px;">'
+                   + _dot_join([_e(place) for place in c.places]) + '</div>' if c.places else "")
     return (f'<div data-kind="card-{_e(c.kind)}" style="background:#FFFFFF; border:1px solid #CBD5E1; '
             f'border-left:4px solid {edge}; border-radius:6px; '
             f'padding:12px; margin-bottom:12px; color:#0F172A;">{_chips(c)}'
             f'<div style="font-size:16px; font-weight:700; color:#0F172A; margin:0 0 2px; line-height:1.3;">{_e(c.title)}</div>'
-            f'<div style="font-size:12px; color:#475569; margin:0 0 8px;">'
+            + places_html
+            + f'<div style="font-size:12px; color:#475569; margin:0 0 8px;">'
             + _dot_join([_nb(f"{c.nights} nights"), _e(c.dates)]
                         + ([_e(c.place)] if c.kind == "stay" and c.place else []))
             + '</div>'
-            f'{_price_block(c)}{body}{notes_html}</div>')
+            + f'{_price_block(c)}{body}{notes_html}</div>')
 
 
 def _flight_rows_html(cards: Sequence[Card]) -> str:
@@ -1054,89 +1117,245 @@ def _sorted_stays_rows(cards: Sequence[Card]) -> list[Card]:
     return sorted(cards, key=lambda c: (-share(c), c.stays_gbp))
 
 
-def _summary_html(digest: Digest, budget: float) -> str:
-    """The answer first: what is bookable this week, cheapest first, before any card."""
+def _split_holidays(digest: Digest, ceiling: Optional[float]
+                    ) -> tuple[list[Card], list[Card], list[Card], list[Any]]:
+    """The body's four lists: whole holidays under the ceiling, over it, part-priced, and uneard trips.
+
+    Every list is the very one a part of the page draws (``_region_groups`` for the sections,
+    ``_notes_html`` for the notes), so a count in the summary can never disagree with what is shown.
+    An unpriced item has no total and is never rejected for price (owner, 30 Oct 2026).
+    """
     whole = [c for c in digest.cards if c.kind in ("trip", "package")]
-    if not whole:
-        # Every count is the length of the very list the section renders (``_section_groups``), so the
-        # box can never claim more rows than the page draws.
-        by_style = {style: group for _h, _s, group, style in _section_groups(digest)}
-        if not any(by_style.get(style) for style in ("card", "stays", "watch", "flights")):
-            return ""
-        # One sentence, one clause per kind of row, and NO clause for a count of zero: four counts
-        # separated by commas read as four categories of trip (14 Nov 2026).
-        clauses: list[str] = []
-        for style, one, several in (
-            ("card", "trip has flights and some stays priced", "trips have flights and some stays priced"),
-            ("stays", "trip has stays priced and awaits a fare", "trips have stays priced and await a fare"),
-            ("flights", "trip has a fare only", "trips have a fare only"),
-            ("watch", "watch-list stay is priced", "watch-list stays are priced"),
-        ):
-            count = len(by_style.get(style) or ())
-            if count:
-                clauses.append(f"{count} {one if count == 1 else several}")
-        if not clauses:
-            return ""
-        listed = clauses[0] if len(clauses) == 1 else ", ".join(clauses[:-1] + ["and " + clauses[-1]])
-        return (f'<div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:6px; padding:10px 12px; '
-                f'margin:12px 0 0; font-size:13px; color:#1E293B; line-height:1.45;"><b>No whole trip is priced yet this '
-                f'week.</b> {_e(listed)} (all below). A trip moves up to a full card once its flights and every '
-                f'night are read for these dates.</div>')
-    whole = sorted(whole, key=lambda c: c.total_gbp)
-    fit = [c for c in whole if c.fits]
-    heads = [f"{len(whole)} whole trip{'s' if len(whole) != 1 else ''} priced"]
-    if budget > 0:
-        heads.append(f"{len(fit)} fit{'s' if len(fit) == 1 else ''} the {_gbp(budget)} budget")
-    head = _dot_join([_e(head_) for head_ in heads])
-    cell = "padding:5px 0; border-top:1px solid #BBF7D0; font-size:13px; color:#1E293B; vertical-align:top;"
-    rows = "".join(
-        f'<tr><td style="{cell}">{_e(c.title)}<br><span style="font-size:11px; color:#475569;">'
-        + _dot_join([_nb(f"{c.nights} nights"),
-                     "operator package" if c.kind == "package" else "flights + stays"]) + '</span></td>'
-        f'<td align="right" style="{cell} white-space:nowrap; padding-left:8px;"><b>{_gbp(c.total_gbp)}</b><br>'
-        f'<span style="font-size:11px; color:{_GOOD_INK if c.fits else _WARN_INK};">'
-        f'{"fits" if c.fits else ("over" if c.fits is False else "")}</span></td></tr>' for c in whole[:6])
-    return (f'<div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:6px; padding:10px 12px; '
-            f'margin:12px 0 0;"><div style="font-size:14px; font-weight:700; color:#14532D; margin:0 0 4px;">{head}</div>'
-            f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">'
-            f'{rows}</table></div>')
+    under = [c for c in whole if ceiling is None or float(c.total_gbp) <= ceiling]
+    over = [c for c in whole if ceiling is not None and float(c.total_gbp) > ceiling]
+    partial = [c for c in digest.cards if c.kind in ("part", "flights")]
+    return under, over, partial, list(digest.pending)
 
 
-def _pending_item(p: Pending) -> str:
-    return _a(p.url, p.name) if p.url else _e(p.name)
+def _region_groups(under: Sequence[Card]) -> list[tuple[str, list[Card]]]:
+    """The whole holidays as one list per region, in the fixed order, each cheapest first."""
+    groups: dict[str, list[Card]] = {name: [] for name in REGION_ORDER}
+    for card in under:
+        groups[_region_name(card.region)].append(card)
+    return [(name, sorted(groups[name], key=lambda card: card.total_gbp))
+            for name in REGION_ORDER if groups[name]]
 
 
-def _not_priced_html(digest: Digest) -> str:
-    if not digest.not_priced:
+def _jump_html(regions: Sequence[tuple[str, Sequence[Card]]]) -> str:
+    """``Jump to: Africa (3) · Asia (2)``: the sections, in page order, as in-page links."""
+    if not regions:
         return ""
-    pending = list(digest.pending) or [Pending(n) for n in digest.not_priced]
-    items = []
-    trips = [p for p in pending if not p.group]
-    by_reason: dict[str, list[Pending]] = {}
-    for p in trips:
-        by_reason.setdefault(p.reason, []).append(p)
-    for reason, group in by_reason.items():
-        # The reason once, then one line per trip (owner, 14 Nov 2026): a paragraph of thirteen links
-        # separated by semicolons was unreadable, and the reason is the same for every one of them.
-        lines = "".join(f'<div style="margin:3px 0 0; font-size:13px;">{_pending_item(p)}</div>' for p in group)
-        items.append((f'<b style="color:#334155;">{_e(reason)}</b>' if reason else "") + lines)
-    ideas = [p for p in pending if p.group == "ideas"]
-    if ideas:
-        lines = "".join(f'<div style="margin:3px 0 0; font-size:13px;">{_pending_item(p)}'
-                        + (f' <span style="color:#64748B;">— {_e(p.reason)}</span>' if p.reason else "") + '</div>'
-                        for p in ideas)
-        items.append(f"<b>New ideas, fares and stays being read</b>{lines}")
-    gili = [p for p in pending if p.group == "Gili Islands"]
-    maldives = [p for p in pending if p.group == "Maldives"]
-    if gili:
-        items.append(f"<b>Gili Islands</b>: {', '.join(_pending_item(p) for p in gili)}")
-    if maldives:
-        items.append(f"<b>Maldives</b> (seaplane transfer to be priced in): {', '.join(_pending_item(p) for p in maldives)}")
-    # One explicit size on every item and sub-item, and on the list: a phone scaled some of these
-    # lines and not others (14 Nov 2026).
-    li = "".join(f'<li style="margin:0 0 4px; font-size:13px;">{i}</li>' for i in items)
-    return (f'<div style="{_SECTION}">Not yet priced</div>'
-            f'<ul style="padding-left:16px; margin:4px 0; font-size:13px; color:#334155; line-height:1.5;">{li}</ul>')
+    links = " · ".join(f'<a href="#{_region_id(name)}" style="{_LINK}">{_e(name)} ({len(cards)})</a>'
+                       for name, cards in regions)
+    return f'<div style="font-size:12px; color:{_MUTED}; margin:10px 0 0;">Jump to: {links}</div>'
+
+
+def _region_heading_html(name: str, cards: Sequence[Card]) -> str:
+    """One section's heading: ``AFRICA · 3 holidays, from £1,000``, anchored twice over.
+
+    Both ``id`` and an empty ``<a name>`` are carried: mail clients differ in which one they honour,
+    and a jump link that does nothing is worse than no jump list (owner, 15 Nov 2026).
+    """
+    anchor = _region_id(name)
+    cheapest = min(card.total_gbp for card in cards)
+    count = f"{len(cards)} holiday{'s' if len(cards) != 1 else ''}"
+    return (f'<div id="{anchor}" style="{_SECTION}"><a name="{anchor}"></a>{_e(name.upper())} · '
+            f'{_e(count)}, from {_gbp(cheapest)}</div>')
+
+
+def _summary_html(config: Any, digest: Digest) -> str:
+    """The answer first: how many holidays are bookable at or under the ceiling, and from what price.
+
+    Owner, 15 Nov 2026: "I don't want unpriced results because that misleads on the total price for a
+    holiday ... Don't send anything over £25k; you can just have a small footnote". So the box counts
+    exactly what the sections below draw, and everything else is one short sentence pointing at the notes.
+    """
+    ceiling = _ceiling(config)
+    budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
+    travellers = int(getattr(config, "travellers", 5) or 5)
+    under, over, partial, pending = _split_holidays(digest, ceiling)
+    not_fully = len(partial) + len(pending)
+    cap = f" at {_gbp(ceiling)} or under" if ceiling is not None else ""
+    if under:
+        cheapest = min(under, key=lambda card: card.total_gbp)
+        dearest = max(under, key=lambda card: card.total_gbp)
+        head = (f"{len(under)} holiday{'s are' if len(under) != 1 else ' is'} fully priced{cap} for {travellers}: "
+                f"from {_gbp(cheapest.total_gbp)} ({cheapest.title}) to {_gbp(dearest.total_gbp)}.")
+    else:
+        head = f"No holiday is fully priced{cap} this week."
+    tails: list[str] = []
+    if over:
+        tails.append(f"{len(over)} more {'are' if len(over) != 1 else 'is'} priced but over {_gbp(ceiling)}")
+    if not_fully:
+        tails.append(f"{not_fully} {'are' if not_fully != 1 else 'is'} not fully priced yet")
+    if len(tails) == 2:
+        small = f"{tails[0]}, and {tails[1]}; both are listed in the notes at the foot."
+    else:
+        small = f"{tails[0]}; listed in the notes at the foot." if tails else ""
+    budget_words = ""
+    if budget > 0 and under:
+        fit = len([card for card in under if card.fits])
+        budget_words = (f"{fit} {'fit' if fit != 1 else 'fits'} the {_gbp(budget)} budget" if fit
+                        else f"none fit the {_gbp(budget)} budget")
+    bg, edge, ink = (("#F0FDF4", "#BBF7D0", "#14532D") if under
+                     else ("#FFFBEB", "#FDE68A", "#78350F"))
+    return (f'<div style="background:{bg}; border:1px solid {edge}; border-radius:6px; padding:10px 12px; '
+            f'margin:12px 0 0; font-size:13px; color:#1E293B; line-height:1.45;">'
+            f'<div style="font-size:14px; font-weight:700; color:{ink};">{_e(head)}</div>'
+            + (f'<div style="font-size:13px; font-weight:600; color:#1E293B; margin:4px 0 0;">'
+               f'{_e(budget_words)}.</div>' if budget_words else "")
+            + (f'<div style="font-size:12px; color:#475569; margin:4px 0 0;">{_e(small)}</div>' if small else "")
+            + "</div>")
+
+
+def _summary_text(config: Any, digest: Digest) -> list[str]:
+    """The same box in the plain-text part: the sentences, with no styling and no jump list."""
+    ceiling = _ceiling(config)
+    budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
+    travellers = int(getattr(config, "travellers", 5) or 5)
+    under, over, partial, pending = _split_holidays(digest, ceiling)
+    not_fully = len(partial) + len(pending)
+    cap = f" at {_gbp(ceiling)} or under" if ceiling is not None else ""
+    if under:
+        cheapest = min(under, key=lambda card: card.total_gbp)
+        dearest = max(under, key=lambda card: card.total_gbp)
+        lines = [f"{len(under)} holiday{'s are' if len(under) != 1 else ' is'} fully priced{cap} for {travellers}: "
+                 f"from {_gbp(cheapest.total_gbp)} ({cheapest.title}) to {_gbp(dearest.total_gbp)}."]
+    else:
+        lines = [f"No holiday is fully priced{cap} this week."]
+    if budget > 0 and under:
+        fit = len([card for card in under if card.fits])
+        lines.append(f"{fit} {'fit' if fit != 1 else 'fits'} the {_gbp(budget)} budget." if fit
+                     else f"none fit the {_gbp(budget)} budget.")
+    tails: list[str] = []
+    if over:
+        tails.append(f"{len(over)} more {'are' if len(over) != 1 else 'is'} priced but over {_gbp(ceiling)}")
+    if not_fully:
+        tails.append(f"{not_fully} {'are' if not_fully != 1 else 'is'} not fully priced yet")
+    if len(tails) == 2:
+        lines.append(f"{tails[0]}, and {tails[1]}; both are listed in the notes at the foot.")
+    elif tails:
+        lines.append(f"{tails[0]}; listed in the notes at the foot.")
+    return lines
+
+
+def _missing_words(c: Card) -> str:
+    """What keeps a trip off a whole-holiday card, in the note's own words.
+
+    Owner, 15 Nov 2026: a holiday that is not fully priced is one line in a footnote, so the line says
+    only what is missing: "(missing: fare)", "(missing: 6 nights at Masai Mara)" or
+    "(missing: fare and 6 nights)". No figure ever reaches such a line.
+    """
+    fare = c.flights_gbp is None
+    nights = max(0, int(c.nights or 0) - int(c.nights_priced or 0))
+    if fare and nights:
+        return f"(missing: fare and {nights} nights)"
+    if fare:
+        return "(missing: fare)"
+    if nights:
+        place = next((str(s.place or "") for s in c.stays if not s.priced and str(s.place or "").strip()), "")
+        place = (place or str(c.place or "")).split("(")[0].strip()
+        return f"(missing: {nights} nights at {place})" if place else f"(missing: {nights} nights)"
+    return "(nothing read yet)"
+
+
+def _over_line_html(c: Card) -> str:
+    """One over-ceiling holiday: its three figures and its region, the title the only link."""
+    split = (f" (flights {_gbp(c.flights_gbp)} + stays {_gbp(c.stays_gbp)})"
+             if c.flights_gbp is not None else "")
+    return (f'{_a(c.url, c.title) if c.url else _e(c.title)} · {_nb(f"{_gbp(c.total_gbp)} for {c.travellers}")}'
+            f'{_e(split)} · {_e(_region_name(c.region))}')
+
+
+def _over_line_text(c: Card) -> str:
+    split = (f" (flights {_gbp(c.flights_gbp)} + stays {_gbp(c.stays_gbp)})"
+             if c.flights_gbp is not None else "")
+    return f"{c.title} · {_gbp(c.total_gbp)} for {c.travellers}{split} · {_region_name(c.region)}"
+
+
+def _watch_note(c: Card, *, html: bool) -> str:
+    """One watch-list stay in its one note line: "<name> £X for N nights (<board words>)"."""
+    stay = next((s for s in c.stays if s.priced), None)
+    board = stay.board_words if stay is not None and stay.board_words else "board as stated"
+    amount = _nb(_gbp(c.total_gbp)) if html else _gbp(c.total_gbp)
+    return f"{_e(c.title) if html else c.title} {amount} for {c.nights} nights ({_e(board) if html else board})"
+
+
+def _not_yet_rows(partial: Sequence[Card], pending: Sequence[Pending]) -> list[tuple[str, list[str]]]:
+    """The trips that are not fully priced, one list per region, in the fixed order, with no links.
+
+    A trip with a card of its own says what is missing; a trip with no card at all says
+    "(nothing read yet)". The region is the trip's own, so a reader looks in the same place they
+    would find it as a card.
+    """
+    rows: dict[str, list[str]] = {name: [] for name in REGION_ORDER}
+    for card in partial:
+        rows[_region_name(card.region)].append(f"{_e(card.title)} {_e(_missing_words(card))}")
+    for item in pending:
+        rows[_region_name(item.region)].append(f"{_e(item.name)} (nothing read yet)")
+    return [(name, rows[name]) for name in REGION_ORDER if rows[name]]
+
+
+def _notes_html(config: Any, digest: Digest, attachment_name: str = "") -> str:
+    """The foot of the e-mail: one small grey block, no cards, no boxes (owner, 15 Nov 2026).
+
+    "you can just have a small footnote to say rejected with the details, concise, rather than
+    wasting space on the main body". The three lists are the over-ceiling holidays, the trips that
+    are not fully priced yet, and the priced watch-list stays. ``Not yet priced`` stays its own
+    heading element: ``weekly_fares.insert_section`` inserts the weekly sections before it.
+    """
+    ceiling = _ceiling(config)
+    _under, over, partial, pending = _split_holidays(digest, ceiling)
+    watch = [c for c in digest.cards if c.kind == "stay"]
+    rows: list[str] = []
+    if over:
+        rows.append(f'<div style="font-weight:700; color:#475569;">Priced but over {_gbp(ceiling)} '
+                    f'(not shown above):</div>')
+        rows.extend(f"<div>{_over_line_html(c)}</div>" for c in sorted(over, key=lambda card: card.total_gbp))
+    not_yet = _not_yet_rows(partial, pending)
+    if not_yet:
+        rows.append('<div style="font-weight:700; color:#475569; margin-top:8px;">Not yet priced</div>')
+        rows.append("<div>Not fully priced yet (not shown above):</div>")
+        rows.extend(f"<div>{_e(name)}: {'; '.join(items)}</div>" for name, items in not_yet)
+    if watch:
+        rows.append('<div style="font-weight:700; color:#475569; margin-top:8px;">Stay-only prices on the watch '
+                    "list (flights not included):</div>")
+        rows.append("<div>" + "; ".join(_watch_note(c, html=True) for c in watch) + "</div>")
+        seaplane = next((fact for c in watch for fact in c.facts if "seaplane" in fact.lower()), "")
+        if seaplane:
+            rows.append(f"<div>{_e(seaplane)}.</div>")
+    if attachment_name:
+        rows.append(f'<div style="margin-top:8px;">Full trip pages for every option are attached: '
+                    f"{_e(attachment_name)}</div>")
+    if not rows:
+        return ""
+    return ('<div style="font-size:12px; color:#64748B; margin:22px 0 0; line-height:1.55;">'
+            + "".join(rows) + "</div>")
+
+
+def _notes_text(config: Any, digest: Digest, attachment_name: str = "") -> list[str]:
+    """The same foot in the plain-text part: the three lists, one line each."""
+    ceiling = _ceiling(config)
+    _under, over, partial, pending = _split_holidays(digest, ceiling)
+    watch = [c for c in digest.cards if c.kind == "stay"]
+    lines: list[str] = []
+    if over:
+        lines.append(f"Priced but over {_gbp(ceiling)} (not shown above):")
+        lines.extend(f"  {_over_line_text(c)}" for c in sorted(over, key=lambda card: card.total_gbp))
+    not_yet = _not_yet_rows(partial, pending)
+    if not_yet:
+        lines.append("Not fully priced yet (not shown above):")
+        for name, items in not_yet:
+            lines.append(f"  {name}: " + "; ".join(_visible(item) for item in items))
+    if watch:
+        lines.append("Stay-only prices on the watch list (flights not included):")
+        lines.append("  " + "; ".join(_watch_note(c, html=False) for c in watch))
+        seaplane = next((fact for c in watch for fact in c.facts if "seaplane" in fact.lower()), "")
+        if seaplane:
+            lines.append(f"  {seaplane}")
+    if attachment_name:
+        lines.append(f"Full trip pages for every option are attached: {attachment_name}")
+    return lines
 
 
 def _section_groups(digest: Digest) -> tuple[tuple[str, str, list[Card], str], ...]:
@@ -1171,8 +1390,18 @@ def _section(title: str, sub: str = "") -> str:
 
 
 def render_digest_html(config: Any, digest: Digest, *, generated_at: str, attachment_name: str = "") -> str:
+    """The body: what is bookable at or under the ceiling, one section per region, then the notes at the foot.
+
+    Owner, 15 Nov 2026: "I don't want unpriced results because that misleads on the total price for a
+    holiday ... Ensure the buckets are by country or region in the mail so I can jump to a section and
+    know all the options in a region." So only a fully priced holiday is a card, every card sits under its
+    region's heading (anchored twice, for the mail clients that honour one and not the other), and
+    everything else is a few small lines in the notes.
+    """
     title = _e(getattr(config, "report_title", "July holiday watch"))
-    budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
+    ceiling = _ceiling(config)
+    under, _over, _partial, _pending = _split_holidays(digest, ceiling)
+    regions = _region_groups(under)
     out = [f'<div style="max-width:600px; margin:0 auto; padding:12px; background:#F8FAFC; color:#0F172A; '
            f'-webkit-text-size-adjust:100%; text-size-adjust:100%; '
            f'font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">',
@@ -1180,27 +1409,12 @@ def render_digest_html(config: Any, digest: Digest, *, generated_at: str, attach
            f'<div style="color:{_MUTED}; font-size:13px;">'
            + _dot_join([_e(part) for part in _span_parts(config)]
                        + [_nb(f"checked {_read_day(generated_at)}")]) + '</div>',
-           _summary_html(digest, budget)]
-    for heading, sub, group, style in _section_groups(digest):
-        if not group:
-            continue
-        # Compact rows, not cards, for the stays-read and watch sections: twelve of these as full
-        # cards made the body nine screens tall, and the full detail is in the attached trip pages.
-        out.append(_section(heading, _section_caption(sub, group)))
-        if style == "card":
-            out.extend(_card_html(c) for c in group)
-        elif style == "stays":
-            out.append(_stays_rows_html(group))
-        elif style == "watch":
-            out.append(_watch_rows_html(group))
-        else:
-            out.append(_flight_rows_html(group))
-    if not digest.cards:
-        out.append(f'<div style="margin:16px 0; color:{_INK};">Nothing confirmed this week: no package or flight price was read for the trip dates.</div>')
-    out.append(_not_priced_html(digest))
-    if attachment_name:
-        out.append(f'<div style="font-size:12px; color:{_MUTED}; margin-top:16px;">Full trip pages for every option are '
-                   f'attached: {_e(attachment_name)}</div>')
+           _summary_html(config, digest),
+           _jump_html(regions)]
+    for name, cards in regions:
+        out.append(_region_heading_html(name, cards))
+        out.extend(_card_html(c) for c in cards)
+    out.append(_notes_html(config, digest, attachment_name))
     out.append("</div>")
     return "".join(out)
 
@@ -1276,67 +1490,19 @@ def _watch_row_text(c: Card) -> list[str]:
 
 
 def render_digest_text(config: Any, digest: Digest, *, generated_at: str, attachment_name: str = "") -> str:
+    """The plain-text part: the same summary, one ``== REGION ==`` section per region, then the Notes."""
+    ceiling = _ceiling(config)
+    under, _over, _partial, _pending = _split_holidays(digest, ceiling)
     lines = [str(getattr(config, "report_title", "July holiday watch")),
              f"{_span(config)} · checked {_read_day(generated_at)}", ""]
-    trips = [c for c in digest.cards if c.kind == "trip"]
-    packages = [c for c in digest.cards if c.kind == "package"]
-    partly = [c for c in digest.cards if _is_full_card(c) and c.kind == "part"]
-    for heading, sub, group in (
-        ("Whole trips, fully priced",
-         "Flights and every night's stay were read for these exact dates and the whole party.", trips),
-        ("Confirmed packages", "One operator price: flights and hotel together.", packages),
-        ("Partly priced", "Flights and some stays are read; the nights marked are still open.", partly),
-    ):
-        if not group:
-            continue
-        lines += [heading, f"  {_section_caption(sub, group)}", ""]
-        for c in group:
-            lines += _card_text(c)
-    stays_only = [c for c in digest.cards if _is_stays_row(c)]
-    if stays_only:
-        lines += ["Stays read, fares still to come",
-                  "These nights are priced; the trip joins the cards above when its fare is read."]
-        if _has_derived_stay(stays_only):
-            lines.append(DERIVED_TOTAL_NOTE)
-        lines.append("")
-        for c in _sorted_stays_rows(stays_only):
-            lines += _stays_row_text(c)
-    watch = [c for c in digest.cards if c.kind == "stay"]
-    if watch:
-        lines += ["Stays priced, flights separate",
-                  "A dated rate for the whole party; add the flights."]
-        if _has_derived_stay(watch):
-            lines.append(DERIVED_TOTAL_NOTE)
-        lines.append("")
-        for c in watch:
-            lines += _watch_row_text(c)
-    flights = [c for c in digest.cards if c.kind == "flights"]
-    if flights:
-        lines += ["Flight searches, flights only", "The fare is read; no stay is priced beside it yet.", ""]
-        for c in flights:
-            lines += _card_text(c)
-            lines.append(f"  {_figure_label(c, 'flights')}")
-    if not digest.cards:
-        lines += ["Nothing confirmed this week: no package or flight price was read for the trip dates.", ""]
-    if digest.not_priced:
-        pending = list(digest.pending) or [Pending(n) for n in digest.not_priced]
-        by_reason: dict[str, list[Pending]] = {}
-        for p in (p for p in pending if not p.group):
-            by_reason.setdefault(p.reason, []).append(p)
-        lines.append("Not yet priced")
-        for reason, group in by_reason.items():
-            if reason:
-                lines.append(f"{reason}")
-            lines += [f"  {p.name}" for p in group]
-        for group_name, label in (("ideas", "New ideas, fares and stays being read"),
-                                  ("Gili Islands", "Gili Islands"),
-                                  ("Maldives", "Maldives (seaplane transfer to be priced in)")):
-            members = [p for p in pending if p.group == group_name]
-            if not members:
-                continue
-            lines.append(label)
-            lines += [f"  {p.name}" + (f" — {p.reason}" if p.reason and group_name == "ideas" else "")
-                      for p in members]
-    if attachment_name:
-        lines += ["", f"Full trip pages for every option are attached: {attachment_name}"]
+    lines += _summary_text(config, digest)
+    lines.append("")
+    for name, cards in _region_groups(under):
+        count = f"{len(cards)} holiday{'s' if len(cards) != 1 else ''}"
+        lines += [f"== {name.upper()} ==", f"{count}, from {_gbp(min(card.total_gbp for card in cards))}", ""]
+        for card in cards:
+            lines += _card_text(card)
+    notes = _notes_text(config, digest, attachment_name)
+    if notes:
+        lines += ["Notes", ""] + notes
     return "\n".join(lines) + "\n"

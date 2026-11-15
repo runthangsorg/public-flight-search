@@ -168,6 +168,10 @@ def _config(**overrides):
     # does the over-budget list (8 Nov 2026), which would otherwise turn most trip pages into one line each.
     object.__setattr__(config, "complete_price_only", False)
     object.__setattr__(config, "over_budget_lines", False)
+    # Brief M (15 Nov 2026) set the shipped £25,000 ceiling, which leaves the three holidays over it out of the
+    # legacy body and the attachment. These layout tests are about every trip's page; the ceiling has its own
+    # tests (test_july_mail_best_n_and_ceiling.py, test_holiday_digest.py).
+    object.__setattr__(config, "max_total_gbp", None)
     for key, value in overrides.items():
         object.__setattr__(config, key, value)
     return config

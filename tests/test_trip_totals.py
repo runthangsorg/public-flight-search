@@ -18,8 +18,18 @@ from public_flight_search import trip_totals as tt
 from public_flight_search.holiday_email import _multi_centre_rows
 from public_flight_search.multi_centre import trip_stays_for_dates
 
-from test_holiday_email_compact import _config, visible_text
+from test_holiday_email_compact import _config as _layout_config, visible_text
 from test_price_says_what_it_covers import BUILD, deal_read, load
+
+
+def _config(**overrides):
+    """The layout helper next door, with the £25,000 ceiling brief M shipped in the example config.
+
+    The compact tests clear it because they want a page for every trip; these two files are where the ceiling's
+    own wording is pinned, so it is put back unless a test asks otherwise (``max_total_gbp=None``).
+    """
+    overrides.setdefault("max_total_gbp", 25_000.0)
+    return _layout_config(**overrides)
 
 NOW = "2026-11-14T12:00:00+00:00"
 
@@ -153,7 +163,7 @@ class TripTotalRenderingTests(unittest.TestCase):
         card = self.full.cards[0]
         self.assertIn(f"£{card.total_gbp:,.0f}", text)
         self.assertIn(f"flights £8,000 + stays £{card.stays_gbp:,.0f}", text)
-        self.assertIn("Whole trips, fully priced", text)
+        self.assertRegex(text, r"AFRICA · 1 holiday, from £")
         for stay in card.stays:
             self.assertIn(stay.property_name, text)
             self.assertIn(f"£{stay.total_gbp:,.0f}", text)
@@ -163,16 +173,18 @@ class TripTotalRenderingTests(unittest.TestCase):
 
     def test_the_summary_leads_with_whole_trips_and_the_budget(self):
         text = visible_text(self._html(self.full))
-        self.assertLess(text.index("1 whole trip priced"), text.index("Whole trips, fully priced"))
+        self.assertLess(text.index("1 holiday is fully priced"), text.index("AFRICA ·"))
 
-    def test_a_part_priced_trip_says_which_nights_are_open_and_carries_no_budget_verdict(self):
+    def test_a_part_priced_trip_is_a_note_line_with_no_figure_and_no_budget_verdict(self):
+        """15 Nov 2026: an unpriced result is not in the body at all, so it cannot mislead on the total."""
         html = self._html(self.part)
         text = visible_text(html)
-        self.assertIn("Partly priced", text)
-        self.assertIn("nights still to price", text)
-        self.assertIn("no dated rate read", text)
+        self.assertIn("No holiday is fully priced at £25,000 or under this week.", text)
+        self.assertIn("Not fully priced yet (not shown above):", text)
+        self.assertRegex(text, r"\(missing: 8 nights at Cape Town\)")
         self.assertNotIn("fits the", text)
-        self.assertIn("No whole trip is priced yet this week", text)
+        notes = text[text.index("Not fully priced yet"):]
+        self.assertNotIn("£", notes)
 
     def test_the_text_part_carries_the_same_figures(self):
         text = hd.render_digest_text(_config(), self.full, generated_at=NOW)
@@ -182,11 +194,12 @@ class TripTotalRenderingTests(unittest.TestCase):
         for stay in card.stays:
             self.assertIn(stay.source_url, text)
 
-    def test_a_flights_only_read_is_a_row_not_a_card_and_names_the_stays_to_price(self):
+    def test_a_flights_only_read_is_a_note_line_not_a_row(self):
         digest = _build(self.rows, None)
         text = visible_text(self._html(digest))
-        self.assertIn("Flight searches, flights only", text)
-        self.assertIn("flights only", text)
+        self.assertNotIn("Flight searches, flights only", text)
+        self.assertIn("Not fully priced yet (not shown above):", text)
+        self.assertRegex(text, r"\(missing: [0-9]+ nights at ")
 
 
 class StayWantedTests(unittest.TestCase):
@@ -269,7 +282,9 @@ class LeadTripTests(unittest.TestCase):
                 for lodge in stop.lodges:
                     self.assertTrue(lodge.url.startswith("https://"), f"{trip.id}: {lodge.name} has no page")
         if leads:
-            self.assertIn("New ideas, fares and stays being read", visible_text(html))
+            notes = visible_text(html)[visible_text(html).index("Not fully priced yet"):]
+            for trip in leads:
+                self.assertIn(trip.title, notes, trip.id)
         self.assertNotIn("£0", visible_text(html))
 
 
@@ -343,7 +358,7 @@ class StayLineTests(unittest.TestCase):
         text = hd.render_digest_text(_config(), digest, generated_at=NOW)
         for part in (visible_text(html), text):
             self.assertIn(f"nightly price × {card.stays[0].nights} nights", part)
-            self.assertIn(hd.DERIVED_TOTAL_NOTE, part)
+            self.assertNotIn(hd.DERIVED_TOTAL_NOTE, part, "the body has one line per note, not a caption")
 
 
 class StaysWithoutAFareTests(unittest.TestCase):
@@ -364,15 +379,17 @@ class StaysWithoutAFareTests(unittest.TestCase):
         self.assertEqual(card.flights,
                          "not priced; the economy fare read has a leg over 8 hours; a business fare is still to be read")
         rendered = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
-        # A stays-only trip is a compact row under its own heading since brief F (14 Nov 2026), not a card
-        # under "Partly priced"; the row carries the SHORT fare reason (brief H), the long sentence being
-        # the group heading for trips with no stay priced at all.
-        self.assertIn("Stays read, fares still to come", rendered)
-        self.assertIn("fare: economy has a leg over 8 hours; business not read yet", rendered)
-        self.assertNotIn(self.rows[0]["trip"].title, _not_priced_names(hd.render_digest_html(_config(), digest,
-                                                                                           generated_at=NOW)))
+        assert "Stays read, fares still to come" not in rendered
+        # 15 Nov 2026: a trip that is not fully priced is not in the body as a row or a card at all; it
+        # is one line in the notes saying what is missing, with no figure and no fare prose.
+        self.assertIn("Not fully priced yet (not shown above):", rendered)
+        self.assertRegex(rendered, r"\(missing: fare and 8 nights\)")
+        self.assertNotIn("economy has a leg over 8 hours", rendered)
+        self.assertIn(self.rows[0]["trip"].title, _not_priced_names(
+            hd.render_digest_html(_config(), digest, generated_at=NOW)))
         text = hd.render_digest_text(_config(), digest, generated_at=NOW)
-        self.assertIn("fare: economy has a leg over 8 hours; business not read yet", text)
+        self.assertIn("(missing: fare and ", text)
+        self.assertNotIn("£", text[text.index("Not fully priced yet"):])
 
     def test_every_night_priced_without_a_fare_is_still_partly_priced(self):
         digest = _build(self.rows, _hotel_rates([_rate(n, ci, co, 200.0) for n, ci, co in self.lodges]))
@@ -389,9 +406,11 @@ class StaysWithoutAFareTests(unittest.TestCase):
         (card,) = digest.cards
         self.assertEqual(card.kind, "part")
         self.assertEqual(card.why, rows[0]["trip"].why)
-        # Brief H (14 Nov 2026): a compact row's why line is the trip's own words in italics, with no
-        # "Why it is special:" label; the text still has to be on the row.
-        self.assertIn(hd._e(card.why), hd.render_digest_html(_config(), digest, generated_at=NOW))
+        # 15 Nov 2026: the why line belongs to a whole holiday's card; a not-fully-priced trip is a name
+        # in the notes, but the digest still carries its why for the trip pages.
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        self.assertIn(hd._e(card.title), html)
+        self.assertNotIn(hd._e(card.why), html)
         self.assertFalse([p for p in digest.pending if p.name == card.title])
 
 
@@ -415,16 +434,17 @@ class PartlyPricedOrderAndSummaryTests(unittest.TestCase):
         no_fare = dict(_rows([])[0])
         digest = _build([fare, no_fare], _hotel_rates([_rate(*self.lodges[0], 200.0)]))
         text = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
-        self.assertIn("No whole trip is priced yet this week.", text)
-        self.assertIn("1 trip has flights and some stays priced, and 1 trip has stays priced and awaits "
-                      "a fare (all below)", text)
+        self.assertIn("No holiday is fully priced at £25,000 or under this week.", text)
+        self.assertIn("2 are not fully priced yet; listed in the notes at the foot.", text)
+        self.assertNotIn("more are priced but over", text)
 
-    def test_a_flights_only_week_says_flights_only_and_omits_the_zero_clauses(self):
+    def test_a_flights_only_week_says_nothing_is_whole_and_omits_the_zero_clauses(self):
         digest = _build(self.rows, None)
         text = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
-        self.assertIn("1 trip has a fare only (all below)", text)
+        self.assertIn("No holiday is fully priced at £25,000 or under this week.", text)
         self.assertNotIn("stays only", text)
         self.assertNotIn("0 have", text)
+        self.assertNotIn("flights only", text)
 
 
 def _not_priced_names(html):

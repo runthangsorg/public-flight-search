@@ -9,6 +9,7 @@
     ]
   },
   "max_budget_gbp": 12000,
+  "max_total_gbp": 25000,
   "min_nights": 12,
   "max_nights": 21,
   "departure_window": [

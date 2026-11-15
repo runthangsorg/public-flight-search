@@ -110,7 +110,9 @@ def _config(path: Path, budget: float | None = None):
     config = load_holiday_config(path.read_text(encoding="utf-8"))
     # these tests are about layout, with or without a flight read, and look at every trip's page (8 Nov 2026: a trip
     # more than 20% over the budget is otherwise one line in the body; test_over_budget_trips_are_lines)
-    config = dataclasses.replace(config, complete_price_only=False, over_budget_lines=False)
+    # brief M (15 Nov 2026) set the shipped £25,000 ceiling; these tests look at every trip's page, and the ceiling
+    # has its own tests (test_july_mail_best_n_and_ceiling.py)
+    config = dataclasses.replace(config, complete_price_only=False, over_budget_lines=False, max_total_gbp=None)
     return config if budget is None else dataclasses.replace(config, max_budget_gbp=budget)
 
 

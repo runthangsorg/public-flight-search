@@ -85,7 +85,9 @@ STOPOVER_OUTLIER_TOTAL = 28000.0
 
 def _config(path=JULY, *, budget=SYNTHETIC_CEILING_GBP):
     config = load_holiday_config(path.read_text(encoding="utf-8"))
-    return dataclasses.replace(config, max_budget_gbp=budget, complete_price_only=False)  # layout tests: with or without a flight read
+    # layout tests: with or without a flight read; no ceiling either (brief M, 15 Nov 2026: the shipped config sets
+    # one, and these tests look at every trip's page — the ceiling's own tests are in test_july_mail_best_n_and_ceiling)
+    return dataclasses.replace(config, max_budget_gbp=budget, complete_price_only=False, max_total_gbp=None)
 
 
 def _journeys(fares):
