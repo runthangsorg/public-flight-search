@@ -248,6 +248,7 @@ def _package_card(price: PackagePrice, budget: float, travellers: int) -> Option
     rooms = f"{price.rooms} room" + ("s" if price.rooms != 1 else "")
     return Card(
         kind="package", title=price.property_name, place=str(price.destination_key).replace("_", " ").title(),
+        places=(str(price.destination_key).replace("_", " ").title(),),
         nights=int(price.nights), dates=f"{_day(price.outbound_date)} – {_day(price.return_date)}",
         total_gbp=float(price.total_gbp), covers=f"package: flights + hotel, {price.board}, {rooms}",
         shop=price.operator, url=price.source_url, read_on=_read_day(price.observed_at),
