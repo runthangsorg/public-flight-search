@@ -1017,3 +1017,15 @@ def test_a_package_or_watch_place_is_filed_under_its_region_not_other():
     assert hd._place_region("Dhaalu Atoll, Maldives") == "Indian Ocean"
     assert hd._place_region("asia") == "Asia"
     assert hd._place_region("somewhere unheard of") == "Other"
+
+
+class PackageRoomsLineTests(unittest.TestCase):
+    """An operator's room lines say the hotel and the board every time; the card already shows both (21 Nov 2026)."""
+
+    def test_the_room_and_who_sleeps_in_it_are_kept(self):
+        line = hd._rooms_line(["room 1: 2 adults, Sample Resort - Deluxe Room Dbl - ALL INCLUSIVE",
+                               "room 2: 3 adults, Sample Resort - Garden View Trp - ALL INCLUSIVE"], "Sample Resort", "AI")
+        self.assertEqual(line, "Rooms: Deluxe Room Dbl (2 adults) + Garden View Trp (3 adults)")
+
+    def test_a_line_in_another_shape_is_kept_as_it_is(self):
+        self.assertEqual(hd._rooms_line(["Two-bedroom villa"], "Sample Resort", "AI"), "Two-bedroom villa")

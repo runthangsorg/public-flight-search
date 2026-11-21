@@ -220,10 +220,14 @@ class SectionTests(unittest.TestCase):
         return read(links, redirects)[0]
 
     def test_rows_are_matches_then_near_then_one_idea_per_place_from_a_home_airport(self):
-        rows = cl.shown_rows(self.payload())
-        self.assertEqual([r["fit"] for r in rows], ["match", "near", "idea", "idea"])
-        self.assertEqual([r["title"] for r in rows[2:]],
+        payload = self.payload()
+        self.assertEqual([r["fit"] for r in cl.shown_rows(payload)], ["match", "near"])
+        self.assertEqual([r["title"] for r in cl.shown_rows(payload, ("idea",))],
                          ["5* Spring Resort from LONDON", "5* Other Resort same region"])
+        text = cl.render_section_text(payload)
+        self.assertIn("On other dates (4), the best from your airports: 5* Spring Resort from LONDON £250 pp, "
+                      "8 Mar 2027; 5* Other Resort same region £300 pp, 9 Mar 2027", text)
+        self.assertNotIn("Spring Resort from LONDON:", text, "an other-date idea is never a table row")
 
     def test_the_caption_says_whose_price_it_is_and_counts_what_fits(self):
         text = cl.render_section_text(self.payload())
@@ -245,7 +249,7 @@ class SectionTests(unittest.TestCase):
         merged = insert_section(body, cl.render_section_html(self.payload()))
         self.assertLess(merged.index("Deal ideas from curators"), merged.index(">Not shown</div>"))
         many = self.payload()
-        many["leads"] = [{**many["leads"][2], "place_key": str(n), "title": f"Idea {n}"} for n in range(40)]
+        many["leads"] = [{**many["leads"][1], "place_key": str(n), "title": f"Near {n}"} for n in range(40)]
         self.assertEqual(len(cl.shown_rows(many)), cl.MAX_ROWS)
         self.assertLess(len(cl.render_section_html(many).encode("utf-8")), 16_000)
 

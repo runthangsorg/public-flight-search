@@ -244,7 +244,7 @@ def _package_card(price: PackagePrice, budget: float, travellers: int) -> Option
     if budget > 0:
         facts.append("fits the budget" if price.total_gbp <= budget else f"{_gbp(price.total_gbp - budget)} over the {_gbp(budget)} budget")
     if price.room_descriptions:
-        facts.append("; ".join(price.room_descriptions[:2]))
+        facts.append(_rooms_line(price.room_descriptions[:3], price.property_name, price.board))
     rooms = f"{price.rooms} room" + ("s" if price.rooms != 1 else "")
     return Card(
         kind="package", title=price.property_name, place=str(price.destination_key).replace("_", " ").title(),
@@ -255,6 +255,36 @@ def _package_card(price: PackagePrice, budget: float, travellers: int) -> Option
         flights=(price.flight_summary or f"flights included, {cabin.lower() or 'economy'}"),
         hotel=f"{price.property_name}, {price.board}", facts=tuple(facts), halal=fact.tag if fact else "",
         budget=budget, travellers=travellers, region=_place_region(price.destination_key))
+
+
+#: A board code and the words an operator's room line uses for it.
+_BOARD_WORDS = {
+    "ai": {"ai", "allinclusive", "ultraallinclusive"}, "allinclusive": {"ai", "allinclusive"},
+    "bb": {"bb", "bedandbreakfast", "breakfast", "breakfastincluded"}, "hb": {"hb", "halfboard"},
+    "fb": {"fb", "fullboard"}, "ro": {"ro", "roomonly"}, "sc": {"sc", "selfcatering"},
+}
+
+
+def _rooms_line(descriptions: Sequence[str], property_name: str, board: str) -> str:
+    """The operator's room lines without what the card already says (21 Nov 2026 review).
+
+    "room 1: 2 adults, Lara Barut Collection - Deluxe Garden Room Dbl - ALL INCLUSIVE" repeats the hotel and the
+    board in every room; the card shows both. What is left is the room and who sleeps in it:
+    "Rooms: Deluxe Garden Room Dbl (2 adults) + Deluxe Garden View Trp (3 adults)". A line in another shape is
+    kept as it is.
+    """
+    shown = []
+    for text in descriptions:
+        match = re.match(r"\s*room\s*\d+\s*:\s*([^,]+),\s*(.+)$", str(text), re.I)
+        if not match:
+            return "; ".join(str(d) for d in descriptions)
+        who, room = match.group(1).strip(), match.group(2).strip()
+        parts = [part.strip() for part in re.split(r"\s+-\s+", room) if part.strip()]
+        said = {re.sub(r"[^a-z0-9]", "", str(property_name).lower())}
+        said |= _BOARD_WORDS.get(re.sub(r"[^a-z0-9]", "", str(board).lower()), {re.sub(r"[^a-z0-9]", "", str(board).lower())})
+        parts = [part for part in parts if re.sub(r"[^a-z0-9]", "", part.lower()) not in said] or parts
+        shown.append(f"{' - '.join(parts)} ({who})")
+    return "Rooms: " + " + ".join(shown)
 
 
 def _short_area(area: Any) -> str:
@@ -725,7 +755,7 @@ def _chips(c: Card) -> str:
     if c.fits is True:
         chips.append(_chip(f"fits the {_gbp(c.budget)} budget", _GOOD_BG, _GOOD_INK))
     elif c.fits is False:
-        chips.append(_chip(f"{_gbp(c.total_gbp - c.budget)} over budget", _WARN_BG, _WARN_INK))
+        chips.append(_chip(f"{_gbp(c.total_gbp - c.budget)} over the {_gbp(c.budget)} target", _WARN_BG, _WARN_INK))
     if c.kind == "part" and c.nights - c.nights_priced > 0:
         chips.append(_chip(f"{c.nights - c.nights_priced} nights still to price", _WARN_BG, _WARN_INK))
     if c.halal:
@@ -1242,14 +1272,40 @@ def _summary_html(config: Any, digest: Digest) -> str:
     else:
         head = f"No holiday is priced in full at or under {_gbp(ceiling)} this week."
         counts = ""
-    bg, edge, ink = (("#F0FDF4", "#BBF7D0", "#14532D") if under
+    target, cheapest_three = _target_line(config, under), _cheapest_lines(under)
+    fitting = any(card.fits for card in under)
+    bg, edge, ink = (("#F0FDF4", "#BBF7D0", "#14532D") if fitting
                      else ("#FFFBEB", "#FDE68A", "#78350F"))
     return (f'<div style="background:{bg}; border:1px solid {edge}; border-radius:6px; padding:10px 12px; '
             f'margin:12px 0 0; font-size:13px; color:#1E293B; line-height:1.45;">'
-            f'<div style="font-size:14px; font-weight:700; color:{ink};">{_e(head)}</div>'
+            + (f'<div style="font-size:14px; font-weight:700; color:{ink};">{_e(target)}</div>' if target else "")
+            + f'<div style="font-size:{13 if target else 14}px; font-weight:{400 if target else 700}; color:{ink};">'
+              f'{_e(head)}</div>'
+            + "".join(f'<div style="font-size:12px; color:#1E293B; margin:2px 0 0;">{_e(line)}</div>'
+                      for line in cheapest_three)
             + (f'<div style="font-size:12px; color:#475569; margin:4px 0 0;">By region: {_e(counts)}</div>'
                if counts else "")
             + "</div>")
+
+
+def _target_line(config: Any, under: Sequence[Card]) -> str:
+    """Whether anything meets the budget target, said first: every chip below can be amber (21 Nov 2026)."""
+    budget = float(getattr(config, "max_budget_gbp", 0.0) or 0.0)
+    if budget <= 0 or not under:
+        return ""
+    fitting = [card for card in under if card.fits]
+    if fitting:
+        return f"{len(fitting)} within your {_gbp(budget)} target"
+    return f"None within your {_gbp(budget)} target this week"
+
+
+def _cheapest_lines(under: Sequence[Card], count: int = 3) -> list[str]:
+    """The cheapest few, one line each: price, what, how long, where it sits in the e-mail."""
+    if len(under) < 2:
+        return []
+    picks = sorted(under, key=lambda card: (0 if card.fits else 1, card.total_gbp))[:count]
+    return [f"{index}. {_gbp(card.total_gbp)} · {card.title} · {card.nights} nights · {_region_name(card.region)}"
+            for index, card in enumerate(picks, 1)]
 
 
 def _summary_text(config: Any, digest: Digest) -> list[str]:
@@ -1260,9 +1316,11 @@ def _summary_text(config: Any, digest: Digest) -> list[str]:
         return [f"No holiday is priced in full at or under {_gbp(ceiling)} this week."]
     cheapest = min(under, key=lambda card: card.total_gbp)
     counts = " · ".join(f"{name} {len(cards)}" for name, cards in _region_groups(under))
-    return [f"{len(under)} holiday{'s' if len(under) != 1 else ''} priced in full at or under "
-            f"{_gbp(ceiling)} · cheapest {_gbp(cheapest.total_gbp)} ({cheapest.title})",
-            f"By region: {counts}"]
+    target = _target_line(config, under)
+    return ([target] if target else []) + [
+        f"{len(under)} holiday{'s' if len(under) != 1 else ''} priced in full at or under "
+        f"{_gbp(ceiling)} · cheapest {_gbp(cheapest.total_gbp)} ({cheapest.title})"
+    ] + _cheapest_lines(under) + [f"By region: {counts}"]
 
 
 def _missing_short(c: Card) -> str:
@@ -1473,7 +1531,8 @@ def _stay_text(s: StayPrice) -> str:
 
 def _card_text(c: Card) -> list[str]:
     """One full card in the plain-text part, the same figures as its HTML card."""
-    fits = " · fits the budget" if c.fits else (f" · {_gbp(c.total_gbp - c.budget)} over budget" if c.fits is False else "")
+    fits = (" · fits the budget" if c.fits
+            else (f" · {_gbp(c.total_gbp - c.budget)} over the {_gbp(c.budget)} target" if c.fits is False else ""))
     lines = [f"{c.title}{' [' + c.halal + ']' if c.halal else ''}",
              f"  {c.nights} nights · {c.dates} · {_gbp(c.total_gbp)} for {c.travellers} · {c.covers}{fits}"]
     if c.kind in ("trip", "part"):

@@ -34,8 +34,11 @@ CONFIDENCE = "curator-posted"
 #: A lead this many days either side of the departure window is "near": the same search is worth re-dating.
 NEAR_DAYS = 14
 #: The section is ideas, not a catalogue: the rows it may take in an e-mail Gmail clips near 102 KB.
-MAX_ROWS = 12
+MAX_ROWS = 8
 MAX_UNDATED = 3
+#: Deals on other dates are one line of names, not rows (21 Nov 2026 review: nine rows of January-to-April
+#: short breaks buried a July e-mail).
+MAX_IDEAS = 3
 #: A file older than this is last week's page, so the section is left out rather than shown as current.
 MAX_AGE_DAYS = 8
 DEFAULT_BUDGET_SECONDS = 180
@@ -408,11 +411,11 @@ def _safe_link(url: Any) -> str:
     return url if url.startswith("https://") else ""
 
 
-def shown_rows(payload: Mapping[str, Any]) -> list[dict]:
-    """The dated rows the section shows: every match, then near, then 5-star-first cheapest ideas, capped.
+def shown_rows(payload: Mapping[str, Any], fits: Sequence[str] = ("match", "near")) -> list[dict]:
+    """The dated rows of the given fits (the table's: every match, then near), cheapest first, capped.
 
-    An idea is shown once per place (three links to one resort from three airports are one idea, the
-    cheapest) and only when it leaves from one of the trip's own airports.
+    With ``fits=("idea",)`` it gives the other-date ideas: 5-star first, then cheapest, once per resort (three
+    links to one resort from three airports are one idea), and only from one of the trip's own airports.
     """
     home = set((payload.get("window") or {}).get("origins") or ())
     order = {"match": 0, "near": 1, "idea": 2}
@@ -424,7 +427,7 @@ def shown_rows(payload: Mapping[str, Any]) -> list[dict]:
 
     rows: list[dict] = []
     places: set[str] = set()
-    for lead in sorted((l for l in payload.get("leads", []) if l.get("fit") in order), key=key):
+    for lead in sorted((l for l in payload.get("leads", []) if l.get("fit") in fits), key=key):
         if lead["fit"] == "idea":
             if home and not home & set(lead.get("airports") or ()):
                 continue
@@ -434,6 +437,10 @@ def shown_rows(payload: Mapping[str, Any]) -> list[dict]:
         places.add(str(lead.get("place_key") or lead.get("title")))
         rows.append(lead)
     return rows[:MAX_ROWS]
+
+
+def _idea_label(lead: Mapping[str, Any]) -> str:
+    return f"{lead.get('title', '')} {_price_words(lead)}, {_day(lead.get('departure', ''), year=True)}"
 
 
 def _counts(payload: Mapping[str, Any]) -> dict[str, int]:
@@ -474,8 +481,9 @@ def render_section_html(payload: Optional[Mapping[str, Any]]) -> str:
         return ""
     e = _html.escape
     rows = shown_rows(payload)
+    ideas = shown_rows(payload, ("idea",))
     undated = _undated(payload)
-    if not rows and not undated:
+    if not rows and not ideas and not undated:
         return ""
     out = [f'<div style="{_H}">Deal ideas from curators</div>',
            f'<div style="font-size:12px; color:#475569; margin-bottom:4px;">{e(_caption(payload))}</div>']
@@ -510,6 +518,15 @@ def render_section_html(payload: Optional[Mapping[str, Any]]) -> str:
             out.append('<div style="font-size:11px; color:#64748B; margin-top:4px;">"Try" opens the operator\'s '
                        "same search moved to your first date and airports, with the party as posted; set your own "
                        "party on the page.</div>")
+    if ideas:
+        names = []
+        for lead in ideas[:MAX_IDEAS]:
+            link = _safe_link(lead.get("link"))
+            label = e(_idea_label(lead))
+            names.append(f'<a href="{e(link)}" style="color:#155f8f;">{label}</a>' if link else label)
+        count = _counts(payload).get("idea", 0)
+        out.append(f'<div style="font-size:12px; color:#475569; margin-top:6px;">On other dates ({count}), '
+                   f"the best from your airports: " + "; ".join(names) + ".</div>")
     if undated:
         names = []
         for lead in undated[:MAX_UNDATED]:
@@ -524,8 +541,8 @@ def render_section_html(payload: Optional[Mapping[str, Any]]) -> str:
 def render_section_text(payload: Optional[Mapping[str, Any]]) -> str:
     if not payload or not payload.get("leads"):
         return ""
-    rows, undated = shown_rows(payload), _undated(payload)
-    if not rows and not undated:
+    rows, ideas, undated = shown_rows(payload), shown_rows(payload, ("idea",)), _undated(payload)
+    if not rows and not ideas and not undated:
         return ""
     lines = ["Deal ideas from curators:", "  " + _caption(payload)]
     for lead in rows:
@@ -533,6 +550,9 @@ def render_section_text(payload: Optional[Mapping[str, Any]]) -> str:
         lines.append(f"  {tag}{lead.get('title', '')}: {_price_words(lead)}, {_day(lead['departure'], year=True)}, "
                      f"{int(lead.get('nights') or 0)} nights from {'/'.join(lead.get('airports') or [])}"
                      + (f" ({lead['fit_note']})" if lead.get("fit_note") else "") + f" · {lead.get('link', '')}")
+    if ideas:
+        lines.append(f"  On other dates ({_counts(payload).get('idea', 0)}), the best from your airports: "
+                     + "; ".join(_idea_label(lead) for lead in ideas[:MAX_IDEAS]))
     if undated:
         lines.append(f"  Also posted with dates chosen on the seller's page ({len(undated)}): "
                      + "; ".join(f"{l.get('title', '')} {_price_words(l)}" for l in undated[:MAX_UNDATED]))

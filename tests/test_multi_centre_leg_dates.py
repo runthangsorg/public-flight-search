@@ -53,6 +53,32 @@ class LegDateTests(unittest.TestCase):
             ["2027-06-27", "2027-06-30", "2027-07-07", "2027-07-14"],
         )
 
+    def test_stops_reached_by_road_are_spent_before_the_next_flight(self):
+        # Live 2026-11-21: three Sri Lanka stops all name CMB; the flight back to Doha was dated after the first.
+        trip = _trip([("Doha", 2, "DOH"), ("Anuradhapura", 4, "CMB"), ("Trincomalee", 4, "CMB"),
+                      ("Kalkudah", 4, "CMB"), ("Doha", 1, "DOH")],
+                     [("LHR", "DOH"), ("DOH", "CMB"), ("CMB", "DOH"), ("DOH", "LHR")])
+        self.assertEqual(
+            [leg[2] for leg in trip_legs_for_dates(trip, "2027-06-27", "2027-07-12")],
+            ["2027-06-27", "2027-06-29", "2027-07-11", "2027-07-12"],
+        )
+
+    def test_a_road_stop_with_its_own_airport_code_is_spent_too(self):
+        trip = _trip([("Nairobi", 2, "NBO"), ("Masai Mara", 4, "MRE"), ("Diani", 7, "UKA")],
+                     [("LHR", "NBO"), ("NBO", "UKA"), ("UKA", "LHR")])
+        self.assertEqual(
+            [leg[2] for leg in trip_legs_for_dates(trip, "2027-06-27", "2027-07-10")],
+            ["2027-06-27", "2027-07-03", "2027-07-10"],
+        )
+
+    def test_a_stop_a_later_flight_lands_at_is_not_spent_early(self):
+        trip = _trip([("Dubai", 2, "DXB"), ("Zanzibar", 10, "ZNZ"), ("Dubai", 1, "DXB")],
+                     [("LHR", "DXB"), ("DXB", "ZNZ"), ("ZNZ", "DXB"), ("DXB", "LHR")])
+        self.assertEqual(
+            [leg[2] for leg in trip_legs_for_dates(trip, "2027-06-27", "2027-07-10")],
+            ["2027-06-27", "2027-06-29", "2027-07-09", "2027-07-10"],
+        )
+
     def test_an_open_jaw_and_a_round_trip_are_unchanged(self):
         open_jaw = _trip([("Bali", 7, "DPS"), ("Lombok", 7, "LOP")],
                          [("LHR", "DPS"), ("DPS", "LOP"), ("LOP", "LHR")])
