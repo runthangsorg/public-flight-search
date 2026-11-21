@@ -833,8 +833,11 @@ class NoItineraryVersusNoCardsTests(JobCase):
     def test_googles_error_notice_is_no_itinerary_and_is_still_refused(self):
         cfg = bd.load_config(raw_config(trip_nights=[14]), today=NOW.date())
         spec = bd.SearchSpec("LHR", "BKK", DEP, "2027-03-15")
-        with patch("public_flight_search.google_flights._fetch_page_html", return_value=self.ERROR_NOTICE):
+        with patch("public_flight_search.google_flights._fetch_page_html", return_value=self.ERROR_NOTICE) as read, \
+                patch("public_flight_search.business_deals.time.sleep") as waited:
             outcome = bd.make_google_fetch(cfg)(spec)
+        # Refused twice: the one extra read was made after a wait, and the search is still refused.
+        self.assertEqual((read.call_count, waited.call_count), (2, 1))
         self.assertEqual((outcome.status, list(outcome.offers)), ("ok", []))
         self.assertEqual(outcome.page_note["tally"].get("payload_refused_error"), 1)
         self.assertEqual(bd.no_fare_reason(outcome.page_note), "no_itinerary")
