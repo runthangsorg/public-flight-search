@@ -13,9 +13,10 @@ watcher searches one traveller and multiplies the per-person fare by the configu
 A fare is a deal when its total (fare + the origin's positioning cost) is
 
 * at least ``median_drop_pct`` below the median of the same origin, destination and departure month over the last
-  ``median_window_days`` (needs ``min_observations`` earlier readings; before that the history is cold and only the
+  ``median_window_days`` (needs ``min_observations`` earlier readings; before that the route is cold and only the
   cap can fire), OR
-* at or below the absolute cap set for its world region;
+* at or below the absolute cap set for its world region, only when the config sets ``cap_alerts`` (off by default
+  since 9 Nov 2026, so a cold route cannot alert at all; the run line counts the fares whose median was ready);
 
 and, for a positioning origin (not ``home``), also at least ``away_min_saving_pct`` below the best home-airport total
 for the same destination and date. With no home price to compare, a positioning origin can only fire on the cap.
@@ -216,6 +217,9 @@ class JobResult:
     #: Rows the page offered as "business" but labelled with an economy leg too: never observed as a fare.
     mixed_cabin_dropped: int = 0
     history_rows_added: int = 0
+    #: Of today's fares, those whose route already had ``min_observations`` earlier readings inside the median
+    #: window: the only fares the median rule can judge. With caps off, zero means no fare could have alerted.
+    median_ready: int = 0
     #: Cabin rule 3's own tally over the offers: ``economy_is_fine`` drops, and ``cabin_rule_total_only`` for an
     #: offer read without segment data (the total-duration fallback).
     cabin_rule_tally: dict = field(default_factory=dict)
@@ -1076,6 +1080,10 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
     history = read_jsonl(history_path)
     alerts = read_jsonl(alerts_path)
     result.deals = find_deals(observations, history, alerts, cfg, now)
+    result.median_ready = sum(
+        1 for o in observations
+        if route_median(history, o, now, window_days=cfg.median_window_days,
+                        min_observations=cfg.min_observations)[0] is not None)
     if not dry_run:
         result.history_rows_added = append_observations(
             history_path, [{k: v for k, v in o.items() if k != "tier_1_option"} for o in observations], history)
@@ -1106,7 +1114,9 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
         f"{', stopped early' if result.stopped_early else ''}), offers {result.offers_seen}, "
         f"rejected {result.rejected}, mixed cabin {result.mixed_cabin_dropped}, "
         f"{_cabin_rule_text(result.cabin_rule_tally)}"
-        f"history +{result.history_rows_added}, deals {len(result.deals)}, "
+        f"history +{result.history_rows_added}, "
+        f"median ready {result.median_ready} of {len(observations)} (needs {cfg.min_observations} earlier readings)"
+        f"{'' if cfg.cap_alerts else ', cap alerts off'}, deals {len(result.deals)}, "
         f"mail {'sent' if result.mailed else 'not sent'}{' (dry run)' if dry_run else ''}, "
         f"full cycle {cycle_days(cfg)}d")
     print(result.log_line)

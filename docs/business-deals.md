@@ -15,9 +15,13 @@ positioning airports, and sends an e-mail only when a fare is a special deal. No
   row per route and day. Alerts sent are kept beside it in `<name>_alerts.jsonl`. Neither file is shipped.
 * **A deal** is a total (fare plus the origin's `positioning_gbp`) that is at least `median_drop_pct` below the median
   for the same origin, destination and departure month over `median_window_days` (needs `min_observations` earlier
-  readings), or at/below the `absolute_caps_gbp` for its region. A positioning origin must also beat the best
-  home-airport total for the same destination and date by `away_min_saving_pct`; with no home price to compare it can
-  only fire on the cap. Until the history is warm, only caps can fire and the e-mail says so.
+  readings), or at/below the `absolute_caps_gbp` for its region when the config sets `cap_alerts` (off by default
+  since 9 Nov 2026). A positioning origin must also beat the best home-airport total for the same destination and
+  date by `away_min_saving_pct`; with no home price to compare it can only fire on the cap. Until a route has
+  `min_observations` earlier readings inside the window, only a cap can fire for it, so with `cap_alerts` off a cold
+  route cannot e-mail at all. The run line says how many of the day's fares had a ready median
+  (`median ready N of M (needs 5 earlier readings), cap alerts off`): `0 of M` means silence was certain whatever
+  the prices.
 * **Airlines.** A fare on a low-cost carrier, Air India or LOT is never a business-class result (owner, 27 Oct 2026):
   the list is `business_airlines.EXCLUDED_FOR_BUSINESS`, and the optional config list `exclude_airlines` adds names.
   The planner's BUSINESS fares (`live_verify`) skip the same airlines.
