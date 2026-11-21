@@ -543,12 +543,18 @@ def trip_legs_for_dates(
     # Any other leg is a change of plane and flies the same day as the leg
     # before it (live 2026-10-15: MC-02's HKT-BKK-USM was searched with
     # BKK-USM a week later, seven nights in a Bangkok the trip never names).
+    # A stop no remaining flight lands at is reached by road from the one before it (Sri Lanka's three stops all
+    # name CMB), so its nights are spent before the flight out too: live 2026-11-21, the flight home from Colombo
+    # was dated four nights in, with eight nights of the trip's own stays still to come.
     dates = []
     current = start
     pending = list(trip.stops)
     for index, (origin, _destination) in enumerate(trip.legs):
         if index and pending and origin == pending[0].airport:
             current = current + timedelta(days=pending.pop(0).nights)
+            flown_to = {destination for _origin, destination in trip.legs[index:]}
+            while pending and pending[0].airport not in flown_to:
+                current = current + timedelta(days=pending.pop(0).nights)
         dates.append(current)
     # The LAST leg is the flight home and leaves on the report's own return
     # date, always; earlier legs are pulled back if they run past it.

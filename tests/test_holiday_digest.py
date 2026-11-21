@@ -222,7 +222,7 @@ class NotYetPricedRenderingTests(unittest.TestCase):
         for p in self.trips:
             self.assertEqual(html.count(hd._e(p.name)), 1, p.name)
         notes = html[html.index(">Not shown</div>"):]
-        self.assertIn(f"Not priced in full ({len(self.not_full)}):", notes)
+        self.assertIn(f"Not priced in full ({len(self.not_full)}), still to read:", notes)
         self.assertNotIn("£", notes)
         self.assertNotIn("<a ", notes)
         self.assertRegex(notes, r" — fare")
@@ -230,7 +230,7 @@ class NotYetPricedRenderingTests(unittest.TestCase):
     def test_the_text_part_lists_the_same_items_under_not_priced_in_full(self):
         text = _text(self.digest)
         self.assertIn("\nNotes\n", text)
-        self.assertIn(f"Not priced in full ({len(self.not_full)}):", text)
+        self.assertIn(f"Not priced in full ({len(self.not_full)}), still to read:", text)
         for p in self.trips:
             self.assertIn(p.name, text)
         self.assertNotIn("£", text[text.index("Not priced in full"):])
@@ -708,7 +708,9 @@ class SecondVisualCheckTests(unittest.TestCase):
         sentence = _flat(hd.render_digest_html(_config(), digest, generated_at=NOW))
         self.assertIn(f"{len(under)} holidays priced in full at or under £25,000", sentence)
         cheapest = min(under, key=lambda card: card.total_gbp)
-        self.assertIn(f"cheapest {hd._gbp(cheapest.total_gbp)} ({cheapest.title})", sentence)
+        self.assertIn(f"cheapest {hd._gbp(cheapest.total_gbp)}", sentence)
+        # With two or more, the cheapest is named once, as the first of the cheapest three.
+        self.assertIn(f"1. {hd._gbp(cheapest.total_gbp)} · {cheapest.title} · ", sentence)
         self.assertIn("By region: ", sentence)
         self.assertIn(f"{hd._region_name(cheapest.region)} ", sentence)
 
@@ -948,8 +950,8 @@ class RegionBucketsAndFootnoteTests(unittest.TestCase):
         cheap = replace(card, title="Synthetic cheaper", total_gbp=5_000.0, region="asia")
         made = hd.Digest(cards=(card, cheap), not_priced=(), pending=())
         html = _flat(hd.render_digest_html(_config(), made, generated_at=NOW))
-        self.assertIn("2 holidays priced in full at or under £25,000 · cheapest £5,000 "
-                      "(Synthetic cheaper)", html)
+        self.assertIn("2 holidays priced in full at or under £25,000 · cheapest £5,000", html)
+        self.assertIn("1. £5,000 · Synthetic cheaper · ", html)
         self.assertIn("By region: Africa 1 · Asia 1", html)
         text = hd.render_digest_text(_config(), made, generated_at=NOW)
         self.assertIn("2 holidays priced in full at or under £25,000 · cheapest £5,000", text)
@@ -979,7 +981,7 @@ class RegionBucketsAndFootnoteTests(unittest.TestCase):
         made = hd.Digest(cards=(card, over, part), not_priced=(), pending=())
         html = hd.render_digest_html(_config(), made, generated_at=NOW)
         self.assertIn("Over £25,000 (1):", html)
-        self.assertIn("Not priced in full (1):", html)
+        self.assertIn("Not priced in full (1), still to read:", html)
         self.assertIn("Synthetic over · £30,000 · flights", _flat(html))
         self.assertRegex(html, r" — fare \+ [0-9]+ of [0-9]+ nights")
         self.assertIn("Stays only (", hd.render_digest_html(_config(), watch, generated_at=NOW))
@@ -1000,7 +1002,7 @@ class RegionBucketsAndFootnoteTests(unittest.TestCase):
         made = hd.Digest(cards=whole, not_priced=tuple(p.name for p in pending), pending=pending)
         html = hd.render_digest_html(_config(), made, generated_at=NOW)
         self.assertEqual(html.count('data-kind="card-trip"'), 30)
-        self.assertIn("Not priced in full (30):", html)
+        self.assertIn("Not priced in full (30), still to read:", html)
         # Brief M asked for < 90,000 bytes here. Thinning the markup (no per-part spans, div rows instead of
         # two table cells, no budget bar, no duplicate flights summary, shorter style strings) took a body of
         # 30 such cards from 199 KB to this; what is left is the facts and one style per element. The bound
@@ -1017,3 +1019,48 @@ def test_a_package_or_watch_place_is_filed_under_its_region_not_other():
     assert hd._place_region("Dhaalu Atoll, Maldives") == "Indian Ocean"
     assert hd._place_region("asia") == "Asia"
     assert hd._place_region("somewhere unheard of") == "Other"
+
+
+class PackageRoomsLineTests(unittest.TestCase):
+    """An operator's room lines say the hotel and the board every time; the card already shows both (21 Nov 2026)."""
+
+    def test_the_room_and_who_sleeps_in_it_are_kept(self):
+        line = hd._rooms_line(["room 1: 2 adults, Sample Resort - Deluxe Room Dbl - ALL INCLUSIVE",
+                               "room 2: 3 adults, Sample Resort - Garden View Trp - ALL INCLUSIVE"], "Sample Resort", "AI")
+        self.assertEqual(line, "Rooms: Deluxe Room Dbl (2 adults) + Garden View Trp (3 adults)")
+
+    def test_a_line_in_another_shape_is_kept_as_it_is(self):
+        self.assertEqual(hd._rooms_line(["Two-bedroom villa"], "Sample Resort", "AI"), "Two-bedroom villa")
+
+
+class RoundTwoReviewTests(unittest.TestCase):
+    """The 21 Nov 2026 review: a figure said once, a disclaimer said once, the budget said first."""
+
+    def _made(self):
+        if not hasattr(RegionBucketsAndFootnoteTests, "fare_rows"):
+            RegionBucketsAndFootnoteTests.setUpClass()
+        _digest, card = RegionBucketsAndFootnoteTests._whole_trip_digest(RegionBucketsAndFootnoteTests())
+        cards = (replace(card, title="Synthetic Europe", region="europe", total_gbp=16_000.0),
+                 replace(card, title="Synthetic Asia", region="asia", total_gbp=17_000.0),
+                 replace(card, title="Synthetic Africa", region="africa", total_gbp=18_000.0))
+        return hd.Digest(cards=cards, not_priced=(), pending=())
+
+    def test_the_target_comes_first_and_the_cheapest_three_follow(self):
+        html = _flat(hd.render_digest_html(_config(), self._made(), generated_at=NOW))
+        budget = hd._gbp(_config().max_budget_gbp)
+        self.assertIn(f"None within your {budget} target this week", html)
+        self.assertLess(html.index("1. £16,000 · Synthetic Europe"), html.index("2. £17,000 · Synthetic Asia"))
+        self.assertIn("3. £18,000 · Synthetic Africa", html)
+
+    def test_the_stay_disclaimer_is_said_once(self):
+        made = self._made()
+        html = hd.render_digest_html(_config(), made, generated_at=NOW)
+        text = hd.render_digest_text(_config(), made, generated_at=NOW)
+        self.assertTrue(hd._has_derived_stay(list(made.cards)), "the fixture must carry a derived stay")
+        self.assertEqual(html.count(hd.DERIVED_TOTAL_NOTE), 1)
+        self.assertEqual(text.count(hd.DERIVED_TOTAL_NOTE), 1)
+
+    def test_no_catalogue_note_calls_a_stopover_of_several_nights_a_night(self):
+        data = (Path(hd.__file__).parent / "data" / "trip_leads.json").read_text(encoding="utf-8")
+        self.assertNotIn("either side of a night in", data)
+        self.assertNotIn("3.5-hour flights", data)
