@@ -462,6 +462,8 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
             layover_hours: tuple = ()
             if len(leg_minutes) == 2 and leg_hours:
                 layover_hours = (round((duration - sum(leg_minutes)) / 60, 2),)  # one connection: the rest is ground
+            via = tuple(str(segment[6]).upper() for segment in segments[:-1]
+                        if isinstance(segment, list) and len(segment) > 6 and isinstance(segment[6], str))
             offer = FlightOffer(
                 origin=str(flight[3]).upper(), destination=str(flight[6]).upper(),
                 departure=departure, arrival=arrival, price=round(price, 2),
@@ -470,6 +472,7 @@ def _parse_structured_results(html: str, *, search: FlightSearch, booking_url: s
                 provider="Google Flights", booking_url=booking_url, airline=airline,
                 observed_at=datetime.now(timezone.utc).isoformat(), review_status="results_page_structured",
                 leg_hours=leg_hours, layover_hours=layover_hours,
+                via_airports=via if len(via) == len(segments) - 1 else (),
             )
             clock = offer.departure[11:16]
             if not search.departure_window[0] <= clock <= search.departure_window[1]:
