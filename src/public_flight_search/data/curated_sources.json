@@ -1,0 +1,10 @@
+{
+  "schema": "curated_sources/1",
+  "notes": [
+    "Public deal-curator link pages read for ideas. Their prices are the curator's own, per person for the party in the link, and are never used to price a card.",
+    "Only a page's own embedded link list and each short link's redirect header are read; an operator's page is never requested."
+  ],
+  "sources": [
+    {"name": "The Travel Bae", "kind": "linktree", "url": "https://linktr.ee/thetravelbae"}
+  ]
+}

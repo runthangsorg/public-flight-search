@@ -35,6 +35,10 @@ ORIGIN = "LHR"
 #: The trip length the section quotes; the cards still price every configured pair.
 REFERENCE_NIGHTS = 17
 MAX_STOPS = 2
+#: A search Google answers with its error notice is read once more, for at most this many searches a run, so the
+#: 42 searches and their waits still end inside the step's budget.
+REFUSED_RETRIES_PER_RUN = 8
+REFUSED_RETRY_WAIT_SECONDS = (20.0, 40.0)
 #: Owner destinations the July config does not price as cards yet, so the weekly read still covers them.
 EXTRA_AIRPORTS: Mapping[str, str] = {
     "MLE": "Maldives",
@@ -115,7 +119,7 @@ def read_weekly_fares(config: Any, fetch: Callable[[FareSearch], tuple[str, Sequ
                       now: Optional[datetime] = None, max_searches: Optional[int] = None,
                       budget_seconds: Optional[float] = None, clock: Callable[[], float] = time.monotonic,
                       checkpoint: Optional[Callable[[dict], None]] = None) -> dict:
-    """Read every planned search; ``fetch`` returns ``(status, offers)`` with status ok, wall or failed.
+    """Read every planned search; ``fetch`` returns ``(status, offers)`` with status ok, wall, refused or failed.
 
     ``checkpoint`` is called with the payload so far after every search, so a killed run keeps what it read.
     Once ``budget_seconds`` of wall clock have passed no new search starts; the rest are rows with status
@@ -169,13 +173,17 @@ def write_atomic(path: str, payload: Mapping[str, Any]) -> None:
     os.replace(tmp, target)
 
 
-def make_google_fetch() -> Callable[[FareSearch], tuple[str, Sequence[Any]]]:
-    """One traveller per search, at least ten seconds apart, through the package's Google Flights reader."""
+def make_google_fetch(retry_until: Optional[float] = None) -> Callable[[FareSearch], tuple[str, Sequence[Any]]]:
+    """One traveller per search, at least ten seconds apart, through the package's Google Flights reader.
+
+    ``retry_until`` is a ``time.monotonic`` moment after which a refused search is not read again, so the
+    second read and its wait can never run the step past its time limit."""
     from . import google_flights as _gf
     from .config import FlightSearch
 
     delay = max(10.0, float(os.environ.get("GOOGLE_FLIGHTS_DELAY_SECONDS", "12")))
     last = [0.0]
+    retries_left = [REFUSED_RETRIES_PER_RUN]
 
     def fetch(search: FareSearch) -> tuple[str, Sequence[Any]]:
         wait = delay * random.uniform(0.9, 1.25) - (time.monotonic() - last[0])
@@ -184,19 +192,28 @@ def make_google_fetch() -> Callable[[FareSearch], tuple[str, Sequence[Any]]]:
         url = _gf.build_google_flights_roundtrip_url(origin=ORIGIN, destination=search.airport,
                                                      outbound_date=search.outbound, return_date=search.return_date,
                                                      travellers=1, cabin_class=search.cabin)
-        page = _gf._fetch_page_html(url)
-        last[0] = time.monotonic()
-        if page is None:
-            return "failed", ()
-        if _gf._is_waf_response(page):
-            return "wall", ()
         spec = FlightSearch(key="weekly-fares", label="weekly fares", origins=(ORIGIN,),
                             destinations=(search.airport,), dates=(search.outbound,), travellers=1,
                             cabin_class=search.cabin, departure_window=("00:00", "23:59"),
                             max_stops=MAX_STOPS, max_duration_minutes=2160, max_price_per_traveller_gbp=None)
-        offers = _gf._parse_flight_cards(page, search=spec, origin=ORIGIN, destination=search.airport,
-                                         day=search.outbound, booking_url=url, tally={})
-        return "ok", offers
+        for attempt in (1, 2):
+            page = _gf._fetch_page_html(url)
+            last[0] = time.monotonic()
+            if page is None:
+                return "failed", ()
+            if _gf._is_waf_response(page):
+                return "wall", ()
+            tally: dict = {}
+            offers = _gf._parse_flight_cards(page, search=spec, origin=ORIGIN, destination=search.airport,
+                                             day=search.outbound, booking_url=url, tally=tally)
+            if offers or not tally.get("payload_refused_error"):
+                return "ok", offers
+            if attempt == 2 or retries_left[0] <= 0 or (retry_until is not None and time.monotonic() >= retry_until):
+                break
+            # Google's error notice in place of results is often passing: one more read, a few per run.
+            retries_left[0] -= 1
+            time.sleep(random.uniform(*REFUSED_RETRY_WAIT_SECONDS))
+        return "refused", ()
 
     return fetch
 
@@ -409,7 +426,9 @@ def main(arguments: Sequence[str]) -> int:
         for s in plan(config):
             print(f"{s.airport} {s.cabin} {s.outbound}→{s.return_date} ({s.label})")
         return 0
-    payload = read_weekly_fares(config, make_google_fetch(), max_searches=args.max_searches,
+    # No second read in the budget's last two minutes: a wait and a slow page would outlast the step.
+    payload = read_weekly_fares(config, make_google_fetch(time.monotonic() + args.budget_seconds - 120),
+                                max_searches=args.max_searches,
                                 budget_seconds=args.budget_seconds,
                                 checkpoint=lambda partial: write_atomic(args.out, partial))
     counts: dict[str, int] = {}
