@@ -1037,6 +1037,8 @@ class RoundTwoReviewTests(unittest.TestCase):
     """The 21 Nov 2026 review: a figure said once, a disclaimer said once, the budget said first."""
 
     def _made(self):
+        if not hasattr(RegionBucketsAndFootnoteTests, "fare_rows"):
+            RegionBucketsAndFootnoteTests.setUpClass()
         _digest, card = RegionBucketsAndFootnoteTests._whole_trip_digest(RegionBucketsAndFootnoteTests())
         cards = (replace(card, title="Synthetic Europe", region="europe", total_gbp=16_000.0),
                  replace(card, title="Synthetic Asia", region="asia", total_gbp=17_000.0),
@@ -1054,9 +1056,9 @@ class RoundTwoReviewTests(unittest.TestCase):
         made = self._made()
         html = hd.render_digest_html(_config(), made, generated_at=NOW)
         text = hd.render_digest_text(_config(), made, generated_at=NOW)
-        if hd._has_derived_stay(list(made.cards)):
-            self.assertEqual(html.count(hd.DERIVED_TOTAL_NOTE), 1)
-            self.assertEqual(text.count(hd.DERIVED_TOTAL_NOTE), 1)
+        self.assertTrue(hd._has_derived_stay(list(made.cards)), "the fixture must carry a derived stay")
+        self.assertEqual(html.count(hd.DERIVED_TOTAL_NOTE), 1)
+        self.assertEqual(text.count(hd.DERIVED_TOTAL_NOTE), 1)
 
     def test_no_catalogue_note_calls_a_stopover_of_several_nights_a_night(self):
         data = (Path(hd.__file__).parent / "data" / "trip_leads.json").read_text(encoding="utf-8")
