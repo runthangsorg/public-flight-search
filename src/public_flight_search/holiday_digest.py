@@ -241,8 +241,7 @@ def _package_card(price: PackagePrice, budget: float, travellers: int) -> Option
         return None
     fact = watchlist_module.halal_fact(price.property_name)
     facts = []
-    if budget > 0:
-        facts.append("fits the budget" if price.total_gbp <= budget else f"{_gbp(price.total_gbp - budget)} over the {_gbp(budget)} budget")
+    # The budget is the card's chip; said again as a fact it was the same figure twice (21 Nov 2026).
     if price.room_descriptions:
         facts.append(_rooms_line(price.room_descriptions[:3], price.property_name, price.board))
     rooms = f"{price.rooms} room" + ("s" if price.rooms != 1 else "")
@@ -1267,7 +1266,8 @@ def _summary_html(config: Any, digest: Digest) -> str:
     if under:
         cheapest = min(under, key=lambda card: card.total_gbp)
         head = (f"{len(under)} holiday{'s' if len(under) != 1 else ''} priced in full at or under "
-                f"{_gbp(ceiling)} · cheapest {_gbp(cheapest.total_gbp)} ({cheapest.title})")
+                f"{_gbp(ceiling)} · cheapest {_gbp(cheapest.total_gbp)}"
+                + ("" if len(under) >= 2 else f" ({cheapest.title})"))
         counts = " · ".join(f"{name} {len(cards)}" for name, cards in _region_groups(under))
     else:
         head = f"No holiday is priced in full at or under {_gbp(ceiling)} this week."
@@ -1509,9 +1509,9 @@ def render_digest_html(config: Any, digest: Digest, *, generated_at: str, attach
     for name, cards in regions:
         out.append(_region_heading_html(name, cards))
         out.extend(_card_html(c) for c in cards)
-        if _has_derived_stay(cards):
-            # Once per section, not once per card: said inside every card it read as a footnote to nothing.
-            out.append(f'<div style="{_SUB}">{_e(DERIVED_TOTAL_NOTE)}</div>')
+    if _has_derived_stay(under):
+        # Once after the last region (21 Nov 2026: once per region printed the same sentence three times).
+        out.append(f'<div style="{_SUB}">{_e(DERIVED_TOTAL_NOTE)}</div>')
     out.append(_notes_html(config, digest, attachment_name))
     out.append("</div>")
     return "".join(out)
@@ -1606,8 +1606,8 @@ def render_digest_text(config: Any, digest: Digest, *, generated_at: str, attach
         lines.append("")
         for card in cards:
             lines += _card_text(card)
-        if _has_derived_stay(cards):
-            lines.append(f"  {DERIVED_TOTAL_NOTE}")
+    if _has_derived_stay(under):
+        lines += [DERIVED_TOTAL_NOTE, ""]
     notes = _notes_text(config, digest, attachment_name)
     if notes:
         lines += ["Notes", ""] + notes
