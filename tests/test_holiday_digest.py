@@ -222,7 +222,7 @@ class NotYetPricedRenderingTests(unittest.TestCase):
         for p in self.trips:
             self.assertEqual(html.count(hd._e(p.name)), 1, p.name)
         notes = html[html.index(">Not shown</div>"):]
-        self.assertIn(f"Not priced in full ({len(self.not_full)}):", notes)
+        self.assertIn(f"Not priced in full ({len(self.not_full)}), still to read:", notes)
         self.assertNotIn("£", notes)
         self.assertNotIn("<a ", notes)
         self.assertRegex(notes, r" — fare")
@@ -230,7 +230,7 @@ class NotYetPricedRenderingTests(unittest.TestCase):
     def test_the_text_part_lists_the_same_items_under_not_priced_in_full(self):
         text = _text(self.digest)
         self.assertIn("\nNotes\n", text)
-        self.assertIn(f"Not priced in full ({len(self.not_full)}):", text)
+        self.assertIn(f"Not priced in full ({len(self.not_full)}), still to read:", text)
         for p in self.trips:
             self.assertIn(p.name, text)
         self.assertNotIn("£", text[text.index("Not priced in full"):])
@@ -981,7 +981,7 @@ class RegionBucketsAndFootnoteTests(unittest.TestCase):
         made = hd.Digest(cards=(card, over, part), not_priced=(), pending=())
         html = hd.render_digest_html(_config(), made, generated_at=NOW)
         self.assertIn("Over £25,000 (1):", html)
-        self.assertIn("Not priced in full (1):", html)
+        self.assertIn("Not priced in full (1), still to read:", html)
         self.assertIn("Synthetic over · £30,000 · flights", _flat(html))
         self.assertRegex(html, r" — fare \+ [0-9]+ of [0-9]+ nights")
         self.assertIn("Stays only (", hd.render_digest_html(_config(), watch, generated_at=NOW))
@@ -1002,7 +1002,7 @@ class RegionBucketsAndFootnoteTests(unittest.TestCase):
         made = hd.Digest(cards=whole, not_priced=tuple(p.name for p in pending), pending=pending)
         html = hd.render_digest_html(_config(), made, generated_at=NOW)
         self.assertEqual(html.count('data-kind="card-trip"'), 30)
-        self.assertIn("Not priced in full (30):", html)
+        self.assertIn("Not priced in full (30), still to read:", html)
         # Brief M asked for < 90,000 bytes here. Thinning the markup (no per-part spans, div rows instead of
         # two table cells, no budget bar, no duplicate flights summary, shorter style strings) took a body of
         # 30 such cards from 199 KB to this; what is left is the facts and one style per element. The bound

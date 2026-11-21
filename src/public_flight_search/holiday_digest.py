@@ -1415,7 +1415,7 @@ def _notes_html(config: Any, digest: Digest, attachment_name: str = "") -> str:
         rows.extend(f"<div>{_over_line_html(c)}</div>" for c in sorted(over, key=lambda card: card.total_gbp))
     if not_full:
         rows.append(f'<div style="font-weight:700; color:#475569; margin-top:8px;">'
-                    f"Not priced in full ({len(not_full)}):</div>")
+                    f"Not priced in full ({len(not_full)}), still to read:</div>")
         rows.append("<div>" + "; ".join(f"{_e(title)} — {_e(missing)}" for title, missing, _region in not_full)
                     + "</div>")
     if watch:
@@ -1443,7 +1443,7 @@ def _notes_text(config: Any, digest: Digest, attachment_name: str = "") -> list[
         lines.append(f"  Over {_gbp(ceiling)} ({len(over)}):")
         lines.extend(f"    {_over_line_text(c)}" for c in sorted(over, key=lambda card: card.total_gbp))
     if not_full:
-        lines.append(f"  Not priced in full ({len(not_full)}):")
+        lines.append(f"  Not priced in full ({len(not_full)}), still to read:")
         lines.append("    " + "; ".join(f"{title} — {missing}" for title, missing, _region in not_full))
     if watch:
         lines.append(f"  Stays only ({len(watch)}):")
