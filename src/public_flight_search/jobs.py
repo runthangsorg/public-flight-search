@@ -661,6 +661,12 @@ def run_holiday_planner(
         # Last, so it outranks every other send decision: a forced send is still the wrong
         # holiday, and the cooldown is not the reason it was suppressed.
         send_email = False
+    if is_july and body_digest is not None:
+        fully_priced = sum(1 for c in body_digest.cards if c.kind in ("trip", "package"))
+        if fully_priced == 0:
+            print("email suppressed by 'proper full or nothing' rule: no fully priced holidays found")
+            send_email = False
+
     if send_email:
         if attachment_html:
             send_html(subject, html, text=text,
