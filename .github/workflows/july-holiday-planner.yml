@@ -318,7 +318,7 @@ jobs:
           && mv data/history_merged.tmp data/july_holiday_price_history.jsonl
           git config user.name "holiday-history-bot"
           git config user.email "history@localhost"
-          git add data/july_holiday_price_history.jsonl
+          git add -f data/july_holiday_price_history.jsonl
           if git diff --cached --quiet; then
             echo "No new observations."
             exit 0

@@ -17,6 +17,11 @@ against, and the itinerary day by day with each stay's own price, seller and lin
 some stays read says which nights are still open; a trip with flights alone is one compact row, not a card. The summary
 at the top answers "what can we book, and for how much" before any card is opened.
 
+Since 22 Nov 2026 a trip whose flights and SOME of its stays were read is a card in its region, badged "Partly
+priced", instead of one name in the footnote: the footnote had hidden every destination but the one place whose
+package happened to price every night, and it now lists only what has no priced stay at all and what is over the
+ceiling.
+
 Light backgrounds with dark text throughout: Gmail strips ``<body>`` styles.
 """
 
@@ -726,8 +731,15 @@ def _chips(c: Card) -> str:
         chips.append(_chip(f"fits the {_gbp(c.budget)} budget", _GOOD_BG, _GOOD_INK))
     elif c.fits is False:
         chips.append(_chip(f"{_gbp(c.total_gbp - c.budget)} over budget", _WARN_BG, _WARN_INK))
-    if c.kind == "part" and c.nights - c.nights_priced > 0:
-        chips.append(_chip(f"{c.nights - c.nights_priced} nights still to price", _WARN_BG, _WARN_INK))
+    if c.kind == "part":
+        # The badge says the figure is not the whole holiday (owner, 22 Nov 2026): flights read with some
+        # nights priced is a real option to book, never a name in the footnote.
+        if c.flights_gbp is not None:
+            covered = (f"{c.nights_priced} of {c.nights} nights priced" if c.nights
+                       else f"{c.nights_priced} nights priced")
+            chips.append(_chip(f"Partly priced · {covered}", _WARN_BG, _WARN_INK))
+        else:
+            chips.append(_chip("Partly priced · flights still to price", _WARN_BG, _WARN_INK))
     if c.halal:
         chips.append(_chip(c.halal, _GOOD_BG, _GOOD_INK))
     return f'<div style="margin:0 0 4px;">{"".join(chips)}</div>' if chips else ""
@@ -749,8 +761,9 @@ def _price_block(c: Card) -> str:
             if c.kind in ("trip", "package") and c.travellers else "")
     made_of = ""
     if c.kind in ("trip", "part") and c.flights_gbp is not None:
+        nights_read = f" ({c.nights_priced} of {c.nights} nights)" if c.kind == "part" and c.nights else ""
         made_of = (f'<br><span style="{_COVERS}">flights {_gbp(c.flights_gbp)} + stays '
-                   f'{_gbp(c.stays_gbp)}</span>')
+                   f'{_gbp(c.stays_gbp)}{_e(nights_read)}</span>')
     found = ""
     if c.kind in ("package", "flights"):
         found = (f'<br><span style="{_COVERS}">Found: '
@@ -1175,17 +1188,48 @@ def _split_holidays(digest: Digest, ceiling: Optional[float]
     return under, over, partial, list(digest.pending)
 
 
-def _region_groups(under: Sequence[Card]) -> list[tuple[str, list[Card]]]:
-    """The whole holidays as one list per region, in the fixed order.
+def _is_region_part(card: Card) -> bool:
+    """A partly priced card the region sections draw: real dated stays are read for it.
 
-    Inside a region the cards that fit the budget come first, then the rest, each cheapest first: a
-    reader scanning a region sees what he can actually book before what he cannot.
+    A trip whose stays are read but whose fare is not belongs in its region beside the whole trips
+    too: it is the only place its country is named (owner, 22 Nov 2026). A fare-only read has no
+    stay to show, so it stays one line in the notes.
+    """
+    return card.kind == "part" and float(card.stays_gbp or 0.0) > 0
+
+
+def _region_cards(under: Sequence[Card], partial: Sequence[Card]) -> list[Card]:
+    """Everything the region sections draw: the whole holidays, then the partly priced trips."""
+    return list(under) + [card for card in partial if _is_region_part(card)]
+
+
+def _partly_words(parts: Sequence[Card]) -> str:
+    """``3 partly priced across 2 regions`` for the summary box, or ``""`` when there are none."""
+    if not parts:
+        return ""
+    regions = len({_region_name(card.region) for card in parts})
+    return f"{len(parts)} partly priced across {regions} region{'s' if regions != 1 else ''}"
+
+
+def _region_sort(card: Card) -> tuple[int, int, int, float]:
+    """Whole trips first, then the partly priced ones; each group what fits the budget first, cheapest first."""
+    return (0 if card.kind in ("trip", "package") else 1,
+            0 if card.fits else 1,
+            0 if card.flights_gbp is not None else 1,
+            card.total_gbp)
+
+
+def _region_groups(cards: Sequence[Card]) -> list[tuple[str, list[Card]]]:
+    """The body's cards as one list per region, in the fixed order.
+
+    Inside a region the whole holidays come first (what fits the budget before what does not, each
+    cheapest first), then the partly priced ones: a reader scanning a region sees what he can
+    actually book in full before what is only partly read.
     """
     groups: dict[str, list[Card]] = {name: [] for name in REGION_ORDER}
-    for card in under:
+    for card in cards:
         groups[_region_name(card.region)].append(card)
-    return [(name, sorted(groups[name], key=lambda card: (0 if card.fits else 1, card.total_gbp)))
-            for name in REGION_ORDER if groups[name]]
+    return [(name, sorted(groups[name], key=_region_sort)) for name in REGION_ORDER if groups[name]]
 
 
 def _region_places(cards: Sequence[Card]) -> list[str]:
@@ -1217,11 +1261,16 @@ def _region_heading_html(name: str, cards: Sequence[Card]) -> str:
     and a jump link that does nothing is worse than no jump list (owner, 15 Nov 2026).
     """
     anchor = _region_id(name)
-    cheapest = min(card.total_gbp for card in cards)
+    whole = [card for card in cards if card.kind in ("trip", "package")]
+    # The floor is a whole holiday's price where there is one; a partly priced figure is a "so far".
+    cheapest = min(card.total_gbp for card in (whole or cards))
+    so_far = "" if whole else " so far"
     count = f"{len(cards)} holiday{'s' if len(cards) != 1 else ''}"
+    parts = [card for card in cards if card.kind == "part"]
+    partly = f" · {len(parts)} partly priced" if parts else ""
     places = _region_places(cards)
     return (f'<a name="{anchor}" id="{anchor}"></a>'
-            f'<div style="{_REGION_HEAD}">{_e(name)} · {_e(count)} · from {_gbp(cheapest)}</div>'
+            f'<div style="{_REGION_HEAD}">{_e(name)} · {_e(count)} · from {_gbp(cheapest)}{so_far}{partly}</div>'
             + (f'<div style="{_SUB}">{_e(" · ".join(places))}</div>' if places else ""))
 
 
@@ -1233,15 +1282,19 @@ def _summary_html(config: Any, digest: Digest) -> str:
     exactly what the sections below draw, names the cheapest, and gives the per-region counts.
     """
     ceiling = _ceiling(config)
-    under, _over, _partial, _pending = _split_holidays(digest, ceiling)
+    under, _over, partial, _pending = _split_holidays(digest, ceiling)
+    regions = _region_groups(_region_cards(under, partial))
+    partly = _partly_words([card for cards in dict(regions).values() for card in cards if card.kind == "part"])
     if under:
         cheapest = min(under, key=lambda card: card.total_gbp)
         head = (f"{len(under)} holiday{'s' if len(under) != 1 else ''} priced in full at or under "
-                f"{_gbp(ceiling)} · cheapest {_gbp(cheapest.total_gbp)} ({cheapest.title})")
-        counts = " · ".join(f"{name} {len(cards)}" for name, cards in _region_groups(under))
+                f"{_gbp(ceiling)}" + (f" · {partly}" if partly else "")
+                + f" · cheapest {_gbp(cheapest.total_gbp)} ({cheapest.title})")
+        counts = " · ".join(f"{name} {len(cards)}" for name, cards in regions)
     else:
-        head = f"No holiday is priced in full at or under {_gbp(ceiling)} this week."
-        counts = ""
+        head = (f"No holiday is priced in full at or under {_gbp(ceiling)} this week"
+                + (f" · {partly}" if partly else "."))
+        counts = " · ".join(f"{name} {len(cards)}" for name, cards in regions)
     bg, edge, ink = (("#F0FDF4", "#BBF7D0", "#14532D") if under
                      else ("#FFFBEB", "#FDE68A", "#78350F"))
     return (f'<div style="background:{bg}; border:1px solid {edge}; border-radius:6px; padding:10px 12px; '
@@ -1255,14 +1308,20 @@ def _summary_html(config: Any, digest: Digest) -> str:
 def _summary_text(config: Any, digest: Digest) -> list[str]:
     """The same box in the plain-text part: the sentences, with no styling and no jump list."""
     ceiling = _ceiling(config)
-    under, _over, _partial, _pending = _split_holidays(digest, ceiling)
-    if not under:
+    under, _over, partial, _pending = _split_holidays(digest, ceiling)
+    regions = _region_groups(_region_cards(under, partial))
+    partly = _partly_words([card for cards in dict(regions).values() for card in cards if card.kind == "part"])
+    if not regions:
         return [f"No holiday is priced in full at or under {_gbp(ceiling)} this week."]
-    cheapest = min(under, key=lambda card: card.total_gbp)
-    counts = " · ".join(f"{name} {len(cards)}" for name, cards in _region_groups(under))
-    return [f"{len(under)} holiday{'s' if len(under) != 1 else ''} priced in full at or under "
-            f"{_gbp(ceiling)} · cheapest {_gbp(cheapest.total_gbp)} ({cheapest.title})",
-            f"By region: {counts}"]
+    if under:
+        cheapest = min(under, key=lambda card: card.total_gbp)
+        first = (f"{len(under)} holiday{'s' if len(under) != 1 else ''} priced in full at or under "
+                 f"{_gbp(ceiling)}" + (f" · {partly}" if partly else "")
+                 + f" · cheapest {_gbp(cheapest.total_gbp)} ({cheapest.title})")
+    else:
+        first = (f"No holiday is priced in full at or under {_gbp(ceiling)} this week"
+                 + (f" · {partly}" if partly else "."))
+    return [first, "By region: " + " · ".join(f"{name} {len(cards)}" for name, cards in regions)]
 
 
 def _missing_short(c: Card) -> str:
@@ -1292,7 +1351,10 @@ def _not_full_lines(partial: Sequence[Card], pending: Sequence[Pending]) -> list
 
     Leads and catalogue trips are one list: the reader does not care which file an option came from.
     """
-    items = [(str(card.title), _missing_short(card), _region_name(card.region)) for card in partial]
+    # A partly priced trip with real dated stays is a card in its region, never a line here: the
+    # footnote is only for what has no priced stay at all (owner, 22 Nov 2026).
+    items = [(str(card.title), _missing_short(card), _region_name(card.region))
+             for card in partial if not _is_region_part(card)]
     items += [(str(item.name), _pending_missing(item), _region_name(item.region)) for item in pending]
     items = [item for item in items if item[1]]
     items.sort(key=lambda item: (REGION_ORDER.index(item[2]), item[0].lower()))
@@ -1437,8 +1499,8 @@ def render_digest_html(config: Any, digest: Digest, *, generated_at: str, attach
     """
     title = _e(getattr(config, "report_title", "July holiday watch"))
     ceiling = _ceiling(config)
-    under, _over, _partial, _pending = _split_holidays(digest, ceiling)
-    regions = _region_groups(under)
+    under, _over, partial, _pending = _split_holidays(digest, ceiling)
+    regions = _region_groups(_region_cards(under, partial))
     out = [f'<div style="max-width:600px; margin:0 auto; padding:12px; background:#F8FAFC; color:#0F172A; '
            f'-webkit-text-size-adjust:100%; text-size-adjust:100%; '
            f'font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">',
@@ -1477,9 +1539,20 @@ def _card_text(c: Card) -> list[str]:
     lines = [f"{c.title}{' [' + c.halal + ']' if c.halal else ''}",
              f"  {c.nights} nights · {c.dates} · {_gbp(c.total_gbp)} for {c.travellers} · {c.covers}{fits}"]
     if c.kind in ("trip", "part"):
-        lines.append(f"  Made of: flights {_gbp(c.flights_gbp)} + stays {_gbp(c.stays_gbp)}")
+        if c.flights_gbp is None:
+            lines.append(f"  Made of: stays {_gbp(c.stays_gbp)} · flights not priced yet")
+        else:
+            nights_read = f" ({c.nights_priced} of {c.nights} nights)" if c.kind == "part" and c.nights else ""
+            lines.append(f"  Made of: flights {_gbp(c.flights_gbp)} + stays {_gbp(c.stays_gbp)}{nights_read}")
+        if c.kind == "part":
+            lines.append(f"  Partly priced · {c.nights_priced} of {c.nights} nights priced")
     if c.kind != "stay":
-        lines += [f"  Found: {c.shop} · read {c.read_on} · {c.url}", f"  Flights: {c.flights}"]
+        # A stays-only part card has no fare read, so it has no seller and no read day: an empty
+        # "Found:  · read  ·" line said nothing (seen when partly priced cards returned, 22 Nov 2026).
+        found = " · ".join(bit for bit in (c.shop, f"read {c.read_on}" if c.read_on else "", c.url) if bit)
+        if found:
+            lines.append(f"  Found: {found}")
+        lines.append(f"  Flights: {c.flights}")
         lines += [f"    {leg}" for leg in c.legs[:6]]
     if c.stays:
         lines.append("  Stays:")
@@ -1532,12 +1605,12 @@ def _watch_row_text(c: Card) -> list[str]:
 def render_digest_text(config: Any, digest: Digest, *, generated_at: str, attachment_name: str = "") -> str:
     """The plain-text part: the same summary, one ``== REGION ==`` section per region, then the Notes."""
     ceiling = _ceiling(config)
-    under, _over, _partial, _pending = _split_holidays(digest, ceiling)
+    under, _over, partial, _pending = _split_holidays(digest, ceiling)
     lines = [str(getattr(config, "report_title", "July holiday watch")),
              f"{_span(config)} · checked {_read_day(generated_at)}", ""]
     lines += _summary_text(config, digest)
     lines.append("")
-    for name, cards in _region_groups(under):
+    for name, cards in _region_groups(_region_cards(under, partial)):
         # The same heading the HTML section carries, then the same places line under it.
         count = f"{len(cards)} holiday{'s' if len(cards) != 1 else ''}"
         lines += [f"{name} · {count} · from {_gbp(min(card.total_gbp for card in cards))}"]

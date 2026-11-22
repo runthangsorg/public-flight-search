@@ -339,35 +339,42 @@ class CompactRowsTests(unittest.TestCase):
     def _notes(self, canvas, marker=">Not shown</div>"):
         return canvas[canvas.index(marker):]
 
-    def test_only_a_whole_trip_is_a_card_in_the_body(self):
+    def test_a_whole_trip_and_each_partly_priced_trip_with_stays_is_a_card(self):
+        """22 Nov 2026: a partly priced trip with real dated stays is a card in its region, not a note line."""
         self.assertEqual(len(self._cards("trip")), 1)
-        self.assertEqual(len([c for c in self._cards("part") if c.flights_gbp is not None]), 1,
-                         "the partly priced trip is still built, for its note line")
+        parts = [c for c in self._cards("part") if c.stays_gbp > 0]
+        self.assertTrue(parts, "this fixture prices some nights of trips with no whole-trip read")
         self.assertEqual(self.html.count('data-kind="card-trip"'), 1)
-        for kind in ("part", "flights", "stay"):
+        self.assertEqual(self.html.count('data-kind="card-part"'), len(parts))
+        for kind in ("flights", "stay"):
             self.assertNotIn(f'data-kind="card-{kind}"', self.html, kind)
         self.assertNotIn('data-kind="row-stays-only"', self.html)
         self.assertNotIn('data-kind="row-stay"', self.html)
 
-    def test_the_four_old_sections_are_gone_and_a_region_heading_replaces_them(self):
+    def test_the_old_sections_are_gone_and_a_region_heading_replaces_them(self):
         for part in (self.html, self.text):
-            for gone in ("Partly priced", "Stays read, fares still to come",
-                         "Stays priced, flights separate", "Flight searches, flights only"):
+            for gone in ("Stays read, fares still to come", "Stays priced, flights separate",
+                         "Flight searches, flights only"):
                 self.assertNotIn(gone, part, gone)
-        self.assertRegex(self.html, r"Africa · 1 holiday · from £[0-9,]+")
-        self.assertRegex(self.text, r"Africa · 1 holiday · from £[0-9,]+")
+            # "Partly priced" is a card badge since 22 Nov 2026, never a section heading of its own.
+            self.assertIn("Partly priced · ", part)
+        self.assertRegex(self.html, r"Africa · [0-9]+ holidays? · from £[0-9,]+")
+        self.assertRegex(self.text, r"Africa · [0-9]+ holidays? · from £[0-9,]+")
 
-    def test_a_stays_only_trip_is_one_item_saying_what_is_missing(self):
+    def test_a_stays_only_trip_is_a_card_that_says_its_fare_is_not_priced(self):
+        """22 Nov 2026: a trip with priced stays and no fare is a card in its region, not a footnote name."""
+        stays_only = [c for c in self._cards("part") if c.flights_gbp is None]
+        self.assertTrue(stays_only)
         notes = self._notes(self.html)
         block = notes[notes.index("Not priced in full ("):]
         for later in ("Stays only (", "Full trip pages"):
             if later in block:
                 block = block[:block.index(later)]
-        self.assertNotIn("£", block, "no figure reaches a not-fully-priced line")
-        self.assertNotIn("<a ", block, "no links on a not-fully-priced line")
-        for card in [c for c in self._cards("part") if c.flights_gbp is None]:
-            self.assertEqual(block.count(hd._e(card.title)), 1, card.title)
-        self.assertRegex(block, r" — (fare|[0-9]+ of [0-9]+ nights|fare \+ )")
+        for card in stays_only:
+            self.assertEqual(block.count(hd._e(card.title)), 0, card.title)
+        flats = _flat(self.html)
+        self.assertIn("not priced; ", flats, "its Flights row says the fare is not priced")
+        self.assertIn("flights not priced yet", flats, "and its figure says so")
 
     def test_a_watch_stay_is_named_in_the_stays_only_part_with_no_figure(self):
         (watch,) = self._cards("stay")
@@ -383,8 +390,13 @@ class CompactRowsTests(unittest.TestCase):
     def test_the_derived_total_sentence_is_said_once_in_its_region_section(self):
         (trip,) = self._cards("trip")
         self.assertTrue(all(stay.derived_total for stay in trip.stays))
+        groups = hd._region_groups(hd._region_cards([c for c in self._cards("trip")],
+                                                    [c for c in self._cards("part")]))
+        derived_regions = [name for name, cards in groups
+                           if any(stay.derived_total for card in cards for stay in card.stays if stay.priced)]
+        self.assertGreaterEqual(len(derived_regions), 1)
         for part in (self.html, self.text):
-            self.assertEqual(part.count(hd.DERIVED_TOTAL_NOTE), 1,
+            self.assertEqual(part.count(hd.DERIVED_TOTAL_NOTE), len(derived_regions),
                              "once per region section, never once per card")
             self.assertIn(f"nightly price × {trip.stays[0].nights} nights", part)
 
@@ -405,9 +417,11 @@ class CompactRowsTests(unittest.TestCase):
         self.assertEqual([c.title for c in dict(groups)["Asia"]], ["Synthetic cheap", "Synthetic dear"])
 
     def test_the_text_part_has_the_regions_then_the_notes(self):
-        self.assertLess(self.text.index("Africa · 1 holiday · from £"), self.text.index("\nNotes\n"))
-        for card in [c for c in self._cards("part") if c.flights_gbp is None]:
-            self.assertIn(card.title, self.text[self.text.index("\nNotes\n"):])
+        self.assertLess(self.text.index("Africa · "), self.text.index("\nNotes\n"))
+        above_notes, notes = self.text[:self.text.index("\nNotes\n")], self.text[self.text.index("\nNotes\n"):]
+        for card in [c for c in self._cards("part") if c.stays_gbp > 0]:
+            self.assertIn(card.title, above_notes, "a partly priced card is in its region")
+            self.assertNotIn(card.title, notes, "and never repeated in the footnote")
 
 
 class RenderedBodyDefectsTests(unittest.TestCase):
@@ -559,28 +573,33 @@ class RenderedBodyDefectsTests(unittest.TestCase):
         for part in (hd.render_digest_html(_config(), digest, generated_at=NOW),
                      hd.render_digest_text(_config(), digest, generated_at=NOW)):
             self.assertNotIn("business found only on Sample Air", part,
-                             "15 Nov 2026: the body names the trip and what is missing, nothing more")
-            self.assertRegex(part, r" — fare")
+                             "the body keeps the short form out, not the reason it set the fare aside")
+            self.assertIn("Partly priced · ", part, "a partly priced trip says so in both parts")
+            self.assertIn("not priced", part)
         economy = self._rows_digest(rows=[r for r in self.unpriced if r["trip"].id == BUILD],
                                     rates=[_rate(*self.lodges[BUILD][0], 200.0)], economy_refused=True)
         for part in (hd.render_digest_html(_config(), economy, generated_at=NOW),
                      hd.render_digest_text(_config(), economy, generated_at=NOW)):
             self.assertNotIn("economy has a leg over 8 hours", part)
-            self.assertRegex(part, r" — fare")
+            self.assertIn("Partly priced · ", part)
         nothing = self._rows_digest(rows=[r for r in self.unpriced if r["trip"].id == BUILD],
                                     rates=[_rate(*self.lodges[BUILD][0], 200.0)])
-        self.assertRegex(hd.render_digest_html(_config(), nothing, generated_at=NOW), r" — fare")
+        self.assertIn("Partly priced · flights still to price",
+                      hd.render_digest_html(_config(), nothing, generated_at=NOW))
 
-    # 6. A partly priced trip is one plain note line, not a labelled row
-    def test_a_partly_priced_trip_is_one_note_line_and_keeps_no_labels(self):
+    # 6. A partly priced trip is a card in its region, badged, with the old row labels kept out
+    def test_a_partly_priced_trip_is_a_badged_card_and_keeps_the_row_labels_out(self):
         digest = self._rows_digest(rows=[r for r in self.unpriced if r["trip"].id == BUILD],
                                    rates=[_rate(*self.lodges[BUILD][0], 200.0)])
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        (card,) = digest.cards
+        self.assertIn('data-kind="card-part"', html)
+        self.assertIn("Partly priced · flights still to price", html)
+        self.assertIn(f"{card.nights_priced} of {card.nights} nights", _flat(html))
         self.assertNotIn(">Priced:</div>", html)
         self.assertNotIn("<b>Still to price:</b>", html)
         self.assertNotIn("row-stays-only", html)
         self.assertIn("background:#FFFBEB", html, "the summary box keeps its amber background when nothing is whole")
-        self.assertRegex(html, r" — fare")
 
     # 7. Every separator is glued to the part before it
     def test_no_stay_line_ends_with_a_dangling_separator(self):
@@ -617,12 +636,15 @@ class RenderedBodyDefectsTests(unittest.TestCase):
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)
         text = hd.render_digest_text(_config(), digest, generated_at=NOW)
         under = [c for c in digest.cards if c.kind in ("trip", "package")]
+        partly = [c for c in digest.cards if c.kind == "part" and getattr(c, "stays_gbp", 0.0) > 0]
         self.assertGreaterEqual(len(under), 1, "this fixture prices at least one whole trip")
         self.assertEqual(html.count('data-kind="card-trip"'), len([c for c in under if c.kind == "trip"]))
-        self.assertNotIn('data-kind="card-part"', html, "a partly priced trip is not a card any more")
+        self.assertEqual(html.count('data-kind="card-part"'), len(partly),
+                         "every partly priced trip with stays is a card in its region")
         self.assertIn(f"{len(under)} holiday{'s' if len(under) != 1 else ''} priced in full at or under "
                       "£25,000", html)
-        regions = hd._region_groups(under)
+        self.assertIn(f"{len(partly)} partly priced across", html)
+        regions = hd._region_groups(hd._region_cards(under, partly))
         for name, cards in regions:
             self.assertIn(f"{hd._e(name)} · {len(cards)} holiday{'s' if len(cards) != 1 else ''} · from £", html)
         for name, _cards in regions:
@@ -753,10 +775,11 @@ class SecondVisualCheckTests(unittest.TestCase):
         part = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW,
                                hotel_rates=_hotel_rates([_rate(*self.lodges[BUILD][0], 200.0)]))
         part_html = hd.render_digest_html(_config(), part, generated_at=NOW)
-        self.assertRegex(part_html, r" — fare \+ 8 of 12 nights",
-                         "one not-fully-priced trip says exactly what is missing")
-        self.assertNotIn("read&nbsp;14&nbsp;Nov", part_html,
-                         "a partly priced trip is not a card, so its stay lines are not in the body")
+        self.assertIn("Partly priced · flights still to price", part_html,
+                      "22 Nov 2026: a partly priced trip is a card in its region")
+        self.assertIn("4 of 12 nights", _flat(part_html), "what is priced, and how much of the trip")
+        self.assertIn("8 nights", _flat(part_html), "the nights still open are itemised")
+        self.assertIn("read&nbsp;14&nbsp;Nov", part_html, "its priced stay carries its day")
 
     # 5. A wrapped line never starts with the separator
     def test_a_separator_is_glued_to_the_part_before_it_so_no_line_can_start_with_it(self):
@@ -868,9 +891,14 @@ class RegionBucketsAndFootnoteTests(unittest.TestCase):
         digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW,
                                  hotel_rates=_hotel_rates(rates))
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)
-        self.assertEqual(html.count('data-kind="card-'), 0,
-                         "a trip that is not priced in full is never a card")
+        self.assertNotIn('data-kind="card-trip"', html, "neither trip has every night priced")
+        parts = [c for c in digest.cards if c.kind == "part" and c.stays_gbp > 0]
+        self.assertTrue(parts)
+        self.assertEqual(html.count('data-kind="card-part"'), len(parts))
         self.assertEqual(html.count(">Not shown</div>"), 1)
+        notes = html[html.index(">Not shown</div>"):]
+        for card in parts:
+            self.assertNotIn(hd._e(card.title), notes, "a card is never a footnote line: " + card.title)
         for row in rows:
             self.assertIn(hd._e(row["trip"].title), html, row["trip"].id)
 
@@ -975,13 +1003,16 @@ class RegionBucketsAndFootnoteTests(unittest.TestCase):
         watch = hd.build_digest(_config(), rows=[], package_prices={}, watch=(entry,), generated_at=NOW,
                                 hotel_rates=_hotel_rates([_rate(entry.name, *pair, 250.0)]))
         over = replace(card, total_gbp=30_000.0, title="Synthetic over")
-        part = replace(card, kind="part", total_gbp=0.0, flights_gbp=None, nights_priced=4)
-        made = hd.Digest(cards=(card, over, part), not_priced=(), pending=())
+        part = replace(card, kind="part", total_gbp=9_000.0, flights_gbp=8_000.0,
+                       stays_gbp=1_000.0, nights_priced=4)
+        unread = hd.Pending("Synthetic unread", "", region="africa", nights=14)
+        made = hd.Digest(cards=(card, over, part), not_priced=(unread.name,), pending=(unread,))
         html = hd.render_digest_html(_config(), made, generated_at=NOW)
         self.assertIn("Over £25,000 (1):", html)
         self.assertIn("Not priced in full (1):", html)
         self.assertIn("Synthetic over · £30,000 · flights", _flat(html))
-        self.assertRegex(html, r" — fare \+ [0-9]+ of [0-9]+ nights")
+        self.assertIn("Synthetic unread — fare + 14 of 14 nights", _flat(html))
+        self.assertIn('data-kind="card-part"', html, "the partly priced trip is a card, not a note line")
         self.assertIn("Stays only (", hd.render_digest_html(_config(), watch, generated_at=NOW))
         alone = hd.render_digest_html(_config(), hd.Digest(cards=(card,), not_priced=(), pending=()),
                                      generated_at=NOW)
@@ -1017,3 +1048,72 @@ def test_a_package_or_watch_place_is_filed_under_its_region_not_other():
     assert hd._place_region("Dhaalu Atoll, Maldives") == "Indian Ocean"
     assert hd._place_region("asia") == "Asia"
     assert hd._place_region("somewhere unheard of") == "Other"
+
+
+class PartlyPricedRegionCardTests(unittest.TestCase):
+    """22 Nov 2026: a trip with flights and SOME nights read is a card in its region, not a footnote name.
+
+    The owner: "turkey which I rejected as a july deal ... its missing all the other countries i said
+    focus on" — the footnote had hidden every destination but the one whose package priced every night.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.unpriced = _multi_centre_rows(_config(), fares=load([]))
+        cls.lodges = {r["trip"].id: _plan_lodges(r) for r in cls.unpriced}
+
+    def _part(self):
+        # Every trip is in the run, so the footnote the card must be kept out of is actually drawn.
+        rows = _multi_centre_rows(_config(), fares=load([deal_read(BUILD, "MIXED", 8_000)]))
+        digest = hd.build_digest(_config(), rows=rows, package_prices={}, watch=(), generated_at=NOW,
+                                 hotel_rates=_hotel_rates([_rate(*self.lodges[BUILD][0], 200.0)]))
+        (card,) = digest.cards
+        self.assertEqual(card.kind, "part")
+        return digest, card
+
+    def test_the_card_sits_in_its_region_badged_and_never_in_the_footnote(self):
+        digest, card = self._part()
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        text = hd.render_digest_text(_config(), digest, generated_at=NOW)
+        region = hd._region_name(card.region)
+        self.assertIn(f"{region} · 1 holiday · from £", html, "its region section is drawn for it")
+        self.assertIn('data-kind="card-part"', html)
+        self.assertIn(f"Partly priced · {card.nights_priced} of {card.nights} nights priced", html)
+        self.assertIn(f"flights {hd._gbp(card.flights_gbp)} + stays {hd._gbp(card.stays_gbp)} "
+                      f"({card.nights_priced} of {card.nights} nights)", _flat(html),
+                      "what is priced, in the brief's own words")
+        notes = html[html.index(">Not shown</div>"):] if ">Not shown</div>" in html else ""
+        self.assertNotIn(hd._e(card.title), notes, "a rendered card is never a footnote line")
+        self.assertIn("Partly priced ·", text)
+
+    def test_the_card_itemises_priced_nights_and_open_nights_apart(self):
+        digest, card = self._part()
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        priced = [stay for stay in card.stays if stay.priced]
+        open_stays = [stay for stay in card.stays if not stay.priced]
+        self.assertTrue(priced and open_stays, "this fixture reads one lodge and leaves one open")
+        for stay in priced:
+            self.assertIn(f"nightly price × {stay.nights}", html)
+        for stay in open_stays:
+            when = f"{hd._day(stay.check_in)} – {hd._day(stay.check_out)}"
+            self.assertIn(f"<b>{hd._nb(when)}</b>", html, "the open night is itemised by date")
+        self.assertEqual(html.count("no dated rate read"), len(open_stays))
+
+    def test_the_notes_list_only_trips_with_no_priced_stay_at_all(self):
+        digest, card = self._part()
+        html = hd.render_digest_html(_config(), digest, generated_at=NOW)
+        notes = html[html.index(">Not shown</div>"):]
+        self.assertNotIn(hd._e(card.title), notes)
+        for item in digest.pending:
+            self.assertIn(hd._e(item.name), notes, item.name)
+
+    def test_no_turkey_lead_is_selected_for_a_july_summer_run(self):
+        import json
+        from pathlib import Path
+
+        payload = json.loads((Path(hd.__file__).with_name("data") / "trip_leads.json").read_text(encoding="utf-8"))
+        items = payload.get("leads") or payload.get("itineraries") or []
+        turkey = [item for item in items if "Istanbul" in str(item.get("title", ""))]
+        self.assertTrue(turkey, "the Turkey lead stays in the catalogue, just out of the summer run")
+        for item in turkey:
+            self.assertNotEqual(item["season"], "summer", item["id"])
