@@ -45,7 +45,11 @@ SCHEMA = "multi_centre/1"
 
 #: Seasons, as the catalogue names them: ``summer`` prices for a June-August
 #: departure, ``winter`` for everything else (see ``holidays.is_summer_trip``).
-SEASONS: frozenset[str] = frozenset({"summer", "winter"})
+#: ``shoulder`` (22 Nov 2026) is a lead in neither priced season: Turkey's July route
+#: was taken out of the July run and left in the file. Refusing the word as an
+#: "unknown season" dropped it from December's run too and lost its pages, so the
+#: word is a season now: a shoulder trip loads, and no run selects it.
+SEASONS: frozenset[str] = frozenset({"summer", "winter", "shoulder"})
 
 #: The ``confidence`` of a trip that carries no figure at all (``"lead": true`` in the file).
 LEAD = "lead"

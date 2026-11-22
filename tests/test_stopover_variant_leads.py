@@ -12,7 +12,7 @@ import unittest
 
 from public_flight_search import trip_totals as tt
 from public_flight_search.holiday_email import _multi_centre_rows, multi_centre_wanted
-from public_flight_search.multi_centre import load_multi_centre
+from public_flight_search.multi_centre import SEASONS, load_multi_centre
 
 from test_holiday_email_compact import _config
 from test_price_says_what_it_covers import load
@@ -52,7 +52,13 @@ HUB_CITY = {"DOH": "Doha", "DXB": "Dubai"}
 
 
 def _leads():
-    return {t.id: t for t in load_multi_centre(_config(), include_leads=True) if t.confidence == "lead"}
+    """Every lead in the shipped file, whichever season it sits in: one run loads one season."""
+    found = {}
+    for season in sorted(SEASONS):
+        for trip in load_multi_centre(_config(), include_leads=True, season=season):
+            if trip.confidence == "lead":
+                found[trip.id] = trip
+    return found
 
 
 class StopoverVariantLeadTests(unittest.TestCase):
@@ -143,6 +149,7 @@ class RenamedPropertyTests(unittest.TestCase):
     }
 
     def test_the_three_properties_carry_the_name_and_area_the_search_lists(self):
+        # Through the loader, not the raw file: the point is that a run can open these pages.
         leads = _leads()
         found = {lodge.name: lodge.area for lead in leads.values() for stop in lead.stops
                  for lodge in stop.lodges if lodge.name in self.NAMES}

@@ -178,15 +178,13 @@ class TripTotalRenderingTests(unittest.TestCase):
         self.assertIn("By region: Africa 1", text)
 
     def test_a_part_priced_trip_is_a_note_line_with_no_figure_and_no_budget_verdict(self):
-        """15 Nov 2026: an unpriced result is not in the body at all, so it cannot mislead on the total."""
+        """22 Nov 2026: a partly priced result renders as a badged card in its region."""
         html = self._html(self.part)
         text = visible_text(html)
-        self.assertIn("No holiday is priced in full at or under £25,000 this week.", text)
-        self.assertIn("Not priced in full (1):", text)
-        self.assertIn(" — 8 of 12 nights", text, "what is missing, and no hotel name with it")
+        self.assertIn("No holiday is priced in full at or under £25,000 this week · 1 partly priced across 1 region", text)
+        self.assertIn("Partly priced · 4 of 12 nights priced", text)
+        self.assertIn("Africa · 1 holiday", text)
         self.assertNotIn("fits the", text)
-        notes = text[text.index("Not priced in full"):]
-        self.assertNotIn("£", notes)
 
     def test_the_text_part_carries_the_same_figures(self):
         text = hd.render_digest_text(_config(), self.full, generated_at=NOW)
@@ -383,16 +381,13 @@ class StaysWithoutAFareTests(unittest.TestCase):
                          "not priced; the economy fare read has a leg over 8 hours; a business fare is still to be read")
         rendered = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
         assert "Stays read, fares still to come" not in rendered
-        # 15 Nov 2026: a trip that is not fully priced is not in the body as a row or a card at all; it
-        # is one line in the notes saying what is missing, with no figure and no fare prose.
-        self.assertIn("Not priced in full (1):", rendered)
-        self.assertIn(f"{self.rows[0]['trip'].title} — fare + 8 of 12 nights", rendered)
-        self.assertNotIn("economy has a leg over 8 hours", rendered)
-        self.assertIn(self.rows[0]["trip"].title, _not_priced_names(
-            hd.render_digest_html(_config(), digest, generated_at=NOW)))
+        # 22 Nov 2026: partly priced trips render as cards in their region.
+        self.assertIn("Partly priced · flights still to price", rendered)
+        self.assertIn("the economy fare read has a leg over 8 hours", rendered)
+        self.assertNotIn("Not priced in full", rendered)
         text = hd.render_digest_text(_config(), digest, generated_at=NOW)
-        self.assertIn(" — fare + 8 of 12 nights", text)
-        self.assertNotIn("£", text[text.index("Not priced in full"):])
+        self.assertIn("Partly priced · 4 of 12 nights priced", text)
+        self.assertIn("the economy fare read has a leg over 8 hours", text)
 
     def test_every_night_priced_without_a_fare_is_still_partly_priced(self):
         digest = _build(self.rows, _hotel_rates([_rate(n, ci, co, 200.0) for n, ci, co in self.lodges]))
@@ -413,7 +408,7 @@ class StaysWithoutAFareTests(unittest.TestCase):
         # in the notes, but the digest still carries its why for the trip pages.
         html = hd.render_digest_html(_config(), digest, generated_at=NOW)
         self.assertIn(hd._e(card.title), html)
-        self.assertNotIn(hd._e(card.why), html)
+        self.assertIn(hd._e(card.why), html)
         self.assertFalse([p for p in digest.pending if p.name == card.title])
 
 
@@ -437,9 +432,9 @@ class PartlyPricedOrderAndSummaryTests(unittest.TestCase):
         no_fare = dict(_rows([])[0])
         digest = _build([fare, no_fare], _hotel_rates([_rate(*self.lodges[0], 200.0)]))
         text = visible_text(hd.render_digest_html(_config(), digest, generated_at=NOW))
-        self.assertIn("No holiday is priced in full at or under £25,000 this week.", text)
-        self.assertIn("Not priced in full (2):", text)
-        self.assertNotIn("By region", text)
+        self.assertIn("No holiday is priced in full at or under £25,000 this week · 2 partly priced across 1 region", text)
+        self.assertIn("By region: Africa 2", text)
+        self.assertNotIn("Not priced in full", text)
 
     def test_a_flights_only_week_says_nothing_is_whole_and_omits_the_zero_clauses(self):
         digest = _build(self.rows, None)
