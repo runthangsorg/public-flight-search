@@ -662,9 +662,10 @@ def run_holiday_planner(
         # holiday, and the cooldown is not the reason it was suppressed.
         send_email = False
     if is_july and body_digest is not None:
-        fully_priced = sum(1 for c in body_digest.cards if c.kind in ("trip", "package"))
-        if fully_priced == 0:
-            print("email suppressed by 'proper full or nothing' rule: no fully priced holidays found")
+        has_part = any(c.kind == "part" for c in body_digest.cards)
+        has_full = any(c.kind in ("trip", "package") for c in body_digest.cards)
+        if has_part and not has_full and not os.environ.get("HOLIDAY_SEND_PARTIAL"):
+            print("email suppressed by 'proper full or nothing' rule: only partly priced holidays exist")
             send_email = False
 
     if send_email:

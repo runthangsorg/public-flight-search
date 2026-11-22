@@ -347,6 +347,48 @@ class HolidaySeasonGuardTests(unittest.TestCase):
         self.assertFalse(result["email_sent"])
         send.assert_not_called()
 
+    def test_july_run_with_only_partly_priced_cards_suppresses_email(self):
+        """22 Nov 2026: owner rejected email with only partly priced holidays ("DO NOT send its junk")."""
+        from public_flight_search.holiday_digest import Card, Digest
+        part_card = Card(
+            kind="part",
+            title="Partly Priced Trip",
+            place="Lucerne",
+            nights=17,
+            dates="27 Jun – 14 Jul",
+            total_gbp=3678.0,
+            covers="flights + 6 of 17 nights",
+            shop="",
+            url="",
+            read_on="",
+            flights="SWISS",
+            hotel="Lucerne",
+            facts=(),
+            halal="",
+            stays=(),
+            flights_gbp=894.0,
+            stays_gbp=2784.0,
+            nights_priced=6,
+            nights_planned=17,
+            legs=(),
+            leg_parts=(),
+            why="",
+            catch="",
+            budget=25000.0,
+            travellers=5,
+            fare_short="",
+            areas=(),
+            region="europe",
+            places=(),
+        )
+        fake_digest = Digest(cards=(part_card,), not_priced=(), pending=())
+        send = self._patch_smtp()
+        with patch("public_flight_search.jobs.build_digest", return_value=fake_digest):
+            with patch("builtins.print"):
+                result, _ = self._run(self.july, expect="july", force_send=True)
+        self.assertFalse(result["email_sent"])
+        send.assert_not_called()
+
     def test_the_matching_season_still_sends(self):
         result, send = self._run(self.july, expect="july", force_send=True)
         self.assertEqual(result["config_season"], "july")
@@ -437,3 +479,5 @@ class SkipReasonTallyTests(unittest.TestCase):
             tallied = tallied or any(entry.endswith(")") and " (x" in entry for entry in entries)
         # The fixtures repeat at least one reason, so the count is exercised.
         self.assertTrue(tallied)
+
+
