@@ -1,0 +1,19 @@
+{
+  "schema": "beyond_cities/1",
+  "notes": [
+    "For each hub, onward cities to search: a ticket to one of them that connects at the hub can cost less than a ticket to the hub itself. These are places to look, not facts about routes or prices; a search that finds no such ticket finds none.",
+    "A hub's airports are the ones a first flight must land at for the ticket to count."
+  ],
+  "hubs": [
+    {"hub": "IST", "label": "Istanbul", "airports": ["IST"], "beyond": ["TBS", "GYD", "AMM", "CAI", "ATH", "AYT"]},
+    {"hub": "DOH", "label": "Doha", "airports": ["DOH"], "beyond": ["BKK", "CMB", "MLE", "DEL", "KUL", "MCT"]},
+    {"hub": "DXB", "label": "Dubai", "airports": ["DXB"], "beyond": ["BKK", "CMB", "MLE", "DEL", "KUL", "MCT"]},
+    {"hub": "AUH", "label": "Abu Dhabi", "airports": ["AUH"], "beyond": ["BKK", "CMB", "MLE", "DEL", "KUL", "MCT"]},
+    {"hub": "MCT", "label": "Muscat", "airports": ["MCT"], "beyond": ["BKK", "KUL", "CMB", "DEL", "ZNZ", "MLE"]},
+    {"hub": "SIN", "label": "Singapore", "airports": ["SIN"], "beyond": ["KUL", "DPS", "CGK", "BKK", "PEN", "SGN"]},
+    {"hub": "KUL", "label": "Kuala Lumpur", "airports": ["KUL"], "beyond": ["SIN", "PEN", "DPS", "BKK", "LGK", "BKI"]},
+    {"hub": "BKK", "label": "Bangkok", "airports": ["BKK"], "beyond": ["SGN", "HAN", "KUL", "HKT", "CNX", "REP"]},
+    {"hub": "TYO", "label": "Tokyo", "airports": ["HND", "NRT"], "beyond": ["CTS", "OKA", "FUK", "ICN", "KIX", "TPE"]},
+    {"hub": "AMS", "label": "Amsterdam", "airports": ["AMS"], "beyond": ["CPH", "ARN", "OSL", "HEL", "WAW", "PRG"]}
+  ]
+}

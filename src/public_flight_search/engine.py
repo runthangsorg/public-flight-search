@@ -64,6 +64,9 @@ class FlightOffer:
     leg_hours: Tuple[float, ...] = ()
     #: Ground time at each connection in hours, from the same source.
     layover_hours: Tuple[float, ...] = ()
+    #: The airport of each connection, in order, when the reader had the segment data; empty for a nonstop
+    #: and when it did not.
+    via_airports: Tuple[str, ...] = ()
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> "FlightOffer":
