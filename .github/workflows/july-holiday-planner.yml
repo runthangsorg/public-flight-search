@@ -229,6 +229,24 @@ jobs:
           fi
           mkdir -p data
           timeout 20m python -m public_flight_search july-weekly-fares --config "${CONFIG_FILE}" --out data/july_weekly_fares.json --budget-seconds 1020
+      # CURATOR IDEAS (owner, 21 Nov 2026): deals a public curator page lists, matched to this trip's dates for
+      # their own section. Only the page's link list and each short link's redirect header are read, never an
+      # operator's page. Read-only; a failed read leaves the section out and never stops the e-mail.
+      - name: Read curator deal ideas
+        continue-on-error: true
+        env:
+          JULY_HOLIDAY_SEARCH_CONFIG_JSON: ${{ secrets.JULY_HOLIDAY_SEARCH_CONFIG_JSON }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CONFIG_FILE="examples/july_holiday_config.json"
+          if [[ -n "${JULY_HOLIDAY_SEARCH_CONFIG_JSON:-}" ]]; then
+            umask 077
+            printf '%s' "${JULY_HOLIDAY_SEARCH_CONFIG_JSON}" > "${RUNNER_TEMP}/july_config.json"
+            CONFIG_FILE="${RUNNER_TEMP}/july_config.json"
+          fi
+          mkdir -p data
+          timeout 5m python -m public_flight_search curated-leads --config "${CONFIG_FILE}" --out data/curated_leads.json
       - name: Build and optionally deliver
         # JULY-SPECIFIC KNOBS ONLY. The generic HOLIDAY_SEARCH_CONFIG_JSON and
         # HOLIDAY_EMAIL_SUBJECT secrets belong to the December planner, and the

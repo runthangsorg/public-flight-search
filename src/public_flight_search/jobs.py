@@ -608,6 +608,15 @@ def run_holiday_planner(
         html = insert_section(html, weekly_html)
         if weekly_text:
             text = (text + "\n\n" + weekly_text) if text else weekly_text
+        # CURATOR IDEAS (owner, 21 Nov 2026): deals a public curator posted, matched to this trip's dates. Below
+        # the fares and above the footnote; never a card, because the price is the curator's and not for this party.
+        from .curated_leads import curated_sections
+
+        leads_html, leads_text = curated_sections()
+        if leads_html:
+            html = insert_section(html, leads_html)
+        if leads_text:
+            text = (text + "\n\n" + leads_text) if text else leads_text
     # Last PRIOR observation: read BEFORE today's append lands.
     last_prior = "" if dry_run else last_history_observation(path=history_path)
     appended = 0 if dry_run else append_history(deals, path=history_path)

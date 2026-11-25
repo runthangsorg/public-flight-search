@@ -207,6 +207,12 @@ class JobResult:
     #: ``ok`` searches whose page itself showed no itinerary (an empty result block, or Google's error notice for a
     #: date it will not sell), so it is not mistaken for a page the reader could not read.
     no_itinerary: int = 0
+    #: Of the ``no_itinerary`` searches, those Google still answered with its error notice at the end; how many
+    #: refused searches were read a second time; and how many of those second reads were no longer refused
+    #: (a results payload came back, with fares or without).
+    refused: int = 0
+    refused_retried: int = 0
+    refused_recovered: int = 0
     no_cards_note: Optional[Mapping[str, Any]] = None
     #: Summed over every no-card page: each structured row's and aria label's fate, and the page shapes.
     no_cards_tally: dict = field(default_factory=dict)
@@ -968,10 +974,19 @@ def no_fare_reason(note: Mapping[str, Any]) -> str:
     return "no_cards"
 
 
+#: A refused payload is read once more, for at most this many searches a run: 16 waits of about half a minute
+#: keep the daily job inside its 35-minute limit.
+REFUSED_RETRIES_PER_RUN = 16
+REFUSED_RETRY_WAIT_SECONDS = (20.0, 40.0)
+REFUSED_RETRIED = "refused_retried"
+REFUSED_RECOVERED = "refused_recovered"
+
+
 def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchOutcome]:
     """Read a search through the package's existing Google Flights reader, at least ten seconds apart."""
     delay = max(10.0, float(os.environ.get("GOOGLE_FLIGHTS_DELAY_SECONDS", "12")))
     last = [0.0]
+    retries_left = [max(0, int(os.environ.get("GOOGLE_FLIGHTS_REFUSED_RETRIES", str(REFUSED_RETRIES_PER_RUN))))]
 
     def fetch(spec: SearchSpec) -> FetchOutcome:
         wait = delay * random.uniform(0.9, 1.25) - (time.monotonic() - last[0])
@@ -986,21 +1001,35 @@ def make_google_fetch(cfg: BusinessDealsConfig) -> Callable[[SearchSpec], FetchO
         else:
             url = _gf.build_google_flights_url(origin=spec.origin, destination=spec.destination, date=spec.date,
                                                travellers=SEARCHED_TRAVELLERS, cabin_class=CABIN)
-        page = _gf._fetch_page_html(url)
-        last[0] = time.monotonic()
-        if page is None:
-            return FetchOutcome("failed")
-        if _gf._is_waf_response(page):
-            return FetchOutcome("wall")
         # One traveller whatever the party: the cards are read per person, and the observation scales them.
         search = FlightSearch(
             key="business-deals", label="business deals", origins=(spec.origin,), destinations=(spec.destination,),
             dates=(spec.date,), travellers=SEARCHED_TRAVELLERS, cabin_class=CABIN,
             departure_window=("00:00", "23:59"),
             max_stops=cfg.max_stops, max_duration_minutes=1440, max_price_per_traveller_gbp=None)
-        tally: dict = {}
-        offers = _gf._parse_flight_cards(page, search=search, origin=spec.origin, destination=spec.destination,
-                                         day=spec.date, booking_url=url, tally=tally)
+        retried = False
+        while True:
+            page = _gf._fetch_page_html(url)
+            last[0] = time.monotonic()
+            if page is None:
+                return FetchOutcome("failed", tally={REFUSED_RETRIED: 1} if retried else None)
+            if _gf._is_waf_response(page):
+                return FetchOutcome("wall", tally={REFUSED_RETRIED: 1} if retried else None)
+            tally: dict = {}
+            offers = _gf._parse_flight_cards(page, search=search, origin=spec.origin, destination=spec.destination,
+                                             day=spec.date, booking_url=url, tally=tally)
+            if retried:
+                tally[REFUSED_RETRIED] = 1
+                if not tally.get("payload_refused_error"):
+                    tally[REFUSED_RECOVERED] = 1
+                break
+            if offers or not tally.get("payload_refused_error") or retries_left[0] <= 0:
+                break
+            # Google's error notice in place of results is often passing: the same search read again half a
+            # minute later priced (21 Nov 2026). One more read per search, a bounded number per run.
+            retries_left[0] -= 1
+            retried = True
+            time.sleep(random.uniform(*REFUSED_RETRY_WAIT_SECONDS))
         if offers:
             return FetchOutcome("ok", offers, tally=tally)
         note = describe_page(page)
@@ -1053,7 +1082,11 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
             offers = list(outcome.offers)
             result.offers_seen += len(offers)
             result.mixed_cabin_dropped += int((outcome.tally or {}).get(_gf.MIXED_CABIN_DROP, 0))
+            read_tally = outcome.tally or (outcome.page_note or {}).get("tally") or {}
+            result.refused_retried += int(read_tally.get(REFUSED_RETRIED, 0))
+            result.refused_recovered += int(read_tally.get(REFUSED_RECOVERED, 0))
             if not offers:
+                result.refused += 1 if read_tally.get("payload_refused_error") else 0
                 if no_fare_reason(outcome.page_note or {}) == "no_itinerary":
                     result.no_itinerary += 1
                 else:
@@ -1068,6 +1101,7 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
                 observations.append(observation)
             continue
         blocked_run += 1
+        result.refused_retried += int((outcome.tally or {}).get(REFUSED_RETRIED, 0))
         if outcome.status == "wall":
             result.walled += 1
         else:
@@ -1118,7 +1152,8 @@ def run_job(cfg: BusinessDealsConfig, *, history_path: Path, alerts_path: Option
         f"median ready {result.median_ready} of {len(observations)} (needs {cfg.min_observations} earlier readings)"
         f"{'' if cfg.cap_alerts else ', cap alerts off'}, deals {len(result.deals)}, "
         f"mail {'sent' if result.mailed else 'not sent'}{' (dry run)' if dry_run else ''}, "
-        f"full cycle {cycle_days(cfg)}d")
+        f"full cycle {cycle_days(cfg)}d, refused by Google {result.refused} "
+        f"(read again {result.refused_retried}, recovered {result.refused_recovered})")
     print(result.log_line)
     if result.no_cards_note:
         note = result.no_cards_note if print_details else public_page_note(result.no_cards_note)

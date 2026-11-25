@@ -155,6 +155,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         from .weekly_fares import main as _weekly_fares
 
         return _weekly_fares(arguments[1:])
+    if arguments and arguments[0] == "curated-leads":
+        from .curated_leads import main as _curated_leads
+
+        return _curated_leads(arguments[1:])
     if arguments and arguments[0] == "business-deals":
         from .business_deals import main as _business_deals
 
