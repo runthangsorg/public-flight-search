@@ -134,7 +134,9 @@ jobs:
           | awk '/^\{/ && !seen[$0]++' > data/bd_alerts.tmp && mv data/bd_alerts.tmp data/business_deals_history_alerts.jsonl
           git config user.name "holiday-history-bot"
           git config user.email "history@localhost"
-          git add data/business_deals_history.jsonl data/business_deals_history_alerts.jsonl
+          # -f: data/ is in the data repo's .gitignore (144555f, 21 Nov) but these history files are
+          # tracked on purpose; without it `git add` exits 1 and the step fails under -e.
+          git add -f data/business_deals_history.jsonl data/business_deals_history_alerts.jsonl
           if git diff --cached --quiet; then
             echo "No new observations."
             exit 0
